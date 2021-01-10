@@ -1,0 +1,38 @@
+name: Release
+
+on:
+  workflow_dispatch:
+    inputs:
+      packageVersion:
+        description: 'Package version'
+        required: true
+
+defaults:
+  run:
+    working-directory: src
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v2
+
+      - name: Setup .NET Core SDK
+        uses: actions/setup-dotnet@v1.7.2
+        with:
+          dotnet-version: "5.0.100"
+
+      - name: Install dependencies
+        run: dotnet restore
+
+      - name: Build
+        run: dotnet build -c Release --no-restore Valleysoft.Dredge
+
+      - name: Pack
+        env:
+          PACKAGE_VERSION: ${{ github.event.inputs.packageVersion }}
+        run: dotnet pack -c Release -p:Version=$PACKAGE_VERSION Valleysoft.Dredge
+      
+      - name: Publish Package
+        run: dotnet nuget push "Valleysoft.Dredge/bin/Release/*.nupkg" -k ${{secrets.NUGET_ORG_API_KEY}} -s https://nuget.org
