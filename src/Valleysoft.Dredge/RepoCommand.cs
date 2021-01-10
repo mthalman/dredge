@@ -26,7 +26,7 @@ namespace Valleysoft.DockerRegistryClient.Cli
 
             private Task ExecuteAsync(string? registry, IConsole console)
             {
-                return CommandHelper.ExecuteCommandAsync(console, async () =>
+                return CommandHelper.ExecuteCommandAsync(console, registry, async () =>
                 {
                     using DockerRegistryClient client = await CommandHelper.GetRegistryClientAsync(registry);
 

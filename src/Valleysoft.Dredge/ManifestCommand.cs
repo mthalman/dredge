@@ -27,7 +27,7 @@ namespace Valleysoft.DockerRegistryClient.Cli
 
             private Task ExecuteAsync(string repository, string tagOrDigest, string? registry, IConsole console)
             {
-                return CommandHelper.ExecuteCommandAsync(console, async () =>
+                return CommandHelper.ExecuteCommandAsync(console, registry, async () =>
                 {
                     using DockerRegistryClient client = await CommandHelper.GetRegistryClientAsync(registry);
 
@@ -52,7 +52,7 @@ namespace Valleysoft.DockerRegistryClient.Cli
 
             private Task ExecuteAsync(string repository, string tag, string? registry, IConsole console)
             {
-                return CommandHelper.ExecuteCommandAsync(console, async () =>
+                return CommandHelper.ExecuteCommandAsync(console, registry, async () =>
                 {
                     using DockerRegistryClient client = await CommandHelper.GetRegistryClientAsync(registry);
 

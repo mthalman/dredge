@@ -5,6 +5,7 @@ using System.Linq;
 using System.Threading.Tasks;
 using Valleysoft.DockerCredsProvider;
 using Microsoft.Rest;
+using Valleysoft.DockerRegistryClient.Models;
 
 namespace Valleysoft.DockerRegistryClient.Cli
 {
@@ -18,16 +19,9 @@ namespace Valleysoft.DockerRegistryClient.Cli
             {
                 creds = await CredsProvider.GetCredentialsAsync(RegistryHelper.GetAuthRegistry(registry));
             }
-            catch (CredsNotFoundException e)
+            catch (CredsNotFoundException)
             {
-                string loginCommand = "docker login";
-                if (registry is not null)
-                {
-                    loginCommand += $" {registry}";
-                }
-
-                throw new InvalidOperationException(
-                    $"Credentials not found. Ensure that your credentials are stored for the registry by running '{loginCommand}'.", e);
+                return new DockerRegistryClient(RegistryHelper.GetApiRegistry(registry));
             }
             
             BasicAuthenticationCredentials basicCreds = new BasicAuthenticationCredentials
@@ -45,7 +39,7 @@ namespace Valleysoft.DockerRegistryClient.Cli
         public static Argument GetRepositoryArgument() =>
             new Argument<string>("repository", "Name of the Docker repository");
 
-        public static async Task ExecuteCommandAsync(IConsole console, Func<Task> execute)
+        public static async Task ExecuteCommandAsync(IConsole console, string? registry, Func<Task> execute)
         {
             try
             {
@@ -59,7 +53,21 @@ namespace Valleysoft.DockerRegistryClient.Cli
                 string message = e.Message;
                 if (e is DockerRegistryException dockerRegistryException)
                 {
-                    message = dockerRegistryException.Errors.FirstOrDefault()?.Message ?? message;
+                    Error? error = dockerRegistryException.Errors.FirstOrDefault();
+                    if (error?.Code == "UNAUTHORIZED")
+                    {
+                        string loginCommand = "docker login";
+                        if (registry is not null)
+                        {
+                            loginCommand += $" {registry}";
+                        }
+
+                        message = $"Authentication required. Ensure that your credentials are stored for the registry by running '{loginCommand}'.";
+                    }
+                    else
+                    {
+                        message = error?.Message ?? message;
+                    }
                 }
 
                 console.Error.WriteLine(message);
