@@ -3,10 +3,11 @@ using System.CommandLine;
 using System.CommandLine.Invocation;
 using System.CommandLine.IO;
 using System.Threading.Tasks;
-using Valleysoft.DockerRegistryClient.Models;
 using Newtonsoft.Json;
+using Valleysoft.DockerRegistryClient;
+using Valleysoft.DockerRegistryClient.Models;
 
-namespace Valleysoft.DockerRegistryClient.Cli
+namespace Valleysoft.Dredge
 {
     public class TagCommand : Command
     {
@@ -19,26 +20,28 @@ namespace Valleysoft.DockerRegistryClient.Cli
         {
             public ListCommand() : base("list", "Lists the tag contained in the Docker repository")
             {
-                AddArgument(CommandHelper.GetRepositoryArgument());
-                AddOption(CommandHelper.GetRegistryOption());
-                Handler = CommandHandler.Create<string, string?, IConsole>(ExecuteAsync);
+                AddArgument(new Argument<string>("repo", "Name of the Docker repository"));
+                Handler = CommandHandler.Create<string, IConsole>(ExecuteAsync);
             }
 
-            private Task ExecuteAsync(string repository, string? registry, IConsole console)
+            private Task ExecuteAsync(string repo, IConsole console)
             {
-                return CommandHelper.ExecuteCommandAsync(console, registry, async() =>
+                ImageName imageName = ImageName.Parse(repo);
+                return CommandHelper.ExecuteCommandAsync(console, imageName.Registry, async() =>
                 {
-                    using DockerRegistryClient client = await CommandHelper.GetRegistryClientAsync(registry);
+                    using DockerRegistryClient.DockerRegistryClient client = await CommandHelper.GetRegistryClientAsync(imageName.Registry);
 
-                    List<string> tags = new List<string>();
+                    List<string> tags = new();
 
-                    Page<RepositoryTags> tagsPage = await client.Tags.GetAsync(repository);
+                    Page<RepositoryTags> tagsPage = await client.Tags.GetAsync(imageName.Repo);
                     tags.AddRange(tagsPage.Value.Tags);
                     while (tagsPage.NextPageLink is not null)
                     {
                         tagsPage = await client.Tags.GetNextAsync(tagsPage.NextPageLink);
                         tags.AddRange(tagsPage.Value.Tags);
                     }
+
+                    tags.Sort();
 
                     string output = JsonConvert.SerializeObject(tags, Formatting.Indented);
 

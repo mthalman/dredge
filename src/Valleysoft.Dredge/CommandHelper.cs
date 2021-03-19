@@ -3,41 +3,35 @@ using System.CommandLine;
 using System.CommandLine.IO;
 using System.Linq;
 using System.Threading.Tasks;
-using Valleysoft.DockerCredsProvider;
 using Microsoft.Rest;
+using Valleysoft.DockerCredsProvider;
 using Valleysoft.DockerRegistryClient.Models;
 
-namespace Valleysoft.DockerRegistryClient.Cli
+namespace Valleysoft.Dredge
 {
     internal static class CommandHelper
     {
-        public static async Task<DockerRegistryClient> GetRegistryClientAsync(string? registry)
+        public static async Task<DockerRegistryClient.DockerRegistryClient> GetRegistryClientAsync(string? registry)
         {
             DockerCredentials creds;
 
             try
             {
-                creds = await CredsProvider.GetCredentialsAsync(RegistryHelper.GetAuthRegistry(registry));
+                creds = await CredsProvider.GetCredentialsAsync(DockerHubHelper.GetAuthRegistry(registry));
             }
             catch (CredsNotFoundException)
             {
-                return new DockerRegistryClient(RegistryHelper.GetApiRegistry(registry));
+                return new DockerRegistryClient.DockerRegistryClient(DockerHubHelper.GetApiRegistry(registry));
             }
             
-            BasicAuthenticationCredentials basicCreds = new BasicAuthenticationCredentials
+            BasicAuthenticationCredentials basicCreds = new()
             {
                 UserName = creds.Username,
                 Password = creds.Password
             };
          
-            return new DockerRegistryClient(RegistryHelper.GetApiRegistry(registry), basicCreds);
+            return new DockerRegistryClient.DockerRegistryClient(DockerHubHelper.GetApiRegistry(registry), basicCreds);
         }
-
-        public static Option GetRegistryOption() =>
-            new Option<string>(new string[] { "--registry", "-r" }, "Name of the Docker registry (by default, Docker Hub registry is used)");
-
-        public static Argument GetRepositoryArgument() =>
-            new Argument<string>("repository", "Name of the Docker repository");
 
         public static async Task ExecuteCommandAsync(IConsole console, string? registry, Func<Task> execute)
         {
@@ -51,7 +45,7 @@ namespace Valleysoft.DockerRegistryClient.Cli
                 Console.ForegroundColor = ConsoleColor.Red;
 
                 string message = e.Message;
-                if (e is DockerRegistryException dockerRegistryException)
+                if (e is DockerRegistryClient.DockerRegistryException dockerRegistryException)
                 {
                     Error? error = dockerRegistryException.Errors.FirstOrDefault();
                     if (error?.Code == "UNAUTHORIZED")
