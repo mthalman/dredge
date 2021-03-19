@@ -1,12 +1,12 @@
 ﻿using System.CommandLine;
 
-namespace Valleysoft.DockerRegistryClient.Cli
+namespace Valleysoft.Dredge
 {
     public class Program
     {
         public static int Main(string[] args)
         {
-            RootCommand rootCmd = new RootCommand("CLI for executing commands on a Docker registry's HTTP API.")
+            RootCommand rootCmd = new ("CLI for executing commands on a Docker registry's HTTP API.")
             {
                 new RepoCommand(),
                 new TagCommand(),

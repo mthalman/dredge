@@ -1,13 +1,13 @@
-﻿using System;
-using System.Collections.Generic;
+﻿using System.Collections.Generic;
 using System.CommandLine;
 using System.CommandLine.Invocation;
 using System.CommandLine.IO;
 using System.Threading.Tasks;
-using Valleysoft.DockerRegistryClient.Models;
 using Newtonsoft.Json;
+using Valleysoft.DockerRegistryClient;
+using Valleysoft.DockerRegistryClient.Models;
 
-namespace Valleysoft.DockerRegistryClient.Cli
+namespace Valleysoft.Dredge
 {
     public class RepoCommand : Command
     {
@@ -20,7 +20,10 @@ namespace Valleysoft.DockerRegistryClient.Cli
         {
             public ListCommand() : base("list", "Lists the repositories contained in the Docker registry")
             {
-                AddOption(CommandHelper.GetRegistryOption());
+                AddOption(
+                    new Option<string>(
+                        new string[] { "--registry", "-r" },
+                        "Name of the Docker registry (by default, Docker Hub registry is used)"));
                 Handler = CommandHandler.Create<string?, IConsole>(ExecuteAsync);
             }
 
@@ -28,9 +31,9 @@ namespace Valleysoft.DockerRegistryClient.Cli
             {
                 return CommandHelper.ExecuteCommandAsync(console, registry, async () =>
                 {
-                    using DockerRegistryClient client = await CommandHelper.GetRegistryClientAsync(registry);
+                    using DockerRegistryClient.DockerRegistryClient client = await CommandHelper.GetRegistryClientAsync(registry);
 
-                    List<string> repoNames = new List<string>();
+                    List<string> repoNames = new();
 
                     Page<Catalog> catalogPage = await client.Catalog.GetAsync();
                     repoNames.AddRange(catalogPage.Value.RepositoryNames);
@@ -39,6 +42,8 @@ namespace Valleysoft.DockerRegistryClient.Cli
                         catalogPage = await client.Catalog.GetNextAsync(catalogPage.NextPageLink);
                         repoNames.AddRange(catalogPage.Value.RepositoryNames);
                     }
+
+                    repoNames.Sort();
 
                     string output = JsonConvert.SerializeObject(repoNames, Formatting.Indented);
 
