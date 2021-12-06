@@ -18,10 +18,10 @@ public class RepoCommand : Command
     {
         public ListCommand() : base("list", "Lists the repositories contained in the Docker registry")
         {
-            AddOption(
-                new Option<string>(
-                    new string[] { "--registry", "-r" },
-                    "Name of the Docker registry (by default, Docker Hub registry is used)"));
+            AddArgument(new Argument("registry")
+            {
+                Description = "Name of the Docker registry"
+            });
             Handler = CommandHandler.Create<string?, IConsole>(ExecuteAsync);
         }
 

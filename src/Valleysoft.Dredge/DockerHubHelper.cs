@@ -3,10 +3,10 @@
 internal static class DockerHubHelper
 {
     public static string GetAuthRegistry(string? registry) =>
-        registry ?? "https://index.docker.io/v1/";
+        string.IsNullOrEmpty(registry) ? "https://index.docker.io/v1/" : registry;
 
     public static string GetApiRegistry(string? registry) =>
-        registry ?? "registry-1.docker.io";
+        string.IsNullOrEmpty(registry) ? "registry-1.docker.io" : registry;
 
     public static string ResolveRepoName(string? registry, string repoName)
     {

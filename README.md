@@ -17,12 +17,11 @@ Dredge is published as a [.NET tool](https://docs.microsoft.com/en-us/dotnet/cor
 ### Notes
 
 > * Dredge relies on your credentials already being stored in your environment when targeting registries that require authentication. For those registries you need to run `docker login` (for Docker Hub) or `docker login <registry>` before running Dredge.
-> * Dredge targets the Docker Hub registry by default but can be configured to target other registries by using the `-r` or `--registry` option.
 
 ### Query Repositories
 
 ```console
-> dredge repo list -r contoso.azurecr.io
+> dredge repo list contoso.azurecr.io
 [
   "myrepo/app"
   "myrepo/app2"
@@ -32,7 +31,7 @@ Dredge is published as a [.NET tool](https://docs.microsoft.com/en-us/dotnet/cor
 ### Query Tags
 
 ```console
-> dredge tag list myrepo/app -r contoso.azurecr.io
+> dredge tag list contoso.azurecr.io/myrepo/app
 [
   "1.0",
   "1.1"
@@ -42,7 +41,7 @@ Dredge is published as a [.NET tool](https://docs.microsoft.com/en-us/dotnet/cor
 ### Query Manifest
 
 ```console
-> dredge manifest get myrepo/app 1.0 -r contoso.azurecr.io
+> dredge manifest get contoso.azurecr.io/myrepo/app:1.0
 {
   "config": {
     "mediaType": "application/vnd.docker.container.image.v1+json",
@@ -66,6 +65,6 @@ Dredge is published as a [.NET tool](https://docs.microsoft.com/en-us/dotnet/cor
 ### Query Digest
 
 ```console
-> dredge manifest digest myrepo/app 1.0 -r contoso.azurecr.io
+> dredge manifest digest contoso.azurecr.io/myrepo/app:1.0
 sha256:95202993700f8cd7aba8496c2d0e57be0666e80b4c441925fc6f9361fa81d10e
 ```
