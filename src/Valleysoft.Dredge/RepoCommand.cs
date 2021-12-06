@@ -1,55 +1,52 @@
-﻿using System.Collections.Generic;
+﻿using Newtonsoft.Json;
 using System.CommandLine;
 using System.CommandLine.Invocation;
 using System.CommandLine.IO;
-using System.Threading.Tasks;
-using Newtonsoft.Json;
 using Valleysoft.DockerRegistryClient;
 using Valleysoft.DockerRegistryClient.Models;
 
-namespace Valleysoft.Dredge
+namespace Valleysoft.Dredge;
+
+public class RepoCommand : Command
 {
-    public class RepoCommand : Command
+    public RepoCommand() : base("repo", "Commands related to Docker repositories")
     {
-        public RepoCommand() : base("repo", "Commands related to Docker repositories")
+        AddCommand(new ListCommand());
+    }
+
+    private class ListCommand : Command
+    {
+        public ListCommand() : base("list", "Lists the repositories contained in the Docker registry")
         {
-            AddCommand(new ListCommand());
+            AddOption(
+                new Option<string>(
+                    new string[] { "--registry", "-r" },
+                    "Name of the Docker registry (by default, Docker Hub registry is used)"));
+            Handler = CommandHandler.Create<string?, IConsole>(ExecuteAsync);
         }
 
-        private class ListCommand : Command
+        private Task ExecuteAsync(string? registry, IConsole console)
         {
-            public ListCommand() : base("list", "Lists the repositories contained in the Docker registry")
+            return CommandHelper.ExecuteCommandAsync(console, registry, async () =>
             {
-                AddOption(
-                    new Option<string>(
-                        new string[] { "--registry", "-r" },
-                        "Name of the Docker registry (by default, Docker Hub registry is used)"));
-                Handler = CommandHandler.Create<string?, IConsole>(ExecuteAsync);
-            }
+                using DockerRegistryClient.DockerRegistryClient client = await CommandHelper.GetRegistryClientAsync(registry);
 
-            private Task ExecuteAsync(string? registry, IConsole console)
-            {
-                return CommandHelper.ExecuteCommandAsync(console, registry, async () =>
+                List<string> repoNames = new();
+
+                Page<Catalog> catalogPage = await client.Catalog.GetAsync();
+                repoNames.AddRange(catalogPage.Value.RepositoryNames);
+                while (catalogPage.NextPageLink is not null)
                 {
-                    using DockerRegistryClient.DockerRegistryClient client = await CommandHelper.GetRegistryClientAsync(registry);
-
-                    List<string> repoNames = new();
-
-                    Page<Catalog> catalogPage = await client.Catalog.GetAsync();
+                    catalogPage = await client.Catalog.GetNextAsync(catalogPage.NextPageLink);
                     repoNames.AddRange(catalogPage.Value.RepositoryNames);
-                    while (catalogPage.NextPageLink is not null)
-                    {
-                        catalogPage = await client.Catalog.GetNextAsync(catalogPage.NextPageLink);
-                        repoNames.AddRange(catalogPage.Value.RepositoryNames);
-                    }
+                }
 
-                    repoNames.Sort();
+                repoNames.Sort();
 
-                    string output = JsonConvert.SerializeObject(repoNames, Formatting.Indented);
+                string output = JsonConvert.SerializeObject(repoNames, Formatting.Indented);
 
-                    console.Out.WriteLine(output);
-                });
-            }
+                console.Out.WriteLine(output);
+            });
         }
     }
 }
