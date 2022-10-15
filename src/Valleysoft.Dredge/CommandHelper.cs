@@ -20,14 +20,21 @@ internal static class CommandHelper
         {
             return new DockerRegistryClient.DockerRegistryClient(DockerHubHelper.GetApiRegistry(registry));
         }
-            
-        BasicAuthenticationCredentials basicCreds = new()
+        ServiceClientCredentials clientCreds;
+        if (creds.IdentityToken is not null)
         {
-            UserName = creds.Username,
-            Password = creds.Password
-        };
+            clientCreds = new TokenCredentials(creds.IdentityToken);
+        }
+        else
+        {
+            clientCreds = new BasicAuthenticationCredentials()
+            {
+                UserName = creds.Username,
+                Password = creds.Password
+            };
+        }
          
-        return new DockerRegistryClient.DockerRegistryClient(DockerHubHelper.GetApiRegistry(registry), basicCreds);
+        return new DockerRegistryClient.DockerRegistryClient(DockerHubHelper.GetApiRegistry(registry), clientCreds);
     }
 
     public static async Task ExecuteCommandAsync(IConsole console, string? registry, Func<Task> execute)
