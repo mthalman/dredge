@@ -12,14 +12,93 @@ defaults:
     working-directory: src
 
 jobs:
-  build:
+  exe:
+    name: Build executables
+    runs-on: ubuntu-latest
+
+    strategy:
+      matrix:
+        rid:
+          - win-x64
+          - win-arm64
+          - linux-x64
+          - linux-arm64
+          - linux-musl-x64
+          - linux-musl-arm64
+
+    steps:
+      - uses: actions/checkout@v3
+
+      - name: Setup .NET Core SDK
+        uses: actions/setup-dotnet@v3
+        with:
+          dotnet-version: "6.0.x"
+
+      - name: Install dependencies
+        working-directory: src/Valleysoft.Dredge
+        run: dotnet restore --runtime ${{ matrix.rid }} /p:PublishReadyToRun=true
+
+      - name: Publish
+        working-directory: src/Valleysoft.Dredge
+        run: dotnet publish -f net6.0 -c Release --no-restore -o ${{ github.workspace }}/publish --runtime ${{ matrix.rid }} --self-contained /p:PublishTrimmed=true /p:PublishReadyToRun=true /p:PublishSingleFile=true
+
+      - name: Rename output
+        run: |
+          if [[ "${{ matrix.rid }}" == *"win"* ]]; then
+            dredgeExt=".exe"
+          else
+            dredgeExt=""
+          fi
+          
+          exeName="dredge-${{ github.event.inputs.packageVersion }}-${{ matrix.rid }}${dredgeExt}"
+          echo "EXE_NAME=${exeName}" >> $GITHUB_ENV
+          mv ${{ github.workspace }}/publish/dredge${dredgeExt} ${{ github.workspace }}/publish/${exeName}
+          rm ${{ github.workspace }}/publish/dredge.pdb
+      
+      - name: Generate checksum
+        run: sha256sum ${EXE_NAME} >${EXE_NAME}.sha256sum
+        working-directory: ${{ github.workspace }}/publish
+
+      - name: Save build binaries
+        uses: actions/upload-artifact@v3
+        with:
+          name: dredge-binaries-${{ matrix.rid }}
+          path: ${{ github.workspace }}/publish
+
+  save-exes:
+    name: Save executables
+    needs: exe
     runs-on: ubuntu-latest
 
     steps:
-      - uses: actions/checkout@v2
+      - uses: actions/checkout@v3
+
+      - name: Download build binaries
+        uses: actions/download-artifact@v3
+        with:
+          path: ${{ github.workspace }}/publish
+
+      - name: Move all files
+        run: |
+          mv ${{ github.workspace }}/publish/dredge-binaries-*/* ${{ github.workspace }}/publish
+          rm -r ${{ github.workspace }}/publish/dredge-binaries-*
+
+      - name: Save build binaries
+        uses: actions/upload-artifact@v3
+        with:
+          name: dredge-binaries
+          path: ${{ github.workspace }}/publish
+
+  nuget:
+    name: Publish NuGet Package
+    runs-on: ubuntu-latest
+    needs: save-exes
+
+    steps:
+      - uses: actions/checkout@v3
 
       - name: Setup .NET Core SDK
-        uses: actions/setup-dotnet@v1.7.2
+        uses: actions/setup-dotnet@v3
         with:
           dotnet-version: "6.0.x"
 

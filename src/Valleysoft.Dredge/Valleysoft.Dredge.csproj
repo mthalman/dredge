@@ -3,7 +3,7 @@
   <PropertyGroup>
     <OutputType>Exe</OutputType>
     <TargetFrameworks>netcoreapp3.1;net6.0</TargetFrameworks>
-	<RollForward>Major</RollForward>
+    <RollForward>Major</RollForward>
     <Nullable>enable</Nullable>
     <AssemblyName>dredge</AssemblyName>
     <LangVersion>10.0</LangVersion>
