@@ -1,7 +1,5 @@
 ﻿using Newtonsoft.Json;
 using System.CommandLine;
-using System.CommandLine.Invocation;
-using System.CommandLine.IO;
 using Valleysoft.DockerRegistryClient;
 using Valleysoft.DockerRegistryClient.Models;
 
@@ -19,14 +17,15 @@ public class ManifestCommand : Command
     {
         public GetCommand() : base("get", "Queries a Docker manifest")
         {
-            AddArgument(new Argument<string>("image", "Name of the Docker image (<image>, <image>:<tag>, or <image>@<digest>)"));
-            Handler = CommandHandler.Create<string, IConsole>(ExecuteAsync);
+            Argument<string> imageArg = new("image", "Name of the Docker image (<image>, <image>:<tag>, or <image>@<digest>)");
+            AddArgument(imageArg);
+            this.SetHandler(ExecuteAsync, imageArg);
         }
 
-        private Task ExecuteAsync(string image, IConsole console)
+        private Task ExecuteAsync(string image)
         {
             ImageName imageName = ImageName.Parse(image);
-            return CommandHelper.ExecuteCommandAsync(console, imageName.Registry, async () =>
+            return CommandHelper.ExecuteCommandAsync(imageName.Registry, async () =>
             {
                 using DockerRegistryClient.DockerRegistryClient client = await CommandHelper.GetRegistryClientAsync(imageName.Registry);
 
@@ -34,7 +33,7 @@ public class ManifestCommand : Command
 
                 string output = JsonConvert.SerializeObject(manifestInfo.Manifest, Formatting.Indented);
 
-                console.Out.WriteLine(output);
+                Console.Out.WriteLine(output);
             });
         }
     }
@@ -43,20 +42,21 @@ public class ManifestCommand : Command
     {
         public DigestCommand() : base("digest", "Queries the digest of a Docker manifest")
         {
-            AddArgument(new Argument<string>("image", "Name of the Docker image (<image> or <image>:<tag>"));
-            Handler = CommandHandler.Create<string, IConsole>(ExecuteAsync);
+            Argument<string> imageArg = new("image", "Name of the Docker image (<image> or <image>:<tag>");
+            AddArgument(imageArg);
+            this.SetHandler(ExecuteAsync, imageArg);
         }
 
-        private Task ExecuteAsync(string image, IConsole console)
+        private Task ExecuteAsync(string image)
         {
             ImageName imageName = ImageName.Parse(image);
-            return CommandHelper.ExecuteCommandAsync(console, imageName.Registry, async () =>
+            return CommandHelper.ExecuteCommandAsync(imageName.Registry, async () =>
             {
                 using DockerRegistryClient.DockerRegistryClient client = await CommandHelper.GetRegistryClientAsync(imageName.Registry);
 
                 string digest = await client.Manifests.GetDigestAsync(imageName.Repo, (imageName.Tag ?? imageName.Digest)!);
 
-                console.Out.WriteLine(digest);
+                Console.Out.WriteLine(digest);
             });
         }
     }

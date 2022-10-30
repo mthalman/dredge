@@ -1,7 +1,5 @@
 ﻿using Newtonsoft.Json;
 using System.CommandLine;
-using System.CommandLine.Invocation;
-using System.CommandLine.IO;
 using Valleysoft.DockerRegistryClient;
 using Valleysoft.DockerRegistryClient.Models;
 
@@ -18,16 +16,15 @@ public class RepoCommand : Command
     {
         public ListCommand() : base("list", "Lists the repositories contained in the Docker registry")
         {
-            AddArgument(new Argument("registry")
-            {
-                Description = "Name of the Docker registry"
-            });
-            Handler = CommandHandler.Create<string?, IConsole>(ExecuteAsync);
+            Argument<string> registryArg = new("registry", "Name of the Docker registry");
+            AddArgument(registryArg);
+
+            this.SetHandler(ExecuteAsync, registryArg);
         }
 
-        private Task ExecuteAsync(string? registry, IConsole console)
+        private Task ExecuteAsync(string registry)
         {
-            return CommandHelper.ExecuteCommandAsync(console, registry, async () =>
+            return CommandHelper.ExecuteCommandAsync(registry, async () =>
             {
                 using DockerRegistryClient.DockerRegistryClient client = await CommandHelper.GetRegistryClientAsync(registry);
 
@@ -45,7 +42,7 @@ public class RepoCommand : Command
 
                 string output = JsonConvert.SerializeObject(repoNames, Formatting.Indented);
 
-                console.Out.WriteLine(output);
+                Console.Out.WriteLine(output);
             });
         }
     }

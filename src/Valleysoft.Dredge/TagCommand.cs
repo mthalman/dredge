@@ -1,7 +1,5 @@
 ﻿using Newtonsoft.Json;
 using System.CommandLine;
-using System.CommandLine.Invocation;
-using System.CommandLine.IO;
 using Valleysoft.DockerRegistryClient;
 using Valleysoft.DockerRegistryClient.Models;
 
@@ -18,14 +16,16 @@ public class TagCommand : Command
     {
         public ListCommand() : base("list", "Lists the tag contained in the Docker repository")
         {
-            AddArgument(new Argument<string>("repo", "Name of the Docker repository"));
-            Handler = CommandHandler.Create<string, IConsole>(ExecuteAsync);
+            Argument<string> repoArg = new("repo", "Name of the Docker repository");
+            AddArgument(repoArg);
+
+            this.SetHandler(ExecuteAsync, repoArg);
         }
 
-        private Task ExecuteAsync(string repo, IConsole console)
+        private Task ExecuteAsync(string repo)
         {
             ImageName imageName = ImageName.Parse(repo);
-            return CommandHelper.ExecuteCommandAsync(console, imageName.Registry, async() =>
+            return CommandHelper.ExecuteCommandAsync(imageName.Registry, async () =>
             {
                 using DockerRegistryClient.DockerRegistryClient client = await CommandHelper.GetRegistryClientAsync(imageName.Registry);
 
@@ -43,7 +43,7 @@ public class TagCommand : Command
 
                 string output = JsonConvert.SerializeObject(tags, Formatting.Indented);
 
-                console.Out.WriteLine(output);
+                Console.Out.WriteLine(output);
             });
         }
     }
