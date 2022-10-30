@@ -7,16 +7,16 @@ namespace Valleysoft.Dredge;
 
 public class RepoCommand : Command
 {
-    public RepoCommand() : base("repo", "Commands related to Docker repositories")
+    public RepoCommand() : base("repo", "Commands related to container repositories")
     {
         AddCommand(new ListCommand());
     }
 
     private class ListCommand : Command
     {
-        public ListCommand() : base("list", "Lists the repositories contained in the Docker registry")
+        public ListCommand() : base("list", "Lists the repositories contained in the container registry")
         {
-            Argument<string> registryArg = new("registry", "Name of the Docker registry");
+            Argument<string> registryArg = new("registry", "Name of the container registry");
             AddArgument(registryArg);
 
             this.SetHandler(ExecuteAsync, registryArg);

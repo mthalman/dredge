@@ -7,16 +7,16 @@ namespace Valleysoft.Dredge;
 
 public class TagCommand : Command
 {
-    public TagCommand() : base("tag", "Commands related to Docker tags")
+    public TagCommand() : base("tag", "Commands related to container image tags")
     {
         AddCommand(new ListCommand());
     }
 
     private class ListCommand : Command
     {
-        public ListCommand() : base("list", "Lists the tag contained in the Docker repository")
+        public ListCommand() : base("list", "Lists the tag contained in the container repository")
         {
-            Argument<string> repoArg = new("repo", "Name of the Docker repository");
+            Argument<string> repoArg = new("repo", "Name of the container repository");
             AddArgument(repoArg);
 
             this.SetHandler(ExecuteAsync, repoArg);

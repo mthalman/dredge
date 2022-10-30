@@ -17,9 +17,9 @@
 
   <PropertyGroup>
     <PackageId>Valleysoft.Dredge</PackageId>
-    <Title>Docker Registry Client CLI</Title>
-    <Description>CLI for executing commands on a Docker registry's HTTP API.</Description>
-    <PackageTags>docker</PackageTags>
+    <Title>Container Registry Client CLI</Title>
+    <Description>CLI for executing commands on a container registry's HTTP API.</Description>
+    <PackageTags>docker;container</PackageTags>
     <Authors>Matt Thalman and Contributors</Authors>
     <RepositoryUrl>https://github.com/mthalman/dredge</RepositoryUrl>
     <PackageLicenseExpression>MIT</PackageLicenseExpression>
