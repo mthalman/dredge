@@ -7,7 +7,7 @@ namespace Valleysoft.Dredge;
 
 public class ManifestCommand : Command
 {
-    public ManifestCommand() : base("manifest", "Commands related to Docker manifests")
+    public ManifestCommand() : base("manifest", "Commands related to container image manifests")
     {
         AddCommand(new GetCommand());
         AddCommand(new DigestCommand());
@@ -15,9 +15,9 @@ public class ManifestCommand : Command
 
     private class GetCommand : Command
     {
-        public GetCommand() : base("get", "Queries a Docker manifest")
+        public GetCommand() : base("get", "Queries a container image manifest")
         {
-            Argument<string> imageArg = new("image", "Name of the Docker image (<image>, <image>:<tag>, or <image>@<digest>)");
+            Argument<string> imageArg = new("image", "Name of the container image (<image>, <image>:<tag>, or <image>@<digest>)");
             AddArgument(imageArg);
             this.SetHandler(ExecuteAsync, imageArg);
         }
@@ -40,9 +40,9 @@ public class ManifestCommand : Command
 
     private class DigestCommand : Command
     {
-        public DigestCommand() : base("digest", "Queries the digest of a Docker manifest")
+        public DigestCommand() : base("digest", "Queries the digest of a container image manifest")
         {
-            Argument<string> imageArg = new("image", "Name of the Docker image (<image> or <image>:<tag>");
+            Argument<string> imageArg = new("image", "Name of the container image image (<image> or <image>:<tag>");
             AddArgument(imageArg);
             this.SetHandler(ExecuteAsync, imageArg);
         }
