@@ -1,6 +1,4 @@
 ﻿using Microsoft.Rest;
-using System.CommandLine;
-using System.CommandLine.IO;
 using Valleysoft.DockerCredsProvider;
 using Valleysoft.DockerRegistryClient.Models;
 
@@ -37,7 +35,7 @@ internal static class CommandHelper
         return new DockerRegistryClient.DockerRegistryClient(DockerHubHelper.GetApiRegistry(registry), clientCreds);
     }
 
-    public static async Task ExecuteCommandAsync(IConsole console, string? registry, Func<Task> execute)
+    public static async Task ExecuteCommandAsync(string? registry, Func<Task> execute)
     {
         try
         {
@@ -68,7 +66,7 @@ internal static class CommandHelper
                 }
             }
 
-            console.Error.WriteLine(message);
+            Console.Error.WriteLine(message);
             Console.ForegroundColor = savedColor;
         }
     }
