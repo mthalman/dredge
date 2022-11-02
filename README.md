@@ -1,10 +1,16 @@
-# Dredge: A Docker Registry Client CLI
+# Dredge: A Container Registry Client CLI
 
-Dredge is a CLI built on .NET that provides a simple way to execute commands on a Docker registry's HTTP API. Currently, only read operations are supported.
+Dredge is a CLI built on .NET that provides a simple way to execute commands on a container registry's HTTP API. Currently, only read operations are supported.
 
 ## Install
 
-Dredge is published as a [.NET tool](https://docs.microsoft.com/en-us/dotnet/core/tools/global-tools) and available as a [NuGet package](https://www.nuget.org/packages/Valleysoft.Dredge).
+Dredge is available as a standalone executable or as a [.NET tool](https://docs.microsoft.com/en-us/dotnet/core/tools/global-tools).
+
+### Installing as a standalone executable
+
+Download the appropriate executable from the [release page](https://github.com/mthalman/dredge/releases).
+
+The executable does not require the .NET runtime to be installed.
 
 ### Installing as a global tool
 
@@ -67,4 +73,26 @@ Dredge is published as a [.NET tool](https://docs.microsoft.com/en-us/dotnet/cor
 ```console
 > dredge manifest digest contoso.azurecr.io/myrepo/app:1.0
 sha256:95202993700f8cd7aba8496c2d0e57be0666e80b4c441925fc6f9361fa81d10e
+```
+
+### Inspect Image Configuration
+
+```console
+> dredge image inspect contoso.azurecr.io/myrepo/app:1.0
+{
+  "architecture": "amd64",
+  "config": {
+    "Hostname": "",
+    "Domainname": "",
+    "User": "",
+    "AttachStdin": false,
+    "AttachStdout": false,
+    "AttachStderr": false,
+    "Tty": false,
+    "OpenStdin": false,
+    "StdinOnce": false,
+    "Env": [
+      "PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin",
+...
+}
 ```
