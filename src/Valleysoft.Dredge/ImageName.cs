@@ -65,4 +65,26 @@ public class ImageName
 
         return new ImageName(registry, repo, tag, digest);
     }
+
+    public override string ToString()
+    {
+        string result = string.Empty;
+        if (Registry is not null)
+        {
+            result += Registry + "/";
+        }
+
+        result += Repo;
+
+        if (Tag is not null)
+        {
+            result += ":" + Tag;
+        }
+        else if (Digest is not null)
+        {
+            result += "@" + Digest;
+        }
+
+        return result;
+    }
 }
