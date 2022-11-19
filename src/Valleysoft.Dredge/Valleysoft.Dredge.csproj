@@ -28,6 +28,7 @@
 
   <ItemGroup>
     <PackageReference Include="SharpZipLib" Version="1.4.1" />
+    <PackageReference Include="Spectre.Console" Version="0.45.1-preview.0.40" />
     <PackageReference Include="System.CommandLine" Version="2.0.0-beta4.22272.1" />
     <PackageReference Include="Valleysoft.DockerCredsProvider" Version="2.1.0" />
     <PackageReference Include="Valleysoft.DockerRegistryClient" Version="3.0.0" />
