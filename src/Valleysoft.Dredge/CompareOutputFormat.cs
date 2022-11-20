@@ -1,6 +1,6 @@
 ﻿namespace Valleysoft.Dredge;
 
-internal enum CompareOutputFormat
+public enum CompareOutputFormat
 {
     SideBySide,
     Inline,
