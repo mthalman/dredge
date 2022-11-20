@@ -3,7 +3,6 @@ using Newtonsoft.Json;
 using Spectre.Console;
 using Spectre.Console.Rendering;
 using System.CommandLine;
-using System.CommandLine.Binding;
 using System.IO.Compression;
 using System.Reflection;
 using System.Runtime.Serialization;
@@ -213,7 +212,7 @@ public class ImageCommand : Command
                 Option<bool> noColorOption = new("--no-color", "Disables dependency on color in comparison results");
                 AddOption(noColorOption);
 
-                Option<bool> historyOption = new("--history", "Include layer history");
+                Option<bool> historyOption = new("--history", "Include layer history as part of the comparison");
                 AddOption(historyOption);
 
                 this.SetHandler(ExecuteAsync, baseImageArg, targetImageArg, outputOption, noColorOption, historyOption);
@@ -301,7 +300,6 @@ public class ImageCommand : Command
 
             private static LayerDiff GetLayerDiff(LayerInfo? baseLayer, LayerInfo? targetLayer)
             {
-                LayerDiff diff;
                 if (baseLayer is null)
                 {
                     if (targetLayer is null)
@@ -309,22 +307,27 @@ public class ImageCommand : Command
                         throw new Exception("Unexpected layer result: two null layers");
                     }
 
-                    diff = LayerDiff.Added;
+                    return LayerDiff.Added;
                 }
                 else
                 {
                     if (targetLayer is null)
                     {
-                        diff = LayerDiff.Removed;
+                        return LayerDiff.Removed;
                     }
                     else
                     {
-                        diff = (baseLayer.Digest.Equals(targetLayer.Digest, StringComparison.OrdinalIgnoreCase)) ?
-                            LayerDiff.Equal : LayerDiff.NotEqual;
+                        if (string.Equals(baseLayer.Digest, targetLayer.Digest, StringComparison.OrdinalIgnoreCase) &&
+                            string.Equals(baseLayer.History, targetLayer.History, StringComparison.Ordinal))
+                        {
+                            return LayerDiff.Equal;
+                        }
+                        else
+                        {
+                            return LayerDiff.NotEqual;
+                        }
                     }
                 }
-
-                return diff;
             }
 
             private static Color GetLayerDiffColor(LayerDiff diff, bool isBaseLayer, bool isColorDisabled) =>
@@ -344,12 +347,30 @@ public class ImageCommand : Command
                     new Style(GetLayerDiffColor(diff, isBaseLayer: true, isColorDisabled)));
 
             private static Markup GetDigestMarkup(LayerInfo? layer, LayerDiff diff, bool isBase, bool isColorDisabled,
-                bool includeHistory, bool isInline) =>
-                new(
-                    Markup.Escape($"{GetTextOffset(diff, isInline, isBase)}{layer?.Digest ?? string.Empty}"),
-                    new Style(
-                        foreground: GetLayerDiffColor(diff, isBase, isColorDisabled),
-                        decoration: includeHistory ? Decoration.Invert : Decoration.None));
+                bool includeHistory, bool isInline)
+            {
+                if (layer is null)
+                {
+                    return new Markup(string.Empty);
+                }
+
+                string digestMarkup = string.Empty;
+                if (includeHistory)
+                {
+                    digestMarkup += $"[{(includeHistory ? Decoration.Invert : Decoration.None).ToString().ToLower()}]";
+                }
+
+                digestMarkup += $"{Markup.Escape(layer?.Digest ?? "<empty layer>")}";
+
+                if (includeHistory)
+                {
+                    digestMarkup += "[/]";
+                }
+
+                return new(
+                    $"{GetTextOffset(diff, isInline, isBase)}{digestMarkup}",
+                    new Style(GetLayerDiffColor(diff, isBase, isColorDisabled)));
+            }
 
             private static string GetTextOffset(LayerDiff diff, bool isInline, bool isBase) =>
                 !isInline ? string.Empty : diff switch
@@ -378,11 +399,16 @@ public class ImageCommand : Command
 
                 Image imageConfig = await client.Blobs.GetImageAsync(imageName.Repo, digest);
 
-                IList<LayerInfo> layerInfos = manifest.Layers
-                    .Zip(
-                        imageConfig.History.Where(hist => !hist.IsEmptyLayer),
-                        (layer, history) => new LayerInfo(layer.Digest!, includeHistory ? history.CreatedBy : null))
-                    .ToList();
+                List<LayerInfo> layerInfos = new();
+                int layerIndex = 0;
+                foreach (LayerHistory history in imageConfig.History)
+                {
+                    if (includeHistory || !history.IsEmptyLayer)
+                    {
+                        string? layerDigest = !history.IsEmptyLayer ? manifest.Layers[layerIndex++].Digest : null;
+                        layerInfos.Add(new LayerInfo(layerDigest, includeHistory ? history.CreatedBy : null));
+                    }
+                }
 
                 return layerInfos;
             }
@@ -430,7 +456,7 @@ public class ImageCommand : Command
                 {
                     LayerComparison layerComparison = result.LayerComparisons.ElementAt(i);
                     IEnumerable<IRenderable> digestRowCells =
-                        GetDigestRowCells(isColorDisabled, includeHistory, table, layerComparison);
+                        GetDigestRowCells(isColorDisabled, includeHistory, layerComparison);
                     table.AddRow(digestRowCells);
 
                     if (includeHistory)
@@ -461,7 +487,7 @@ public class ImageCommand : Command
                     return historyCells;
                 }
 
-                private static IEnumerable<IRenderable> GetDigestRowCells(bool isColorDisabled, bool includeHistory, Table table, LayerComparison layerComparison)
+                private static IEnumerable<IRenderable> GetDigestRowCells(bool isColorDisabled, bool includeHistory, LayerComparison layerComparison)
                 {
                     List<IRenderable> shaCells = new()
                     {
