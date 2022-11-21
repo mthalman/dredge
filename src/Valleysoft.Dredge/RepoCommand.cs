@@ -7,26 +7,29 @@ namespace Valleysoft.Dredge;
 
 public class RepoCommand : Command
 {
-    public RepoCommand() : base("repo", "Commands related to container repositories")
+    public RepoCommand(IDockerRegistryClientFactory dockerRegistryClientFactory) : base("repo", "Commands related to container repositories")
     {
-        AddCommand(new ListCommand());
+        AddCommand(new ListCommand(dockerRegistryClientFactory));
     }
 
     private class ListCommand : Command
     {
-        public ListCommand() : base("list", "Lists the repositories contained in the container registry")
+        private readonly IDockerRegistryClientFactory dockerRegistryClientFactory;
+
+        public ListCommand(IDockerRegistryClientFactory dockerRegistryClientFactory) : base("list", "Lists the repositories contained in the container registry")
         {
             Argument<string> registryArg = new("registry", "Name of the container registry");
             AddArgument(registryArg);
 
             this.SetHandler(ExecuteAsync, registryArg);
+            this.dockerRegistryClientFactory = dockerRegistryClientFactory;
         }
 
         private Task ExecuteAsync(string registry)
         {
             return CommandHelper.ExecuteCommandAsync(registry, async () =>
             {
-                using DockerRegistryClient.DockerRegistryClient client = await CommandHelper.GetRegistryClientAsync(registry);
+                using IDockerRegistryClient client = await dockerRegistryClientFactory.GetClientAsync(registry);
 
                 List<string> repoNames = new();
 

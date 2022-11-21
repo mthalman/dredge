@@ -1,12 +1,13 @@
 ﻿using System.CommandLine;
 using Valleysoft.Dredge;
 
+DockerRegistryClientFactory clientFactory = new();
 RootCommand rootCmd = new("CLI for executing commands on a container registry's HTTP API.")
 {
-    new ImageCommand(),
-    new ManifestCommand(),
-    new RepoCommand(),
-    new TagCommand(),
+    new ImageCommand(clientFactory),
+    new ManifestCommand(clientFactory),
+    new RepoCommand(clientFactory),
+    new TagCommand(clientFactory),
 };
 
 return rootCmd.Invoke(args);
