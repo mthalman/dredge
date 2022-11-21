@@ -1,40 +1,9 @@
-﻿using Microsoft.Rest;
-using Valleysoft.DockerCredsProvider;
-using Valleysoft.DockerRegistryClient.Models;
+﻿using Valleysoft.DockerRegistryClient.Models;
 
 namespace Valleysoft.Dredge;
 
 internal static class CommandHelper
 {
-    public static async Task<DockerRegistryClient.DockerRegistryClient> GetRegistryClientAsync(string? registry)
-    {
-        DockerCredentials creds;
-
-        try
-        {
-            creds = await CredsProvider.GetCredentialsAsync(DockerHubHelper.GetAuthRegistry(registry));
-        }
-        catch (CredsNotFoundException)
-        {
-            return new DockerRegistryClient.DockerRegistryClient(DockerHubHelper.GetApiRegistry(registry));
-        }
-        ServiceClientCredentials clientCreds;
-        if (creds.IdentityToken is not null)
-        {
-            clientCreds = new TokenCredentials(creds.IdentityToken);
-        }
-        else
-        {
-            clientCreds = new BasicAuthenticationCredentials()
-            {
-                UserName = creds.Username,
-                Password = creds.Password
-            };
-        }
-         
-        return new DockerRegistryClient.DockerRegistryClient(DockerHubHelper.GetApiRegistry(registry), clientCreds);
-    }
-
     public static async Task ExecuteCommandAsync(string? registry, Func<Task> execute)
     {
         try

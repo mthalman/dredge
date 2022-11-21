@@ -7,19 +7,22 @@ namespace Valleysoft.Dredge;
 
 public class TagCommand : Command
 {
-    public TagCommand() : base("tag", "Commands related to container image tags")
+    public TagCommand(IDockerRegistryClientFactory dockerRegistryClientFactory) : base("tag", "Commands related to container image tags")
     {
-        AddCommand(new ListCommand());
+        AddCommand(new ListCommand(dockerRegistryClientFactory));
     }
 
     private class ListCommand : Command
     {
-        public ListCommand() : base("list", "Lists the tag contained in the container repository")
+        private readonly IDockerRegistryClientFactory dockerRegistryClientFactory;
+
+        public ListCommand(IDockerRegistryClientFactory dockerRegistryClientFactory) : base("list", "Lists the tag contained in the container repository")
         {
             Argument<string> repoArg = new("repo", "Name of the container repository");
             AddArgument(repoArg);
 
             this.SetHandler(ExecuteAsync, repoArg);
+            this.dockerRegistryClientFactory = dockerRegistryClientFactory;
         }
 
         private Task ExecuteAsync(string repo)
@@ -27,7 +30,7 @@ public class TagCommand : Command
             ImageName imageName = ImageName.Parse(repo);
             return CommandHelper.ExecuteCommandAsync(imageName.Registry, async () =>
             {
-                using DockerRegistryClient.DockerRegistryClient client = await CommandHelper.GetRegistryClientAsync(imageName.Registry);
+                using IDockerRegistryClient client = await dockerRegistryClientFactory.GetClientAsync(imageName.Registry);
 
                 List<string> tags = new();
 

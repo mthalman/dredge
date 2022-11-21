@@ -14,11 +14,11 @@ namespace Valleysoft.Dredge;
 
 public class ImageCommand : Command
 {
-    public ImageCommand() : base("image", "Commands related to container images")
+    public ImageCommand(IDockerRegistryClientFactory dockerRegistryClientFactory) : base("image", "Commands related to container images")
     {
-        AddCommand(new InspectCommand());
-        AddCommand(new OsCommand());
-        AddCommand(new CompareCommand());
+        AddCommand(new InspectCommand(dockerRegistryClientFactory));
+        AddCommand(new OsCommand(dockerRegistryClientFactory));
+        AddCommand(new CompareCommand(dockerRegistryClientFactory));
     }
 
     private static DockerManifestV2 GetManifest(string image, ManifestInfo manifestInfo)
@@ -40,12 +40,15 @@ public class ImageCommand : Command
 
     public class InspectCommand : Command
     {
-        public InspectCommand() : base("inspect", "Return low-level information on a container image")
+        private readonly IDockerRegistryClientFactory dockerRegistryClientFactory;
+
+        public InspectCommand(IDockerRegistryClientFactory dockerRegistryClientFactory) : base("inspect", "Return low-level information on a container image")
         {
             Argument<string> imageArg = new("image", "Name of the container image (<image>, <image>:<tag>, or <image>@<digest>)");
             AddArgument(imageArg);
 
             this.SetHandler(ExecuteAsync, imageArg);
+            this.dockerRegistryClientFactory = dockerRegistryClientFactory;
         }
 
         private Task ExecuteAsync(string image)
@@ -53,7 +56,7 @@ public class ImageCommand : Command
             ImageName imageName = ImageName.Parse(image);
             return CommandHelper.ExecuteCommandAsync(imageName.Registry, async () =>
             {
-                using DockerRegistryClient.DockerRegistryClient client = await CommandHelper.GetRegistryClientAsync(imageName.Registry);
+                using IDockerRegistryClient client = await dockerRegistryClientFactory.GetClientAsync(imageName.Registry);
                 ManifestInfo manifestInfo = await client.Manifests.GetAsync(imageName.Repo, (imageName.Tag ?? imageName.Digest)!);
 
                 DockerManifestV2 manifest = GetManifest(image, manifestInfo);
@@ -75,11 +78,14 @@ public class ImageCommand : Command
 
     public class OsCommand : Command
     {
-        public OsCommand() : base("os", "Gets OS info about the container image")
+        private readonly IDockerRegistryClientFactory dockerRegistryClientFactory;
+
+        public OsCommand(IDockerRegistryClientFactory dockerRegistryClientFactory) : base("os", "Gets OS info about the container image")
         {
             Argument<string> imageArg = new("image", "Name of the container image (<image>, <image>:<tag>, or <image>@<digest>)");
             AddArgument(imageArg);
             this.SetHandler(ExecuteAsync, imageArg);
+            this.dockerRegistryClientFactory = dockerRegistryClientFactory;
         }
 
         private Task ExecuteAsync(string image)
@@ -87,7 +93,7 @@ public class ImageCommand : Command
             ImageName imageName = ImageName.Parse(image);
             return CommandHelper.ExecuteCommandAsync(imageName.Registry, async () =>
             {
-                using DockerRegistryClient.DockerRegistryClient client = await CommandHelper.GetRegistryClientAsync(imageName.Registry);
+                using IDockerRegistryClient client = await dockerRegistryClientFactory.GetClientAsync(imageName.Registry);
                 ManifestInfo manifestInfo = await client.Manifests.GetAsync(imageName.Repo, (imageName.Tag ?? imageName.Digest)!);
 
                 DockerManifestV2 manifest = GetManifest(image, manifestInfo);
@@ -130,7 +136,7 @@ public class ImageCommand : Command
             });
         }
 
-        private static async Task<LinuxOsInfo?> GetLinuxOsInfoAsync(DockerRegistryClient.DockerRegistryClient client, ImageName imageName, string baseLayerDigest)
+        private static async Task<LinuxOsInfo?> GetLinuxOsInfoAsync(IDockerRegistryClient client, ImageName imageName, string baseLayerDigest)
         {
             Stream blobStream = await client.Blobs.GetAsync(imageName.Repo, baseLayerDigest);
             GZipStream gZipStream = new(blobStream, CompressionMode.Decompress);
@@ -161,10 +167,10 @@ public class ImageCommand : Command
             return null;
         }
 
-        private static async Task<WindowsOsInfo?> GetWindowsOsInfoAsync(Image imageConfig, string baseLayerDigest)
+        private async Task<WindowsOsInfo?> GetWindowsOsInfoAsync(Image imageConfig, string baseLayerDigest)
         {
-            using DockerRegistryClient.DockerRegistryClient mcrClient =
-                await CommandHelper.GetRegistryClientAsync("mcr.microsoft.com");
+            using IDockerRegistryClient mcrClient =
+                await dockerRegistryClientFactory.GetClientAsync("mcr.microsoft.com");
 
             if (await mcrClient.Blobs.ExistsAsync("windows/nanoserver", baseLayerDigest))
             {
@@ -191,14 +197,19 @@ public class ImageCommand : Command
 
     public class CompareCommand : Command
     {
-        public CompareCommand() : base("compare", "Compares two images")
+        private readonly IDockerRegistryClientFactory dockerRegistryClientFactory;
+
+        public CompareCommand(IDockerRegistryClientFactory dockerRegistryClientFactory) : base("compare", "Compares two images")
         {
-            AddCommand(new LayersCommand());
+            AddCommand(new LayersCommand(dockerRegistryClientFactory));
+            this.dockerRegistryClientFactory = dockerRegistryClientFactory;
         }
 
         public class LayersCommand : Command
         {
-            public LayersCommand() : base("layers", "Compares two images by layers")
+            private readonly IDockerRegistryClientFactory dockerRegistryClientFactory;
+
+            public LayersCommand(IDockerRegistryClientFactory dockerRegistryClientFactory) : base("layers", "Compares two images by layers")
             {
                 Argument<string> baseImageArg = new("base", "Name of the base container image (<image>, <image>:<tag>, or <image>@<digest>)");
                 AddArgument(baseImageArg);
@@ -216,9 +227,10 @@ public class ImageCommand : Command
                 AddOption(historyOption);
 
                 this.SetHandler(ExecuteAsync, baseImageArg, targetImageArg, outputOption, noColorOption, historyOption);
+                this.dockerRegistryClientFactory = dockerRegistryClientFactory;
             }
 
-            private static Task ExecuteAsync(string baseImage, string targetImage, CompareOutputFormat outputFormat, bool isColorDisabled, bool includeHistory)
+            private Task ExecuteAsync(string baseImage, string targetImage, CompareOutputFormat outputFormat, bool isColorDisabled, bool includeHistory)
             {
                 return CommandHelper.ExecuteCommandAsync(registry: null, async () =>
                 {
@@ -227,7 +239,7 @@ public class ImageCommand : Command
                 });
             }
 
-            public static async Task<IRenderable> GetOutputAsync(
+            public async Task<IRenderable> GetOutputAsync(
                 string baseImage, string targetImage, CompareOutputFormat outputFormat, bool isColorDisabled, bool includeHistory)
             {
                 CompareLayersResult result = await GetCompareLayersResult(baseImage, targetImage, includeHistory);
@@ -236,7 +248,7 @@ public class ImageCommand : Command
                 return output;
             }
 
-            private static async Task<CompareLayersResult> GetCompareLayersResult(string baseImage, string targetImage, bool includeHistory)
+            private async Task<CompareLayersResult> GetCompareLayersResult(string baseImage, string targetImage, bool includeHistory)
             {
                 IList<LayerInfo> baseLayers = await GetLayersAsync(baseImage, includeHistory);
                 IList<LayerInfo> targetLayers = await GetLayersAsync(targetImage, includeHistory);
@@ -382,11 +394,10 @@ public class ImageCommand : Command
                     _ => throw new NotImplementedException()
                 };
 
-            private static async Task<IList<LayerInfo>> GetLayersAsync(string image, bool includeHistory)
+            private async Task<IList<LayerInfo>> GetLayersAsync(string image, bool includeHistory)
             {
                 ImageName imageName = ImageName.Parse(image);
-                using DockerRegistryClient.DockerRegistryClient client =
-                    await CommandHelper.GetRegistryClientAsync(imageName.Registry);
+                using IDockerRegistryClient client = await dockerRegistryClientFactory.GetClientAsync(imageName.Registry);
                 ManifestInfo manifestInfo = await client.Manifests.GetAsync(imageName.Repo, (imageName.Tag ?? imageName.Digest)!);
 
                 DockerManifestV2 manifest = GetManifest(image, manifestInfo);
@@ -427,140 +438,140 @@ public class ImageCommand : Command
 
                 public abstract IRenderable GetOutput(CompareLayersResult result, string baseImage, string targetImage, bool isColorDisabled,
                     bool includeHistory);
-            }
 
-            private class SideBySideFormatter : OutputFormatter
-            {
-                public override IRenderable GetOutput(CompareLayersResult result, string baseImage, string targetImage, bool isColorDisabled, bool includeHistory)
+                private class SideBySideFormatter : OutputFormatter
                 {
-                    Table table = new Table()
-                        .AddColumn(baseImage);
-
-                    if (isColorDisabled)
+                    public override IRenderable GetOutput(CompareLayersResult result, string baseImage, string targetImage, bool isColorDisabled, bool includeHistory)
                     {
-                        // Use a comparison column to indicate the diff result with text instead of color
-                        table.AddColumn(new TableColumn("Compare") { Alignment = Justify.Center });
-                    }
+                        Table table = new Table()
+                            .AddColumn(baseImage);
 
-                    table.AddColumn(targetImage);
-
-                    for (int i = 0; i < result.LayerComparisons.Count(); i++)
-                    {
-                        AddTableRows(result, isColorDisabled, includeHistory, table, i);
-                    }
-
-                    return table;
-                }
-
-                private static void AddTableRows(CompareLayersResult result, bool isColorDisabled, bool includeHistory, Table table, int i)
-                {
-                    LayerComparison layerComparison = result.LayerComparisons.ElementAt(i);
-                    IEnumerable<IRenderable> digestRowCells =
-                        GetDigestRowCells(isColorDisabled, includeHistory, layerComparison);
-                    table.AddRow(digestRowCells);
-
-                    if (includeHistory)
-                    {
-                        List<IRenderable> historyRowCells = GetHistoryRowCells(isColorDisabled, layerComparison);
-                        table.AddRow(historyRowCells);
-
-                        if (i + 1 != result.LayerComparisons.Count())
+                        if (isColorDisabled)
                         {
-                            table.AddEmptyRow();
+                            // Use a comparison column to indicate the diff result with text instead of color
+                            table.AddColumn(new TableColumn("Compare") { Alignment = Justify.Center });
+                        }
+
+                        table.AddColumn(targetImage);
+
+                        for (int i = 0; i < result.LayerComparisons.Count(); i++)
+                        {
+                            AddTableRows(result, isColorDisabled, includeHistory, table, i);
+                        }
+
+                        return table;
+                    }
+
+                    private static void AddTableRows(CompareLayersResult result, bool isColorDisabled, bool includeHistory, Table table, int i)
+                    {
+                        LayerComparison layerComparison = result.LayerComparisons.ElementAt(i);
+                        IEnumerable<IRenderable> digestRowCells =
+                            GetDigestRowCells(isColorDisabled, includeHistory, layerComparison);
+                        table.AddRow(digestRowCells);
+
+                        if (includeHistory)
+                        {
+                            List<IRenderable> historyRowCells = GetHistoryRowCells(isColorDisabled, layerComparison);
+                            table.AddRow(historyRowCells);
+
+                            if (i + 1 != result.LayerComparisons.Count())
+                            {
+                                table.AddEmptyRow();
+                            }
                         }
                     }
-                }
 
-                private static List<IRenderable> GetHistoryRowCells(bool isColorDisabled, LayerComparison layerComparison)
-                {
-                    List<IRenderable> historyCells = new()
+                    private static List<IRenderable> GetHistoryRowCells(bool isColorDisabled, LayerComparison layerComparison)
+                    {
+                        List<IRenderable> historyCells = new()
                     {
                         GetHistoryMarkup(layerComparison.Base, layerComparison.LayerDiff, isBase: true, isColorDisabled, isInline: false)
                     };
 
-                    if (isColorDisabled)
-                    {
-                        historyCells.Add(new Markup(string.Empty));
+                        if (isColorDisabled)
+                        {
+                            historyCells.Add(new Markup(string.Empty));
+                        }
+
+                        historyCells.Add(GetHistoryMarkup(layerComparison.Target, layerComparison.LayerDiff, isBase: false, isColorDisabled, isInline: false));
+                        return historyCells;
                     }
 
-                    historyCells.Add(GetHistoryMarkup(layerComparison.Target, layerComparison.LayerDiff, isBase: false, isColorDisabled, isInline: false));
-                    return historyCells;
-                }
-
-                private static IEnumerable<IRenderable> GetDigestRowCells(bool isColorDisabled, bool includeHistory, LayerComparison layerComparison)
-                {
-                    List<IRenderable> shaCells = new()
+                    private static IEnumerable<IRenderable> GetDigestRowCells(bool isColorDisabled, bool includeHistory, LayerComparison layerComparison)
+                    {
+                        List<IRenderable> shaCells = new()
                     {
                         GetDigestMarkup(
                             layerComparison.Base, layerComparison.LayerDiff, isBase : true, isColorDisabled, includeHistory, isInline: false)
                     };
-                    if (isColorDisabled)
-                    {
-                        shaCells.Add(new Markup(GetLayerDiffDisplayName(layerComparison.LayerDiff)));
-                    }
-
-                    shaCells.Add(
-                        GetDigestMarkup(
-                            layerComparison.Target, layerComparison.LayerDiff, isBase: false, isColorDisabled, includeHistory, isInline: false));
-                    return shaCells;
-                }
-
-                private static string GetLayerDiffDisplayName(LayerDiff diff) =>
-                    typeof(LayerDiff).GetMember(diff.ToString()).Single().GetCustomAttribute<EnumMemberAttribute>()?.Value ??
-                        throw new Exception($"Enum member not set for {diff}.");
-            }
-
-            private class InlineFormatter : OutputFormatter
-            {
-                public override IRenderable GetOutput(CompareLayersResult result, string baseImage, string targetImage, bool isColorDisabled, bool includeHistory)
-                {
-                    List<IRenderable> rows = new();
-
-                    for (int i = 0; i < result.LayerComparisons.Count(); i++)
-                    {
-                        LayerComparison layerComparison = result.LayerComparisons.ElementAt(i);
-
-                        if (layerComparison.Base is not null)
+                        if (isColorDisabled)
                         {
-                            AddInlineLayerInfo(rows, layerComparison.Base, layerComparison.LayerDiff, isBase: true, isColorDisabled, includeHistory);
+                            shaCells.Add(new Markup(GetLayerDiffDisplayName(layerComparison.LayerDiff)));
                         }
 
-                        if (layerComparison.LayerDiff != LayerDiff.Equal && layerComparison.Target is not null)
-                        {
-                            AddInlineLayerInfo(rows, layerComparison.Target, layerComparison.LayerDiff, isBase: false, isColorDisabled, includeHistory);
-                        }
-
-                        if (includeHistory && i + 1 != result.LayerComparisons.Count())
-                        {
-                            rows.Add(new Text(string.Empty));
-                        }
+                        shaCells.Add(
+                            GetDigestMarkup(
+                                layerComparison.Target, layerComparison.LayerDiff, isBase: false, isColorDisabled, includeHistory, isInline: false));
+                        return shaCells;
                     }
 
-                    return new Rows(rows);
+                    private static string GetLayerDiffDisplayName(LayerDiff diff) =>
+                        typeof(LayerDiff).GetMember(diff.ToString()).Single().GetCustomAttribute<EnumMemberAttribute>()?.Value ??
+                            throw new Exception($"Enum member not set for {diff}.");
                 }
 
-                private static void AddInlineLayerInfo(List<IRenderable> rows, LayerInfo layer, LayerDiff diff, bool isBase,
-                    bool isColorDisabled, bool includeHistory)
+                private class InlineFormatter : OutputFormatter
                 {
-                    rows.Add(GetDigestMarkup(layer, diff, isBase, isColorDisabled, includeHistory, isInline: true));
-                    if (includeHistory)
+                    public override IRenderable GetOutput(CompareLayersResult result, string baseImage, string targetImage, bool isColorDisabled, bool includeHistory)
                     {
-                        rows.Add(GetHistoryMarkup(layer, diff, isBase, isColorDisabled, isInline: true));
+                        List<IRenderable> rows = new();
+
+                        for (int i = 0; i < result.LayerComparisons.Count(); i++)
+                        {
+                            LayerComparison layerComparison = result.LayerComparisons.ElementAt(i);
+
+                            if (layerComparison.Base is not null)
+                            {
+                                AddInlineLayerInfo(rows, layerComparison.Base, layerComparison.LayerDiff, isBase: true, isColorDisabled, includeHistory);
+                            }
+
+                            if (layerComparison.LayerDiff != LayerDiff.Equal && layerComparison.Target is not null)
+                            {
+                                AddInlineLayerInfo(rows, layerComparison.Target, layerComparison.LayerDiff, isBase: false, isColorDisabled, includeHistory);
+                            }
+
+                            if (includeHistory && i + 1 != result.LayerComparisons.Count())
+                            {
+                                rows.Add(new Text(string.Empty));
+                            }
+                        }
+
+                        return new Rows(rows);
+                    }
+
+                    private static void AddInlineLayerInfo(List<IRenderable> rows, LayerInfo layer, LayerDiff diff, bool isBase,
+                        bool isColorDisabled, bool includeHistory)
+                    {
+                        rows.Add(GetDigestMarkup(layer, diff, isBase, isColorDisabled, includeHistory, isInline: true));
+                        if (includeHistory)
+                        {
+                            rows.Add(GetHistoryMarkup(layer, diff, isBase, isColorDisabled, isInline: true));
+                        }
                     }
                 }
-            }
 
-            private class JsonFormatter : OutputFormatter
-            {
-                public override IRenderable GetOutput(CompareLayersResult result, string baseImage, string targetImage, bool isColorDisabled, bool includeHistory)
+                private class JsonFormatter : OutputFormatter
                 {
-                    string output = JsonConvert.SerializeObject(result, new JsonSerializerSettings
+                    public override IRenderable GetOutput(CompareLayersResult result, string baseImage, string targetImage, bool isColorDisabled, bool includeHistory)
                     {
-                        NullValueHandling = NullValueHandling.Ignore,
-                        Formatting = Formatting.Indented
-                    });
+                        string output = JsonConvert.SerializeObject(result, new JsonSerializerSettings
+                        {
+                            NullValueHandling = NullValueHandling.Ignore,
+                            Formatting = Formatting.Indented
+                        });
 
-                    return new Text(output);
+                        return new Text(output);
+                    }
                 }
             }
         }

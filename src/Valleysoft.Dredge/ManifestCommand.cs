@@ -7,20 +7,23 @@ namespace Valleysoft.Dredge;
 
 public class ManifestCommand : Command
 {
-    public ManifestCommand() : base("manifest", "Commands related to manifests")
+    public ManifestCommand(IDockerRegistryClientFactory dockerRegistryClientFactory) : base("manifest", "Commands related to manifests")
     {
-        AddCommand(new GetCommand());
-        AddCommand(new DigestCommand());
-        AddCommand(new ResolveCommand());
+        AddCommand(new GetCommand(dockerRegistryClientFactory));
+        AddCommand(new DigestCommand(dockerRegistryClientFactory));
+        AddCommand(new ResolveCommand(dockerRegistryClientFactory));
     }
 
     private class GetCommand : Command
     {
-        public GetCommand() : base("get", "Queries a manifest")
+        private readonly IDockerRegistryClientFactory dockerRegistryClientFactory;
+
+        public GetCommand(IDockerRegistryClientFactory dockerRegistryClientFactory) : base("get", "Queries a manifest")
         {
             Argument<string> imageArg = new("name", "Name of the manifest (<name>, <name>:<tag>, or <name>@<digest>)");
             AddArgument(imageArg);
             this.SetHandler(ExecuteAsync, imageArg);
+            this.dockerRegistryClientFactory = dockerRegistryClientFactory;
         }
 
         private Task ExecuteAsync(string image)
@@ -28,7 +31,7 @@ public class ManifestCommand : Command
             ImageName imageName = ImageName.Parse(image);
             return CommandHelper.ExecuteCommandAsync(imageName.Registry, async () =>
             {
-                using DockerRegistryClient.DockerRegistryClient client = await CommandHelper.GetRegistryClientAsync(imageName.Registry);
+                using IDockerRegistryClient client = await dockerRegistryClientFactory.GetClientAsync(imageName.Registry);
 
                 ManifestInfo manifestInfo = await client.Manifests.GetAsync(imageName.Repo, (imageName.Tag ?? imageName.Digest)!);
 
@@ -41,11 +44,14 @@ public class ManifestCommand : Command
 
     private class DigestCommand : Command
     {
-        public DigestCommand() : base("digest", "Queries the digest of a manifest")
+        private readonly IDockerRegistryClientFactory dockerRegistryClientFactory;
+
+        public DigestCommand(IDockerRegistryClientFactory dockerRegistryClientFactory) : base("digest", "Queries the digest of a manifest")
         {
             Argument<string> imageArg = new("name", "Name of the manifest (<name> or <name>:<tag>)");
             AddArgument(imageArg);
             this.SetHandler(ExecuteAsync, imageArg);
+            this.dockerRegistryClientFactory = dockerRegistryClientFactory;
         }
 
         private Task ExecuteAsync(string image)
@@ -53,7 +59,7 @@ public class ManifestCommand : Command
             ImageName imageName = ImageName.Parse(image);
             return CommandHelper.ExecuteCommandAsync(imageName.Registry, async () =>
             {
-                using DockerRegistryClient.DockerRegistryClient client = await CommandHelper.GetRegistryClientAsync(imageName.Registry);
+                using IDockerRegistryClient client = await dockerRegistryClientFactory.GetClientAsync(imageName.Registry);
 
                 string digest = await client.Manifests.GetDigestAsync(imageName.Repo, (imageName.Tag ?? imageName.Digest)!);
 
@@ -67,8 +73,9 @@ public class ManifestCommand : Command
         private const string OsOptionName = "--os";
         private const string OsVersionOptionName = "--os-version";
         private const string ArchOptionName = "--arch";
+        private readonly IDockerRegistryClientFactory dockerRegistryClientFactory;
 
-        public ResolveCommand() : base("resolve", "Resolves a manifest to a target platform's fully-qualified image digest")
+        public ResolveCommand(IDockerRegistryClientFactory dockerRegistryClientFactory) : base("resolve", "Resolves a manifest to a target platform's fully-qualified image digest")
         {
             Argument<string> imageArg = new("name", "Name of the manifest (<name>, <name>:<tag>, or <name>@<digest>)");
             AddArgument(imageArg);
@@ -83,6 +90,7 @@ public class ManifestCommand : Command
             AddOption(archOpt);
 
             this.SetHandler(ExecuteAsync, imageArg, osOpt, osVersionOpt, archOpt);
+            this.dockerRegistryClientFactory = dockerRegistryClientFactory;
         }
 
         private Task ExecuteAsync(string image, string? os, string? osVersion, string? arch)
@@ -90,7 +98,7 @@ public class ManifestCommand : Command
             ImageName imageName = ImageName.Parse(image);
             return CommandHelper.ExecuteCommandAsync(imageName.Registry, async () =>
             {
-                using DockerRegistryClient.DockerRegistryClient client = await CommandHelper.GetRegistryClientAsync(imageName.Registry);
+                using IDockerRegistryClient client = await dockerRegistryClientFactory.GetClientAsync(imageName.Registry);
                 ManifestInfo manifestInfo = await client.Manifests.GetAsync(imageName.Repo, (imageName.Tag ?? imageName.Digest)!);
 
                 if (manifestInfo.Manifest is ManifestList manifestList)
