@@ -31,7 +31,7 @@ jobs:
         run: dotnet build -c Release --no-restore
       
       - name: Test
-        run: dotnet test --no-restore -v normal -c Release -r test-results -l trx
+        run: dotnet test --no-restore -v normal -c Release --results-directory test-results -l trx
 
       - name: Upload Test Results
         uses: actions/upload-artifact@v2.1.4
