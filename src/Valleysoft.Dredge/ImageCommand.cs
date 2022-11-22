@@ -4,6 +4,7 @@ using Spectre.Console;
 using Spectre.Console.Rendering;
 using System.CommandLine;
 using System.IO.Compression;
+using System.Linq;
 using System.Reflection;
 using System.Runtime.Serialization;
 using System.Text;
@@ -274,11 +275,12 @@ public class ImageCommand : Command
                 }
                 else
                 {
-                    LayerComparison? lastEqualLayer = layerComparisons
-                        .LastOrDefault(comparison => comparison.LayerDiff == LayerDiff.Equal);
-                    if (lastEqualLayer is not null)
+                    int equalLayerCount = layerComparisons
+                        .TakeWhile(comparison => comparison.LayerDiff == LayerDiff.Equal)
+                        .Count();
+                    if (equalLayerCount >= 0)
                     {
-                        lastCommonLayerIndex = layerComparisons.IndexOf(lastEqualLayer);
+                        lastCommonLayerIndex = equalLayerCount - 1;
                     }
                 }
 
