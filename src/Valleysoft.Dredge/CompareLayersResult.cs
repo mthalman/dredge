@@ -18,11 +18,11 @@ public class CompareLayersResult
 
 public class CompareLayersSummary
 {
-    public CompareLayersSummary(bool areEqual, bool targetIncludesAllBaseLayers, int commonLayerIndex)
+    public CompareLayersSummary(bool areEqual, bool targetIncludesAllBaseLayers, int lastCommonLayerIndex)
     {
         AreEqual = areEqual;
         TargetIncludesAllBaseLayers = targetIncludesAllBaseLayers;
-        LastCommonLayerIndex = commonLayerIndex;
+        LastCommonLayerIndex = lastCommonLayerIndex;
     }
 
     /// <summary>
@@ -44,10 +44,10 @@ public class CompareLayersSummary
 
 public class LayerComparison
 {
-    public LayerComparison(LayerInfo? baseLayer, LayerInfo? targetLayer, LayerDiff layerDiff)
+    public LayerComparison(LayerInfo? @base, LayerInfo? target, LayerDiff layerDiff)
     {
-        Base = baseLayer;
-        Target = targetLayer;
+        Base = @base;
+        Target = target;
         LayerDiff = layerDiff;
     }
 
