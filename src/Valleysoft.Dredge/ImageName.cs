@@ -15,7 +15,7 @@ public class ImageName
     public string? Tag { get; }
     public string? Digest { get; }
 
-    public static ImageName Parse(string imageName, bool requireTagOrDigest = false)
+    public static ImageName Parse(string imageName)
     {
         string? registry = null;
         int separatorIndex = imageName.IndexOf('/');
@@ -46,9 +46,9 @@ public class ImageName
             digest = imageName[(separatorIndex + 1)..];
         }
 
-        if (requireTagOrDigest && tag is null && digest is null)
+        if (tag is null && digest is null)
         {
-            throw new ArgumentException($"Image name '{imageName}' is missing a tag or digest", nameof(imageName));
+            tag = "latest";
         }
 
         string repo;
