@@ -10,27 +10,42 @@ using LayersCommand = ImageCommand.CompareCommand.LayersCommand;
 
 public class CompareLayersCommandTests
 {
-    public static object[][] GetJsonTestData()
+    private const string Registry = "test-registry.io";
+    private static readonly ImageName baseImageName = ImageName.Parse($"{Registry}/base:latest");
+    private static readonly ImageName targetImageName = ImageName.Parse($"{Registry}/target:latest");
+
+    public static object[][] GetTestData(CompareOutputFormat format)
     {
-        return new object[][]
+        CommandOptions[] optionsSet = new[]
         {
-            Scenarios.GetJsonEqualImagesTestData(includeHistory: false),
-            Scenarios.GetJsonEqualImagesTestData(includeHistory: true),
-            Scenarios.GetJsonDifferingImagesTestData(includeHistory: false),
-            Scenarios.GetJsonDifferingImagesTestData(includeHistory: true),
-            Scenarios.GetJsonRemovedLayerFromBaseTestData(),
-            Scenarios.GetJsonAddedLayerTestData(),
-            Scenarios.GetJsonDifferByHistoryOnlyTestData(includeHistory: false),
-            Scenarios.GetJsonDifferByHistoryOnlyTestData(includeHistory: true),
-            Scenarios.GetJsonWithHistoryDifferingByEmptyLayersTestData(includeHistory: false),
-            Scenarios.GetJsonWithHistoryDifferingByEmptyLayersTestData(includeHistory: true)
+            new CommandOptions(includeHistory: false, isColorDisabled: false),
+            new CommandOptions(includeHistory: false, isColorDisabled: true),
+            new CommandOptions(includeHistory: true, isColorDisabled: false),
+            new CommandOptions(includeHistory: true, isColorDisabled: true)
         };
+
+        List<object[]> testData = new();
+
+        foreach (CommandOptions options in optionsSet)
+        {
+            testData.AddRange(new object[][]
+            {
+                Scenarios.GetEqualImagesTestData(format, options),
+                Scenarios.GetDifferingImagesTestData(format, options),
+                Scenarios.GetRemovedLayerFromBaseTestData(format, options),
+                Scenarios.GetAddedLayerTestData(format, options),
+                Scenarios.GetDifferByHistoryOnlyTestData(format, options),
+                Scenarios.GetWithHistoryDifferingByEmptyLayersTestData(format, options),
+            });
+        }
+
+        return testData.ToArray();
     }
 
     private static class Scenarios
     {
         // Identical images
-        public static object[] GetJsonEqualImagesTestData(bool includeHistory)
+        public static object[] GetEqualImagesTestData(CompareOutputFormat format, CommandOptions options)
         {
             ImageSetup baseImageSetup = new(
                 new Image
@@ -61,24 +76,48 @@ public class CompareLayersCommandTests
 
             ImageSetup targetImageSetup = baseImageSetup;
 
-            CompareLayersResult expectedResult = new(
-                new CompareLayersSummary(areEqual: true, targetIncludesAllBaseLayers: true, lastCommonLayerIndex: 1),
-                new LayerComparison[]
-                {
-                new LayerComparison(
-                    new LayerInfo("layer-0", includeHistory ? "a" : null),
-                    new LayerInfo("layer-0", includeHistory ? "a" : null),
-                    LayerDiff.Equal),
-                new LayerComparison(
-                    new LayerInfo("layer-1", includeHistory ? "b" : null),
-                    new LayerInfo("layer-1", includeHistory ? "b" : null),
-                    LayerDiff.Equal)
-                });
+            object expectedResult = format switch
+            {
+                CompareOutputFormat.Json => new CompareLayersResult(
+                    new CompareLayersSummary(areEqual: true, targetIncludesAllBaseLayers: true, lastCommonLayerIndex: 1),
+                    new LayerComparison[]
+                    {
+                    new LayerComparison(
+                        new LayerInfo("layer-0", options.IncludeHistory ? "a" : null),
+                        new LayerInfo("layer-0", options.IncludeHistory ? "a" : null),
+                        LayerDiff.Equal),
+                    new LayerComparison(
+                        new LayerInfo("layer-1", options.IncludeHistory ? "b" : null),
+                        new LayerInfo("layer-1", options.IncludeHistory ? "b" : null),
+                        LayerDiff.Equal)
+                    }),
+                CompareOutputFormat.Inline => options.IncludeHistory ?
+                    """
+                      layer-0
+                      a
+
+                      layer-1
+                      b
+                    """ : 
+                    """
+                      layer-0
+                      layer-1
+                    """,
+                CompareOutputFormat.SideBySide =>
+                    ToArray(
+                        DigestRow("layer-0", "layer-0", options, LayerDiff.Equal),
+                        HistoryRow("a", "a", options),
+                        EmptyRow(options),
+                        DigestRow("layer-1", "layer-1", options, LayerDiff.Equal),
+                        HistoryRow("b", "b", options)
+                    ),
+                _ => throw new NotSupportedException()
+            };
 
             return new object[]
             {
-                nameof(GetJsonEqualImagesTestData),
-                new CommandOptions(includeHistory),
+                nameof(GetEqualImagesTestData),
+                options,
                 baseImageSetup,
                 targetImageSetup,
                 expectedResult
@@ -86,7 +125,7 @@ public class CompareLayersCommandTests
         }
 
         // Same base layer, but next layer differs
-        public static object[] GetJsonDifferingImagesTestData(bool includeHistory)
+        public static object[] GetDifferingImagesTestData(CompareOutputFormat format, CommandOptions options)
         {
             ImageSetup baseImageSetup = new(
                 new Image
@@ -142,24 +181,52 @@ public class CompareLayersCommandTests
                     }
                 });
 
-            CompareLayersResult expectedResult = new(
-                new CompareLayersSummary(areEqual: false, targetIncludesAllBaseLayers: false, lastCommonLayerIndex: 0),
-                new LayerComparison[]
-                {
-                    new LayerComparison(
-                        new LayerInfo("layer-0", includeHistory ? "a" : null),
-                        new LayerInfo("layer-0", includeHistory ? "a" : null),
-                        LayerDiff.Equal),
-                    new LayerComparison(
-                        new LayerInfo("layer-1", includeHistory ? "b" : null),
-                        new LayerInfo("layer-1a", includeHistory ? "b" : null),
-                        LayerDiff.NotEqual)
-                });
+            object expectedResult = format switch
+            {
+                CompareOutputFormat.Json =>
+                    new CompareLayersResult(
+                        new CompareLayersSummary(areEqual: false, targetIncludesAllBaseLayers: false, lastCommonLayerIndex: 0),
+                        new LayerComparison[]
+                        {
+                            new LayerComparison(
+                                new LayerInfo("layer-0", options.IncludeHistory ? "a" : null),
+                                new LayerInfo("layer-0", options.IncludeHistory ? "a" : null),
+                                LayerDiff.Equal),
+                            new LayerComparison(
+                                new LayerInfo("layer-1", options.IncludeHistory ? "b" : null),
+                                new LayerInfo("layer-1a", options.IncludeHistory ? "b" : null),
+                                LayerDiff.NotEqual)
+                        }),
+                CompareOutputFormat.Inline => options.IncludeHistory ?
+                    """
+                      layer-0
+                      a
+
+                    - layer-1
+                    - b
+                    + layer-1a
+                    + b
+                    """ :
+                    """
+                      layer-0
+                    - layer-1
+                    + layer-1a
+                    """,
+                CompareOutputFormat.SideBySide =>
+                    ToArray(
+                        DigestRow("layer-0", "layer-0", options, LayerDiff.Equal),
+                        HistoryRow("a", "a", options),
+                        EmptyRow(options),
+                        DigestRow("layer-1", "layer-1a", options, LayerDiff.NotEqual),
+                        HistoryRow("b", "b", options)
+                    ),
+                _ => throw new NotSupportedException()
+            };
 
             return new object[]
             {
-                nameof(GetJsonDifferingImagesTestData),
-                new CommandOptions(includeHistory),
+                nameof(GetDifferingImagesTestData),
+                options,
                 baseImageSetup,
                 targetImageSetup,
                 expectedResult
@@ -167,7 +234,7 @@ public class CompareLayersCommandTests
         }
 
         // Target removes a layer from base
-        public static object[] GetJsonRemovedLayerFromBaseTestData()
+        public static object[] GetRemovedLayerFromBaseTestData(CompareOutputFormat format, CommandOptions options)
         {
             ImageSetup baseImageSetup = new(
                 new Image
@@ -215,24 +282,49 @@ public class CompareLayersCommandTests
                     }
                 });
 
-            CompareLayersResult expectedResult = new(
-                new CompareLayersSummary(areEqual: false, targetIncludesAllBaseLayers: false, lastCommonLayerIndex: 0),
-                new LayerComparison[]
-                {
-                    new LayerComparison(
-                        new LayerInfo("layer-0", null),
-                        new LayerInfo("layer-0", null),
-                        LayerDiff.Equal),
-                    new LayerComparison(
-                        new LayerInfo("layer-1", null),
-                        null,
-                        LayerDiff.Removed)
-                });
+            object expectedResult = format switch
+            {
+                CompareOutputFormat.Json =>
+                    new CompareLayersResult(
+                        new CompareLayersSummary(areEqual: false, targetIncludesAllBaseLayers: false, lastCommonLayerIndex: 0),
+                        new LayerComparison[]
+                        {
+                            new LayerComparison(
+                                new LayerInfo("layer-0", options.IncludeHistory ? "a" : null),
+                                new LayerInfo("layer-0", options.IncludeHistory ? "a" : null),
+                                LayerDiff.Equal),
+                            new LayerComparison(
+                                new LayerInfo("layer-1", options.IncludeHistory ? "b" : null),
+                                null,
+                                LayerDiff.Removed)
+                        }),
+                CompareOutputFormat.Inline => options.IncludeHistory ?
+                    """
+                      layer-0
+                      a
+
+                    - layer-1
+                    - b
+                    """ :
+                    """
+                      layer-0
+                    - layer-1
+                    """,
+                CompareOutputFormat.SideBySide =>
+                    ToArray(
+                        DigestRow("layer-0", "layer-0", options, LayerDiff.Equal),
+                        HistoryRow("a", "a", options),
+                        EmptyRow(options),
+                        DigestRow("layer-1", string.Empty, options, LayerDiff.Removed),
+                        HistoryRow("b", string.Empty, options)
+                    ),
+                _ => throw new NotSupportedException()
+            };
 
             return new object[]
             {
-                nameof(GetJsonRemovedLayerFromBaseTestData),
-                new CommandOptions(includeHistory: false),
+                nameof(GetRemovedLayerFromBaseTestData),
+                options,
                 baseImageSetup,
                 targetImageSetup,
                 expectedResult
@@ -240,7 +332,7 @@ public class CompareLayersCommandTests
         }
 
         // Target adds a layer
-        public static object[] GetJsonAddedLayerTestData()
+        public static object[] GetAddedLayerTestData(CompareOutputFormat format, CommandOptions options)
         {
             ImageSetup baseImageSetup = new(
                 new Image
@@ -288,24 +380,49 @@ public class CompareLayersCommandTests
                     }
                 });
 
-            CompareLayersResult expectedResult = new(
-                new CompareLayersSummary(areEqual: false, targetIncludesAllBaseLayers: true, lastCommonLayerIndex: 0),
-                new LayerComparison[]
-                {
-                    new LayerComparison(
-                        new LayerInfo("layer-0", null),
-                        new LayerInfo("layer-0", null),
-                        LayerDiff.Equal),
-                    new LayerComparison(
-                        null,
-                        new LayerInfo("layer-1", null),
-                        LayerDiff.Added)
-                });
+            object expectedResult = format switch
+            {
+                CompareOutputFormat.Json =>
+                    new CompareLayersResult(
+                        new CompareLayersSummary(areEqual: false, targetIncludesAllBaseLayers: true, lastCommonLayerIndex: 0),
+                        new LayerComparison[]
+                        {
+                            new LayerComparison(
+                                new LayerInfo("layer-0", options.IncludeHistory ? "a" : null),
+                                new LayerInfo("layer-0", options.IncludeHistory ? "a" : null),
+                                LayerDiff.Equal),
+                            new LayerComparison(
+                                null,
+                                new LayerInfo("layer-1", options.IncludeHistory ? "b" : null),
+                                LayerDiff.Added)
+                        }),
+                CompareOutputFormat.Inline => options.IncludeHistory ?
+                    """
+                      layer-0
+                      a
+
+                    + layer-1
+                    + b
+                    """ :
+                    """
+                      layer-0
+                    + layer-1
+                    """,
+                CompareOutputFormat.SideBySide =>
+                    ToArray(
+                        DigestRow("layer-0", "layer-0", options, LayerDiff.Equal),
+                        HistoryRow("a", "a", options),
+                        EmptyRow(options),
+                        DigestRow(string.Empty, "layer-1", options, LayerDiff.Added),
+                        HistoryRow(string.Empty, "b", options)
+                    ),
+                _ => throw new NotSupportedException()
+            };
 
             return new object[]
             {
-                nameof(GetJsonAddedLayerTestData),
-                new CommandOptions(includeHistory: false),
+                nameof(GetAddedLayerTestData),
+                options,
                 baseImageSetup,
                 targetImageSetup,
                 expectedResult
@@ -313,7 +430,7 @@ public class CompareLayersCommandTests
         }
 
         // The images only differ by history
-        public static object[] GetJsonDifferByHistoryOnlyTestData(bool includeHistory)
+        public static object[] GetDifferByHistoryOnlyTestData(CompareOutputFormat format, CommandOptions options)
         {
             ImageSetup baseImageSetup = new(
                 new Image
@@ -369,27 +486,54 @@ public class CompareLayersCommandTests
                     }
                 });
 
-            CompareLayersResult expectedResult = new(
-                new CompareLayersSummary(
-                    areEqual: !includeHistory,
-                    targetIncludesAllBaseLayers: !includeHistory,
-                    lastCommonLayerIndex: includeHistory ? 0 : 1),
-                new LayerComparison[]
-                {
-                    new LayerComparison(
-                        new LayerInfo("layer-0", includeHistory ? "a" : null),
-                        new LayerInfo("layer-0", includeHistory ? "a" : null),
-                        LayerDiff.Equal),
-                    new LayerComparison(
-                        new LayerInfo("layer-1", includeHistory ? "b" : null),
-                        new LayerInfo("layer-1", includeHistory ? "b1" : null),
-                        includeHistory ? LayerDiff.NotEqual : LayerDiff.Equal)
-                });
+            object expectedResult = format switch
+            {
+                CompareOutputFormat.Json =>
+                    new CompareLayersResult(
+                        new CompareLayersSummary(
+                            areEqual: !options.IncludeHistory,
+                            targetIncludesAllBaseLayers: !options.IncludeHistory,
+                            lastCommonLayerIndex: options.IncludeHistory ? 0 : 1),
+                        new LayerComparison[]
+                        {
+                            new LayerComparison(
+                                new LayerInfo("layer-0", options.IncludeHistory ? "a" : null),
+                                new LayerInfo("layer-0", options.IncludeHistory ? "a" : null),
+                                LayerDiff.Equal),
+                            new LayerComparison(
+                                new LayerInfo("layer-1", options.IncludeHistory ? "b" : null),
+                                new LayerInfo("layer-1", options.IncludeHistory ? "b1" : null),
+                                options.IncludeHistory ? LayerDiff.NotEqual : LayerDiff.Equal)
+                        }),
+                CompareOutputFormat.Inline => options.IncludeHistory ?
+                    """
+                      layer-0
+                      a
+
+                    - layer-1
+                    - b
+                    + layer-1
+                    + b1
+                    """ :
+                    """
+                      layer-0
+                      layer-1
+                    """,
+                CompareOutputFormat.SideBySide =>
+                    ToArray(
+                        DigestRow("layer-0", "layer-0", options, LayerDiff.Equal),
+                        HistoryRow("a", "a", options),
+                        EmptyRow(options),
+                        DigestRow("layer-1", "layer-1", options, options.IncludeHistory ? LayerDiff.NotEqual : LayerDiff.Equal),
+                        HistoryRow("b", "b1", options)
+                    ),
+                _ => throw new NotSupportedException()
+            };
 
             return new object[]
             {
-                nameof(GetJsonDifferByHistoryOnlyTestData),
-                new CommandOptions(includeHistory),
+                nameof(GetDifferByHistoryOnlyTestData),
+                options,
                 baseImageSetup,
                 targetImageSetup,
                 expectedResult
@@ -397,7 +541,7 @@ public class CompareLayersCommandTests
         }
 
         // The images contain empty layers that differ in their history
-        public static object[] GetJsonWithHistoryDifferingByEmptyLayersTestData(bool includeHistory)
+        public static object[] GetWithHistoryDifferingByEmptyLayersTestData(CompareOutputFormat format, CommandOptions options)
         {
             ImageSetup baseImageSetup = new(
                 new Image
@@ -466,16 +610,16 @@ public class CompareLayersCommandTests
             List<LayerComparison> comparisons = new()
             {
                 new LayerComparison(
-                    new LayerInfo("layer-0", includeHistory ? "a" : null),
-                    new LayerInfo("layer-0", includeHistory ? "a" : null),
+                    new LayerInfo("layer-0", options.IncludeHistory ? "a" : null),
+                    new LayerInfo("layer-0", options.IncludeHistory ? "a" : null),
                     LayerDiff.Equal),
                 new LayerComparison(
-                    new LayerInfo("layer-1", includeHistory ? "c" : null),
-                    new LayerInfo("layer-1", includeHistory ? "c" : null),
+                    new LayerInfo("layer-1", options.IncludeHistory ? "c" : null),
+                    new LayerInfo("layer-1", options.IncludeHistory ? "c" : null),
                     LayerDiff.Equal)
             };
 
-            if (includeHistory)
+            if (options.IncludeHistory)
             {
                 comparisons.Insert(1,
                     new LayerComparison(
@@ -484,14 +628,52 @@ public class CompareLayersCommandTests
                         LayerDiff.NotEqual));
             }
 
-            CompareLayersResult expectedResult = new(
-                new CompareLayersSummary(areEqual: !includeHistory, targetIncludesAllBaseLayers: !includeHistory, lastCommonLayerIndex: includeHistory ? 0 : 1),
-                comparisons);
+            object expectedResult = format switch
+            {
+                CompareOutputFormat.Json =>
+                    new CompareLayersResult(
+                        new CompareLayersSummary(
+                            areEqual: !options.IncludeHistory,
+                            targetIncludesAllBaseLayers: !options.IncludeHistory,
+                            lastCommonLayerIndex: options.IncludeHistory ? 0 : 1),
+                        comparisons),
+                CompareOutputFormat.Inline => options.IncludeHistory ?
+                    """
+                      layer-0
+                      a
+
+                    - <empty layer>
+                    - b
+                    + <empty layer>
+                    + b1
+
+                      layer-1
+                      c
+                    """ :
+                    """
+                      layer-0
+                      layer-1
+                    """,
+                CompareOutputFormat.SideBySide =>
+                    ToArray(
+                        DigestRow("layer-0", "layer-0", options, LayerDiff.Equal),
+                        HistoryRow("a", "a", options),
+                        EmptyRow(options),
+                        options.IncludeHistory ?
+                            DigestRow("<empty layer>", "<empty layer>", options, LayerDiff.NotEqual) :
+                            null,
+                        options.IncludeHistory ? HistoryRow("b", "b1", options) : null,
+                        EmptyRow(options),
+                        DigestRow("layer-1", "layer-1", options, LayerDiff.Equal),
+                        HistoryRow("c", "c", options)
+                    ),
+                _ => throw new NotSupportedException()
+            };
 
             return new object[]
             {
-                nameof(GetJsonWithHistoryDifferingByEmptyLayersTestData),
-                new CommandOptions(includeHistory),
+                nameof(GetWithHistoryDifferingByEmptyLayersTestData),
+                options,
                 baseImageSetup,
                 targetImageSetup,
                 expectedResult
@@ -513,23 +695,71 @@ public class CompareLayersCommandTests
 
     public class CommandOptions
     {
-        public CommandOptions(bool includeHistory)
+        public CommandOptions(bool includeHistory, bool isColorDisabled)
         {
             IncludeHistory = includeHistory;
+            IsColorDisabled = isColorDisabled;
         }
 
         public bool IncludeHistory { get; }
+        public bool IsColorDisabled { get; }
     }
 
     [Theory]
-    [MemberData(nameof(GetJsonTestData))]
+    [MemberData(nameof(GetTestData), CompareOutputFormat.Json)]
     public async void Json(
         string scenario, CommandOptions cmdOptions, ImageSetup baseImageSetup, ImageSetup targetImageSetup, CompareLayersResult expectedResult)
     {
+        Text text = (Text)await ExecuteTestAsync(scenario, CompareOutputFormat.Json, cmdOptions, baseImageSetup, targetImageSetup);
+
+        CompareLayersResult actualResult = GetJson<CompareLayersResult>(text.GetSegments(AnsiConsole.Console));
+        CompareJson(expectedResult, actualResult);
+    }
+
+    [Theory]
+    [MemberData(nameof(GetTestData), CompareOutputFormat.Inline)]
+    public async void Inline(
+        string scenario, CommandOptions cmdOptions, ImageSetup baseImageSetup, ImageSetup targetImageSetup, string expectedResult)
+    {
+        Rows rows = (Rows)await ExecuteTestAsync(scenario, CompareOutputFormat.Inline, cmdOptions, baseImageSetup, targetImageSetup);
+        string actualResult = GetString(rows.GetSegments(AnsiConsole.Console));
+        Assert.Equal(Normalize(expectedResult), Normalize(actualResult));
+    }
+
+    [Theory]
+    [MemberData(nameof(GetTestData), CompareOutputFormat.SideBySide)]
+    public async void SideBySide(
+        string scenario, CommandOptions cmdOptions, ImageSetup baseImageSetup, ImageSetup targetImageSetup, string[][] expectedRows)
+    {
+        Table table = (Table)await ExecuteTestAsync(scenario, CompareOutputFormat.SideBySide, cmdOptions, baseImageSetup, targetImageSetup);
+
+        Assert.Equal(cmdOptions.IsColorDisabled ? 3 : 2, table.Columns.Count);
+        Assert.Equal(baseImageName.ToString(), GetString(table.Columns[0].Header.GetSegments(AnsiConsole.Console)));
+        Assert.Equal(targetImageName.ToString(), GetString(table.Columns[^1].Header.GetSegments(AnsiConsole.Console)));
+
+        Assert.Equal(expectedRows.Length, table.Rows.Count);
+
+        for (int rowIndex = 0; rowIndex < expectedRows.Length; rowIndex++)
+        {
+            string[] expectedRowCells = expectedRows[rowIndex];
+            TableRow actualRow = table.Rows.ElementAt(rowIndex);
+            Assert.Equal(expectedRowCells.Length, actualRow.Count);
+
+            for (int columnIndex = 0; columnIndex < expectedRowCells.Length; columnIndex++)
+            {
+                string expectedText = expectedRowCells[columnIndex];
+                string actualText = GetString(actualRow[columnIndex].GetSegments(AnsiConsole.Console));
+                Assert.Equal(expectedText, actualText);
+            }
+        }
+    }
+
+    private static string Normalize(string val) =>
+        val.Replace("\r", string.Empty).TrimEnd();
+
+    private static Task<IRenderable> ExecuteTestAsync(string scenario, CompareOutputFormat format, CommandOptions cmdOptions, ImageSetup baseImageSetup, ImageSetup targetImageSetup)
+    {
         Assert.NotNull(scenario);
-        const string Registry = "test-registry.io";
-        ImageName baseImageName = ImageName.Parse($"{Registry}/base:latest");
-        ImageName targetImageName = ImageName.Parse($"{Registry}/target:latest");
 
         Mock<IDockerRegistryClient> registryClientMock = new();
 
@@ -542,15 +772,12 @@ public class CompareLayersCommandTests
             .ReturnsAsync(registryClientMock.Object);
 
         LayersCommand cmd = new(clientFactoryMock.Object);
-        Text text = (Text)await cmd.GetOutputAsync(
+        return cmd.GetOutputAsync(
             baseImageName.ToString(),
             targetImageName.ToString(),
-            CompareOutputFormat.Json,
-            isColorDisabled: false,
+            format,
+            isColorDisabled: cmdOptions.IsColorDisabled,
             includeHistory: cmdOptions.IncludeHistory);
-
-        CompareLayersResult actualResult = GetJson<CompareLayersResult>(text.GetSegments(AnsiConsole.Console));
-        CompareJson(expectedResult, actualResult);
     }
 
     private static void CompareJson<T>(T expected, T actual) =>
@@ -595,4 +822,37 @@ public class CompareLayersCommandTests
                 Body = new MemoryStream(Encoding.UTF8.GetBytes(JsonConvert.SerializeObject(imageConfig)))
             });
     }
+
+    private static string[] ToArray(params string?[] strings) =>
+        strings
+            .Where(str => str is not null)
+            .Cast<string>()
+            .ToArray();
+
+    private static string[][] ToArray(params string[]?[] stringArrays) =>
+        stringArrays
+            .Where(str => str is not null)
+            .Cast<string[]>()
+            .ToArray();
+
+    private static string[]? EmptyRow(CommandOptions options) =>
+        options.IncludeHistory ?
+            ToArray(string.Empty, options.IsColorDisabled ? string.Empty : null, string.Empty) :
+            null;
+
+    private static string[] DigestRow(string baseDigest, string targetDigest, CommandOptions options, LayerDiff diff) =>
+        ToArray(baseDigest, options.IsColorDisabled ? GetDisplayName(diff) : null, targetDigest);
+
+    private static string[]? HistoryRow(string baseHistory, string targetHistory, CommandOptions options) =>
+        options.IncludeHistory ? ToArray(baseHistory, options.IsColorDisabled ? string.Empty : null, targetHistory) : null;
+
+    private static string GetDisplayName(LayerDiff diff) =>
+        diff switch
+        {
+            LayerDiff.Equal => "Equal",
+            LayerDiff.NotEqual => "Not Equal",
+            LayerDiff.Added => "Added",
+            LayerDiff.Removed => "Removed",
+            _ => throw new NotSupportedException()
+        };
 }
