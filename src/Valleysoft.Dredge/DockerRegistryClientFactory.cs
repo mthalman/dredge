@@ -15,8 +15,7 @@ internal class DockerRegistryClientFactory : IDockerRegistryClientFactory
         }
         catch (CredsNotFoundException)
         {
-            return new DockerRegistryClientWrapper(
-                new DockerRegistryClient.DockerRegistryClient(DockerHubHelper.GetApiRegistry(registry)));
+            return new DockerRegistryClientWrapper(CreateClient(DockerHubHelper.GetApiRegistry(registry)));
         }
         ServiceClientCredentials clientCreds;
         if (creds.IdentityToken is not null)
@@ -32,7 +31,13 @@ internal class DockerRegistryClientFactory : IDockerRegistryClientFactory
             };
         }
 
-        return new DockerRegistryClientWrapper(
-            new DockerRegistryClient.DockerRegistryClient(DockerHubHelper.GetApiRegistry(registry), clientCreds));
+        return new DockerRegistryClientWrapper(CreateClient(registry, clientCreds));
+    }
+
+    private DockerRegistryClient.DockerRegistryClient CreateClient(string? registry, ServiceClientCredentials? clientCreds = null)
+    {
+        DockerRegistryClient.DockerRegistryClient client = new(DockerHubHelper.GetApiRegistry(registry), clientCreds);
+        client.HttpClient.Timeout = new TimeSpan(0, 30, 0);
+        return client;
     }
 }

@@ -3,8 +3,8 @@ using Newtonsoft.Json;
 using Spectre.Console;
 using Spectre.Console.Rendering;
 using System.CommandLine;
+using System.Diagnostics;
 using System.IO.Compression;
-using System.Linq;
 using System.Reflection;
 using System.Runtime.Serialization;
 using System.Text;
@@ -139,8 +139,8 @@ public class ImageCommand : Command
 
         private static async Task<LinuxOsInfo?> GetLinuxOsInfoAsync(IDockerRegistryClient client, ImageName imageName, string baseLayerDigest)
         {
-            Stream blobStream = await client.Blobs.GetAsync(imageName.Repo, baseLayerDigest);
-            GZipStream gZipStream = new(blobStream, CompressionMode.Decompress);
+            using Stream blobStream = await client.Blobs.GetAsync(imageName.Repo, baseLayerDigest);
+            using GZipStream gZipStream = new(blobStream, CompressionMode.Decompress);
 
             // Can't use System.Formats.Tar.TarReader because it fails to read certain types of tarballs:
             // https://github.com/dotnet/runtime/issues/74316#issuecomment-1312227247
@@ -198,12 +198,10 @@ public class ImageCommand : Command
 
     public class CompareCommand : Command
     {
-        private readonly IDockerRegistryClientFactory dockerRegistryClientFactory;
-
         public CompareCommand(IDockerRegistryClientFactory dockerRegistryClientFactory) : base("compare", "Compares two images")
         {
             AddCommand(new LayersCommand(dockerRegistryClientFactory));
-            this.dockerRegistryClientFactory = dockerRegistryClientFactory;
+            AddCommand(new FilesCommand(dockerRegistryClientFactory));
         }
 
         public class LayersCommand : Command
@@ -218,7 +216,7 @@ public class ImageCommand : Command
                 Argument<string> targetImageArg = new("target", "Name of the target container image (<image>, <image>:<tag>, or <image>@<digest>)");
                 AddArgument(targetImageArg);
 
-                Option<CompareOutputFormat> outputOption = new("--output", () => CompareOutputFormat.SideBySide, "Output format");
+                Option<CompareLayersOutput> outputOption = new("--output", () => CompareLayersOutput.SideBySide, "Output format");
                 AddOption(outputOption);
 
                 Option<bool> noColorOption = new("--no-color", "Disables dependency on color in comparison results");
@@ -231,7 +229,7 @@ public class ImageCommand : Command
                 this.dockerRegistryClientFactory = dockerRegistryClientFactory;
             }
 
-            private Task ExecuteAsync(string baseImage, string targetImage, CompareOutputFormat outputFormat, bool isColorDisabled, bool includeHistory)
+            private Task ExecuteAsync(string baseImage, string targetImage, CompareLayersOutput outputFormat, bool isColorDisabled, bool includeHistory)
             {
                 return CommandHelper.ExecuteCommandAsync(registry: null, async () =>
                 {
@@ -241,7 +239,7 @@ public class ImageCommand : Command
             }
 
             public async Task<IRenderable> GetOutputAsync(
-                string baseImage, string targetImage, CompareOutputFormat outputFormat, bool isColorDisabled, bool includeHistory)
+                string baseImage, string targetImage, CompareLayersOutput outputFormat, bool isColorDisabled, bool includeHistory)
             {
                 CompareLayersResult result = await GetCompareLayersResult(baseImage, targetImage, includeHistory);
                 OutputFormatter formatter = OutputFormatter.Create(outputFormat);
@@ -378,6 +376,7 @@ public class ImageCommand : Command
 
                 if (includeHistory)
                 {
+                    // Close the markup tag
                     digestMarkup += "[/]";
                 }
 
@@ -428,12 +427,12 @@ public class ImageCommand : Command
 
             private abstract class OutputFormatter
             {
-                public static OutputFormatter Create(CompareOutputFormat outputFormat) =>
+                public static OutputFormatter Create(CompareLayersOutput outputFormat) =>
                     outputFormat switch
                     {
-                        CompareOutputFormat.Inline => new InlineFormatter(),
-                        CompareOutputFormat.Json => new JsonFormatter(),
-                        CompareOutputFormat.SideBySide => new SideBySideFormatter(),
+                        CompareLayersOutput.Inline => new InlineFormatter(),
+                        CompareLayersOutput.Json => new JsonFormatter(),
+                        CompareLayersOutput.SideBySide => new SideBySideFormatter(),
                         _ => throw new NotImplementedException()
                     };
 
@@ -574,6 +573,269 @@ public class ImageCommand : Command
 
                         return new Text(output);
                     }
+                }
+            }
+        }
+
+        public class FilesCommand : Command
+        {
+            // See https://github.com/opencontainers/image-spec/blob/main/layer.md#whiteouts
+            private const string WhiteoutMarkerPrefix = ".wh.";
+            private const string OpaqueWhiteoutMarker = ".wh..wh..opq";
+            
+            private const string BaseArg = "base";
+            private const string TargetArg = "target";
+            private const string LayerIndexSuffix = "-layer-index";
+
+            private readonly IDockerRegistryClientFactory dockerRegistryClientFactory;
+
+            private const string BaseOutputDirName = "base";
+            private const string TargetOutputDirName = "target";
+
+            private static readonly string DredgeTempPath = Path.Combine(Path.GetTempPath(), "Valleysoft.Dredge");
+            private static readonly string CompareTempPath = Path.Combine(DredgeTempPath, "compare");
+            private static readonly string LayersTempPath = Path.Combine(DredgeTempPath, "layers");
+
+            public FilesCommand(IDockerRegistryClientFactory dockerRegistryClientFactory)
+                : base("files", "Compares two images by their files")
+            {
+                Argument<string> baseImageArg = new(BaseArg, "Name of the base container image (<image>, <image>:<tag>, or <image>@<digest>)");
+                AddArgument(baseImageArg);
+
+                Argument<string> targetImageArg = new(TargetArg, "Name of the target container image (<image>, <image>:<tag>, or <image>@<digest>)");
+                AddArgument(targetImageArg);
+
+                Option<int?> baseLayerIndex = new($"--{BaseArg}{LayerIndexSuffix}", "Non-empty layer index of the base container image to compare with");
+                AddOption(baseLayerIndex);
+
+                Option<int?> targetLayerIndex = new($"--{TargetArg}{LayerIndexSuffix}", "Non-empty layer index of the target container image to compare against");
+                AddOption(targetLayerIndex);
+
+                Option<CompareFilesOutput> outputOption = new("--output", () => CompareFilesOutput.ExternalTool, "Output type");
+                AddOption(outputOption);
+
+                this.SetHandler(ExecuteAsync, baseImageArg, targetImageArg, baseLayerIndex, targetLayerIndex, outputOption);
+                this.dockerRegistryClientFactory = dockerRegistryClientFactory;
+            }
+
+            private Task ExecuteAsync(
+                string baseImage, string targetImage, int? baseLayerIndex, int? targetLayerIndex, CompareFilesOutput outputType)
+            {
+                return CommandHelper.ExecuteCommandAsync(registry: null, async () =>
+                {
+                    Settings settings = Settings.Load();
+                    if (settings.FileCompareTool is null ||
+                        settings.FileCompareTool.ExePath == string.Empty ||
+                        settings.FileCompareTool.Args == string.Empty)
+                    {
+                        throw new Exception(
+                            $"This command requires additional configuration.{Environment.NewLine}In order to compare files, you must first set the '{Settings.FileCompareToolName}' setting in {Settings.SettingsPath}. This is an external tool of your choosing that will be executed to compare two directories containing files of the specified images. Use '{{0}}' and '{{1}}' placeholders in the args to indicate the base and target path locations that will be the inputs to the compare tool.");
+                    }
+
+                    await SaveImageLayersToDiskAsync(baseImage, baseLayerIndex, isBase: true);
+                    Console.WriteLine();
+                    await SaveImageLayersToDiskAsync(targetImage, targetLayerIndex, isBase: false);
+
+                    string args = settings.FileCompareTool.Args
+                        .Replace("{0}", Path.Combine(CompareTempPath, BaseOutputDirName))
+                        .Replace("{1}", Path.Combine(CompareTempPath, TargetOutputDirName));
+                    Process.Start(settings.FileCompareTool.ExePath, args);
+                });
+            }
+
+            private async Task SaveImageLayersToDiskAsync(string image, int? layerIndex, bool isBase)
+            {
+                // Spec for OCI image layer filesystem changeset: https://github.com/opencontainers/image-spec/blob/main/layer.md
+
+                Console.WriteLine($"Getting layers for {image}");
+
+                ImageName imageName = ImageName.Parse(image);
+                IDockerRegistryClient client = await dockerRegistryClientFactory.GetClientAsync(imageName.Registry);
+                ManifestInfo manifestInfo = await client.Manifests.GetAsync(imageName.Repo, (imageName.Tag ?? imageName.Digest)!);
+
+                DockerManifestV2 manifest = GetManifest(imageName.ToString(), manifestInfo);
+                int layerCount = manifest.Layers.Length;
+                if (layerIndex is not null)
+                {
+                    if (layerIndex < 0 || layerIndex >= manifest.Layers.Length)
+                    {
+                        string optionName = (isBase ? BaseArg : TargetArg) + LayerIndexSuffix;
+                        throw new Exception($"Value is out of range for the '{optionName}' option.");
+                    }
+                    layerCount = layerIndex.Value + 1;
+                }
+
+                string workingDir = Path.Combine(CompareTempPath, isBase ? BaseOutputDirName : TargetOutputDirName);
+                if (Directory.Exists(workingDir))
+                {
+                    Directory.Delete(workingDir, recursive: true);
+                }
+
+                for (int i = 0; i < layerCount; i++)
+                {
+                    ManifestLayer layer = manifest.Layers[i];
+                    if (string.IsNullOrEmpty(layer.Digest))
+                    {
+                        throw new Exception($"Layer digest not set for image '{imageName}'");
+                    }
+
+                    Console.WriteLine($"Layer {layer.Digest}");
+
+                    string layerDir = Path.Combine(LayersTempPath, layer.Digest[(layer.Digest.IndexOf(':') + 1)..]);
+                    if (Directory.Exists(layerDir))
+                    {
+                        Console.WriteLine($"\tUsing cached layer on disk...");
+                    }
+                    else
+                    {
+                        await DownloadLayerAsync(layer.Digest, imageName, client, layerDir);
+                    }
+                    
+                    ApplyLayer(layerDir, workingDir);
+                }
+            }
+
+            private static async Task DownloadLayerAsync(string layerDigest, ImageName imageName, IDockerRegistryClient client, string layerDir)
+            {
+                Console.WriteLine($"\tDownloading layer...");
+                using Stream layerStream = await client.Blobs.GetAsync(imageName.Repo, layerDigest);
+                using GZipStream gZipStream = new(layerStream, CompressionMode.Decompress);
+
+                await WriteLayerToDiskAsync(gZipStream, layerDir);
+            }
+
+            private static async Task WriteLayerToDiskAsync(GZipStream gZipStream, string layerDir)
+            {
+                Console.WriteLine($"\tWriting layer to disk...");
+
+                // Can't use System.Formats.Tar.TarReader because it fails to read certain types of tarballs:
+                // https://github.com/dotnet/runtime/issues/74316#issuecomment-1312227247
+                using TarInputStream tarStream = new(gZipStream, Encoding.UTF8);
+
+                while (true)
+                {
+                    TarEntry? entry = tarStream.GetNextEntry();
+
+                    if (entry is null)
+                    {
+                        break;
+                    }
+
+                    if (entry.IsDirectory)
+                    {
+                        continue;
+                    }
+
+                    string entryName = entry.Name;
+                    string entryDirName = Path.GetDirectoryName(entryName) ?? string.Empty;
+                    string entryFileName = Path.GetFileName(entryName);
+
+                    foreach (char invalidChar in Path.GetInvalidPathChars())
+                    {
+                        entryDirName = entryDirName.Replace(invalidChar, '-');
+                    }
+
+                    foreach (char invalidChar in Path.GetInvalidFileNameChars())
+                    {
+                        entryFileName = entryFileName.Replace(invalidChar, '-');
+                    }
+
+                    entryName = Path.Combine(entryDirName, entryFileName);
+
+                    string fileName = Path.GetFileName(entryName);
+                    await ExtractTarEntry(layerDir, tarStream, entry, entryName);
+                }
+            }
+
+            private static void ApplyLayer(string layerDir, string workingDir)
+            {
+                Console.WriteLine($"\tApplying layer...");
+
+                FileInfo[] layerFiles = new DirectoryInfo(layerDir).GetFiles("*", SearchOption.AllDirectories);
+
+                foreach (FileInfo layerFile in layerFiles)
+                {
+                    string layerFileRelativePath = Path.GetRelativePath(layerDir, layerFile.FullName);
+                    string? layerfileDirName = Path.GetDirectoryName(layerFileRelativePath);
+
+                    // If this an OCI opaque whiteout file marker, delete the directory where the file marker
+                    // is located.
+                    if (string.Equals(layerFile.Name, OpaqueWhiteoutMarker, StringComparison.OrdinalIgnoreCase))
+                    {
+                        if (string.IsNullOrEmpty(layerfileDirName))
+                        {
+                            throw new Exception("The opaque whiteout file marker should not exist in the root directory.");
+                        }
+                        string fullDirPath = Path.Combine(workingDir, layerfileDirName);
+
+                        if (Directory.Exists(fullDirPath))
+                        {
+                            Directory.Delete(fullDirPath, recursive: true);
+                        }
+                    }
+                    // If this is an OCI whiteout file marker, delete the associated file
+                    else if (layerFile.Name.StartsWith(WhiteoutMarkerPrefix, StringComparison.OrdinalIgnoreCase))
+                    {
+                        string actualFileName = layerFile.Name[WhiteoutMarkerPrefix.Length..];
+                        string fullFilePath = Path.Combine(
+                            workingDir,
+                            Path.GetDirectoryName(layerfileDirName) ?? string.Empty,
+                            actualFileName);
+
+                        if (File.Exists(fullFilePath))
+                        {
+                            File.Delete(fullFilePath);
+                        }
+                    }
+                    else
+                    {
+                        string dest = Path.Combine(workingDir, layerFileRelativePath);
+                        string destDir = Path.GetDirectoryName(dest)!;
+                        if (!Directory.Exists(destDir))
+                        {
+                            Directory.CreateDirectory(destDir);
+                        }
+
+                        if (layerFile.LinkTarget is not null)
+                        {
+                            if (File.Exists(dest))
+                            {
+                                File.Delete(dest);
+                            }
+
+                            File.CreateSymbolicLink(dest, layerFile.LinkTarget);
+                        }
+                        else
+                        {
+                            File.Copy(layerFile.FullName, dest, overwrite: true);
+                        }
+                    }
+                }
+            }
+
+            private static async Task ExtractTarEntry(string workingDir, TarInputStream tarStream, TarEntry entry, string entryName)
+            {
+                string filePath = Path.Combine(workingDir, entryName);
+                string? directoryPath = Path.GetDirectoryName(filePath);
+                if (directoryPath is not null && !Directory.Exists(directoryPath))
+                {
+                    Directory.CreateDirectory(directoryPath);
+                }
+
+                if ((entry.TarHeader.TypeFlag == TarHeader.LF_LINK || entry.TarHeader.TypeFlag == TarHeader.LF_SYMLINK) &&
+                    !string.IsNullOrEmpty(entry.TarHeader.LinkName))
+                {
+                    if (File.Exists(filePath))
+                    {
+                        File.Delete(filePath);
+                    }
+
+                    File.CreateSymbolicLink(filePath, entry.TarHeader.LinkName);
+                }
+                else
+                {
+                    using FileStream outputStream = File.Create(filePath);
+                    await tarStream.CopyEntryContentsAsync(outputStream, CancellationToken.None);
                 }
             }
         }
