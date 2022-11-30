@@ -358,7 +358,7 @@ public class ImageCommand : Command
                 bool isInline) =>
                 new(
                     Markup.Escape($"{GetTextOffset(diff, isInline, isBase)}{layer?.History ?? string.Empty}"),
-                    new Style(GetLayerDiffColor(diff, isBaseLayer: true, isColorDisabled)));
+                    new Style(GetLayerDiffColor(diff, isBaseLayer: isBase, isColorDisabled)));
 
             private static Markup GetDigestMarkup(LayerInfo? layer, LayerDiff diff, bool isBase, bool isColorDisabled,
                 bool includeHistory, bool isInline)
@@ -486,9 +486,9 @@ public class ImageCommand : Command
                     private static List<IRenderable> GetHistoryRowCells(bool isColorDisabled, LayerComparison layerComparison)
                     {
                         List<IRenderable> historyCells = new()
-                    {
-                        GetHistoryMarkup(layerComparison.Base, layerComparison.LayerDiff, isBase: true, isColorDisabled, isInline: false)
-                    };
+                        {
+                            GetHistoryMarkup(layerComparison.Base, layerComparison.LayerDiff, isBase: true, isColorDisabled, isInline: false)
+                        };
 
                         if (isColorDisabled)
                         {
@@ -502,10 +502,10 @@ public class ImageCommand : Command
                     private static IEnumerable<IRenderable> GetDigestRowCells(bool isColorDisabled, bool includeHistory, LayerComparison layerComparison)
                     {
                         List<IRenderable> shaCells = new()
-                    {
-                        GetDigestMarkup(
-                            layerComparison.Base, layerComparison.LayerDiff, isBase : true, isColorDisabled, includeHistory, isInline: false)
-                    };
+                        {
+                            GetDigestMarkup(
+                                layerComparison.Base, layerComparison.LayerDiff, isBase : true, isColorDisabled, includeHistory, isInline: false)
+                        };
                         if (isColorDisabled)
                         {
                             shaCells.Add(new Markup(GetLayerDiffDisplayName(layerComparison.LayerDiff)));
