@@ -21,6 +21,8 @@ jobs:
         rid:
           - win-x64
           - win-arm64
+          - osx-x64
+          - osx-arm64
           - linux-x64
           - linux-arm64
           - linux-musl-x64
@@ -40,7 +42,7 @@ jobs:
 
       - name: Publish
         working-directory: src/Valleysoft.Dredge
-        run: dotnet publish -f net6.0 -c Release --no-restore -o ${{ github.workspace }}/publish --runtime ${{ matrix.rid }} --self-contained /p:PublishTrimmed=true /p:PublishReadyToRun=true /p:PublishSingleFile=true
+        run: dotnet publish -f net7.0 -c Release --no-restore -o ${{ github.workspace }}/publish --runtime ${{ matrix.rid }} --self-contained /p:PublishTrimmed=true /p:PublishReadyToRun=true /p:PublishSingleFile=true
 
       - name: Rename output
         run: |
