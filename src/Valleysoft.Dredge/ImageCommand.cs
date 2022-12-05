@@ -19,8 +19,7 @@ public class ImageCommand : Command
     private const string WhiteoutMarkerPrefix = ".wh.";
     private const string OpaqueWhiteoutMarker = ".wh..wh..opq";
 
-    private static readonly string DredgeTempPath = Path.Combine(Path.GetTempPath(), "Valleysoft.Dredge");
-    private static readonly string LayersTempPath = Path.Combine(DredgeTempPath, "layers");
+    private static readonly string LayersTempPath = Path.Combine(DredgeState.DredgeTempPath, "layers");
 
     public ImageCommand(IDockerRegistryClientFactory dockerRegistryClientFactory) : base("image", "Commands related to container images")
     {
@@ -796,7 +795,7 @@ public class ImageCommand : Command
             private const string BaseOutputDirName = "base";
             private const string TargetOutputDirName = "target";
 
-            private static readonly string CompareTempPath = Path.Combine(DredgeTempPath, "compare");
+            private static readonly string CompareTempPath = Path.Combine(DredgeState.DredgeTempPath, "compare");
 
             public FilesCommand(IDockerRegistryClientFactory dockerRegistryClientFactory)
                 : base("files", "Compares two images by their files")
