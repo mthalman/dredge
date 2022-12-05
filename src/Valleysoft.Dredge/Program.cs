@@ -7,8 +7,9 @@ RootCommand rootCmd = new("CLI for executing commands on a container registry's 
     new ImageCommand(clientFactory),
     new ManifestCommand(clientFactory),
     new RepoCommand(clientFactory),
-    new SettingsCommand(),
     new TagCommand(clientFactory),
+    new SettingsCommand(),
+    new ClearCacheCommand()
 };
 
 return rootCmd.Invoke(args);
