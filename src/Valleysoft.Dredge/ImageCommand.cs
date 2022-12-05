@@ -15,11 +15,19 @@ namespace Valleysoft.Dredge;
 
 public class ImageCommand : Command
 {
+    // See https://github.com/opencontainers/image-spec/blob/main/layer.md#whiteouts
+    private const string WhiteoutMarkerPrefix = ".wh.";
+    private const string OpaqueWhiteoutMarker = ".wh..wh..opq";
+
+    private static readonly string DredgeTempPath = Path.Combine(Path.GetTempPath(), "Valleysoft.Dredge");
+    private static readonly string LayersTempPath = Path.Combine(DredgeTempPath, "layers");
+
     public ImageCommand(IDockerRegistryClientFactory dockerRegistryClientFactory) : base("image", "Commands related to container images")
     {
+        AddCommand(new CompareCommand(dockerRegistryClientFactory));
         AddCommand(new InspectCommand(dockerRegistryClientFactory));
         AddCommand(new OsCommand(dockerRegistryClientFactory));
-        AddCommand(new CompareCommand(dockerRegistryClientFactory));
+        AddCommand(new SaveLayersCommand(dockerRegistryClientFactory));
     }
 
     private static DockerManifestV2 GetManifest(string image, ManifestInfo manifestInfo)
@@ -37,6 +45,206 @@ public class ImageCommand : Command
         }
 
         return manifest;
+    }
+
+    private static async Task SaveImageLayersToDiskAsync(
+        IDockerRegistryClientFactory dockerRegistryClientFactory, string image, string destPath, int? layerIndex,
+        string layerIndexOptionName, bool noSquash)
+    {
+        // Spec for OCI image layer filesystem changeset: https://github.com/opencontainers/image-spec/blob/main/layer.md
+
+        Console.Error.WriteLine($"Getting layers for {image}");
+
+        ImageName imageName = ImageName.Parse(image);
+        IDockerRegistryClient client = await dockerRegistryClientFactory.GetClientAsync(imageName.Registry);
+        ManifestInfo manifestInfo = await client.Manifests.GetAsync(imageName.Repo, (imageName.Tag ?? imageName.Digest)!);
+
+        DockerManifestV2 manifest = GetManifest(imageName.ToString(), manifestInfo);
+        
+        int startIndex = 0;
+        int layerCount = manifest.Layers.Length;
+        if (layerIndex is not null)
+        {
+            if (layerIndex < 0 || layerIndex >= manifest.Layers.Length)
+            {
+                throw new Exception($"Value is out of range for the '{layerIndexOptionName}' option.");
+            }
+            layerCount = layerIndex.Value + 1;
+
+            if (noSquash)
+            {
+                startIndex = layerIndex.Value;
+            }
+        }
+
+        for (int i = startIndex; i < layerCount; i++)
+        {
+            ManifestLayer layer = manifest.Layers[i];
+            if (string.IsNullOrEmpty(layer.Digest))
+            {
+                throw new Exception($"Layer digest not set for image '{imageName}'");
+            }
+
+            Console.Error.WriteLine($"Layer {layer.Digest}");
+
+            string layerName = layer.Digest[(layer.Digest.IndexOf(':') + 1)..];
+            string layerDir = Path.Combine(LayersTempPath, layerName);
+            if (Directory.Exists(layerDir))
+            {
+                Console.Error.WriteLine($"\tUsing cached layer on disk...");
+            }
+            else
+            {
+                Console.Error.WriteLine($"\tDownloading layer...");
+                using Stream layerStream = await client.Blobs.GetAsync(imageName.Repo, layer.Digest);
+
+                await ExtractLayerAsync(layerStream, layerDir);
+            }
+
+            if (noSquash)
+            {
+                FileHelper.CopyDirectory(layerDir, Path.Combine(destPath, $"layer{i}-{layerName}"));
+            }
+            else
+            {
+                ApplyLayer(layerDir, destPath);
+            }
+        }
+    }
+
+    private static async Task ExtractLayerAsync(Stream layerStream, string layerDir)
+    {
+        Console.Error.WriteLine($"\tExtracting layer...");
+
+        using GZipStream gZipStream = new(layerStream, CompressionMode.Decompress);
+
+        // Can't use System.Formats.Tar.TarReader because it fails to read certain types of tarballs:
+        // https://github.com/dotnet/runtime/issues/74316#issuecomment-1312227247
+        using TarInputStream tarStream = new(gZipStream, Encoding.UTF8);
+
+        while (true)
+        {
+            TarEntry? entry = tarStream.GetNextEntry();
+
+            if (entry is null)
+            {
+                break;
+            }
+
+            if (entry.IsDirectory)
+            {
+                continue;
+            }
+
+            string entryName = entry.Name;
+            string entryDirName = Path.GetDirectoryName(entryName) ?? string.Empty;
+            string entryFileName = Path.GetFileName(entryName);
+
+            foreach (char invalidChar in Path.GetInvalidPathChars())
+            {
+                entryDirName = entryDirName.Replace(invalidChar, '-');
+            }
+
+            foreach (char invalidChar in Path.GetInvalidFileNameChars())
+            {
+                entryFileName = entryFileName.Replace(invalidChar, '-');
+            }
+
+            entryName = Path.Combine(entryDirName, entryFileName);
+            await ExtractTarEntry(layerDir, tarStream, entry, entryName);
+        }
+    }
+
+    private static void ApplyLayer(string layerDir, string workingDir)
+    {
+        Console.Error.WriteLine($"\tApplying layer...");
+
+        FileInfo[] layerFiles = new DirectoryInfo(layerDir).GetFiles("*", SearchOption.AllDirectories);
+
+        foreach (FileInfo layerFile in layerFiles)
+        {
+            string layerFileRelativePath = Path.GetRelativePath(layerDir, layerFile.FullName);
+            string? layerfileDirName = Path.GetDirectoryName(layerFileRelativePath);
+
+            // If this an OCI opaque whiteout file marker, delete the directory where the file marker
+            // is located.
+            if (string.Equals(layerFile.Name, OpaqueWhiteoutMarker, StringComparison.OrdinalIgnoreCase))
+            {
+                if (string.IsNullOrEmpty(layerfileDirName))
+                {
+                    throw new Exception("The opaque whiteout file marker should not exist in the root directory.");
+                }
+                string fullDirPath = Path.Combine(workingDir, layerfileDirName);
+
+                if (Directory.Exists(fullDirPath))
+                {
+                    Directory.Delete(fullDirPath, recursive: true);
+                }
+            }
+            // If this is an OCI whiteout file marker, delete the associated file
+            else if (layerFile.Name.StartsWith(WhiteoutMarkerPrefix, StringComparison.OrdinalIgnoreCase))
+            {
+                string actualFileName = layerFile.Name[WhiteoutMarkerPrefix.Length..];
+                string fullFilePath = Path.Combine(
+                    workingDir,
+                    Path.GetDirectoryName(layerfileDirName) ?? string.Empty,
+                    actualFileName);
+
+                if (File.Exists(fullFilePath))
+                {
+                    File.Delete(fullFilePath);
+                }
+            }
+            else
+            {
+                string dest = Path.Combine(workingDir, layerFileRelativePath);
+                string destDir = Path.GetDirectoryName(dest)!;
+                if (!Directory.Exists(destDir))
+                {
+                    Directory.CreateDirectory(destDir);
+                }
+
+                if (layerFile.LinkTarget is not null)
+                {
+                    if (File.Exists(dest))
+                    {
+                        File.Delete(dest);
+                    }
+
+                    File.CreateSymbolicLink(dest, layerFile.LinkTarget);
+                }
+                else
+                {
+                    File.Copy(layerFile.FullName, dest, overwrite: true);
+                }
+            }
+        }
+    }
+
+    private static async Task ExtractTarEntry(string workingDir, TarInputStream tarStream, TarEntry entry, string entryName)
+    {
+        string filePath = Path.Combine(workingDir, entryName);
+        string? directoryPath = Path.GetDirectoryName(filePath);
+        if (directoryPath is not null && !Directory.Exists(directoryPath))
+        {
+            Directory.CreateDirectory(directoryPath);
+        }
+
+        if ((entry.TarHeader.TypeFlag == TarHeader.LF_LINK || entry.TarHeader.TypeFlag == TarHeader.LF_SYMLINK) &&
+            !string.IsNullOrEmpty(entry.TarHeader.LinkName))
+        {
+            if (File.Exists(filePath))
+            {
+                File.Delete(filePath);
+            }
+
+            File.CreateSymbolicLink(filePath, entry.TarHeader.LinkName);
+        }
+        else
+        {
+            using FileStream outputStream = File.Create(filePath);
+            await tarStream.CopyEntryContentsAsync(outputStream, CancellationToken.None);
+        }
     }
 
     public class InspectCommand : Command
@@ -578,11 +786,7 @@ public class ImageCommand : Command
         }
 
         public class FilesCommand : Command
-        {
-            // See https://github.com/opencontainers/image-spec/blob/main/layer.md#whiteouts
-            private const string WhiteoutMarkerPrefix = ".wh.";
-            private const string OpaqueWhiteoutMarker = ".wh..wh..opq";
-            
+        {           
             private const string BaseArg = "base";
             private const string TargetArg = "target";
             private const string LayerIndexSuffix = "-layer-index";
@@ -592,9 +796,7 @@ public class ImageCommand : Command
             private const string BaseOutputDirName = "base";
             private const string TargetOutputDirName = "target";
 
-            private static readonly string DredgeTempPath = Path.Combine(Path.GetTempPath(), "Valleysoft.Dredge");
             private static readonly string CompareTempPath = Path.Combine(DredgeTempPath, "compare");
-            private static readonly string LayersTempPath = Path.Combine(DredgeTempPath, "layers");
 
             public FilesCommand(IDockerRegistryClientFactory dockerRegistryClientFactory)
                 : base("files", "Compares two images by their files")
@@ -632,9 +834,9 @@ public class ImageCommand : Command
                             $"This command requires additional configuration.{Environment.NewLine}In order to compare files, you must first set the '{Settings.FileCompareToolName}' setting in {Settings.SettingsPath}. This is an external tool of your choosing that will be executed to compare two directories containing files of the specified images. Use '{{0}}' and '{{1}}' placeholders in the args to indicate the base and target path locations that will be the inputs to the compare tool.");
                     }
 
-                    await SaveImageLayersToDiskAsync(baseImage, baseLayerIndex, isBase: true);
-                    Console.WriteLine();
-                    await SaveImageLayersToDiskAsync(targetImage, targetLayerIndex, isBase: false);
+                    await SaveImageLayersToDiskAsync(baseImage, BaseOutputDirName, baseLayerIndex, BaseArg);
+                    Console.Error.WriteLine();
+                    await SaveImageLayersToDiskAsync(targetImage, TargetOutputDirName, targetLayerIndex, TargetArg);
 
                     string args = settings.FileCompareTool.Args
                         .Replace("{0}", Path.Combine(CompareTempPath, BaseOutputDirName))
@@ -643,201 +845,73 @@ public class ImageCommand : Command
                 });
             }
 
-            private async Task SaveImageLayersToDiskAsync(string image, int? layerIndex, bool isBase)
+            private Task SaveImageLayersToDiskAsync(string image, string outputDirName, int? layerIndex, string layerIndexArg)
             {
-                // Spec for OCI image layer filesystem changeset: https://github.com/opencontainers/image-spec/blob/main/layer.md
-
-                Console.WriteLine($"Getting layers for {image}");
-
-                ImageName imageName = ImageName.Parse(image);
-                IDockerRegistryClient client = await dockerRegistryClientFactory.GetClientAsync(imageName.Registry);
-                ManifestInfo manifestInfo = await client.Manifests.GetAsync(imageName.Repo, (imageName.Tag ?? imageName.Digest)!);
-
-                DockerManifestV2 manifest = GetManifest(imageName.ToString(), manifestInfo);
-                int layerCount = manifest.Layers.Length;
-                if (layerIndex is not null)
-                {
-                    if (layerIndex < 0 || layerIndex >= manifest.Layers.Length)
-                    {
-                        string optionName = (isBase ? BaseArg : TargetArg) + LayerIndexSuffix;
-                        throw new Exception($"Value is out of range for the '{optionName}' option.");
-                    }
-                    layerCount = layerIndex.Value + 1;
-                }
-
-                string workingDir = Path.Combine(CompareTempPath, isBase ? BaseOutputDirName : TargetOutputDirName);
+                string workingDir = Path.Combine(CompareTempPath, outputDirName);
                 if (Directory.Exists(workingDir))
                 {
                     Directory.Delete(workingDir, recursive: true);
                 }
 
-                for (int i = 0; i < layerCount; i++)
-                {
-                    ManifestLayer layer = manifest.Layers[i];
-                    if (string.IsNullOrEmpty(layer.Digest))
-                    {
-                        throw new Exception($"Layer digest not set for image '{imageName}'");
-                    }
-
-                    Console.WriteLine($"Layer {layer.Digest}");
-
-                    string layerDir = Path.Combine(LayersTempPath, layer.Digest[(layer.Digest.IndexOf(':') + 1)..]);
-                    if (Directory.Exists(layerDir))
-                    {
-                        Console.WriteLine($"\tUsing cached layer on disk...");
-                    }
-                    else
-                    {
-                        await DownloadLayerAsync(layer.Digest, imageName, client, layerDir);
-                    }
-                    
-                    ApplyLayer(layerDir, workingDir);
-                }
+                return ImageCommand.SaveImageLayersToDiskAsync(
+                    dockerRegistryClientFactory,
+                    image,
+                    workingDir,
+                    layerIndex,
+                    layerIndexArg + LayerIndexSuffix,
+                    noSquash: false);
             }
+        }
+    }
 
-            private static async Task DownloadLayerAsync(string layerDigest, ImageName imageName, IDockerRegistryClient client, string layerDir)
+    public class SaveLayersCommand : Command
+    {
+        private const string LayerIndexOptionName = "--layer-index";
+        private readonly IDockerRegistryClientFactory dockerRegistryClientFactory;
+
+        public SaveLayersCommand(IDockerRegistryClientFactory dockerRegistryClientFactory)
+            : base("save-layers", "Saves an image's extracted layers to disk")
+        {
+            this.dockerRegistryClientFactory = dockerRegistryClientFactory;
+
+            Argument<string> imageArg = new("image", "Name of the container image (<image>, <image>:<tag>, or <image>@<digest>)");
+            AddArgument(imageArg);
+
+            Argument<string> outputPathArg = new("output-path", "Path to the output location");
+            AddArgument(outputPathArg);
+
+            Option<bool> noSquashOption = new("--no-squash", "Do not squash the image layers");
+            AddOption(noSquashOption);
+
+            Option<int?> layerIndexOption = new(LayerIndexOptionName, "Index of the image layer to target");
+            AddOption(layerIndexOption);
+
+            this.SetHandler(ExecuteAsync, imageArg, outputPathArg, noSquashOption, layerIndexOption);
+        }
+
+        private Task ExecuteAsync(string image, string outputPath, bool noSquash, int? layerIndex)
+        {
+            ImageName imageName = ImageName.Parse(image);
+            return CommandHelper.ExecuteCommandAsync(imageName.Registry, async () =>
             {
-                Console.WriteLine($"\tDownloading layer...");
-                using Stream layerStream = await client.Blobs.GetAsync(imageName.Repo, layerDigest);
-                using GZipStream gZipStream = new(layerStream, CompressionMode.Decompress);
+                using IDockerRegistryClient client = await dockerRegistryClientFactory.GetClientAsync(imageName.Registry);
+                ManifestInfo manifestInfo = await client.Manifests.GetAsync(imageName.Repo, (imageName.Tag ?? imageName.Digest)!);
 
-                await WriteLayerToDiskAsync(gZipStream, layerDir);
-            }
-
-            private static async Task WriteLayerToDiskAsync(GZipStream gZipStream, string layerDir)
-            {
-                Console.WriteLine($"\tWriting layer to disk...");
-
-                // Can't use System.Formats.Tar.TarReader because it fails to read certain types of tarballs:
-                // https://github.com/dotnet/runtime/issues/74316#issuecomment-1312227247
-                using TarInputStream tarStream = new(gZipStream, Encoding.UTF8);
-
-                while (true)
+                DockerManifestV2 manifest = GetManifest(image, manifestInfo);
+                string? digest = manifest.Config?.Digest;
+                if (digest is null)
                 {
-                    TarEntry? entry = tarStream.GetNextEntry();
-
-                    if (entry is null)
-                    {
-                        break;
-                    }
-
-                    if (entry.IsDirectory)
-                    {
-                        continue;
-                    }
-
-                    string entryName = entry.Name;
-                    string entryDirName = Path.GetDirectoryName(entryName) ?? string.Empty;
-                    string entryFileName = Path.GetFileName(entryName);
-
-                    foreach (char invalidChar in Path.GetInvalidPathChars())
-                    {
-                        entryDirName = entryDirName.Replace(invalidChar, '-');
-                    }
-
-                    foreach (char invalidChar in Path.GetInvalidFileNameChars())
-                    {
-                        entryFileName = entryFileName.Replace(invalidChar, '-');
-                    }
-
-                    entryName = Path.Combine(entryDirName, entryFileName);
-
-                    string fileName = Path.GetFileName(entryName);
-                    await ExtractTarEntry(layerDir, tarStream, entry, entryName);
-                }
-            }
-
-            private static void ApplyLayer(string layerDir, string workingDir)
-            {
-                Console.WriteLine($"\tApplying layer...");
-
-                FileInfo[] layerFiles = new DirectoryInfo(layerDir).GetFiles("*", SearchOption.AllDirectories);
-
-                foreach (FileInfo layerFile in layerFiles)
-                {
-                    string layerFileRelativePath = Path.GetRelativePath(layerDir, layerFile.FullName);
-                    string? layerfileDirName = Path.GetDirectoryName(layerFileRelativePath);
-
-                    // If this an OCI opaque whiteout file marker, delete the directory where the file marker
-                    // is located.
-                    if (string.Equals(layerFile.Name, OpaqueWhiteoutMarker, StringComparison.OrdinalIgnoreCase))
-                    {
-                        if (string.IsNullOrEmpty(layerfileDirName))
-                        {
-                            throw new Exception("The opaque whiteout file marker should not exist in the root directory.");
-                        }
-                        string fullDirPath = Path.Combine(workingDir, layerfileDirName);
-
-                        if (Directory.Exists(fullDirPath))
-                        {
-                            Directory.Delete(fullDirPath, recursive: true);
-                        }
-                    }
-                    // If this is an OCI whiteout file marker, delete the associated file
-                    else if (layerFile.Name.StartsWith(WhiteoutMarkerPrefix, StringComparison.OrdinalIgnoreCase))
-                    {
-                        string actualFileName = layerFile.Name[WhiteoutMarkerPrefix.Length..];
-                        string fullFilePath = Path.Combine(
-                            workingDir,
-                            Path.GetDirectoryName(layerfileDirName) ?? string.Empty,
-                            actualFileName);
-
-                        if (File.Exists(fullFilePath))
-                        {
-                            File.Delete(fullFilePath);
-                        }
-                    }
-                    else
-                    {
-                        string dest = Path.Combine(workingDir, layerFileRelativePath);
-                        string destDir = Path.GetDirectoryName(dest)!;
-                        if (!Directory.Exists(destDir))
-                        {
-                            Directory.CreateDirectory(destDir);
-                        }
-
-                        if (layerFile.LinkTarget is not null)
-                        {
-                            if (File.Exists(dest))
-                            {
-                                File.Delete(dest);
-                            }
-
-                            File.CreateSymbolicLink(dest, layerFile.LinkTarget);
-                        }
-                        else
-                        {
-                            File.Copy(layerFile.FullName, dest, overwrite: true);
-                        }
-                    }
-                }
-            }
-
-            private static async Task ExtractTarEntry(string workingDir, TarInputStream tarStream, TarEntry entry, string entryName)
-            {
-                string filePath = Path.Combine(workingDir, entryName);
-                string? directoryPath = Path.GetDirectoryName(filePath);
-                if (directoryPath is not null && !Directory.Exists(directoryPath))
-                {
-                    Directory.CreateDirectory(directoryPath);
+                    throw new NotSupportedException($"Could not resolve the image config digest of '{image}'.");
                 }
 
-                if ((entry.TarHeader.TypeFlag == TarHeader.LF_LINK || entry.TarHeader.TypeFlag == TarHeader.LF_SYMLINK) &&
-                    !string.IsNullOrEmpty(entry.TarHeader.LinkName))
-                {
-                    if (File.Exists(filePath))
-                    {
-                        File.Delete(filePath);
-                    }
-
-                    File.CreateSymbolicLink(filePath, entry.TarHeader.LinkName);
-                }
-                else
-                {
-                    using FileStream outputStream = File.Create(filePath);
-                    await tarStream.CopyEntryContentsAsync(outputStream, CancellationToken.None);
-                }
-            }
+                await SaveImageLayersToDiskAsync(
+                    dockerRegistryClientFactory,
+                    image,
+                    outputPath,
+                    layerIndex,
+                    LayerIndexOptionName,
+                    noSquash);
+            });
         }
     }
 }
