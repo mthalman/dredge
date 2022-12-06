@@ -7,28 +7,49 @@ internal class DockerRegistryClientFactory : IDockerRegistryClientFactory
 {
     public async Task<IDockerRegistryClient> GetClientAsync(string? registry)
     {
-        DockerCredentials creds;
+        ServiceClientCredentials? clientCreds;
 
-        try
+        string? accessToken;
+        string? username;
+        string? password;
+
+        if ((accessToken = Environment.GetEnvironmentVariable("DREDGE_TOKEN")) is not null)
         {
-            creds = await CredsProvider.GetCredentialsAsync(DockerHubHelper.GetAuthRegistry(registry));
+            clientCreds = new TokenCredentials(accessToken);
         }
-        catch (CredsNotFoundException)
-        {
-            return new DockerRegistryClientWrapper(CreateClient(DockerHubHelper.GetApiRegistry(registry)));
-        }
-        ServiceClientCredentials clientCreds;
-        if (creds.IdentityToken is not null)
-        {
-            clientCreds = new TokenCredentials(creds.IdentityToken);
-        }
-        else
+        else if ((username = Environment.GetEnvironmentVariable("DREDGE_USERNAME")) is not null &&
+            (password = Environment.GetEnvironmentVariable("DREDGE_PASSWORD")) is not null)
         {
             clientCreds = new BasicAuthenticationCredentials()
             {
-                UserName = creds.Username,
-                Password = creds.Password
+                UserName = username,
+                Password = password
             };
+        }
+        else
+        {
+            DockerCredentials creds;
+            try
+            {
+                creds = await CredsProvider.GetCredentialsAsync(DockerHubHelper.GetAuthRegistry(registry));
+            }
+            catch (CredsNotFoundException)
+            {
+                return new DockerRegistryClientWrapper(CreateClient(DockerHubHelper.GetApiRegistry(registry)));
+            }
+
+            if (creds.IdentityToken is not null)
+            {
+                clientCreds = new TokenCredentials(creds.IdentityToken);
+            }
+            else
+            {
+                clientCreds = new BasicAuthenticationCredentials()
+                {
+                    UserName = creds.Username,
+                    Password = creds.Password
+                };
+            }
         }
 
         return new DockerRegistryClientWrapper(CreateClient(registry, clientCreds));
