@@ -33,7 +33,7 @@ internal class DockerRegistryClientFactory : IDockerRegistryClientFactory
             {
                 creds = await CredsProvider.GetCredentialsAsync(DockerHubHelper.GetAuthRegistry(registry));
             }
-            catch (CredsNotFoundException)
+            catch (Exception e) when (e is CredsNotFoundException || e is FileNotFoundException)
             {
                 return new DockerRegistryClientWrapper(CreateClient(DockerHubHelper.GetApiRegistry(registry)));
             }
