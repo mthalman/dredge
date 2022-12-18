@@ -9,7 +9,6 @@ RootCommand rootCmd = new("CLI for executing commands on a container registry's 
     new RepoCommand(clientFactory),
     new TagCommand(clientFactory),
     new SettingsCommand(),
-    new ClearCacheCommand()
 };
 
 return rootCmd.Invoke(args);
