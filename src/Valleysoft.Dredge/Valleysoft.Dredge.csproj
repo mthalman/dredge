@@ -14,13 +14,6 @@
     <ToolCommandName>dredge</ToolCommandName>
   </PropertyGroup>
 
-  <PropertyGroup Condition=" '$(IsPublish)' == 'true' ">
-    <PublishTrimmed>true</PublishTrimmed>
-    <PublishReadyToRun>true</PublishReadyToRun>
-    <PublishSingleFile>true</PublishSingleFile>
-    <TrimMode>partial</TrimMode>
-  </PropertyGroup>
-
   <PropertyGroup>
     <PackageId>Valleysoft.Dredge</PackageId>
     <Title>Container Registry Client CLI</Title>
