@@ -6,6 +6,7 @@ Sub-commands:
 * [`os`](#image-os-information) - Image OS information
 * [`compare layers`](#compare-image-layers) - Compares the layers of two images
 * [`compare files`](#compare-image-files) - Compares the files of two images
+* [`save layers`](#save-layers) - Saves the layers of an image to disk
 
 ## Inspect Image Configuration
 
@@ -164,3 +165,17 @@ This option also enables you to compare the layers of a single image. This comma
 ```shell
 > dredge image compare files amd64/node:19.1-alpine amd64/node:19.1-alpine --base-layer-index 1 --target-layer-index 2
 ```
+
+### Save Layers
+
+The `image save-layers` command provides a way to save the extracted layers of an image to disk.
+
+Example usage:
+
+```shell
+> dredge image save-layers amd64/node:19.2-alpine out/layers/node
+```
+
+By default, the layers of the image are squashed and saved to a single directory. The `--no-squash` option can be used to disable this behavior and save the layers as individual directories.
+
+If you want to target a specific layer, you can use the `--layer-index` option. This will only save the specified layer (and any layers that it depends on if squashing is being applied).

@@ -21,13 +21,19 @@ Dredge is a CLI built on .NET that provides a simple way to execute commands on 
 
 ## Install
 
-Dredge is available as a standalone executable or as a [.NET tool](https://docs.microsoft.com/en-us/dotnet/core/tools/global-tools).
+Dredge is available as a [standalone executable](#installing-as-a-standalone-executable), a [container image](#running-as-a-container), or as a [.NET tool](#installing-as-a-net-global-tool).
 
 ### Installing as a standalone executable
 
 Download the desired executable from the [release page](https://github.com/mthalman/dredge/releases).
 
 The executable does not require the .NET runtime to be installed.
+
+### Running as a container
+
+```shell
+docker run --rm ghcr.io/mthalman/dredge --help
+```
 
 ### Installing as a .NET global tool
 
