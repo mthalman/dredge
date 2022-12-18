@@ -42,7 +42,7 @@ jobs:
 
       - name: Install dependencies
         working-directory: src/Valleysoft.Dredge
-        run: dotnet restore --runtime ${{ matrix.rid }}
+        run: dotnet restore --runtime ${{ matrix.rid }} /p:IsPublish=true
 
       - name: Publish
         working-directory: src/Valleysoft.Dredge

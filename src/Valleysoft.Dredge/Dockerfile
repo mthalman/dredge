@@ -2,7 +2,7 @@ FROM mcr.microsoft.com/dotnet/sdk:7.0-jammy AS build
 WORKDIR /source
 
 COPY *.csproj .
-RUN dotnet restore --use-current-runtime
+RUN dotnet restore --use-current-runtime /p:IsPublish=true
 
 COPY . .
 RUN dotnet publish -c Release -f net7.0 -o /app --use-current-runtime --self-contained true --no-restore /p:IsPublish=true
