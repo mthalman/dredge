@@ -15,6 +15,13 @@
   </PropertyGroup>
 
   <PropertyGroup>
+    <PublishTrimmed>true</PublishTrimmed>
+    <PublishReadyToRun>true</PublishReadyToRun>
+    <PublishSingleFile>true</PublishSingleFile>
+    <TrimMode>partial</TrimMode>
+  </PropertyGroup>
+
+  <PropertyGroup>
     <PackageId>Valleysoft.Dredge</PackageId>
     <Title>Container Registry Client CLI</Title>
     <Description>CLI for executing commands on a container registry's HTTP API.</Description>
