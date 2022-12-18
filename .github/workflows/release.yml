@@ -149,4 +149,4 @@ jobs:
           context: ./src/Valleysoft.Dredge
           platforms: linux/amd64,linux/arm64
           push: true
-          tags: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ github.event.inputs.packageVersion }}
+          tags: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ github.event.inputs.packageVersion }},${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:latest
