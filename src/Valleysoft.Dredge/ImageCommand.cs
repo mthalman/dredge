@@ -132,6 +132,11 @@ public class ImageCommand : Command
 
             if (entry.IsDirectory)
             {
+                string directoryPath = Path.Combine(layerDir, entry.Name);
+                if (!Directory.Exists(directoryPath))
+                {
+                    Directory.CreateDirectory(directoryPath);
+                }
                 continue;
             }
 
