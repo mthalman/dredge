@@ -14,7 +14,7 @@
     <ToolCommandName>dredge</ToolCommandName>
   </PropertyGroup>
 
-  <PropertyGroup>
+  <PropertyGroup Condition=" '$(IsPublish)' == 'true' ">
     <PublishTrimmed>true</PublishTrimmed>
     <PublishReadyToRun>true</PublishReadyToRun>
     <PublishSingleFile>true</PublishSingleFile>
