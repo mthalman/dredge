@@ -5,7 +5,7 @@ COPY *.csproj .
 RUN dotnet restore --use-current-runtime
 
 COPY . .
-RUN dotnet publish -c Release -f net7.0 -o /app --use-current-runtime --self-contained true --no-restore
+RUN dotnet publish -c Release -f net7.0 -o /app --use-current-runtime --self-contained true --no-restore /p:IsPublish=true
 
 
 FROM mcr.microsoft.com/dotnet/nightly/runtime-deps:7.0-jammy-chiseled
