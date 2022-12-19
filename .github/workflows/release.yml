@@ -42,11 +42,11 @@ jobs:
 
       - name: Install dependencies
         working-directory: src/Valleysoft.Dredge
-        run: dotnet restore --runtime ${{ matrix.rid }} /p:IsPublish=true
+        run: dotnet restore --runtime ${{ matrix.rid }} /p:PublishReadyToRun=true
 
       - name: Publish
         working-directory: src/Valleysoft.Dredge
-        run: dotnet publish -f net7.0 -c Release --no-restore -o ${{ github.workspace }}/publish --runtime ${{ matrix.rid }} --self-contained /p:IsPublish=true
+        run: dotnet publish -f net7.0 -c Release --no-restore -o ${{ github.workspace }}/publish --runtime ${{ matrix.rid }} --self-contained /p:PublishTrimmed=true /p:PublishReadyToRun=true /p:PublishSingleFile=true /p:TrimMode=partial
 
       - name: Rename output
         run: |
