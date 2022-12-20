@@ -7,9 +7,9 @@ Dredge is a CLI built on .NET that provides a simple way to execute commands on 
 * Access to raw JSON data from the registry's HTTP API.
 * Extended, derived data such as [image configuration](docs/images.md#inspect-image-configuration), [OS information](docs/images.md#image-os-information), and comparison of [layers](docs/images.md#compare-image-layers) and [files](docs/images.md#compare-image-files).
 
-### Notes
+### Authentication
 
-> Dredge relies on your credentials already being stored in your environment when targeting registries that require authentication. For those registries you need to run `docker login` (for Docker Hub) or `docker login <registry>` before running Dredge.
+For container registries requiring authentication, Dredge can make use of credentials stored in your environment via the `docker login` command. Alternatively, you can set the `DREDGE_TOKEN` environment variable to an OAuth bearer token or set the `DREDGE_USERNAME` and `DREDGE_PASSWORD` environment variables if you have credentials. Dredge will look for the environment variables first and fall back to any `docker login` credentials if they exist.
 
 ### Commands
 
@@ -20,8 +20,6 @@ Dredge is a CLI built on .NET that provides a simple way to execute commands on 
 * [`tag`](docs/tags.md)
 
 ## Install
-
-Dredge is available as a [standalone executable](#installing-as-a-standalone-executable), a [container image](#running-as-a-container), or as a [.NET tool](#installing-as-a-net-global-tool).
 
 ### Installing as a standalone executable
 
