@@ -83,7 +83,7 @@ There's also a --history option to include the layer history information associa
 By default, the comparison makes use of green and red colors to indicate differences. For accessibility purposes, you can choose to use the --no-color option which will disable the use of these colors and use textual means to indicate diffs instead.
 
 ```diff
-$ .\dredge.exe image compare layers --output inline amd64/node:19.1-alpine amd64/node:19.2-alpine
+$ dredge image compare layers --output inline amd64/node:19.1-alpine amd64/node:19.2-alpine
   sha256:ca7dd9ec2225f2385955c43b2379305acd51543c28cf1d4e94522b3d94cce3ce
 - sha256:4487691952c066cb3964b94606825bc96c698377909c7d74c889fd12e24e36a7
 + sha256:bfebca31f7556839677aca8626941ec4be0d5e2a1a59f1bd991807828de37167
@@ -94,7 +94,7 @@ $ .\dredge.exe image compare layers --output inline amd64/node:19.1-alpine amd64
 ```
 
 ```
-> .\dredge.exe image compare layers --history --no-color mcr.microsoft.com/dotnet/runtime:6.0.5-jammy-amd64 mcr.microsoft.com/dotnet/runtime:6.0.6-jammy-amd64
+> dredge image compare layers --history --no-color mcr.microsoft.com/dotnet/runtime:6.0.5-jammy-amd64 mcr.microsoft.com/dotnet/runtime:6.0.6-jammy-amd64
 ┌──────────────────────────────────────────────────────────────────────────┬───────────┬─────────────────────────────────────────────────────────────────────────┐
 │ mcr.microsoft.com/dotnet/runtime:6.0.5-jammy-amd64                       │  Compare  │ mcr.microsoft.com/dotnet/runtime:6.0.6-jammy-amd64                      │
 ├──────────────────────────────────────────────────────────────────────────┼───────────┼─────────────────────────────────────────────────────────────────────────┤
