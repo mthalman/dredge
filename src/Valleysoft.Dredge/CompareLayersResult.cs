@@ -71,12 +71,14 @@ public enum LayerDiff
 
 public class LayerInfo
 {
-    public LayerInfo(string? digest, string? history)
+    public LayerInfo(string? digest, string? history, long? compressedSize)
     {
         Digest = digest;
         History = history;
+        CompressedSize = compressedSize;
     }
 
     public string? Digest { get; }
     public string? History { get; }
+    public long? CompressedSize { get; }
 }
