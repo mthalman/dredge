@@ -10,6 +10,7 @@ using LayersCommand = ImageCommand.CompareCommand.LayersCommand;
 
 public class CompareLayersCommandTests
 {
+    private static readonly string NL = Environment.NewLine;
     private const string Registry = "test-registry.io";
     private static readonly ImageName baseImageName = ImageName.Parse($"{Registry}/base:latest");
     private static readonly ImageName targetImageName = ImageName.Parse($"{Registry}/target:latest");
@@ -18,10 +19,14 @@ public class CompareLayersCommandTests
     {
         CommandOptions[] optionsSet = new[]
         {
-            new CommandOptions(includeHistory: false, isColorDisabled: false),
-            new CommandOptions(includeHistory: false, isColorDisabled: true),
-            new CommandOptions(includeHistory: true, isColorDisabled: false),
-            new CommandOptions(includeHistory: true, isColorDisabled: true)
+            new CommandOptions(includeHistory: false, includeCompressedSize: false, isColorDisabled: false),
+            new CommandOptions(includeHistory: false, includeCompressedSize: false, isColorDisabled: true),
+            new CommandOptions(includeHistory: true, includeCompressedSize: false, isColorDisabled: false),
+            new CommandOptions(includeHistory: true, includeCompressedSize: false, isColorDisabled: true),
+            new CommandOptions(includeHistory: false, includeCompressedSize: true, isColorDisabled: false),
+            new CommandOptions(includeHistory: false, includeCompressedSize: true, isColorDisabled: true),
+            new CommandOptions(includeHistory: true, includeCompressedSize: true, isColorDisabled: false),
+            new CommandOptions(includeHistory: true, includeCompressedSize: true, isColorDisabled: true)
         };
 
         List<object[]> testData = new();
@@ -52,27 +57,29 @@ public class CompareLayersCommandTests
                 {
                     History = new LayerHistory[]
                     {
-                    new LayerHistory
-                    {
-                        CreatedBy = "a"
-                    },
-                    new LayerHistory
-                    {
-                        CreatedBy = "b"
-                    }
+                        new LayerHistory
+                        {
+                            CreatedBy = "a"
+                        },
+                        new LayerHistory
+                        {
+                            CreatedBy = "b"
+                        }
                     }
                 },
                 new ManifestLayer[]
                 {
-                new ManifestLayer
-                {
-                    Digest = "layer-0"
-                },
-                new ManifestLayer
-                {
-                    Digest = "layer-1"
-                }
-            });
+                    new ManifestLayer
+                    {
+                        Digest = "layer-0",
+                        Size = 1
+                    },
+                    new ManifestLayer
+                    {
+                        Digest = "layer-1",
+                        Size = 1
+                    }
+                });
 
             ImageSetup targetImageSetup = baseImageSetup;
 
@@ -82,34 +89,34 @@ public class CompareLayersCommandTests
                     new CompareLayersSummary(areEqual: true, targetIncludesAllBaseLayers: true, lastCommonLayerIndex: 1),
                     new LayerComparison[]
                     {
-                    new LayerComparison(
-                        new LayerInfo("layer-0", options.IncludeHistory ? "a" : null),
-                        new LayerInfo("layer-0", options.IncludeHistory ? "a" : null),
-                        LayerDiff.Equal),
-                    new LayerComparison(
-                        new LayerInfo("layer-1", options.IncludeHistory ? "b" : null),
-                        new LayerInfo("layer-1", options.IncludeHistory ? "b" : null),
-                        LayerDiff.Equal)
+                        new LayerComparison(
+                            new LayerInfo("layer-0", options.IncludeHistory ? "a" : null, options.IncludeCompressedSize ? 1 : null),
+                            new LayerInfo("layer-0", options.IncludeHistory ? "a" : null, options.IncludeCompressedSize ? 1 : null),
+                            LayerDiff.Equal),
+                        new LayerComparison(
+                            new LayerInfo("layer-1", options.IncludeHistory ? "b" : null, options.IncludeCompressedSize ? 1 : null),
+                            new LayerInfo("layer-1", options.IncludeHistory ? "b" : null, options.IncludeCompressedSize ? 1 : null),
+                            LayerDiff.Equal)
                     }),
-                CompareLayersOutput.Inline => options.IncludeHistory ?
-                    """
-                      layer-0
-                      a
-
-                      layer-1
-                      b
-                    """ : 
-                    """
-                      layer-0
-                      layer-1
-                    """,
+                CompareLayersOutput.Inline =>
+                    new StringBuilder()
+                        .AppendLine("  layer-0")
+                        .Append(options.IncludeHistory ? $"  a{NL}" : string.Empty)
+                        .Append(options.IncludeCompressedSize ? $"  Size (compressed): 1 bytes{NL}" : string.Empty)
+                        .Append(options.IncludeHistory || options.IncludeCompressedSize ? NL : string.Empty)
+                        .AppendLine("  layer-1")
+                        .Append(options.IncludeHistory ? $"  b{NL}" : string.Empty)
+                        .Append(options.IncludeCompressedSize ? $"  Size (compressed): 1 bytes{NL}" : string.Empty)
+                        .ToString(),
                 CompareLayersOutput.SideBySide =>
                     ToArray(
                         DigestRow("layer-0", "layer-0", options, LayerDiff.Equal),
                         HistoryRow("a", "a", options),
+                        CompressedSizeRow("Size (compressed): 1 bytes", "Size (compressed): 1 bytes", options),
                         EmptyRow(options),
                         DigestRow("layer-1", "layer-1", options, LayerDiff.Equal),
-                        HistoryRow("b", "b", options)
+                        HistoryRow("b", "b", options),
+                        CompressedSizeRow("Size (compressed): 1 bytes", "Size (compressed): 1 bytes", options)
                     ),
                 _ => throw new NotSupportedException()
             };
@@ -146,11 +153,13 @@ public class CompareLayersCommandTests
                 {
                     new ManifestLayer
                     {
-                        Digest = "layer-0"
+                        Digest = "layer-0",
+                        Size = 1
                     },
                     new ManifestLayer
                     {
-                        Digest = "layer-1"
+                        Digest = "layer-1",
+                        Size = 1
                     }
                 });
 
@@ -173,11 +182,13 @@ public class CompareLayersCommandTests
                 {
                     new ManifestLayer
                     {
-                        Digest = "layer-0"
+                        Digest = "layer-0",
+                        Size = 1
                     },
                     new ManifestLayer
                     {
-                        Digest = "layer-1a"
+                        Digest = "layer-1a",
+                        Size = 2
                     }
                 });
 
@@ -189,36 +200,36 @@ public class CompareLayersCommandTests
                         new LayerComparison[]
                         {
                             new LayerComparison(
-                                new LayerInfo("layer-0", options.IncludeHistory ? "a" : null),
-                                new LayerInfo("layer-0", options.IncludeHistory ? "a" : null),
+                                new LayerInfo("layer-0", options.IncludeHistory ? "a" : null, options.IncludeCompressedSize ? 1 : null),
+                                new LayerInfo("layer-0", options.IncludeHistory ? "a" : null, options.IncludeCompressedSize ? 1 : null),
                                 LayerDiff.Equal),
                             new LayerComparison(
-                                new LayerInfo("layer-1", options.IncludeHistory ? "b" : null),
-                                new LayerInfo("layer-1a", options.IncludeHistory ? "b" : null),
+                                new LayerInfo("layer-1", options.IncludeHistory ? "b" : null, options.IncludeCompressedSize ? 1 : null),
+                                new LayerInfo("layer-1a", options.IncludeHistory ? "b" : null, options.IncludeCompressedSize ? 2 : null),
                                 LayerDiff.NotEqual)
                         }),
-                CompareLayersOutput.Inline => options.IncludeHistory ?
-                    """
-                      layer-0
-                      a
-
-                    - layer-1
-                    - b
-                    + layer-1a
-                    + b
-                    """ :
-                    """
-                      layer-0
-                    - layer-1
-                    + layer-1a
-                    """,
+                CompareLayersOutput.Inline =>
+                    new StringBuilder()
+                        .AppendLine("  layer-0")
+                        .Append(options.IncludeHistory ? $"  a{NL}" : string.Empty)
+                        .Append(options.IncludeCompressedSize ? $"  Size (compressed): 1 bytes{NL}" : string.Empty)
+                        .Append(options.IncludeHistory || options.IncludeCompressedSize ? NL : string.Empty)
+                        .AppendLine("- layer-1")
+                        .Append(options.IncludeHistory ? $"- b{NL}" : string.Empty)
+                        .Append(options.IncludeCompressedSize ? $"- Size (compressed): 1 bytes{NL}" : string.Empty)
+                        .AppendLine("+ layer-1a")
+                        .Append(options.IncludeHistory ? $"+ b{NL}" : string.Empty)
+                        .Append(options.IncludeCompressedSize ? $"+ Size (compressed): 2 bytes{NL}" : string.Empty)
+                        .ToString(),
                 CompareLayersOutput.SideBySide =>
                     ToArray(
                         DigestRow("layer-0", "layer-0", options, LayerDiff.Equal),
                         HistoryRow("a", "a", options),
+                        CompressedSizeRow("Size (compressed): 1 bytes", "Size (compressed): 1 bytes", options),
                         EmptyRow(options),
                         DigestRow("layer-1", "layer-1a", options, LayerDiff.NotEqual),
-                        HistoryRow("b", "b", options)
+                        HistoryRow("b", "b", options),
+                        CompressedSizeRow("Size (compressed): 1 bytes", "Size (compressed): 2 bytes", options)
                     ),
                 _ => throw new NotSupportedException()
             };
@@ -255,11 +266,13 @@ public class CompareLayersCommandTests
                 {
                     new ManifestLayer
                     {
-                        Digest = "layer-0"
+                        Digest = "layer-0",
+                        Size = 1000
                     },
                     new ManifestLayer
                     {
-                        Digest = "layer-1"
+                        Digest = "layer-1",
+                        Size = 2000
                     }
                 });
 
@@ -278,7 +291,8 @@ public class CompareLayersCommandTests
                 {
                     new ManifestLayer
                     {
-                        Digest = "layer-0"
+                        Digest = "layer-0",
+                        Size = 1000
                     }
                 });
 
@@ -290,33 +304,33 @@ public class CompareLayersCommandTests
                         new LayerComparison[]
                         {
                             new LayerComparison(
-                                new LayerInfo("layer-0", options.IncludeHistory ? "a" : null),
-                                new LayerInfo("layer-0", options.IncludeHistory ? "a" : null),
+                                new LayerInfo("layer-0", options.IncludeHistory ? "a" : null, options.IncludeCompressedSize ? 1000 : null),
+                                new LayerInfo("layer-0", options.IncludeHistory ? "a" : null, options.IncludeCompressedSize ? 1000 : null),
                                 LayerDiff.Equal),
                             new LayerComparison(
-                                new LayerInfo("layer-1", options.IncludeHistory ? "b" : null),
+                                new LayerInfo("layer-1", options.IncludeHistory ? "b" : null, options.IncludeCompressedSize ? 2000 : null),
                                 null,
                                 LayerDiff.Removed)
                         }),
-                CompareLayersOutput.Inline => options.IncludeHistory ?
-                    """
-                      layer-0
-                      a
-
-                    - layer-1
-                    - b
-                    """ :
-                    """
-                      layer-0
-                    - layer-1
-                    """,
+                CompareLayersOutput.Inline =>
+                    new StringBuilder()
+                        .AppendLine("  layer-0")
+                        .Append(options.IncludeHistory ? $"  a{NL}" : string.Empty)
+                        .Append(options.IncludeCompressedSize ? $"  Size (compressed): 1 KB{NL}" : string.Empty)
+                        .Append(options.IncludeHistory || options.IncludeCompressedSize ? NL : string.Empty)
+                        .AppendLine("- layer-1")
+                        .Append(options.IncludeHistory ? $"- b{NL}" : string.Empty)
+                        .Append(options.IncludeCompressedSize ? $"- Size (compressed): 2 KB{NL}" : string.Empty)
+                        .ToString(),
                 CompareLayersOutput.SideBySide =>
                     ToArray(
                         DigestRow("layer-0", "layer-0", options, LayerDiff.Equal),
                         HistoryRow("a", "a", options),
+                        CompressedSizeRow("Size (compressed): 1 KB", "Size (compressed): 1 KB", options),
                         EmptyRow(options),
                         DigestRow("layer-1", string.Empty, options, LayerDiff.Removed),
-                        HistoryRow("b", string.Empty, options)
+                        HistoryRow("b", string.Empty, options),
+                        CompressedSizeRow("Size (compressed): 2 KB", string.Empty, options)
                     ),
                 _ => throw new NotSupportedException()
             };
@@ -349,7 +363,8 @@ public class CompareLayersCommandTests
                 {
                     new ManifestLayer
                     {
-                        Digest = "layer-0"
+                        Digest = "layer-0",
+                        Size = 1000000
                     }
                 });
 
@@ -372,11 +387,13 @@ public class CompareLayersCommandTests
                 {
                     new ManifestLayer
                     {
-                        Digest = "layer-0"
+                        Digest = "layer-0",
+                        Size = 1000000
                     },
                     new ManifestLayer
                     {
-                        Digest = "layer-1"
+                        Digest = "layer-1",
+                        Size = 2000000
                     }
                 });
 
@@ -388,33 +405,33 @@ public class CompareLayersCommandTests
                         new LayerComparison[]
                         {
                             new LayerComparison(
-                                new LayerInfo("layer-0", options.IncludeHistory ? "a" : null),
-                                new LayerInfo("layer-0", options.IncludeHistory ? "a" : null),
+                                new LayerInfo("layer-0", options.IncludeHistory ? "a" : null, options.IncludeCompressedSize ? 1000000 : null),
+                                new LayerInfo("layer-0", options.IncludeHistory ? "a" : null, options.IncludeCompressedSize ? 1000000 : null),
                                 LayerDiff.Equal),
                             new LayerComparison(
                                 null,
-                                new LayerInfo("layer-1", options.IncludeHistory ? "b" : null),
+                                new LayerInfo("layer-1", options.IncludeHistory ? "b" : null, options.IncludeCompressedSize ? 2000000 : null),
                                 LayerDiff.Added)
                         }),
-                CompareLayersOutput.Inline => options.IncludeHistory ?
-                    """
-                      layer-0
-                      a
-
-                    + layer-1
-                    + b
-                    """ :
-                    """
-                      layer-0
-                    + layer-1
-                    """,
+                CompareLayersOutput.Inline =>
+                    new StringBuilder()
+                        .AppendLine("  layer-0")
+                        .Append(options.IncludeHistory ? $"  a{NL}" : string.Empty)
+                        .Append(options.IncludeCompressedSize ? $"  Size (compressed): 976.6 KB{NL}" : string.Empty)
+                        .Append(options.IncludeHistory || options.IncludeCompressedSize ? NL : string.Empty)
+                        .AppendLine("+ layer-1")
+                        .Append(options.IncludeHistory ? $"+ b{NL}" : string.Empty)
+                        .Append(options.IncludeCompressedSize ? $"+ Size (compressed): 1.9 MB{NL}" : string.Empty)
+                        .ToString(),
                 CompareLayersOutput.SideBySide =>
                     ToArray(
                         DigestRow("layer-0", "layer-0", options, LayerDiff.Equal),
                         HistoryRow("a", "a", options),
+                        CompressedSizeRow("Size (compressed): 976.6 KB", "Size (compressed): 976.6 KB", options),
                         EmptyRow(options),
                         DigestRow(string.Empty, "layer-1", options, LayerDiff.Added),
-                        HistoryRow(string.Empty, "b", options)
+                        HistoryRow(string.Empty, "b", options),
+                        CompressedSizeRow(string.Empty, "Size (compressed): 1.9 MB", options)
                     ),
                 _ => throw new NotSupportedException()
             };
@@ -451,11 +468,13 @@ public class CompareLayersCommandTests
                 {
                     new ManifestLayer
                     {
-                        Digest = "layer-0"
+                        Digest = "layer-0",
+                        Size = 1
                     },
                     new ManifestLayer
                     {
-                        Digest = "layer-1"
+                        Digest = "layer-1",
+                        Size = 2
                     }
                 });
 
@@ -478,11 +497,13 @@ public class CompareLayersCommandTests
                 {
                     new ManifestLayer
                     {
-                        Digest = "layer-0"
+                        Digest = "layer-0",
+                        Size = 1
                     },
                     new ManifestLayer
                     {
-                        Digest = "layer-1"
+                        Digest = "layer-1",
+                        Size = 2
                     }
                 });
 
@@ -497,35 +518,40 @@ public class CompareLayersCommandTests
                         new LayerComparison[]
                         {
                             new LayerComparison(
-                                new LayerInfo("layer-0", options.IncludeHistory ? "a" : null),
-                                new LayerInfo("layer-0", options.IncludeHistory ? "a" : null),
+                                new LayerInfo("layer-0", options.IncludeHistory ? "a" : null, options.IncludeCompressedSize ? 1 : null),
+                                new LayerInfo("layer-0", options.IncludeHistory ? "a" : null, options.IncludeCompressedSize ? 1 : null),
                                 LayerDiff.Equal),
                             new LayerComparison(
-                                new LayerInfo("layer-1", options.IncludeHistory ? "b" : null),
-                                new LayerInfo("layer-1", options.IncludeHistory ? "b1" : null),
+                                new LayerInfo("layer-1", options.IncludeHistory ? "b" : null, options.IncludeCompressedSize ? 2 : null),
+                                new LayerInfo("layer-1", options.IncludeHistory ? "b1" : null, options.IncludeCompressedSize ? 2 : null),
                                 options.IncludeHistory ? LayerDiff.NotEqual : LayerDiff.Equal)
                         }),
-                CompareLayersOutput.Inline => options.IncludeHistory ?
-                    """
-                      layer-0
-                      a
-
-                    - layer-1
-                    - b
-                    + layer-1
-                    + b1
-                    """ :
-                    """
-                      layer-0
-                      layer-1
-                    """,
+                CompareLayersOutput.Inline =>
+                    new StringBuilder()
+                        .AppendLine("  layer-0")
+                        .Append(options.IncludeHistory ? $"  a{NL}" : string.Empty)
+                        .Append(options.IncludeCompressedSize ? $"  Size (compressed): 1 bytes{NL}" : string.Empty)
+                        .Append(options.IncludeHistory || options.IncludeCompressedSize ? NL : string.Empty)
+                        .Append(options.IncludeHistory ? "- " : "  ")
+                        .AppendLine("layer-1")
+                        .Append(options.IncludeHistory ? $"- b{NL}" : string.Empty)
+                        .Append(options.IncludeHistory && options.IncludeCompressedSize ? "- " : options.IncludeCompressedSize ? "  " : string.Empty)
+                        .Append(options.IncludeCompressedSize ? $"Size (compressed): 2 bytes{NL}" : string.Empty)
+                        .Append(options.IncludeHistory ? "+ " : "  ")
+                        .Append(options.IncludeHistory ? $"layer-1{NL}" : string.Empty)
+                        .Append(options.IncludeHistory ? $"+ b1{NL}" : string.Empty)
+                        .Append(options.IncludeHistory && options.IncludeCompressedSize ? "+ " : "  ")
+                        .Append(options.IncludeHistory && options.IncludeCompressedSize ? $"Size (compressed): 2 bytes{NL}" : string.Empty)
+                        .ToString(),
                 CompareLayersOutput.SideBySide =>
                     ToArray(
                         DigestRow("layer-0", "layer-0", options, LayerDiff.Equal),
                         HistoryRow("a", "a", options),
+                        CompressedSizeRow("Size (compressed): 1 bytes", "Size (compressed): 1 bytes", options),
                         EmptyRow(options),
                         DigestRow("layer-1", "layer-1", options, options.IncludeHistory ? LayerDiff.NotEqual : LayerDiff.Equal),
-                        HistoryRow("b", "b1", options)
+                        HistoryRow("b", "b1", options),
+                        CompressedSizeRow("Size (compressed): 2 bytes", "Size (compressed): 2 bytes", options)
                     ),
                 _ => throw new NotSupportedException()
             };
@@ -567,11 +593,13 @@ public class CompareLayersCommandTests
                 {
                     new ManifestLayer
                     {
-                        Digest = "layer-0"
+                        Digest = "layer-0",
+                        Size = 1
                     },
                     new ManifestLayer
                     {
-                        Digest = "layer-1"
+                        Digest = "layer-1",
+                        Size = 2
                     }
                 });
 
@@ -599,23 +627,25 @@ public class CompareLayersCommandTests
                 {
                     new ManifestLayer
                     {
-                        Digest = "layer-0"
+                        Digest = "layer-0",
+                        Size = 1
                     },
                     new ManifestLayer
                     {
-                        Digest = "layer-1"
+                        Digest = "layer-1",
+                        Size = 2
                     }
                 });
 
             List<LayerComparison> comparisons = new()
             {
                 new LayerComparison(
-                    new LayerInfo("layer-0", options.IncludeHistory ? "a" : null),
-                    new LayerInfo("layer-0", options.IncludeHistory ? "a" : null),
+                    new LayerInfo("layer-0", options.IncludeHistory ? "a" : null, options.IncludeCompressedSize ? 1 : null),
+                    new LayerInfo("layer-0", options.IncludeHistory ? "a" : null, options.IncludeCompressedSize ? 1 : null),
                     LayerDiff.Equal),
                 new LayerComparison(
-                    new LayerInfo("layer-1", options.IncludeHistory ? "c" : null),
-                    new LayerInfo("layer-1", options.IncludeHistory ? "c" : null),
+                    new LayerInfo("layer-1", options.IncludeHistory ? "c" : null, options.IncludeCompressedSize ? 2 : null),
+                    new LayerInfo("layer-1", options.IncludeHistory ? "c" : null, options.IncludeCompressedSize ? 2 : null),
                     LayerDiff.Equal)
             };
 
@@ -623,8 +653,8 @@ public class CompareLayersCommandTests
             {
                 comparisons.Insert(1,
                     new LayerComparison(
-                        new LayerInfo(null, "b"),
-                        new LayerInfo(null, "b1"),
+                        new LayerInfo(null, "b", options.IncludeCompressedSize ? 0 : null),
+                        new LayerInfo(null, "b1", options.IncludeCompressedSize ? 0 : null),
                         LayerDiff.NotEqual));
             }
 
@@ -637,35 +667,40 @@ public class CompareLayersCommandTests
                             targetIncludesAllBaseLayers: !options.IncludeHistory,
                             lastCommonLayerIndex: options.IncludeHistory ? 0 : 1),
                         comparisons),
-                CompareLayersOutput.Inline => options.IncludeHistory ?
-                    """
-                      layer-0
-                      a
-
-                    - <empty layer>
-                    - b
-                    + <empty layer>
-                    + b1
-
-                      layer-1
-                      c
-                    """ :
-                    """
-                      layer-0
-                      layer-1
-                    """,
+                CompareLayersOutput.Inline =>
+                    new StringBuilder()
+                        .AppendLine("  layer-0")
+                        .Append(options.IncludeHistory ? $"  a{NL}" : string.Empty)
+                        .Append(options.IncludeCompressedSize ? $"  Size (compressed): 1 bytes{NL}" : string.Empty)
+                        .Append(options.IncludeHistory || options.IncludeCompressedSize ? NL : string.Empty)
+                        .Append(options.IncludeHistory ? $"- <empty layer>{NL}" : string.Empty)
+                        .Append(options.IncludeHistory ? $"- b{NL}" : string.Empty)
+                        .Append(options.IncludeHistory && options.IncludeCompressedSize ? $"- Size (compressed): 0 bytes{NL}" : string.Empty)
+                        .Append(options.IncludeHistory ? $"+ <empty layer>{NL}" : string.Empty)
+                        .Append(options.IncludeHistory ? $"+ b1{NL}" : string.Empty)
+                        .Append(options.IncludeHistory && options.IncludeCompressedSize ? $"+ Size (compressed): 0 bytes{NL}" : string.Empty)
+                        .Append(options.IncludeHistory ? NL : string.Empty)
+                        .AppendLine("  layer-1")
+                        .Append(options.IncludeHistory ? $"  c{NL}" : string.Empty)
+                        .Append(options.IncludeCompressedSize ? $"  Size (compressed): 2 bytes{NL}" : string.Empty)
+                        .ToString(),
                 CompareLayersOutput.SideBySide =>
                     ToArray(
                         DigestRow("layer-0", "layer-0", options, LayerDiff.Equal),
                         HistoryRow("a", "a", options),
+                        CompressedSizeRow("Size (compressed): 1 bytes", "Size (compressed): 1 bytes", options),
                         EmptyRow(options),
                         options.IncludeHistory ?
                             DigestRow("<empty layer>", "<empty layer>", options, LayerDiff.NotEqual) :
                             null,
-                        options.IncludeHistory ? HistoryRow("b", "b1", options) : null,
-                        EmptyRow(options),
+                        HistoryRow("b", "b1", options),
+                        options.IncludeHistory ?
+                            CompressedSizeRow("Size (compressed): 0 bytes", "Size (compressed): 0 bytes", options) :
+                            null,
+                        options.IncludeHistory ? EmptyRow(options) : null,
                         DigestRow("layer-1", "layer-1", options, LayerDiff.Equal),
-                        HistoryRow("c", "c", options)
+                        HistoryRow("c", "c", options),
+                        CompressedSizeRow("Size (compressed): 2 bytes", "Size (compressed): 2 bytes", options)
                     ),
                 _ => throw new NotSupportedException()
             };
@@ -695,13 +730,15 @@ public class CompareLayersCommandTests
 
     public class CommandOptions
     {
-        public CommandOptions(bool includeHistory, bool isColorDisabled)
+        public CommandOptions(bool includeHistory, bool includeCompressedSize, bool isColorDisabled)
         {
             IncludeHistory = includeHistory;
+            IncludeCompressedSize = includeCompressedSize;
             IsColorDisabled = isColorDisabled;
         }
 
         public bool IncludeHistory { get; }
+        public bool IncludeCompressedSize { get; }
         public bool IsColorDisabled { get; }
     }
 
@@ -777,7 +814,8 @@ public class CompareLayersCommandTests
             targetImageName.ToString(),
             format,
             isColorDisabled: cmdOptions.IsColorDisabled,
-            includeHistory: cmdOptions.IncludeHistory);
+            includeHistory: cmdOptions.IncludeHistory,
+            includeCompressedSize: cmdOptions.IncludeCompressedSize);
     }
 
     private static void CompareJson<T>(T expected, T actual) =>
@@ -836,7 +874,7 @@ public class CompareLayersCommandTests
             .ToArray();
 
     private static string[]? EmptyRow(CommandOptions options) =>
-        options.IncludeHistory ?
+        options.IncludeHistory || options.IncludeCompressedSize ?
             ToArray(string.Empty, options.IsColorDisabled ? string.Empty : null, string.Empty) :
             null;
 
@@ -845,6 +883,9 @@ public class CompareLayersCommandTests
 
     private static string[]? HistoryRow(string baseHistory, string targetHistory, CommandOptions options) =>
         options.IncludeHistory ? ToArray(baseHistory, options.IsColorDisabled ? string.Empty : null, targetHistory) : null;
+
+    private static string[]? CompressedSizeRow(string baseSize, string targetSize, CommandOptions options) =>
+        options.IncludeCompressedSize ? ToArray(baseSize, options.IsColorDisabled ? string.Empty : null, targetSize) : null;
 
     private static string GetDisplayName(LayerDiff diff) =>
         diff switch

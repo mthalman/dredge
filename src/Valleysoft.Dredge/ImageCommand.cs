@@ -418,6 +418,9 @@ public class ImageCommand : Command
 
         public class LayersCommand : Command
         {
+            private static readonly string[] SizeSuffixes =
+                { "bytes", "KB", "MB", "GB", "TB", "PB", "EB", "ZB", "YB" };
+
             private readonly IDockerRegistryClientFactory dockerRegistryClientFactory;
 
             public LayersCommand(IDockerRegistryClientFactory dockerRegistryClientFactory) : base("layers", "Compares two images by layers")
@@ -437,32 +440,38 @@ public class ImageCommand : Command
                 Option<bool> historyOption = new("--history", "Include layer history as part of the comparison");
                 AddOption(historyOption);
 
-                this.SetHandler(ExecuteAsync, baseImageArg, targetImageArg, outputOption, noColorOption, historyOption);
+                Option<bool> compressedSizeOption = new("--compressed-size", "Show the compressed size of the layer");
+                AddOption(compressedSizeOption);
+
+                this.SetHandler(ExecuteAsync, baseImageArg, targetImageArg, outputOption, noColorOption, historyOption, compressedSizeOption);
                 this.dockerRegistryClientFactory = dockerRegistryClientFactory;
             }
 
-            private Task ExecuteAsync(string baseImage, string targetImage, CompareLayersOutput outputFormat, bool isColorDisabled, bool includeHistory)
+            private Task ExecuteAsync(string baseImage, string targetImage, CompareLayersOutput outputFormat, bool isColorDisabled,
+                bool includeHistory, bool includeCompressedSize)
             {
                 return CommandHelper.ExecuteCommandAsync(registry: null, async () =>
                 {
-                    IRenderable output = await GetOutputAsync(baseImage, targetImage, outputFormat, isColorDisabled, includeHistory);
+                    IRenderable output = await GetOutputAsync(baseImage, targetImage, outputFormat, isColorDisabled, includeHistory, includeCompressedSize);
                     AnsiConsole.Write(output);
                 });
             }
 
             public async Task<IRenderable> GetOutputAsync(
-                string baseImage, string targetImage, CompareLayersOutput outputFormat, bool isColorDisabled, bool includeHistory)
+                string baseImage, string targetImage, CompareLayersOutput outputFormat, bool isColorDisabled, bool includeHistory,
+                bool includeCompressedSize)
             {
-                CompareLayersResult result = await GetCompareLayersResult(baseImage, targetImage, includeHistory);
+                CompareLayersResult result = await GetCompareLayersResult(baseImage, targetImage, includeHistory, includeCompressedSize);
                 OutputFormatter formatter = OutputFormatter.Create(outputFormat);
-                IRenderable output = formatter.GetOutput(result, baseImage, targetImage, isColorDisabled, includeHistory);
+                IRenderable output = formatter.GetOutput(result, baseImage, targetImage, isColorDisabled, includeHistory, includeCompressedSize);
                 return output;
             }
 
-            private async Task<CompareLayersResult> GetCompareLayersResult(string baseImage, string targetImage, bool includeHistory)
+            private async Task<CompareLayersResult> GetCompareLayersResult(string baseImage, string targetImage, bool includeHistory,
+                bool includeCompressedSize)
             {
-                IList<LayerInfo> baseLayers = await GetLayersAsync(baseImage, includeHistory);
-                IList<LayerInfo> targetLayers = await GetLayersAsync(targetImage, includeHistory);
+                IList<LayerInfo> baseLayers = await GetLayersAsync(baseImage, includeHistory, includeCompressedSize);
+                IList<LayerInfo> targetLayers = await GetLayersAsync(targetImage, includeHistory, includeCompressedSize);
                 List<LayerComparison> layerComparisons = GetLayerComparisons(baseLayers, targetLayers);
                 CompareLayersSummary summary = GetSummary(layerComparisons);
 
@@ -564,14 +573,14 @@ public class ImageCommand : Command
                     _ => throw new NotImplementedException()
                 };
 
-            private static Markup GetHistoryMarkup(LayerInfo? layer, LayerDiff diff, bool isBase, bool isColorDisabled,
+            private static Markup GetLayerDataMarkup(string? layerData, LayerDiff diff, bool isBase, bool isColorDisabled,
                 bool isInline) =>
                 new(
-                    Markup.Escape($"{GetTextOffset(diff, isInline, isBase)}{layer?.History ?? string.Empty}"),
+                    Markup.Escape($"{GetTextOffset(diff, isInline, isBase)}{layerData ?? string.Empty}"),
                     new Style(GetLayerDiffColor(diff, isBaseLayer: isBase, isColorDisabled)));
 
             private static Markup GetDigestMarkup(LayerInfo? layer, LayerDiff diff, bool isBase, bool isColorDisabled,
-                bool includeHistory, bool isInline)
+                bool includeSupplementalData, bool isInline)
             {
                 if (layer is null)
                 {
@@ -579,14 +588,14 @@ public class ImageCommand : Command
                 }
 
                 string digestMarkup = string.Empty;
-                if (includeHistory)
+                if (includeSupplementalData)
                 {
-                    digestMarkup += $"[{(includeHistory ? Decoration.Invert : Decoration.None).ToString().ToLower()}]";
+                    digestMarkup += $"[{Decoration.Invert.ToString().ToLower()}]";
                 }
 
                 digestMarkup += $"{Markup.Escape(layer?.Digest ?? "<empty layer>")}";
 
-                if (includeHistory)
+                if (includeSupplementalData)
                 {
                     // Close the markup tag
                     digestMarkup += "[/]";
@@ -607,7 +616,7 @@ public class ImageCommand : Command
                     _ => throw new NotImplementedException()
                 };
 
-            private async Task<IList<LayerInfo>> GetLayersAsync(string image, bool includeHistory)
+            private async Task<IList<LayerInfo>> GetLayersAsync(string image, bool includeHistory, bool includeCompressedSize)
             {
                 ImageName imageName = ImageName.Parse(image);
                 using IDockerRegistryClient client = await dockerRegistryClientFactory.GetClientAsync(imageName.Registry);
@@ -629,12 +638,67 @@ public class ImageCommand : Command
                 {
                     if (includeHistory || !history.IsEmptyLayer)
                     {
-                        string? layerDigest = !history.IsEmptyLayer ? manifest.Layers[layerIndex++].Digest : null;
-                        layerInfos.Add(new LayerInfo(layerDigest, includeHistory ? history.CreatedBy : null));
+                        string? layerDigest = !history.IsEmptyLayer ? manifest.Layers[layerIndex].Digest : null;
+                        long? compressedSize = null;
+                        if (includeCompressedSize)
+                        {
+                            if (history.IsEmptyLayer)
+                            {
+                                compressedSize = 0;
+                            }
+                            else
+                            {
+                                compressedSize = manifest.Layers[layerIndex].Size;
+                            }
+                        }
+
+                        layerInfos.Add(
+                            new LayerInfo(
+                                layerDigest,
+                                includeHistory ? history.CreatedBy : null,
+                                includeCompressedSize ? compressedSize : null));
+
+                        if (!history.IsEmptyLayer)
+                        {
+                            layerIndex++;
+                        }
                     }
                 }
 
                 return layerInfos;
+            }
+
+            private static string? FormatCompressedSize(long? size)
+            {
+                if (size is null)
+                {
+                    return null;
+                }
+
+                return $"Size (compressed): {SizeSuffix(size.Value)}";
+            }
+
+            private static string SizeSuffix(long value)
+            {
+                int decimalPlaces = 1;
+
+                int i = 0;
+                decimal dValue = value;
+                while (Math.Round(dValue, decimalPlaces) >= 1000)
+                {
+                    dValue /= 1024;
+                    i++;
+                }
+
+                dValue = Math.Round(dValue, decimalPlaces);
+
+                // If the number to the right of the decimal point is 0, don't include the decimal point in the output
+                if ((dValue * 10) % 10 == 0)
+                {
+                    decimalPlaces = 0;
+                }
+
+                return string.Format("{0:n" + decimalPlaces + "} {1}", dValue, SizeSuffixes[i]);
             }
 
             private abstract class OutputFormatter
@@ -650,11 +714,13 @@ public class ImageCommand : Command
 
 
                 public abstract IRenderable GetOutput(CompareLayersResult result, string baseImage, string targetImage, bool isColorDisabled,
-                    bool includeHistory);
+                    bool includeHistory, bool includeCompressedSize);
 
                 private class SideBySideFormatter : OutputFormatter
                 {
-                    public override IRenderable GetOutput(CompareLayersResult result, string baseImage, string targetImage, bool isColorDisabled, bool includeHistory)
+                    public override IRenderable GetOutput(
+                        CompareLayersResult result, string baseImage, string targetImage, bool isColorDisabled, bool includeHistory,
+                        bool includeCompressedSize)
                     {
                         Table table = new Table()
                             .AddColumn(baseImage);
@@ -669,36 +735,49 @@ public class ImageCommand : Command
 
                         for (int i = 0; i < result.LayerComparisons.Count(); i++)
                         {
-                            AddTableRows(result, isColorDisabled, includeHistory, table, i);
+                            AddTableRows(result, isColorDisabled, includeHistory, includeCompressedSize, table, i);
                         }
 
                         return table;
                     }
 
-                    private static void AddTableRows(CompareLayersResult result, bool isColorDisabled, bool includeHistory, Table table, int i)
+                    private static void AddTableRows(CompareLayersResult result, bool isColorDisabled, bool includeHistory,
+                        bool includeCompressedSize, Table table, int i)
                     {
                         LayerComparison layerComparison = result.LayerComparisons.ElementAt(i);
                         IEnumerable<IRenderable> digestRowCells =
-                            GetDigestRowCells(isColorDisabled, includeHistory, layerComparison);
+                            GetDigestRowCells(isColorDisabled, includeHistory || includeCompressedSize, layerComparison);
                         table.AddRow(digestRowCells);
 
                         if (includeHistory)
                         {
                             List<IRenderable> historyRowCells = GetHistoryRowCells(isColorDisabled, layerComparison);
                             table.AddRow(historyRowCells);
+                        }
 
-                            if (i + 1 != result.LayerComparisons.Count())
-                            {
-                                table.AddEmptyRow();
-                            }
+                        if (includeCompressedSize)
+                        {
+                            List<IRenderable> compressedSizeRowCells = GetCompressedSizeRowCells(isColorDisabled, layerComparison);
+                            table.AddRow(compressedSizeRowCells);
+                        }
+
+                        if ((includeHistory || includeCompressedSize) && i + 1 != result.LayerComparisons.Count())
+                        {
+                            table.AddEmptyRow();
                         }
                     }
 
-                    private static List<IRenderable> GetHistoryRowCells(bool isColorDisabled, LayerComparison layerComparison)
+                    private static List<IRenderable> GetHistoryRowCells(bool isColorDisabled, LayerComparison layerComparison) =>
+                        GetLayerDataRowCells(isColorDisabled, layerComparison, layerInfo => layerInfo?.History);
+
+                    private static List<IRenderable> GetCompressedSizeRowCells(bool isColorDisabled, LayerComparison layerComparison) =>
+                        GetLayerDataRowCells(isColorDisabled, layerComparison, layerInfo => FormatCompressedSize(layerInfo?.CompressedSize));
+
+                    private static List<IRenderable> GetLayerDataRowCells(bool isColorDisabled, LayerComparison layerComparison, Func<LayerInfo?, string?> getLayerData)
                     {
                         List<IRenderable> historyCells = new()
                         {
-                            GetHistoryMarkup(layerComparison.Base, layerComparison.LayerDiff, isBase: true, isColorDisabled, isInline: false)
+                            GetLayerDataMarkup(getLayerData(layerComparison.Base), layerComparison.LayerDiff, isBase: true, isColorDisabled, isInline: false)
                         };
 
                         if (isColorDisabled)
@@ -706,16 +785,16 @@ public class ImageCommand : Command
                             historyCells.Add(new Markup(string.Empty));
                         }
 
-                        historyCells.Add(GetHistoryMarkup(layerComparison.Target, layerComparison.LayerDiff, isBase: false, isColorDisabled, isInline: false));
+                        historyCells.Add(GetLayerDataMarkup(getLayerData(layerComparison.Target), layerComparison.LayerDiff, isBase: false, isColorDisabled, isInline: false));
                         return historyCells;
                     }
 
-                    private static IEnumerable<IRenderable> GetDigestRowCells(bool isColorDisabled, bool includeHistory, LayerComparison layerComparison)
+                    private static IEnumerable<IRenderable> GetDigestRowCells(bool isColorDisabled, bool includeSupplementalData, LayerComparison layerComparison)
                     {
                         List<IRenderable> shaCells = new()
                         {
                             GetDigestMarkup(
-                                layerComparison.Base, layerComparison.LayerDiff, isBase : true, isColorDisabled, includeHistory, isInline: false)
+                                layerComparison.Base, layerComparison.LayerDiff, isBase : true, isColorDisabled, includeSupplementalData, isInline: false)
                         };
                         if (isColorDisabled)
                         {
@@ -724,7 +803,7 @@ public class ImageCommand : Command
 
                         shaCells.Add(
                             GetDigestMarkup(
-                                layerComparison.Target, layerComparison.LayerDiff, isBase: false, isColorDisabled, includeHistory, isInline: false));
+                                layerComparison.Target, layerComparison.LayerDiff, isBase: false, isColorDisabled, includeSupplementalData, isInline: false));
                         return shaCells;
                     }
 
@@ -735,7 +814,9 @@ public class ImageCommand : Command
 
                 private class InlineFormatter : OutputFormatter
                 {
-                    public override IRenderable GetOutput(CompareLayersResult result, string baseImage, string targetImage, bool isColorDisabled, bool includeHistory)
+                    public override IRenderable GetOutput(
+                        CompareLayersResult result, string baseImage, string targetImage, bool isColorDisabled, bool includeHistory,
+                        bool includeCompressedSize)
                     {
                         List<IRenderable> rows = new();
 
@@ -745,15 +826,20 @@ public class ImageCommand : Command
 
                             if (layerComparison.Base is not null)
                             {
-                                AddInlineLayerInfo(rows, layerComparison.Base, layerComparison.LayerDiff, isBase: true, isColorDisabled, includeHistory);
+                                AddInlineLayerInfo(
+                                    rows, layerComparison.Base, layerComparison.LayerDiff, isBase: true, isColorDisabled, includeHistory,
+                                    includeCompressedSize);
                             }
 
                             if (layerComparison.LayerDiff != LayerDiff.Equal && layerComparison.Target is not null)
                             {
-                                AddInlineLayerInfo(rows, layerComparison.Target, layerComparison.LayerDiff, isBase: false, isColorDisabled, includeHistory);
+                                AddInlineLayerInfo(
+                                    rows, layerComparison.Target, layerComparison.LayerDiff, isBase: false, isColorDisabled, includeHistory,
+                                    includeCompressedSize);
                             }
 
-                            if (includeHistory && i + 1 != result.LayerComparisons.Count())
+                            // Add an empty row if we're not on the last layer
+                            if ((includeHistory || includeCompressedSize) && i + 1 != result.LayerComparisons.Count())
                             {
                                 rows.Add(new Text(string.Empty));
                             }
@@ -763,19 +849,25 @@ public class ImageCommand : Command
                     }
 
                     private static void AddInlineLayerInfo(List<IRenderable> rows, LayerInfo layer, LayerDiff diff, bool isBase,
-                        bool isColorDisabled, bool includeHistory)
+                        bool isColorDisabled, bool includeHistory, bool includeCompressedSize)
                     {
-                        rows.Add(GetDigestMarkup(layer, diff, isBase, isColorDisabled, includeHistory, isInline: true));
+                        rows.Add(GetDigestMarkup(layer, diff, isBase, isColorDisabled, includeHistory || includeCompressedSize, isInline: true));
                         if (includeHistory)
                         {
-                            rows.Add(GetHistoryMarkup(layer, diff, isBase, isColorDisabled, isInline: true));
+                            rows.Add(GetLayerDataMarkup(layer.History, diff, isBase, isColorDisabled, isInline: true));
+                        }
+                        if (includeCompressedSize)
+                        {
+                            rows.Add(GetLayerDataMarkup(FormatCompressedSize(layer.CompressedSize), diff, isBase, isColorDisabled, isInline: true));
                         }
                     }
                 }
 
                 private class JsonFormatter : OutputFormatter
                 {
-                    public override IRenderable GetOutput(CompareLayersResult result, string baseImage, string targetImage, bool isColorDisabled, bool includeHistory)
+                    public override IRenderable GetOutput(
+                        CompareLayersResult result, string baseImage, string targetImage, bool isColorDisabled, bool includeHistory,
+                        bool includeCompressedSize)
                     {
                         string output = JsonConvert.SerializeObject(result, new JsonSerializerSettings
                         {
