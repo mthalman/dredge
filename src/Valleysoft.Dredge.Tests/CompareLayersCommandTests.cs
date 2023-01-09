@@ -759,8 +759,8 @@ public class CompareLayersCommandTests
         string scenario, CommandOptions cmdOptions, ImageSetup baseImageSetup, ImageSetup targetImageSetup, string expectedResult)
     {
         Rows rows = (Rows)await ExecuteTestAsync(scenario, CompareLayersOutput.Inline, cmdOptions, baseImageSetup, targetImageSetup);
-        string actualResult = GetString(rows.GetSegments(AnsiConsole.Console));
-        Assert.Equal(Normalize(expectedResult), Normalize(actualResult));
+        string actualResult = TestHelper.GetString(rows.GetSegments(AnsiConsole.Console));
+        Assert.Equal(TestHelper.Normalize(expectedResult), TestHelper.Normalize(actualResult));
     }
 
     [Theory]
@@ -771,8 +771,8 @@ public class CompareLayersCommandTests
         Table table = (Table)await ExecuteTestAsync(scenario, CompareLayersOutput.SideBySide, cmdOptions, baseImageSetup, targetImageSetup);
 
         Assert.Equal(cmdOptions.IsColorDisabled ? 3 : 2, table.Columns.Count);
-        Assert.Equal(baseImageName.ToString(), GetString(table.Columns[0].Header.GetSegments(AnsiConsole.Console)));
-        Assert.Equal(targetImageName.ToString(), GetString(table.Columns[^1].Header.GetSegments(AnsiConsole.Console)));
+        Assert.Equal(baseImageName.ToString(), TestHelper.GetString(table.Columns[0].Header.GetSegments(AnsiConsole.Console)));
+        Assert.Equal(targetImageName.ToString(), TestHelper.GetString(table.Columns[^1].Header.GetSegments(AnsiConsole.Console)));
 
         Assert.Equal(expectedRows.Length, table.Rows.Count);
 
@@ -785,14 +785,11 @@ public class CompareLayersCommandTests
             for (int columnIndex = 0; columnIndex < expectedRowCells.Length; columnIndex++)
             {
                 string expectedText = expectedRowCells[columnIndex];
-                string actualText = GetString(actualRow[columnIndex].GetSegments(AnsiConsole.Console));
+                string actualText = TestHelper.GetString(actualRow[columnIndex].GetSegments(AnsiConsole.Console));
                 Assert.Equal(expectedText, actualText);
             }
         }
     }
-
-    private static string Normalize(string val) =>
-        val.Replace("\r", string.Empty).TrimEnd();
 
     private static Task<IRenderable> ExecuteTestAsync(string scenario, CompareLayersOutput format, CommandOptions cmdOptions, ImageSetup baseImageSetup, ImageSetup targetImageSetup)
     {
@@ -822,17 +819,7 @@ public class CompareLayersCommandTests
         Assert.Equal(JsonConvert.SerializeObject(expected), JsonConvert.SerializeObject(actual));
 
     private static T GetJson<T>(IEnumerable<Segment> segments) =>
-        JsonConvert.DeserializeObject<T>(GetString(segments))!;
-
-    private static string GetString(IEnumerable<Segment> segments)
-    {
-        StringBuilder builder = new();
-        foreach (Segment segment in segments)
-        {
-            builder.Append(segment.Text);
-        }
-        return builder.ToString();
-    }
+        JsonConvert.DeserializeObject<T>(TestHelper.GetString(segments))!;
 
     private static void SetupDockerRegistryClient(
         Mock<IDockerRegistryClient> registryClientMock, ImageName imageName, Image imageConfig, ManifestLayer[] layers)

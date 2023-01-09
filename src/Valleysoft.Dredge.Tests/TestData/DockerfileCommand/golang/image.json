@@ -1,0 +1,64 @@
+// "library/golang@sha256:766625f2182dacec4c8774355a65a81a3b73acb0b4287b6a32a8efc185aede2c"
+{
+  "os":  "linux",
+  "history": [
+    {
+      "created": "2022-12-21T01:20:21.922936512Z",
+      "created_by": "/bin/sh -c #(nop) ADD file:c13b430c8699df107ffd9ea5230b92238bc037a8e1cbbe35d6ab664941d575da in / "
+    },
+    {
+      "created": "2022-12-21T01:20:22.590344295Z",
+      "created_by": "/bin/sh -c #(nop)  CMD [\"bash\"]",
+      "empty_layer": true
+    },
+    {
+      "created": "2022-12-21T11:13:51.512187477Z",
+      "created_by": "/bin/sh -c set -eux; \tapt-get update; \tapt-get install -y --no-install-recommends \t\tca-certificates \t\tcurl \t\tnetbase \t\twget \t; \trm -rf /var/lib/apt/lists/*"
+    },
+    {
+      "created": "2022-12-21T11:13:58.806979115Z",
+      "created_by": "/bin/sh -c set -ex; \tif ! command -v gpg > /dev/null; then \t\tapt-get update; \t\tapt-get install -y --no-install-recommends \t\t\tgnupg \t\t\tdirmngr \t\t; \t\trm -rf /var/lib/apt/lists/*; \tfi"
+    },
+    {
+      "created": "2022-12-21T11:14:17.676013622Z",
+      "created_by": "/bin/sh -c apt-get update && apt-get install -y --no-install-recommends \t\tgit \t\tmercurial \t\topenssh-client \t\tsubversion \t\t\t\tprocps \t&& rm -rf /var/lib/apt/lists/*"
+    },
+    {
+      "created": "2022-12-21T17:03:24.401848277Z",
+      "created_by": "/bin/sh -c set -eux; \tapt-get update; \tapt-get install -y --no-install-recommends \t\tg++ \t\tgcc \t\tlibc6-dev \t\tmake \t\tpkg-config \t; \trm -rf /var/lib/apt/lists/*"
+    },
+    {
+      "created": "2022-12-21T17:03:25.042977729Z",
+      "created_by": "/bin/sh -c #(nop)  ENV PATH=/usr/local/go/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin",
+      "empty_layer": true
+    },
+    {
+      "created": "2022-12-21T17:04:20.804087865Z",
+      "created_by": "/bin/sh -c #(nop)  ENV GOLANG_VERSION=1.19.4",
+      "empty_layer": true
+    },
+    {
+      "created": "2022-12-21T17:04:34.285435675Z",
+      "created_by": "/bin/sh -c set -eux; \tarch=\"$(dpkg --print-architecture)\"; arch=\"${arch##*-}\"; \turl=; \tcase \"$arch\" in \t\t'amd64') \t\t\turl='https://dl.google.com/go/go1.19.4.linux-amd64.tar.gz'; \t\t\tsha256='c9c08f783325c4cf840a94333159cc937f05f75d36a8b307951d5bd959cf2ab8'; \t\t\t;; \t\t'armel') \t\t\texport GOARCH='arm' GOARM='5' GOOS='linux'; \t\t\t;; \t\t'armhf') \t\t\turl='https://dl.google.com/go/go1.19.4.linux-armv6l.tar.gz'; \t\t\tsha256='7a51dae4f3a52d2dfeaf59367cc0b8a296deddc87e95aa619bf87d24661d2370'; \t\t\t;; \t\t'arm64') \t\t\turl='https://dl.google.com/go/go1.19.4.linux-arm64.tar.gz'; \t\t\tsha256='9df122d6baf6f2275270306b92af3b09d7973fb1259257e284dba33c0db14f1b'; \t\t\t;; \t\t'i386') \t\t\turl='https://dl.google.com/go/go1.19.4.linux-386.tar.gz'; \t\t\tsha256='e5f0b0551e120bf3d1246cb960ec58032d7ca69e1adcf0fdb91c07da620e0c61'; \t\t\t;; \t\t'mips64el') \t\t\texport GOARCH='mips64le' GOOS='linux'; \t\t\t;; \t\t'ppc64el') \t\t\turl='https://dl.google.com/go/go1.19.4.linux-ppc64le.tar.gz'; \t\t\tsha256='fbc6c7d1d169bbdc82223d861d2fadc6add01c126533d3efbba3fdca9b362035'; \t\t\t;; \t\t's390x') \t\t\turl='https://dl.google.com/go/go1.19.4.linux-s390x.tar.gz'; \t\t\tsha256='4b8d25acbdca8010c31ea8c5fd4aba93471ff6ada7a8b4fb04b935baee873dc8'; \t\t\t;; \t\t*) echo >&2 \"error: unsupported architecture '$arch' (likely packaging update needed)\"; exit 1 ;; \tesac; \tbuild=; \tif [ -z \"$url\" ]; then \t\tbuild=1; \t\turl='https://dl.google.com/go/go1.19.4.src.tar.gz'; \t\tsha256='eda74db4ac494800a3e66ee784e495bfbb9b8e535df924a8b01b1a8028b7f368'; \t\techo >&2; \t\techo >&2 \"warning: current architecture ($arch) does not have a compatible Go binary release; will be building from source\"; \t\techo >&2; \tfi; \t\twget -O go.tgz.asc \"$url.asc\"; \twget -O go.tgz \"$url\" --progress=dot:giga; \techo \"$sha256 *go.tgz\" | sha256sum -c -; \t\tGNUPGHOME=\"$(mktemp -d)\"; export GNUPGHOME; \tgpg --batch --keyserver keyserver.ubuntu.com --recv-keys 'EB4C 1BFD 4F04 2F6D DDCC  EC91 7721 F63B D38B 4796'; \tgpg --batch --keyserver keyserver.ubuntu.com --recv-keys '2F52 8D36 D67B 69ED F998  D857 78BD 6547 3CB3 BD13'; \tgpg --batch --verify go.tgz.asc go.tgz; \tgpgconf --kill all; \trm -rf \"$GNUPGHOME\" go.tgz.asc; \t\ttar -C /usr/local -xzf go.tgz; \trm go.tgz; \t\tif [ -n \"$build\" ]; then \t\tsavedAptMark=\"$(apt-mark showmanual)\"; \t\tapt-get update; \t\tapt-get install -y --no-install-recommends golang-go; \t\t\t\texport GOCACHE='/tmp/gocache'; \t\t\t\t( \t\t\tcd /usr/local/go/src; \t\t\texport GOROOT_BOOTSTRAP=\"$(go env GOROOT)\" GOHOSTOS=\"$GOOS\" GOHOSTARCH=\"$GOARCH\"; \t\t\t./make.bash; \t\t); \t\t\t\tapt-mark auto '.*' > /dev/null; \t\tapt-mark manual $savedAptMark > /dev/null; \t\tapt-get purge -y --auto-remove -o APT::AutoRemove::RecommendsImportant=false; \t\trm -rf /var/lib/apt/lists/*; \t\t\t\trm -rf \t\t\t/usr/local/go/pkg/*/cmd \t\t\t/usr/local/go/pkg/bootstrap \t\t\t/usr/local/go/pkg/obj \t\t\t/usr/local/go/pkg/tool/*/api \t\t\t/usr/local/go/pkg/tool/*/go_bootstrap \t\t\t/usr/local/go/src/cmd/dist/dist \t\t\t\"$GOCACHE\" \t\t; \tfi; \t\tgo version"
+    },
+    {
+      "created": "2022-12-21T17:04:35.657671507Z",
+      "created_by": "/bin/sh -c #(nop)  ENV GOPATH=/go",
+      "empty_layer": true
+    },
+    {
+      "created": "2022-12-21T17:04:35.763897771Z",
+      "created_by": "/bin/sh -c #(nop)  ENV PATH=/go/bin:/usr/local/go/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin",
+      "empty_layer": true
+    },
+    {
+      "created": "2022-12-21T17:04:36.338119752Z",
+      "created_by": "/bin/sh -c mkdir -p \"$GOPATH/src\" \"$GOPATH/bin\" && chmod -R 777 \"$GOPATH\""
+    },
+    {
+      "created": "2022-12-21T17:04:36.454187246Z",
+      "created_by": "/bin/sh -c #(nop) WORKDIR /go",
+      "empty_layer": true
+    }
+  ]
+}
