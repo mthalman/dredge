@@ -1,0 +1,92 @@
+// "library/python@sha256:779bcaad95871999fb6734a3923ff6a09cf6459231913d706b302eef5b6e383e"
+{
+  "os": "linux",
+  "history": [
+    {
+      "created": "2022-12-21T01:20:21.922936512Z",
+      "created_by": "/bin/sh -c #(nop) ADD file:c13b430c8699df107ffd9ea5230b92238bc037a8e1cbbe35d6ab664941d575da in / "
+    },
+    {
+      "created": "2022-12-21T01:20:22.590344295Z",
+      "created_by": "/bin/sh -c #(nop)  CMD [\"bash\"]",
+      "empty_layer": true
+    },
+    {
+      "created": "2022-12-21T11:13:51.512187477Z",
+      "created_by": "/bin/sh -c set -eux; \tapt-get update; \tapt-get install -y --no-install-recommends \t\tca-certificates \t\tcurl \t\tnetbase \t\twget \t; \trm -rf /var/lib/apt/lists/*"
+    },
+    {
+      "created": "2022-12-21T11:13:58.806979115Z",
+      "created_by": "/bin/sh -c set -ex; \tif ! command -v gpg > /dev/null; then \t\tapt-get update; \t\tapt-get install -y --no-install-recommends \t\t\tgnupg \t\t\tdirmngr \t\t; \t\trm -rf /var/lib/apt/lists/*; \tfi"
+    },
+    {
+      "created": "2022-12-21T11:14:17.676013622Z",
+      "created_by": "/bin/sh -c apt-get update && apt-get install -y --no-install-recommends \t\tgit \t\tmercurial \t\topenssh-client \t\tsubversion \t\t\t\tprocps \t&& rm -rf /var/lib/apt/lists/*"
+    },
+    {
+      "created": "2022-12-21T11:15:31.49682344Z",
+      "created_by": "/bin/sh -c set -ex; \tapt-get update; \tapt-get install -y --no-install-recommends \t\tautoconf \t\tautomake \t\tbzip2 \t\tdpkg-dev \t\tfile \t\tg++ \t\tgcc \t\timagemagick \t\tlibbz2-dev \t\tlibc6-dev \t\tlibcurl4-openssl-dev \t\tlibdb-dev \t\tlibevent-dev \t\tlibffi-dev \t\tlibgdbm-dev \t\tlibglib2.0-dev \t\tlibgmp-dev \t\tlibjpeg-dev \t\tlibkrb5-dev \t\tliblzma-dev \t\tlibmagickcore-dev \t\tlibmagickwand-dev \t\tlibmaxminddb-dev \t\tlibncurses5-dev \t\tlibncursesw5-dev \t\tlibpng-dev \t\tlibpq-dev \t\tlibreadline-dev \t\tlibsqlite3-dev \t\tlibssl-dev \t\tlibtool \t\tlibwebp-dev \t\tlibxml2-dev \t\tlibxslt-dev \t\tlibyaml-dev \t\tmake \t\tpatch \t\tunzip \t\txz-utils \t\tzlib1g-dev \t\t\t\t$( \t\t\tif apt-cache show 'default-libmysqlclient-dev' 2>/dev/null | grep -q '^Version:'; then \t\t\t\techo 'default-libmysqlclient-dev'; \t\t\telse \t\t\t\techo 'libmysqlclient-dev'; \t\t\tfi \t\t) \t; \trm -rf /var/lib/apt/lists/*"
+    },
+    {
+      "created": "2022-12-21T17:54:25.078912736Z",
+      "created_by": "/bin/sh -c #(nop)  ENV PATH=/usr/local/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin",
+      "empty_layer": true
+    },
+    {
+      "created": "2022-12-21T17:54:25.176780719Z",
+      "created_by": "/bin/sh -c #(nop)  ENV LANG=C.UTF-8",
+      "empty_layer": true
+    },
+    {
+      "created": "2022-12-21T17:54:30.87196833Z",
+      "created_by": "/bin/sh -c set -eux; \tapt-get update; \tapt-get install -y --no-install-recommends \t\tlibbluetooth-dev \t\ttk-dev \t\tuuid-dev \t; \trm -rf /var/lib/apt/lists/*"
+    },
+    {
+      "created": "2022-12-21T18:22:49.128929869Z",
+      "created_by": "/bin/sh -c #(nop)  ENV GPG_KEY=A035C8C19219BA821ECEA86B64E628F8D684696D",
+      "empty_layer": true
+    },
+    {
+      "created": "2022-12-21T18:22:49.227106757Z",
+      "created_by": "/bin/sh -c #(nop)  ENV PYTHON_VERSION=3.11.1",
+      "empty_layer": true
+    },
+    {
+      "created": "2022-12-21T18:36:43.481204294Z",
+      "created_by": "/bin/sh -c set -eux; \t\twget -O python.tar.xz \"https://www.python.org/ftp/python/${PYTHON_VERSION%%[a-z]*}/Python-$PYTHON_VERSION.tar.xz\"; \twget -O python.tar.xz.asc \"https://www.python.org/ftp/python/${PYTHON_VERSION%%[a-z]*}/Python-$PYTHON_VERSION.tar.xz.asc\"; \tGNUPGHOME=\"$(mktemp -d)\"; export GNUPGHOME; \tgpg --batch --keyserver hkps://keys.openpgp.org --recv-keys \"$GPG_KEY\"; \tgpg --batch --verify python.tar.xz.asc python.tar.xz; \tcommand -v gpgconf > /dev/null && gpgconf --kill all || :; \trm -rf \"$GNUPGHOME\" python.tar.xz.asc; \tmkdir -p /usr/src/python; \ttar --extract --directory /usr/src/python --strip-components=1 --file python.tar.xz; \trm python.tar.xz; \t\tcd /usr/src/python; \tgnuArch=\"$(dpkg-architecture --query DEB_BUILD_GNU_TYPE)\"; \t./configure \t\t--build=\"$gnuArch\" \t\t--enable-loadable-sqlite-extensions \t\t--enable-optimizations \t\t--enable-option-checking=fatal \t\t--enable-shared \t\t--with-lto \t\t--with-system-expat \t\t--without-ensurepip \t; \tnproc=\"$(nproc)\"; \tmake -j \"$nproc\" \t; \tmake install; \t\tbin=\"$(readlink -ve /usr/local/bin/python3)\"; \tdir=\"$(dirname \"$bin\")\"; \tmkdir -p \"/usr/share/gdb/auto-load/$dir\"; \tcp -vL Tools/gdb/libpython.py \"/usr/share/gdb/auto-load/$bin-gdb.py\"; \t\tcd /; \trm -rf /usr/src/python; \t\tfind /usr/local -depth \t\t\\( \t\t\t\\( -type d -a \\( -name test -o -name tests -o -name idle_test \\) \\) \t\t\t-o \\( -type f -a \\( -name '*.pyc' -o -name '*.pyo' -o -name 'libpython*.a' \\) \\) \t\t\\) -exec rm -rf '{}' + \t; \t\tldconfig; \t\tpython3 --version"
+    },
+    {
+      "created": "2022-12-21T18:36:44.251539564Z",
+      "created_by": "/bin/sh -c set -eux; \tfor src in idle3 pydoc3 python3 python3-config; do \t\tdst=\"$(echo \"$src\" | tr -d 3)\"; \t\t[ -s \"/usr/local/bin/$src\" ]; \t\t[ ! -e \"/usr/local/bin/$dst\" ]; \t\tln -svT \"$src\" \"/usr/local/bin/$dst\"; \tdone"
+    },
+    {
+      "created": "2022-12-21T18:36:44.351889165Z",
+      "created_by": "/bin/sh -c #(nop)  ENV PYTHON_PIP_VERSION=22.3.1",
+      "empty_layer": true
+    },
+    {
+      "created": "2023-01-06T18:41:34.9197611Z",
+      "created_by": "/bin/sh -c #(nop)  ENV PYTHON_SETUPTOOLS_VERSION=65.5.1",
+      "empty_layer": true
+    },
+    {
+      "created": "2023-01-06T18:41:35.026340408Z",
+      "created_by": "/bin/sh -c #(nop)  ENV PYTHON_GET_PIP_URL=https://github.com/pypa/get-pip/raw/66030fa03382b4914d4c4d0896961a0bdeeeb274/public/get-pip.py",
+      "empty_layer": true
+    },
+    {
+      "created": "2023-01-06T18:41:35.138016472Z",
+      "created_by": "/bin/sh -c #(nop)  ENV PYTHON_GET_PIP_SHA256=1e501cf004eac1b7eb1f97266d28f995ae835d30250bec7f8850562703067dc6",
+      "empty_layer": true
+    },
+    {
+      "created": "2023-01-06T18:41:40.450192701Z",
+      "created_by": "/bin/sh -c set -eux; \t\twget -O get-pip.py \"$PYTHON_GET_PIP_URL\"; \techo \"$PYTHON_GET_PIP_SHA256 *get-pip.py\" | sha256sum -c -; \t\texport PYTHONDONTWRITEBYTECODE=1; \t\tpython get-pip.py \t\t--disable-pip-version-check \t\t--no-cache-dir \t\t--no-compile \t\t\"pip==$PYTHON_PIP_VERSION\" \t\t\"setuptools==$PYTHON_SETUPTOOLS_VERSION\" \t; \trm -f get-pip.py; \t\tpip --version"
+    },
+    {
+      "created": "2023-01-06T18:41:40.59753588Z",
+      "created_by": "/bin/sh -c #(nop)  CMD [\"python3\"]",
+      "empty_layer": true
+    }
+  ]
+}
