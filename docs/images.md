@@ -7,6 +7,7 @@ Sub-commands:
 * [`compare layers`](#compare-image-layers) - Compares the layers of two images
 * [`compare files`](#compare-image-files) - Compares the files of two images
 * [`save layers`](#save-layers) - Saves the layers of an image to disk
+* ['dockerfile`](#generate-dockerfile) - Generates a Dockerfile that represents the image
 
 ## Inspect Image Configuration
 
@@ -179,3 +180,9 @@ Example usage:
 By default, the layers of the image are squashed and saved to a single directory. The `--no-squash` option can be used to disable this behavior and save the layers as individual directories.
 
 If you want to target a specific layer, you can use the `--layer-index` option. This will only save the specified layer (and any layers that it depends on if squashing is being applied).
+
+## Generate Dockerfile
+
+The `image dockerfile` command generates a Dockerfile that represents an image.
+
+By default, it uses a set of heuristics to generate line breaks for a Dockerfile instruction to make it more readable. This can be disabled with the `--no-format` option. The output also uses syntax coloring by default for readability. This can be disabled with the `--no-color` option.
