@@ -3,6 +3,7 @@ using System.IO.Compression;
 using System.Text;
 using Valleysoft.DockerRegistryClient;
 using Valleysoft.DockerRegistryClient.Models;
+using Valleysoft.Dredge.Commands;
 
 namespace Valleysoft.Dredge;
 
@@ -16,7 +17,7 @@ internal static class ImageHelper
 
     public static async Task SaveImageLayersToDiskAsync(
         IDockerRegistryClientFactory dockerRegistryClientFactory, string image, string destPath, int? layerIndex,
-        string layerIndexOptionName, bool noSquash)
+        string layerIndexOptionName, bool noSquash, PlatformOptionsBase options)
     {
         // Spec for OCI image layer filesystem changeset: https://github.com/opencontainers/image-spec/blob/main/layer.md
 
@@ -24,8 +25,7 @@ internal static class ImageHelper
 
         ImageName imageName = ImageName.Parse(image);
         IDockerRegistryClient client = await dockerRegistryClientFactory.GetClientAsync(imageName.Registry);
-        ManifestInfo manifestInfo = await client.Manifests.GetAsync(imageName.Repo, (imageName.Tag ?? imageName.Digest)!);
-
+        ManifestInfo manifestInfo = await ManifestHelper.GetManifestInfoAsync(client, imageName, options);
         DockerManifestV2 manifest = ManifestHelper.GetManifest(imageName.ToString(), manifestInfo);
 
         int startIndex = 0;

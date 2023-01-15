@@ -17,7 +17,7 @@ public class InspectCommand : CommandWithOptions<InspectOptions>
         return CommandHelper.ExecuteCommandAsync(imageName.Registry, async () =>
         {
             using IDockerRegistryClient client = await DockerRegistryClientFactory.GetClientAsync(imageName.Registry);
-            ManifestInfo manifestInfo = await client.Manifests.GetAsync(imageName.Repo, (imageName.Tag ?? imageName.Digest)!);
+            ManifestInfo manifestInfo = await ManifestHelper.GetManifestInfoAsync(client, imageName, Options);
 
             DockerManifestV2 manifest = ManifestHelper.GetManifest(Options.Image, manifestInfo);
             string? digest = manifest.Config?.Digest;

@@ -1,17 +1,15 @@
 ﻿using Spectre.Console;
-using System.CommandLine;
 using System.Text;
 using System.Text.RegularExpressions;
 using Valleysoft.DockerfileModel;
 using Valleysoft.DockerfileModel.Tokens;
 using Valleysoft.DockerRegistryClient;
 using Valleysoft.DockerRegistryClient.Models;
-using Command = System.CommandLine.Command;
 using ImageConfig = Valleysoft.DockerRegistryClient.Models.Image;
 
 namespace Valleysoft.Dredge.Commands.Image;
 
-public class DockerfileCommand : Command
+public class DockerfileCommand : CommandWithOptions<DockerfileOptions>
 {
     private static readonly Color SymbolColor = new(250, 200, 31); // yellow
     private static readonly Color StringColor = new(202, 145, 120); // tan
@@ -23,43 +21,32 @@ public class DockerfileCommand : Command
     private readonly IDockerRegistryClientFactory dockerRegistryClientFactory;
 
     public DockerfileCommand(IDockerRegistryClientFactory dockerRegistryClientFactory)
-        : base("dockerfile", "Generates a Dockerfile that represents the image")
+        : base("dockerfile", "Generates a Dockerfile that represents the image", dockerRegistryClientFactory)
     {
         this.dockerRegistryClientFactory = dockerRegistryClientFactory;
-
-        Argument<string> imageArg = new("image", "Name of the container image (<image>, <image>:<tag>, or <image>@<digest>)");
-        AddArgument(imageArg);
-
-        Option<bool> noColorOption = new("--no-color", "Disables use of syntax color in the output");
-        AddOption(noColorOption);
-
-        Option<bool> noFormatOption = new("--no-format", "Disables use of heuristics to format the layer history for better readability");
-        AddOption(noFormatOption);
-
-        this.SetHandler(ExecuteAsync, imageArg, noColorOption, noFormatOption);
     }
 
-    private async Task ExecuteAsync(string image, bool noColor, bool noFormat)
+    protected override async Task ExecuteAsync()
     {
-        ImageName imageName = ImageName.Parse(image);
+        ImageName imageName = ImageName.Parse(Options.Image);
         await CommandHelper.ExecuteCommandAsync(imageName.Registry, async () =>
         {
-            Markup markupOutput = new(await GetMarkupStringAsync(image, noColor, noFormat));
+            Markup markupOutput = new(await GetMarkupStringAsync());
             AnsiConsole.Write(markupOutput);
         });
     }
 
-    public async Task<string> GetMarkupStringAsync(string image, bool noColor, bool noFormat)
+    public async Task<string> GetMarkupStringAsync()
     {
-        ImageName imageName = ImageName.Parse(image);
+        ImageName imageName = ImageName.Parse(Options.Image);
         using IDockerRegistryClient client = await dockerRegistryClientFactory.GetClientAsync(imageName.Registry);
-        ManifestInfo manifestInfo = await client.Manifests.GetAsync(imageName.Repo, (imageName.Tag ?? imageName.Digest)!);
+        ManifestInfo manifestInfo = await ManifestHelper.GetManifestInfoAsync(client, imageName, Options);
 
-        DockerManifestV2 manifest = ManifestHelper.GetManifest(image, manifestInfo);
+        DockerManifestV2 manifest = ManifestHelper.GetManifest(Options.Image, manifestInfo);
         string? digest = manifest.Config?.Digest;
         if (digest is null)
         {
-            throw new NotSupportedException($"Could not resolve the image config digest of '{image}'.");
+            throw new NotSupportedException($"Could not resolve the image config digest of '{Options.Image}'.");
         }
 
         ImageConfig imageConfig = await client.Blobs.GetImageAsync(imageName.Repo, digest);
@@ -90,7 +77,7 @@ public class DockerfileCommand : Command
                 continue;
             }
 
-            string line = GetHistoryLine(layerHistory.CreatedBy, noFormat, ref currentShell);
+            string line = GetHistoryLine(layerHistory.CreatedBy, ref currentShell);
             dockerfileBuilder.AppendLine(line);
         }
 
@@ -101,7 +88,7 @@ public class DockerfileCommand : Command
         {
             foreach (Token token in construct.Tokens)
             {
-                markup.Append(GetTokenMarkup(token, construct is RunInstruction, noColor));
+                markup.Append(GetTokenMarkup(token, construct is RunInstruction));
             }
         }
 
@@ -154,7 +141,7 @@ public class DockerfileCommand : Command
         return (windowsOsInfo.Value.Info, windowsOsInfo.Value.Repo);
     }
 
-    private static string GetHistoryLine(string line, bool noFormat, ref string? currentShell)
+    private string GetHistoryLine(string line, ref string? currentShell)
     {
         const string NopMarker = "#(nop)";
 
@@ -213,7 +200,7 @@ public class DockerfileCommand : Command
                 }
                 else if (dockerfileConstruct is EnvInstruction envInstruction)
                 {
-                    if (!noFormat)
+                    if (!Options.NoFormat)
                     {
                         line = FormatEnvInstruction(line, envInstruction);
                     }
@@ -229,7 +216,7 @@ public class DockerfileCommand : Command
 
             line = line[currentShell.Length..].Trim();
 
-            if (!noFormat)
+            if (!Options.NoFormat)
             {
                 line = FormatRunInstruction(line);
             }
@@ -318,11 +305,11 @@ public class DockerfileCommand : Command
         return formattedLine.ToString();
     }
 
-    private string GetTokenMarkup(Token token, bool inRunInstruction, bool noColor)
+    private string GetTokenMarkup(Token token, bool inRunInstruction)
     {
         string tokenStr = Markup.Escape(token.ToString());
         Color? tokenColor = null;
-        if (!noColor)
+        if (!Options.NoColor)
         {
             if (token is KeywordToken)
             {
@@ -357,7 +344,7 @@ public class DockerfileCommand : Command
                 StringBuilder builder = new();
                 foreach (Token childToken in aggregateToken.Tokens)
                 {
-                    builder.Append(GetTokenMarkup(childToken, inRunInstruction, noColor));
+                    builder.Append(GetTokenMarkup(childToken, inRunInstruction));
                 }
                 return builder.ToString();
             }
