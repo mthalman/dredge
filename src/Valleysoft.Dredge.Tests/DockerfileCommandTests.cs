@@ -5,7 +5,7 @@ using Newtonsoft.Json;
 using Spectre.Console;
 using System.Text;
 using Valleysoft.DockerRegistryClient.Models;
-using DockerfileCommand = ImageCommand.DockerfileCommand;
+using Valleysoft.Dredge.Commands.Image;
 
 public class DockerfileCommandTests
 {
@@ -62,7 +62,7 @@ public class DockerfileCommandTests
         Mock<IDockerRegistryClient> mcrClientMock = new();
 
         clientFactoryMock
-            .Setup(o => o.GetClientAsync(ImageCommand.McrRegistry))
+            .Setup(o => o.GetClientAsync(RegistryHelper.McrRegistry))
             .ReturnsAsync(mcrClientMock.Object);
 
         ManifestLayer[] layers = Array.Empty<ManifestLayer>();
