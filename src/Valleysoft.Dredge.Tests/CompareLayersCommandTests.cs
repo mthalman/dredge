@@ -6,7 +6,8 @@ using Spectre.Console;
 using Spectre.Console.Rendering;
 using System.Text;
 using Valleysoft.DockerRegistryClient.Models;
-using LayersCommand = ImageCommand.CompareCommand.LayersCommand;
+using Valleysoft.Dredge.Commands;
+using Valleysoft.Dredge.Commands.Image;
 
 public class CompareLayersCommandTests
 {
@@ -805,14 +806,20 @@ public class CompareLayersCommandTests
             .Setup(o => o.GetClientAsync(Registry))
             .ReturnsAsync(registryClientMock.Object);
 
-        LayersCommand cmd = new(clientFactoryMock.Object);
-        return cmd.GetOutputAsync(
-            baseImageName.ToString(),
-            targetImageName.ToString(),
-            format,
-            isColorDisabled: cmdOptions.IsColorDisabled,
-            includeHistory: cmdOptions.IncludeHistory,
-            includeCompressedSize: cmdOptions.IncludeCompressedSize);
+        CompareLayersCommand cmd = new(clientFactoryMock.Object)
+        {
+            Options = new CompareLayersOptions
+            {
+                BaseImage = baseImageName.ToString(),
+                TargetImage = targetImageName.ToString(),
+                OutputFormat = format,
+                IsColorDisabled = cmdOptions.IsColorDisabled,
+                IncludeHistory = cmdOptions.IncludeHistory,
+                IncludeCompressedSize = cmdOptions.IncludeCompressedSize,
+            }
+        };
+
+        return cmd.GetOutputAsync();
     }
 
     private static void CompareJson<T>(T expected, T actual) =>
