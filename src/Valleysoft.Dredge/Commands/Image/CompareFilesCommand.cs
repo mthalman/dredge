@@ -52,6 +52,7 @@ public class CompareFilesCommand : CommandWithOptions<CompareFilesOptions>
             workingDir,
             layerIndex,
             layerIndexArg + CompareFilesOptions.LayerIndexSuffix,
-            noSquash: false);
+            noSquash: false,
+            Options);
     }
 }

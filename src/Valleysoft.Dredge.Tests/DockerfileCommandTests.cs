@@ -124,9 +124,16 @@ public class DockerfileCommandTests
             .Setup(o => o.GetClientAsync(Registry))
             .ReturnsAsync(registryClientMock.Object);
 
-        DockerfileCommand command = new(clientFactoryMock.Object);
+        DockerfileCommand command = new(clientFactoryMock.Object)
+        {
+            Options = new DockerfileOptions
+            {
+                Image = ImageName,
+                NoFormat = scenario.NoFormat
+            }
+        };
 
-        string markupStr = await command.GetMarkupStringAsync(ImageName, false, scenario.NoFormat);
+        string markupStr = await command.GetMarkupStringAsync();
 
         string actual = TestHelper.Normalize(markupStr);
         string expected = TestHelper.Normalize(File.ReadAllText(scenario.ExpectedOutputPath));

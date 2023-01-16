@@ -2,7 +2,7 @@
 
 namespace Valleysoft.Dredge.Commands.Image;
 
-public class InspectOptions : OptionsBase
+public class InspectOptions : PlatformOptionsBase
 {
     private readonly Argument<string> imageArg;
 
@@ -15,6 +15,7 @@ public class InspectOptions : OptionsBase
 
     protected override void GetValues()
     {
+        base.GetValues();
         Image = GetValue(imageArg);
     }
 }

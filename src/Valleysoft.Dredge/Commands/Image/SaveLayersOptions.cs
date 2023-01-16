@@ -2,7 +2,7 @@
 
 namespace Valleysoft.Dredge.Commands.Image;
 
-public class SaveLayersOptions : OptionsBase
+public class SaveLayersOptions : PlatformOptionsBase
 {
     public const string LayerIndexOptionName = "--layer-index";
 
@@ -26,6 +26,7 @@ public class SaveLayersOptions : OptionsBase
 
     protected override void GetValues()
     {
+        base.GetValues();
         Image = GetValue(imageArg);
         OutputPath = GetValue(outputPathArg);
         NoSquash = GetValue(noSquashOption);
