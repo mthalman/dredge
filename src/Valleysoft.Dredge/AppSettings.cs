@@ -36,6 +36,12 @@ internal class AppSettings
             return JsonConvert.DeserializeObject<AppSettings>(settings);
         }
     }
+
+    public void Save()
+    {
+        string settingsStr = JsonConvert.SerializeObject(this, Formatting.Indented);
+        File.WriteAllText(SettingsPath, settingsStr);
+    }
 }
 
 internal class FileCompareToolSettings

@@ -4,7 +4,7 @@ using Valleysoft.DockerRegistryClient.Models;
 
 namespace Valleysoft.Dredge.Commands.Manifest;
 
-public class GetCommand : CommandWithOptions<GetOptions>
+public class GetCommand : RegistryCommandBase<GetOptions>
 {
     public GetCommand(IDockerRegistryClientFactory dockerRegistryClientFactory)
         : base("get", "Queries a manifest", dockerRegistryClientFactory)

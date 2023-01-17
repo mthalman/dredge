@@ -2,7 +2,7 @@
 
 namespace Valleysoft.Dredge.Commands.Manifest;
 
-public class DigestCommand : CommandWithOptions<DigestOptions>
+public class DigestCommand : RegistryCommandBase<DigestOptions>
 {
     public DigestCommand(IDockerRegistryClientFactory dockerRegistryClientFactory)
         : base("digest", "Queries the digest of a manifest", dockerRegistryClientFactory)
