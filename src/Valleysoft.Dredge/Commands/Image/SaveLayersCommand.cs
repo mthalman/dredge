@@ -3,7 +3,7 @@ using Valleysoft.DockerRegistryClient.Models;
 
 namespace Valleysoft.Dredge.Commands.Image;
 
-public class SaveLayersCommand : CommandWithOptions<SaveLayersOptions>
+public class SaveLayersCommand : RegistryCommandBase<SaveLayersOptions>
 {
     public SaveLayersCommand(IDockerRegistryClientFactory dockerRegistryClientFactory)
         : base("save-layers", "Saves an image's extracted layers to disk", dockerRegistryClientFactory)

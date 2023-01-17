@@ -9,7 +9,7 @@ using ImageConfig = Valleysoft.DockerRegistryClient.Models.Image;
 
 namespace Valleysoft.Dredge.Commands.Image;
 
-public class CompareLayersCommand : CommandWithOptions<CompareLayersOptions>
+public class CompareLayersCommand : RegistryCommandBase<CompareLayersOptions>
 {
     private static readonly string[] SizeSuffixes =
         { "bytes", "KB", "MB", "GB", "TB", "PB", "EB", "ZB", "YB" };

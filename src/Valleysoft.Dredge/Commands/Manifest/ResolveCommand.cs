@@ -2,7 +2,7 @@
 
 namespace Valleysoft.Dredge.Commands.Manifest;
 
-public class ResolveCommand : CommandWithOptions<ResolveOptions>
+public class ResolveCommand : RegistryCommandBase<SetOptions>
 {
     public ResolveCommand(IDockerRegistryClientFactory dockerRegistryClientFactory)
         : base("resolve", "Resolves a manifest to a target platform's fully-qualified image digest", dockerRegistryClientFactory)

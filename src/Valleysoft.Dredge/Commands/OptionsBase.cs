@@ -2,7 +2,7 @@
 using System.CommandLine.Parsing;
 using System.Diagnostics.CodeAnalysis;
 
-namespace Valleysoft.Dredge;
+namespace Valleysoft.Dredge.Commands;
 
 public abstract class OptionsBase
 {

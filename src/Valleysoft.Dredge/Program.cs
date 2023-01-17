@@ -13,7 +13,7 @@ RootCommand rootCmd = new("CLI for executing commands on a container registry's 
     new ManifestCommand(clientFactory),
     new RepoCommand(clientFactory),
     new TagCommand(clientFactory),
-    new SettingsCommand(),
+    new SettingsCommand(clientFactory),
 };
 
 return rootCmd.Invoke(args);

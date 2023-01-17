@@ -2,7 +2,7 @@
 
 namespace Valleysoft.Dredge.Commands.Image;
 
-public class CompareFilesCommand : CommandWithOptions<CompareFilesOptions>
+public class CompareFilesCommand : RegistryCommandBase<CompareFilesOptions>
 {
     private const string BaseOutputDirName = "base";
     private const string TargetOutputDirName = "target";

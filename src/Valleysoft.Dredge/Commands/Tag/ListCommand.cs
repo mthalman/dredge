@@ -4,7 +4,7 @@ using Valleysoft.DockerRegistryClient.Models;
 
 namespace Valleysoft.Dredge.Commands.Tag;
 
-public class ListCommand : CommandWithOptions<ListOptions>
+public class ListCommand : RegistryCommandBase<ListOptions>
 {
     public ListCommand(IDockerRegistryClientFactory dockerRegistryClientFactory)
         : base("list", "Lists the tag contained in the container repository", dockerRegistryClientFactory)

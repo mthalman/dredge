@@ -9,7 +9,7 @@ using ImageConfig = Valleysoft.DockerRegistryClient.Models.Image;
 
 namespace Valleysoft.Dredge.Commands.Image;
 
-public class DockerfileCommand : CommandWithOptions<DockerfileOptions>
+public class DockerfileCommand : RegistryCommandBase<DockerfileOptions>
 {
     private static readonly Color SymbolColor = new(250, 200, 31); // yellow
     private static readonly Color StringColor = new(202, 145, 120); // tan

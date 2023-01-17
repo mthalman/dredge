@@ -4,7 +4,7 @@ using Valleysoft.DockerRegistryClient.Models;
 
 namespace Valleysoft.Dredge.Commands.Image;
 
-public class InspectCommand : CommandWithOptions<InspectOptions>
+public class InspectCommand : RegistryCommandBase<InspectOptions>
 {
     public InspectCommand(IDockerRegistryClientFactory dockerRegistryClientFactory)
         : base("inspect", "Return low-level information on a container image", dockerRegistryClientFactory)

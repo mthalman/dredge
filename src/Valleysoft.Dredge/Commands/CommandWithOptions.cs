@@ -1,19 +1,16 @@
 ﻿using System.CommandLine;
 using System.CommandLine.Invocation;
 
-namespace Valleysoft.Dredge;
+namespace Valleysoft.Dredge.Commands;
 
 public abstract class CommandWithOptions<TOptions> : Command
     where TOptions : OptionsBase, new()
 {
     public new TOptions Options { get; set; } = new();
 
-    public IDockerRegistryClientFactory DockerRegistryClientFactory { get; }
-
-    protected CommandWithOptions(string name, string description, IDockerRegistryClientFactory dockerRegistryClientFactory)
+    protected CommandWithOptions(string name, string description)
         : base(name, description)
     {
-        DockerRegistryClientFactory = dockerRegistryClientFactory;
         Options.SetCommandOptions(this);
         this.SetHandler(ExecuteAsyncCore);
     }

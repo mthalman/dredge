@@ -8,7 +8,7 @@ using ImageConfig = Valleysoft.DockerRegistryClient.Models.Image;
 
 namespace Valleysoft.Dredge.Commands.Image;
 
-public class OsCommand : CommandWithOptions<OsOptions>
+public class OsCommand : RegistryCommandBase<OsOptions>
 {
     public OsCommand(IDockerRegistryClientFactory dockerRegistryClientFactory)
         : base("os", "Gets OS info about the container image", dockerRegistryClientFactory)
