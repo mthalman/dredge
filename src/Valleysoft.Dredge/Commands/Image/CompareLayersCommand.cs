@@ -188,8 +188,7 @@ public class CompareLayersCommand : RegistryCommandBase<CompareLayersOptions>
     {
         ImageName imageName = ImageName.Parse(image);
         using IDockerRegistryClient client = await DockerRegistryClientFactory.GetClientAsync(imageName.Registry);
-        ManifestInfo manifestInfo = await ManifestHelper.GetManifestInfoAsync(client, imageName, Options);
-        DockerManifestV2 manifest = ManifestHelper.GetManifest(image, manifestInfo);
+        DockerManifestV2 manifest = (await ManifestHelper.GetResolvedManifestAsync(client, imageName, Options)).Manifest;
 
         string? digest = manifest.Config?.Digest;
         if (digest is null)

@@ -25,8 +25,7 @@ internal static class ImageHelper
 
         ImageName imageName = ImageName.Parse(image);
         IDockerRegistryClient client = await dockerRegistryClientFactory.GetClientAsync(imageName.Registry);
-        ManifestInfo manifestInfo = await ManifestHelper.GetManifestInfoAsync(client, imageName, options);
-        DockerManifestV2 manifest = ManifestHelper.GetManifest(imageName.ToString(), manifestInfo);
+        DockerManifestV2 manifest = (await ManifestHelper.GetResolvedManifestAsync(client, imageName, options)).Manifest;
 
         int startIndex = 0;
         int layerCount = manifest.Layers.Length;
