@@ -12,6 +12,9 @@ internal class AppSettings
     [JsonProperty(FileCompareToolName)]
     public FileCompareToolSettings FileCompareTool { get; set; } = new();
 
+    [JsonProperty("platform")]
+    public PlatformSettings Platform { get; set; } = new();
+
     private AppSettings() {}
 
     public static AppSettings Load()
@@ -51,4 +54,16 @@ internal class FileCompareToolSettings
 
     [JsonProperty("args")]
     public string Args { get; set; } = string.Empty;
+}
+
+internal class PlatformSettings
+{
+    [JsonProperty("os")]
+    public string Os { get; set; } = string.Empty;
+
+    [JsonProperty("osVersion")]
+    public string OsVersion { get; set; } = string.Empty;
+
+    [JsonProperty("arch")]
+    public string Architecture { get; set; } = string.Empty;
 }

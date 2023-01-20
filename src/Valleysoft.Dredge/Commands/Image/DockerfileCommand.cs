@@ -40,9 +40,8 @@ public class DockerfileCommand : RegistryCommandBase<DockerfileOptions>
     {
         ImageName imageName = ImageName.Parse(Options.Image);
         using IDockerRegistryClient client = await dockerRegistryClientFactory.GetClientAsync(imageName.Registry);
-        ManifestInfo manifestInfo = await ManifestHelper.GetManifestInfoAsync(client, imageName, Options);
+        DockerManifestV2 manifest = (await ManifestHelper.GetResolvedManifestAsync(client, imageName, Options)).Manifest;
 
-        DockerManifestV2 manifest = ManifestHelper.GetManifest(Options.Image, manifestInfo);
         string? digest = manifest.Config?.Digest;
         if (digest is null)
         {

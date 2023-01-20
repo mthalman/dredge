@@ -15,7 +15,7 @@ public class ResolveCommand : RegistryCommandBase<SetOptions>
         return CommandHelper.ExecuteCommandAsync(imageName.Registry, async () =>
         {
             using IDockerRegistryClient client = await DockerRegistryClientFactory.GetClientAsync(imageName.Registry);
-            ManifestInfo manifestInfo = await ManifestHelper.GetManifestInfoAsync(client, imageName, Options);
+            ManifestInfo manifestInfo = (await ManifestHelper.GetResolvedManifestAsync(client, imageName, Options)).ManifestInfo;
             ImageName fullyQualifiedDigest = new(imageName.Registry, imageName.Repo, tag: null, manifestInfo.DockerContentDigest);
 
             Console.Out.WriteLine(fullyQualifiedDigest.ToString());

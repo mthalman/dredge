@@ -21,9 +21,7 @@ public class OsCommand : RegistryCommandBase<OsOptions>
         return CommandHelper.ExecuteCommandAsync(imageName.Registry, async () =>
         {
             using IDockerRegistryClient client = await DockerRegistryClientFactory.GetClientAsync(imageName.Registry);
-            ManifestInfo manifestInfo = await ManifestHelper.GetManifestInfoAsync(client, imageName, Options);
-
-            DockerManifestV2 manifest = ManifestHelper.GetManifest(Options.Image, manifestInfo);
+            DockerManifestV2 manifest = (await ManifestHelper.GetResolvedManifestAsync(client, imageName, Options)).Manifest;
 
             string? configDigest = manifest.Config?.Digest;
             if (configDigest is null)
