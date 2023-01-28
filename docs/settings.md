@@ -1,15 +1,31 @@
-# Settings
+# Settings File
 
-Sub-commands:
+Dredge uses a settings file to store configuration information. The settings file is a JSON file named `settings.json` that is located in the following location:
 
-* [`open`](#open-settings) - Opens the Dredge settings file
-* [`clear-cache`](#clear-cache) - Deletes the cached files used by Dredge
+* Windows: `%LOCALAPPDATA%\Valleysoft.Dredge\settings.json`
+* Linux: `$HOME/.local/share/Valleysoft.Dredge/settings.json`
+* Mac: `$HOME/Library/Application Support/Valleysoft.Dredge/settings.json`
 
-## Open Settings
+ Dredge will create the settings file automatically when it's needed.
 
-The `settings open` command opens the Dredge settings file in the default associated program if it can.
-Otherwise, it outputs the path to the settings file.
+The [`settings`](commands/settings.md) command can be used to manipulate the settings file.
 
-## Clear Cache
+## Schema
 
-The `settings clear-cache` command deletes the local cache of layer data stored in the temporary directory.
+```json
+{
+  "fileCompareTool": {
+    "exePath": "<string>",
+    "args": "<string>"
+  },
+  "platform": {
+    "os": "<string>",
+    "osVersion": "<string>",
+    "arch": "<string>"
+  }
+}
+```
+
+See [`image compare files`](commands/images.md#compare-image-files) for more information about the `fileCompareTool` setting.
+
+See [platform resolution](platform-resolution.md) for more information about the `platform` setting.
