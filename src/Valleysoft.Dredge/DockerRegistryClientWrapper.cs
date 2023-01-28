@@ -4,9 +4,9 @@ namespace Valleysoft.Dredge;
 
 internal class DockerRegistryClientWrapper : IDockerRegistryClient
 {
-    private readonly DockerRegistryClient.DockerRegistryClient dockerRegistryClient;
+    private readonly RegistryClient dockerRegistryClient;
 
-    public DockerRegistryClientWrapper(DockerRegistryClient.DockerRegistryClient dockerRegistryClient)
+    public DockerRegistryClientWrapper(RegistryClient dockerRegistryClient)
     {
         this.dockerRegistryClient = dockerRegistryClient;
     }

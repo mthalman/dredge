@@ -1,4 +1,5 @@
-﻿using Valleysoft.DockerRegistryClient.Models;
+﻿using Valleysoft.DockerRegistryClient;
+using Valleysoft.DockerRegistryClient.Models;
 
 namespace Valleysoft.Dredge;
 
@@ -16,7 +17,7 @@ internal static class CommandHelper
             Console.ForegroundColor = ConsoleColor.Red;
 
             string message = e.Message;
-            if (e is DockerRegistryClient.DockerRegistryException dockerRegistryException)
+            if (e is RegistryException dockerRegistryException)
             {
                 Error? error = dockerRegistryException.Errors.FirstOrDefault();
                 if (error?.Code == "UNAUTHORIZED")
