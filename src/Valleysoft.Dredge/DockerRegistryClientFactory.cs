@@ -1,5 +1,6 @@
 ﻿using Microsoft.Rest;
 using Valleysoft.DockerCredsProvider;
+using Valleysoft.DockerRegistryClient;
 
 namespace Valleysoft.Dredge;
 
@@ -55,9 +56,9 @@ internal class DockerRegistryClientFactory : IDockerRegistryClientFactory
         return new DockerRegistryClientWrapper(CreateClient(registry, clientCreds));
     }
 
-    private DockerRegistryClient.DockerRegistryClient CreateClient(string? registry, ServiceClientCredentials? clientCreds = null)
+    private RegistryClient CreateClient(string? registry, ServiceClientCredentials? clientCreds = null)
     {
-        DockerRegistryClient.DockerRegistryClient client = new(DockerHubHelper.GetApiRegistry(registry), clientCreds);
+        RegistryClient client = new(DockerHubHelper.GetApiRegistry(registry), clientCreds);
         client.HttpClient.Timeout = new TimeSpan(0, 30, 0);
         return client;
     }
