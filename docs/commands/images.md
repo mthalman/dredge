@@ -7,7 +7,7 @@ Sub-commands:
 * [`compare layers`](#compare-image-layers) - Compares the layers of two images
 * [`compare files`](#compare-image-files) - Compares the files of two images
 * [`save layers`](#save-layers) - Saves the layers of an image to disk
-* ['dockerfile`](#generate-dockerfile) - Generates a Dockerfile that represents the image
+* [`dockerfile`](#generate-dockerfile) - Generates a Dockerfile that represents the image
 
 ## Inspect Image Configuration
 
