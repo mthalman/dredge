@@ -5,7 +5,7 @@ Dredge is a CLI built on .NET that provides a simple way to execute commands on 
 ## Features
 
 * Access to raw JSON data from the registry's HTTP API.
-* Extended, derived data such as [image configuration](docs/images.md#inspect-image-configuration), [OS information](docs/images.md#image-os-information), and comparison of [layers](docs/images.md#compare-image-layers) and [files](docs/images.md#compare-image-files).
+* Extended, derived data such as [image configuration](docs/commands/images.md#inspect-image-configuration), [OS information](docs/commands/images.md#image-os-information), and comparison of [layers](docs/commands/images.md#compare-image-layers) and [files](docs/commands/images.md#compare-image-files).
 
 ### Documentation
 
