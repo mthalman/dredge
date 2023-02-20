@@ -1,4 +1,5 @@
 ﻿using System.CommandLine;
+using Valleysoft.Dredge.Core;
 
 namespace Valleysoft.Dredge.Commands;
 
@@ -29,4 +30,12 @@ public class PlatformOptionsBase : OptionsBase
         OsVersion = GetValue(osVersionOpt);
         Architecture = GetValue(archOpt);
     }
+
+    public PlatformOptions ToPlatformOptions() =>
+        new PlatformOptions
+        {
+            Os = this.Os,
+            OsVersion = this.OsVersion,
+            Architecture = this.Architecture
+        };
 }

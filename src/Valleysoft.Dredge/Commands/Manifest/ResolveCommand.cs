@@ -1,4 +1,5 @@
 ﻿using Valleysoft.DockerRegistryClient.Models;
+using Valleysoft.Dredge.Core;
 
 namespace Valleysoft.Dredge.Commands.Manifest;
 
@@ -15,7 +16,7 @@ public class ResolveCommand : RegistryCommandBase<SetOptions>
         return CommandHelper.ExecuteCommandAsync(imageName.Registry, async () =>
         {
             using IDockerRegistryClient client = await DockerRegistryClientFactory.GetClientAsync(imageName.Registry);
-            ManifestInfo manifestInfo = (await ManifestHelper.GetResolvedManifestAsync(client, imageName, Options)).ManifestInfo;
+            ManifestInfo manifestInfo = (await ManifestHelper.GetResolvedManifestAsync(client, imageName, AppSettingsHelper.Load(), Options.ToPlatformOptions())).ManifestInfo;
             ImageName fullyQualifiedDigest = new(imageName.Registry, imageName.Repo, tag: null, manifestInfo.DockerContentDigest);
 
             Console.Out.WriteLine(fullyQualifiedDigest.ToString());

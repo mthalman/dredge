@@ -1,6 +1,7 @@
 ﻿using Newtonsoft.Json;
 using Valleysoft.DockerRegistryClient;
 using Valleysoft.DockerRegistryClient.Models;
+using Valleysoft.Dredge.Core;
 
 namespace Valleysoft.Dredge.Commands.Manifest;
 
