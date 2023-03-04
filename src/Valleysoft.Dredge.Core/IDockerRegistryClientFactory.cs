@@ -1,4 +1,4 @@
-﻿namespace Valleysoft.Dredge;
+﻿namespace Valleysoft.Dredge.Core;
 
 public interface IDockerRegistryClientFactory
 {

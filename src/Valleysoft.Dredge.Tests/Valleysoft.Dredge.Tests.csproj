@@ -23,6 +23,7 @@
   </ItemGroup>
 
   <ItemGroup>
+    <ProjectReference Include="..\Valleysoft.Dredge.Core\Valleysoft.Dredge.Core.csproj" />
     <ProjectReference Include="..\Valleysoft.Dredge\Valleysoft.Dredge.csproj" />
   </ItemGroup>
 

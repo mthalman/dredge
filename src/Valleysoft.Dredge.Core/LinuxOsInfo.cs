@@ -1,6 +1,6 @@
 ﻿using Newtonsoft.Json;
 
-namespace Valleysoft.Dredge;
+namespace Valleysoft.Dredge.Core;
 
 public record LinuxOsInfo
 {

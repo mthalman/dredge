@@ -1,6 +1,6 @@
 ﻿using Valleysoft.DockerRegistryClient;
 
-namespace Valleysoft.Dredge;
+namespace Valleysoft.Dredge.Core;
 
 public interface IDockerRegistryClient : IDisposable
 {
