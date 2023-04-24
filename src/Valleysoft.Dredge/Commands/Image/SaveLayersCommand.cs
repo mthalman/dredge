@@ -1,5 +1,5 @@
-﻿using Valleysoft.DockerRegistryClient.Models;
-using Valleysoft.Dredge.Core;
+﻿using Valleysoft.DockerRegistryClient;
+using Valleysoft.DockerRegistryClient.Models;
 
 namespace Valleysoft.Dredge.Commands.Image;
 
@@ -16,7 +16,7 @@ public class SaveLayersCommand : RegistryCommandBase<SaveLayersOptions>
         return CommandHelper.ExecuteCommandAsync(imageName.Registry, async () =>
         {
             using IDockerRegistryClient client = await DockerRegistryClientFactory.GetClientAsync(imageName.Registry);
-            DockerManifestV2 manifest = (await ManifestHelper.GetResolvedManifestAsync(client, imageName, AppSettingsHelper.Load(), Options.ToPlatformOptions())).Manifest;
+            DockerManifestV2 manifest = (await ManifestHelper.GetResolvedManifestAsync(client, imageName, Options)).Manifest;
             string? digest = manifest.Config?.Digest;
             if (digest is null)
             {
@@ -30,9 +30,7 @@ public class SaveLayersCommand : RegistryCommandBase<SaveLayersOptions>
                 Options.LayerIndex,
                 SaveLayersOptions.LayerIndexOptionName,
                 Options.NoSquash,
-                DredgeState.LayersTempPath,
-                AppSettingsHelper.Load(),
-                Options.ToPlatformOptions());
+                Options);
         });
     }
 }

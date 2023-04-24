@@ -26,13 +26,12 @@
   </PropertyGroup>
 
   <ItemGroup>
+    <PackageReference Include="SharpZipLib" Version="1.4.1" />
     <PackageReference Include="Spectre.Console" Version="0.45.1-preview.0.47" />
     <PackageReference Include="System.CommandLine" Version="2.0.0-beta4.22272.1" />
     <PackageReference Include="Valleysoft.DockerCredsProvider" Version="2.1.0" />
-  </ItemGroup>
-
-  <ItemGroup>
-    <ProjectReference Include="..\Valleysoft.Dredge.Core\Valleysoft.Dredge.Core.csproj" />
+    <PackageReference Include="Valleysoft.DockerfileModel" Version="1.1.0" />
+    <PackageReference Include="Valleysoft.DockerRegistryClient" Version="4.0.0" />
   </ItemGroup>
 
 </Project>

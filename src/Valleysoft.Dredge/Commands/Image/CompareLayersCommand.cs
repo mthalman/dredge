@@ -3,7 +3,9 @@ using Spectre.Console;
 using Spectre.Console.Rendering;
 using System.Reflection;
 using System.Runtime.Serialization;
-using Valleysoft.Dredge.Core;
+using Valleysoft.DockerRegistryClient;
+using Valleysoft.DockerRegistryClient.Models;
+using ImageConfig = Valleysoft.DockerRegistryClient.Models.Image;
 
 namespace Valleysoft.Dredge.Commands.Image;
 
@@ -12,12 +14,9 @@ public class CompareLayersCommand : RegistryCommandBase<CompareLayersOptions>
     private static readonly string[] SizeSuffixes =
         { "bytes", "KB", "MB", "GB", "TB", "PB", "EB", "ZB", "YB" };
 
-    private readonly AppSettings appSettings;
-
     public CompareLayersCommand(IDockerRegistryClientFactory dockerRegistryClientFactory)
         : base("layers", "Compares two images by layers", dockerRegistryClientFactory)
     {
-        this.appSettings = AppSettingsHelper.Load();
     }
 
     protected override Task ExecuteAsync()
@@ -31,11 +30,105 @@ public class CompareLayersCommand : RegistryCommandBase<CompareLayersOptions>
 
     public async Task<IRenderable> GetOutputAsync()
     {
-        CompareLayersResult result = await LayersComparer.GetCompareLayersResult(
-            DockerRegistryClientFactory, Options.BaseImage, Options.TargetImage, appSettings, Options.ToLayerCompareOptions());
+        CompareLayersResult result = await GetCompareLayersResult();
         OutputFormatter formatter = OutputFormatter.Create(Options.OutputFormat);
         IRenderable output = formatter.GetOutput(result, Options);
         return output;
+    }
+
+    private async Task<CompareLayersResult> GetCompareLayersResult()
+    {
+        IList<LayerInfo> baseLayers = await GetLayersAsync(Options.BaseImage);
+        IList<LayerInfo> targetLayers = await GetLayersAsync(Options.TargetImage);
+        List<LayerComparison> layerComparisons = GetLayerComparisons(baseLayers, targetLayers);
+        CompareLayersSummary summary = GetSummary(layerComparisons);
+
+        return new CompareLayersResult(
+            summary,
+            layerComparisons);
+    }
+
+    private static CompareLayersSummary GetSummary(List<LayerComparison> layerComparisons)
+    {
+        bool areEqual = layerComparisons.All(comparison => comparison.LayerDiff == LayerDiff.Equal);
+        bool targetIncludesAllBaseLayers =
+            areEqual ||
+            !layerComparisons
+                .Any(comparison => comparison.LayerDiff == LayerDiff.NotEqual || comparison.LayerDiff == LayerDiff.Removed);
+        int lastCommonLayerIndex = -1;
+        if (areEqual)
+        {
+            lastCommonLayerIndex = layerComparisons.Count - 1;
+        }
+        else
+        {
+            int equalLayerCount = layerComparisons
+                .TakeWhile(comparison => comparison.LayerDiff == LayerDiff.Equal)
+                .Count();
+            if (equalLayerCount >= 0)
+            {
+                lastCommonLayerIndex = equalLayerCount - 1;
+            }
+        }
+
+        CompareLayersSummary summary = new(areEqual, targetIncludesAllBaseLayers, lastCommonLayerIndex);
+        return summary;
+    }
+
+    private static List<LayerComparison> GetLayerComparisons(IList<LayerInfo> baseLayers, IList<LayerInfo> targetLayers)
+    {
+        List<LayerComparison> layerComparisons = new();
+        int max = Math.Max(baseLayers.Count, targetLayers.Count);
+        for (int i = 0; i < max; i++)
+        {
+            LayerInfo? baseLayer = null;
+            LayerInfo? targetLayer = null;
+            if (i < baseLayers.Count)
+            {
+                baseLayer = baseLayers[i];
+            }
+            if (i < targetLayers.Count)
+            {
+                targetLayer = targetLayers[i];
+            }
+
+            LayerDiff diff = GetLayerDiff(baseLayer, targetLayer);
+            layerComparisons.Add(new LayerComparison(baseLayer, targetLayer, diff));
+        }
+
+        return layerComparisons;
+    }
+
+    private static LayerDiff GetLayerDiff(LayerInfo? baseLayer, LayerInfo? targetLayer)
+    {
+        if (baseLayer is null)
+        {
+            if (targetLayer is null)
+            {
+                throw new Exception("Unexpected layer result: two null layers");
+            }
+
+            return LayerDiff.Added;
+        }
+        else
+        {
+            if (targetLayer is null)
+            {
+                return LayerDiff.Removed;
+            }
+            else
+            {
+                if (string.Equals(baseLayer.Digest, targetLayer.Digest, StringComparison.OrdinalIgnoreCase) &&
+                    string.Equals(baseLayer.History, targetLayer.History, StringComparison.Ordinal))
+                {
+                    return LayerDiff.Equal;
+                }
+                else
+                {
+                    return LayerDiff.NotEqual;
+                }
+            }
+        }
     }
 
     private static Color GetLayerDiffColor(LayerDiff diff, bool isBaseLayer, bool isColorDisabled) =>
@@ -90,6 +183,56 @@ public class CompareLayersCommand : RegistryCommandBase<CompareLayersOptions>
             LayerDiff.Removed => "- ",
             _ => throw new NotImplementedException()
         };
+
+    private async Task<IList<LayerInfo>> GetLayersAsync(string image)
+    {
+        ImageName imageName = ImageName.Parse(image);
+        using IDockerRegistryClient client = await DockerRegistryClientFactory.GetClientAsync(imageName.Registry);
+        DockerManifestV2 manifest = (await ManifestHelper.GetResolvedManifestAsync(client, imageName, Options)).Manifest;
+
+        string? digest = manifest.Config?.Digest;
+        if (digest is null)
+        {
+            throw new NotSupportedException($"Could not resolve the image config digest of '{image}'.");
+        }
+
+        ImageConfig imageConfig = await client.Blobs.GetImageAsync(imageName.Repo, digest);
+
+        List<LayerInfo> layerInfos = new();
+        int layerIndex = 0;
+        foreach (LayerHistory history in imageConfig.History)
+        {
+            if (Options.IncludeHistory || !history.IsEmptyLayer)
+            {
+                string? layerDigest = !history.IsEmptyLayer ? manifest.Layers[layerIndex].Digest : null;
+                long? compressedSize = null;
+                if (Options.IncludeCompressedSize)
+                {
+                    if (history.IsEmptyLayer)
+                    {
+                        compressedSize = 0;
+                    }
+                    else
+                    {
+                        compressedSize = manifest.Layers[layerIndex].Size;
+                    }
+                }
+
+                layerInfos.Add(
+                    new LayerInfo(
+                        layerDigest,
+                        Options.IncludeHistory ? history.CreatedBy : null,
+                        Options.IncludeCompressedSize ? compressedSize : null));
+
+                if (!history.IsEmptyLayer)
+                {
+                    layerIndex++;
+                }
+            }
+        }
+
+        return layerInfos;
+    }
 
     private static string? FormatCompressedSize(long? size)
     {
