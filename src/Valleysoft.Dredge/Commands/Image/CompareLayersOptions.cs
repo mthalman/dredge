@@ -1,5 +1,4 @@
 ﻿using System.CommandLine;
-using Valleysoft.Dredge.Core;
 
 namespace Valleysoft.Dredge.Commands.Image;
 
@@ -31,12 +30,4 @@ public class CompareLayersOptions : CompareOptionsBase
         IncludeHistory = GetValue(historyOption);
         IncludeCompressedSize = GetValue(compressedSizeOption);
     }
-
-    public LayerCompareOptions ToLayerCompareOptions() =>
-        new()
-        {
-            IncludeCompressedSize = this.IncludeCompressedSize,
-            IncludeHistory = this.IncludeHistory,
-            PlatformOptions = this.ToPlatformOptions()
-        };
 }

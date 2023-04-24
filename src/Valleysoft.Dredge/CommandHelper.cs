@@ -1,7 +1,5 @@
 ﻿using Valleysoft.DockerRegistryClient;
 using Valleysoft.DockerRegistryClient.Models;
-using Valleysoft.Dredge.Commands;
-using Valleysoft.Dredge.Core;
 
 namespace Valleysoft.Dredge;
 
@@ -36,10 +34,6 @@ internal static class CommandHelper
                 {
                     message = error?.Message ?? message;
                 }
-            }
-            else if (e is ManifestListResolutionException)
-            {
-                message = $"Unable to resolve the manifest list tag to a single matching platform. Run \"dredge manifest get\" to view the underlying manifests of this tag. Use {PlatformOptionsBase.OsOptionName}, {PlatformOptionsBase.ArchOptionName}, and {PlatformOptionsBase.OsVersionOptionName} to specify the target platform to match.";
             }
 
             Console.Error.WriteLine(message);

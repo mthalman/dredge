@@ -1,23 +1,25 @@
 ﻿using Valleysoft.DockerRegistryClient;
 using Valleysoft.DockerRegistryClient.Models;
+using Valleysoft.Dredge.Commands;
 
-namespace Valleysoft.Dredge.Core;
+namespace Valleysoft.Dredge;
 
-public record ResolvedManifest(
+internal record ResolvedManifest(
     ManifestInfo ManifestInfo,
     DockerManifestV2 Manifest);
 
-public static class ManifestHelper
+internal static class ManifestHelper
 {
     public static async Task<ResolvedManifest> GetResolvedManifestAsync(
-        IDockerRegistryClient client, ImageName imageName, AppSettings appSettings, PlatformOptions options)
+        IDockerRegistryClient client, ImageName imageName, PlatformOptionsBase options)
     {
         ManifestInfo manifestInfo = await client.Manifests.GetAsync(imageName.Repo, (imageName.Tag ?? imageName.Digest)!);
         if (manifestInfo.Manifest is ManifestList manifestList)
         {
-            string? os = GetPlatformValue(options.Os, appSettings.Platform.Os);
-            string? osVersion = GetPlatformValue(options.OsVersion, appSettings.Platform.OsVersion);
-            string? architecture = GetPlatformValue(options.Architecture, appSettings.Platform.Architecture);
+            AppSettings settings = AppSettings.Load();
+            string? os = GetPlatformValue(options.Os, settings.Platform.Os);
+            string? osVersion = GetPlatformValue(options.OsVersion, settings.Platform.OsVersion);
+            string? architecture = GetPlatformValue(options.Architecture, settings.Platform.Architecture);
 
             IEnumerable<ManifestReference> manifestRefs = manifestList.Manifests
                 .Where(manifest =>
@@ -29,7 +31,8 @@ public static class ManifestHelper
 
             if (manifestCount != 1)
             {
-                throw new ManifestListResolutionException();
+                throw new Exception(
+                    $"Unable to resolve the manifest list tag to a single matching platform. Run \"dredge manifest get\" to view the underlying manifests of this tag. Use {PlatformOptionsBase.OsOptionName}, {PlatformOptionsBase.ArchOptionName}, and {PlatformOptionsBase.OsVersionOptionName} to specify the target platform to match.");
             }
 
             ManifestReference manifestRef = manifestRefs.First();
