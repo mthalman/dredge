@@ -10,26 +10,11 @@ namespace Valleysoft.Dredge.Core;
 
 public static class DockerfileGenerator
 {
-    private static readonly string[] DockerfileInstructionNames = new string[]
+    private static readonly string[] KeyValuePairInstructions = new string[]
     {
-        "ADD",
         "ARG",
-        "CMD",
-        "COPY",
-        "ENTRYPOINT",
-        "EXPOSE",
         "ENV",
-        "FROM",
-        "HEALTHCHECK",
-        "LABEL",
-        "MAINTAINER",
-        "ONBUILD",
-        "RUN",
-        "SHELL",
-        "STOPSIGNAL",
-        "USER",
-        "VOLUME",
-        "WORKDIR"
+        "LABEL"
     };
 
     public static async Task<string> GenerateAsync(
@@ -164,6 +149,12 @@ public static class DockerfileGenerator
 
                 line = $"RUN {line}";
             }
+        }
+        
+        if (KeyValuePairInstructions.Any(instruction => line.StartsWith(instruction, StringComparison.OrdinalIgnoreCase)))
+        {
+            // Ensure that key-value pair instructions have their values surrounded in quotes to account for any spaces
+            line = Regex.Replace(line, "(^\\S+\\s+[A-Za-z0-9]*(\\s|=)+)(\\S*\\s.*)", "$1\"$3\"");
         }
 
         return line;
