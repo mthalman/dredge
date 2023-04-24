@@ -1,0 +1,64 @@
+// "mcr.microsoft.com/openjdk/jdk@sha256:4b13d577acde77b9fc30ec9831b1e01751d3918fe2bbc5d13d047fdc81fa2957"
+{
+  "os": "linux",
+  "history": [
+    {
+      "created": "2023-04-16T23:55:54.508257077Z",
+      "comment": "Imported from -"
+    },
+    {
+      "created": "2023-04-16T23:55:55.744677521Z",
+      "created_by": "/bin/sh -c #(nop)  ARG EULA=@EULA_FILE@",
+      "empty_layer": true
+    },
+    {
+      "created": "2023-04-16T23:55:57.00065357Z",
+      "created_by": "/bin/sh -c #(nop) COPY file:2c9b9395238ee55ff215d908ee6cf02975b45c4e6c97b276333bcd60ee705729 in . "
+    },
+    {
+      "created": "2023-04-24T09:11:59.635096955Z",
+      "created_by": "LABEL Author=Microsoft",
+      "comment": "buildkit.dockerfile.v0",
+      "empty_layer": true
+    },
+    {
+      "created": "2023-04-24T09:11:59.635096955Z",
+      "created_by": "LABEL Support=Microsoft OpenJDK Support <openjdk-support@microsoft.com>",
+      "comment": "buildkit.dockerfile.v0",
+      "empty_layer": true
+    },
+    {
+      "created": "2023-04-24T09:11:59.635096955Z",
+      "created_by": "COPY /staging/ / # buildkit",
+      "comment": "buildkit.dockerfile.v0"
+    },
+    {
+      "created": "2023-04-24T09:12:02.030218924Z",
+      "created_by": "COPY /usr/jdk/ /usr/jdk/ # buildkit",
+      "comment": "buildkit.dockerfile.v0"
+    },
+    {
+      "created": "2023-04-24T09:12:02.044834481Z",
+      "created_by": "COPY /staging/home/app /home/app # buildkit",
+      "comment": "buildkit.dockerfile.v0"
+    },
+    {
+      "created": "2023-04-24T09:12:02.044834481Z",
+      "created_by": "ENV JAVA_HOME=/usr/jdk",
+      "comment": "buildkit.dockerfile.v0",
+      "empty_layer": true
+    },
+    {
+      "created": "2023-04-24T09:12:02.044834481Z",
+      "created_by": "ENV PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:/usr/jdk/bin",
+      "comment": "buildkit.dockerfile.v0",
+      "empty_layer": true
+    },
+    {
+      "created": "2023-04-24T09:12:02.044834481Z",
+      "created_by": "ENTRYPOINT [\"/usr/jdk/bin/java\"]",
+      "comment": "buildkit.dockerfile.v0",
+      "empty_layer": true
+    }
+  ]
+}

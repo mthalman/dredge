@@ -10,6 +10,28 @@ namespace Valleysoft.Dredge.Core;
 
 public static class DockerfileGenerator
 {
+    private static readonly string[] DockerfileInstructionNames = new string[]
+    {
+        "ADD",
+        "ARG",
+        "CMD",
+        "COPY",
+        "ENTRYPOINT",
+        "EXPOSE",
+        "ENV",
+        "FROM",
+        "HEALTHCHECK",
+        "LABEL",
+        "MAINTAINER",
+        "ONBUILD",
+        "RUN",
+        "SHELL",
+        "STOPSIGNAL",
+        "USER",
+        "VOLUME",
+        "WORKDIR"
+    };
+
     public static async Task<string> GenerateAsync(
         string imageName, IDockerRegistryClientFactory dockerRegistryClientFactory, AppSettings appSettings, DockerfileOptions options)
     {
@@ -131,14 +153,17 @@ public static class DockerfileGenerator
                 throw new Exception("Unable to determine initial shell from instructions.");
             }
 
-            line = line[currentShell.Length..].Trim();
-
-            if (!options.NoFormat)
+            if (line.StartsWith(currentShell))
             {
-                line = FormatRunInstruction(line);
-            }
+                line = line[currentShell.Length..].Trim();
 
-            line = $"RUN {line}";
+                if (!options.NoFormat)
+                {
+                    line = FormatRunInstruction(line);
+                }
+
+                line = $"RUN {line}";
+            }
         }
 
         return line;
