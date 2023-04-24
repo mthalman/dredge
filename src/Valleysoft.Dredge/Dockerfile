@@ -2,6 +2,7 @@ FROM --platform=$BUILDPLATFORM mcr.microsoft.com/dotnet/sdk:7.0-jammy AS build
 
 ARG TARGETARCH
 ARG TARGETOS
+ARG PACKAGE_VERSION
 
 RUN arch=$TARGETARCH \
     && if [ "$arch" = "amd64" ]; then arch="x64"; fi \
@@ -13,7 +14,7 @@ COPY *.csproj .
 RUN dotnet restore -r $(cat /tmp/rid) /p:PublishReadyToRun=true
 
 COPY . .
-RUN dotnet publish -c Release -f net7.0 -o /app -r $(cat /tmp/rid) --self-contained true --no-restore /p:PublishTrimmed=true /p:PublishReadyToRun=true /p:PublishSingleFile=true /p:TrimMode=partial
+RUN dotnet publish -c Release -f net7.0 -o /app -r $(cat /tmp/rid) --self-contained true --no-restore /p:PublishTrimmed=true /p:PublishReadyToRun=true /p:PublishSingleFile=true /p:TrimMode=partial /p:Version=$PACKAGE_VERSION
 
 
 FROM mcr.microsoft.com/dotnet/nightly/runtime-deps:7.0-jammy-chiseled
