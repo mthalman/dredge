@@ -5,9 +5,7 @@ VisualStudioVersion = 17.5.33109.374
 MinimumVisualStudioVersion = 10.0.40219.1
 Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "Valleysoft.Dredge", "Valleysoft.Dredge\Valleysoft.Dredge.csproj", "{781B651C-A6F3-445B-AD9D-ABB5E5632445}"
 EndProject
-Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "Valleysoft.Dredge.Tests", "Valleysoft.Dredge.Tests\Valleysoft.Dredge.Tests.csproj", "{39FD6D54-14E0-4894-95AC-951E3209A59F}"
-EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Valleysoft.Dredge.Core", "Valleysoft.Dredge.Core\Valleysoft.Dredge.Core.csproj", "{90EED197-D923-4EDA-A309-C9FF12FD417F}"
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Valleysoft.Dredge.Tests", "Valleysoft.Dredge.Tests\Valleysoft.Dredge.Tests.csproj", "{39FD6D54-14E0-4894-95AC-951E3209A59F}"
 EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
@@ -23,10 +21,6 @@ Global
 		{39FD6D54-14E0-4894-95AC-951E3209A59F}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{39FD6D54-14E0-4894-95AC-951E3209A59F}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{39FD6D54-14E0-4894-95AC-951E3209A59F}.Release|Any CPU.Build.0 = Release|Any CPU
-		{90EED197-D923-4EDA-A309-C9FF12FD417F}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
-		{90EED197-D923-4EDA-A309-C9FF12FD417F}.Debug|Any CPU.Build.0 = Debug|Any CPU
-		{90EED197-D923-4EDA-A309-C9FF12FD417F}.Release|Any CPU.ActiveCfg = Release|Any CPU
-		{90EED197-D923-4EDA-A309-C9FF12FD417F}.Release|Any CPU.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE

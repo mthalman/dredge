@@ -16,15 +16,15 @@ public class OpenCommand : Command
         return CommandHelper.ExecuteCommandAsync(null, () =>
         {
             // Ensure the settings are loaded which creates a default settings file if necessary
-            AppSettingsHelper.Load();
+            AppSettings.Load();
 
             try
             {
-                Process.Start(new ProcessStartInfo(AppSettingsHelper.SettingsPath) { UseShellExecute = true });
+                Process.Start(new ProcessStartInfo(AppSettings.SettingsPath) { UseShellExecute = true });
             }
             catch (Exception)
             {
-                Console.WriteLine(AppSettingsHelper.SettingsPath);
+                Console.WriteLine(AppSettings.SettingsPath);
             }
 
             return Task.CompletedTask;

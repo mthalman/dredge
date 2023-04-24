@@ -1,4 +1,4 @@
-﻿namespace Valleysoft.Dredge.Core;
+﻿namespace Valleysoft.Dredge;
 
 public static class RegistryHelper
 {

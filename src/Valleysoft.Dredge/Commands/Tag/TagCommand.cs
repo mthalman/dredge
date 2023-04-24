@@ -1,5 +1,4 @@
 ﻿using System.CommandLine;
-using Valleysoft.Dredge.Core;
 
 namespace Valleysoft.Dredge.Commands.Tag;
 

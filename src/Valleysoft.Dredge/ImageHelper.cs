@@ -3,19 +3,21 @@ using System.IO.Compression;
 using System.Text;
 using Valleysoft.DockerRegistryClient;
 using Valleysoft.DockerRegistryClient.Models;
-using ImageConfig = Valleysoft.DockerRegistryClient.Models.Image;
+using Valleysoft.Dredge.Commands;
 
-namespace Valleysoft.Dredge.Core;
+namespace Valleysoft.Dredge;
 
-public static class ImageHelper
+internal static class ImageHelper
 {
     // See https://github.com/opencontainers/image-spec/blob/main/layer.md#whiteouts
     private const string WhiteoutMarkerPrefix = ".wh.";
     private const string OpaqueWhiteoutMarker = ".wh..wh..opq";
 
+    private static readonly string LayersTempPath = Path.Combine(DredgeState.DredgeTempPath, "layers");
+
     public static async Task SaveImageLayersToDiskAsync(
         IDockerRegistryClientFactory dockerRegistryClientFactory, string image, string destPath, int? layerIndex,
-        string layerIndexOptionName, bool noSquash, string layersCachePath, AppSettings appSettings, PlatformOptions options)
+        string layerIndexOptionName, bool noSquash, PlatformOptionsBase options)
     {
         // Spec for OCI image layer filesystem changeset: https://github.com/opencontainers/image-spec/blob/main/layer.md
 
@@ -23,7 +25,7 @@ public static class ImageHelper
 
         ImageName imageName = ImageName.Parse(image);
         IDockerRegistryClient client = await dockerRegistryClientFactory.GetClientAsync(imageName.Registry);
-        DockerManifestV2 manifest = (await ManifestHelper.GetResolvedManifestAsync(client, imageName, appSettings, options)).Manifest;
+        DockerManifestV2 manifest = (await ManifestHelper.GetResolvedManifestAsync(client, imageName, options)).Manifest;
 
         int startIndex = 0;
         int layerCount = manifest.Layers.Length;
@@ -52,7 +54,7 @@ public static class ImageHelper
             Console.Error.WriteLine($"Layer {layer.Digest}");
 
             string layerName = layer.Digest[(layer.Digest.IndexOf(':') + 1)..];
-            string layerDir = Path.Combine(layersCachePath, layerName);
+            string layerDir = Path.Combine(LayersTempPath, layerName);
             if (Directory.Exists(layerDir))
             {
                 Console.Error.WriteLine($"\tUsing cached layer on disk...");

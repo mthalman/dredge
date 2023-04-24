@@ -6,7 +6,6 @@ using Spectre.Console;
 using System.Text;
 using Valleysoft.DockerRegistryClient.Models;
 using Valleysoft.Dredge.Commands.Image;
-using Valleysoft.Dredge.Core;
 
 public class DockerfileCommandTests
 {
@@ -127,7 +126,7 @@ public class DockerfileCommandTests
 
         DockerfileCommand command = new(clientFactoryMock.Object)
         {
-            Options = new Commands.Image.DockerfileOptions
+            Options = new DockerfileOptions
             {
                 Image = ImageName,
                 NoFormat = scenario.NoFormat

@@ -1,6 +1,4 @@
-﻿using Valleysoft.Dredge.Core;
-
-namespace Valleysoft.Dredge.Commands;
+﻿namespace Valleysoft.Dredge.Commands;
 
 public abstract class RegistryCommandBase<TOptions> : CommandWithOptions<TOptions>
     where TOptions : OptionsBase, new()

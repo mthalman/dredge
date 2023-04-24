@@ -1,6 +1,6 @@
-﻿namespace Valleysoft.Dredge.Core;
+﻿namespace Valleysoft.Dredge;
 
-public static class DockerHubHelper
+internal static class DockerHubHelper
 {
     public static string GetAuthRegistry(string? registry) =>
         string.IsNullOrEmpty(registry) ? "https://index.docker.io/v1/" : registry;
