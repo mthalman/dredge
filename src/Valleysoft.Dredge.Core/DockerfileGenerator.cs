@@ -10,6 +10,28 @@ namespace Valleysoft.Dredge.Core;
 
 public static class DockerfileGenerator
 {
+    private static readonly string[] DockerfileInstructionNames = new string[]
+    {
+        "ADD",
+        "ARG",
+        "CMD",
+        "COPY",
+        "ENTRYPOINT",
+        "EXPOSE",
+        "ENV",
+        "FROM",
+        "HEALTHCHECK",
+        "LABEL",
+        "MAINTAINER",
+        "ONBUILD",
+        "RUN",
+        "SHELL",
+        "STOPSIGNAL",
+        "USER",
+        "VOLUME",
+        "WORKDIR"
+    };
+
     public static async Task<string> GenerateAsync(
         string imageName, IDockerRegistryClientFactory dockerRegistryClientFactory, AppSettings appSettings, DockerfileOptions options)
     {
@@ -124,7 +146,10 @@ public static class DockerfileGenerator
                 }
             }
         }
-        else
+        // RUN instructions in the Dockerfile history don't appear as "RUN ...". They appear as a shell execution
+        // command, "/bin/sh -c ...". We only want to look for those style of commands here. So anything that is a
+        // Dockerfile instruction, we'll pass along without formatting.
+        else if (!DockerfileInstructionNames.Any(name => line.StartsWith(name, StringComparison.OrdinalIgnoreCase)))
         {
             if (currentShell is null)
             {
