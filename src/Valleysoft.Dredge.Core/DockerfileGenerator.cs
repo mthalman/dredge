@@ -146,24 +146,24 @@ public static class DockerfileGenerator
                 }
             }
         }
-        // RUN instructions in the Dockerfile history don't appear as "RUN ...". They appear as a shell execution
-        // command, "/bin/sh -c ...". We only want to look for those style of commands here. So anything that is a
-        // Dockerfile instruction, we'll pass along without formatting.
-        else if (!DockerfileInstructionNames.Any(name => line.StartsWith(name, StringComparison.OrdinalIgnoreCase)))
+        else
         {
             if (currentShell is null)
             {
                 throw new Exception("Unable to determine initial shell from instructions.");
             }
 
-            line = line[currentShell.Length..].Trim();
-
-            if (!options.NoFormat)
+            if (line.StartsWith(currentShell))
             {
-                line = FormatRunInstruction(line);
-            }
+                line = line[currentShell.Length..].Trim();
 
-            line = $"RUN {line}";
+                if (!options.NoFormat)
+                {
+                    line = FormatRunInstruction(line);
+                }
+
+                line = $"RUN {line}";
+            }
         }
 
         return line;
