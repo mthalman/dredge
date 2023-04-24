@@ -23,6 +23,7 @@
   </ItemGroup>
 
   <ItemGroup>
+    <ProjectReference Include="..\Valleysoft.Dredge.Core\Valleysoft.Dredge.Core.csproj" />
     <ProjectReference Include="..\Valleysoft.Dredge\Valleysoft.Dredge.csproj" />
   </ItemGroup>
 
@@ -34,6 +35,15 @@
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </None>
     <None Update="TestData\DockerfileCommand\fedora\image.json">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
+    <None Update="TestData\DockerfileCommand\openjdk\expected-output-format.txt">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
+    <None Update="TestData\DockerfileCommand\openjdk\expected-output-no-format.txt">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
+    <None Update="TestData\DockerfileCommand\openjdk\image.json">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </None>
     <None Update="TestData\DockerfileCommand\python\expected-output-format.txt">

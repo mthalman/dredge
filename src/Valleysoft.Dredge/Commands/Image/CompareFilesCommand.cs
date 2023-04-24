@@ -1,4 +1,5 @@
 ﻿using System.Diagnostics;
+using Valleysoft.Dredge.Core;
 
 namespace Valleysoft.Dredge.Commands.Image;
 
@@ -8,23 +9,25 @@ public class CompareFilesCommand : RegistryCommandBase<CompareFilesOptions>
     private const string TargetOutputDirName = "target";
 
     private static readonly string CompareTempPath = Path.Combine(DredgeState.DredgeTempPath, "compare");
+    private readonly AppSettings appSettings;
 
     public CompareFilesCommand(IDockerRegistryClientFactory dockerRegistryClientFactory)
         : base("files", "Compares two images by their files", dockerRegistryClientFactory)
     {
+        appSettings = AppSettingsHelper.Load();
     }
 
     protected override Task ExecuteAsync()
     {
         return CommandHelper.ExecuteCommandAsync(registry: null, async () =>
         {
-            AppSettings settings = AppSettings.Load();
+            AppSettings settings = AppSettingsHelper.Load();
             if (settings.FileCompareTool is null ||
                 settings.FileCompareTool.ExePath == string.Empty ||
                 settings.FileCompareTool.Args == string.Empty)
             {
                 throw new Exception(
-                    $"This command requires additional configuration.{Environment.NewLine}In order to compare files, you must first set the '{AppSettings.FileCompareToolName}' setting in {AppSettings.SettingsPath}. This is an external tool of your choosing that will be executed to compare two directories containing files of the specified images. Use '{{0}}' and '{{1}}' placeholders in the args to indicate the base and target path locations that will be the inputs to the compare tool.");
+                    $"This command requires additional configuration.{Environment.NewLine}In order to compare files, you must first set the '{AppSettings.FileCompareToolName}' setting in {AppSettingsHelper.SettingsPath}. This is an external tool of your choosing that will be executed to compare two directories containing files of the specified images. Use '{{0}}' and '{{1}}' placeholders in the args to indicate the base and target path locations that will be the inputs to the compare tool.");
             }
 
             await SaveImageLayersToDiskAsync(Options.BaseImage, BaseOutputDirName, Options.BaseLayerIndex, CompareOptionsBase.BaseArg);
@@ -53,6 +56,8 @@ public class CompareFilesCommand : RegistryCommandBase<CompareFilesOptions>
             layerIndex,
             layerIndexArg + CompareFilesOptions.LayerIndexSuffix,
             noSquash: false,
-            Options);
+            DredgeState.LayersTempPath,
+            this.appSettings,
+            Options.ToPlatformOptions());
     }
 }

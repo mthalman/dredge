@@ -1,4 +1,5 @@
 ﻿using Valleysoft.DockerRegistryClient;
+using Valleysoft.Dredge.Core;
 
 namespace Valleysoft.Dredge.Commands.Manifest;
 

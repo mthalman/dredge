@@ -1,5 +1,6 @@
 ﻿using Newtonsoft.Json;
 using System.Reflection;
+using Valleysoft.Dredge.Core;
 
 namespace Valleysoft.Dredge.Commands.Settings;
 
@@ -12,12 +13,12 @@ internal partial class SetCommand : CommandWithOptions<SetOptions>
 
     protected override Task ExecuteAsync()
     {
-        AppSettings settings = AppSettings.Load();
+        AppSettings settings = AppSettingsHelper.Load();
 
         Queue<string> names = new(Options.Name.Split('.'));
 
         SetSettingProperty(settings, names, Options.Value);
-        settings.Save();
+        AppSettingsHelper.Save(settings);
         return Task.CompletedTask;
     }
 

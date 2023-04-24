@@ -6,8 +6,8 @@ using Spectre.Console;
 using Spectre.Console.Rendering;
 using System.Text;
 using Valleysoft.DockerRegistryClient.Models;
-using Valleysoft.Dredge.Commands;
 using Valleysoft.Dredge.Commands.Image;
+using Valleysoft.Dredge.Core;
 
 public class CompareLayersCommandTests
 {

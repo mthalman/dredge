@@ -2,7 +2,7 @@
 using Newtonsoft.Json.Converters;
 using System.Runtime.Serialization;
 
-namespace Valleysoft.Dredge;
+namespace Valleysoft.Dredge.Core;
 
 public record WindowsOsInfo
 {
