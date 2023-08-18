@@ -79,9 +79,9 @@ There are a variety of output options available:
 * Inline: Displays the comparison in an inline fashion
 * JSON: Returns a JSON representation of the comparison, including summary analysis
 
-There's also a --history option to include the layer history information associated with the given layer.
+There's also a `--history` option to include the layer history information associated with the given layer.
 
-By default, the comparison makes use of green and red colors to indicate differences. For accessibility purposes, you can choose to use the --no-color option which will disable the use of these colors and use textual means to indicate diffs instead.
+By default, the comparison makes use of green and red colors to indicate differences. For accessibility purposes, you can choose to use the `--no-color` option which will disable the use of these colors and use textual means to indicate diffs instead.
 
 ```diff
 $ dredge image compare layers --output inline amd64/node:19.1-alpine amd64/node:19.2-alpine
