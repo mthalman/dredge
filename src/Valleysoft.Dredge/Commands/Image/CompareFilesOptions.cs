@@ -6,8 +6,8 @@ public class CompareFilesOptions : CompareOptionsBase
 {
     public const string LayerIndexSuffix = "-layer-index";
 
-    private readonly Option<int> baseLayerIndex;
-    private readonly Option<int> targetLayerIndex;
+    private readonly Option<int?> baseLayerIndex;
+    private readonly Option<int?> targetLayerIndex;
     private readonly Option<CompareFilesOutput> outputOption;
 
     public int? BaseLayerIndex { get; set; }
@@ -16,8 +16,8 @@ public class CompareFilesOptions : CompareOptionsBase
 
     public CompareFilesOptions()
     {
-        baseLayerIndex = Add(new Option<int>($"--{BaseArg}{LayerIndexSuffix}", "Non-empty layer index of the base container image to compare with"));
-        targetLayerIndex = Add(new Option<int>($"--{TargetArg}{LayerIndexSuffix}", "Non-empty layer index of the target container image to compare against"));
+        baseLayerIndex = Add(new Option<int?>($"--{BaseArg}{LayerIndexSuffix}", "Non-empty layer index of the base container image to compare with"));
+        targetLayerIndex = Add(new Option<int?>($"--{TargetArg}{LayerIndexSuffix}", "Non-empty layer index of the target container image to compare against"));
         outputOption = Add(new Option<CompareFilesOutput>("--output", () => CompareFilesOutput.ExternalTool, "Output type"));
     }
 
