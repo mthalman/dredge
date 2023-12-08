@@ -38,15 +38,15 @@ jobs:
       - name: Setup .NET Core SDK
         uses: actions/setup-dotnet@v3
         with:
-          dotnet-version: "7.0.x"
+          dotnet-version: "8.0.x"
 
       - name: Install dependencies
         working-directory: src/Valleysoft.Dredge
-        run: dotnet restore --runtime ${{ matrix.rid }} /p:PublishReadyToRun=true
+        run: dotnet restore --runtime ${{ matrix.rid }}
 
       - name: Publish
         working-directory: src/Valleysoft.Dredge
-        run: dotnet publish -f net7.0 -c Release --no-restore -o ${{ github.workspace }}/publish --runtime ${{ matrix.rid }} --self-contained /p:PublishTrimmed=true /p:PublishReadyToRun=true /p:PublishSingleFile=true /p:TrimMode=partial
+        run: dotnet publish -f net8.0 -c Release --no-restore -o ${{ github.workspace }}/publish --runtime ${{ matrix.rid }}
 
       - name: Rename output
         run: |
@@ -106,7 +106,7 @@ jobs:
       - name: Setup .NET Core SDK
         uses: actions/setup-dotnet@v3
         with:
-          dotnet-version: "7.0.x"
+          dotnet-version: "8.0.x"
 
       - name: Install dependencies
         run: dotnet restore
@@ -146,7 +146,7 @@ jobs:
       - name: Build and push
         uses: docker/build-push-action@v3
         with:
-          context: ./src/Valleysoft.Dredge
+          context: ./src
           platforms: linux/amd64,linux/arm64
           push: true
           tags: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ github.event.inputs.packageVersion }},${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:latest
