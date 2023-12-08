@@ -2,7 +2,7 @@
 
 namespace Valleysoft.Dredge;
 
-internal class AppSettings
+internal partial class AppSettings
 {
     public static readonly string SettingsPath =
         Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "Valleysoft.Dredge", "settings.json");
@@ -36,7 +36,7 @@ internal class AppSettings
         else
         {
             string settings = File.ReadAllText(SettingsPath);
-            return JsonConvert.DeserializeObject<AppSettings>(settings);
+            return JsonConvert.DeserializeObject<AppSettings>(settings)!;
         }
     }
 
@@ -47,7 +47,7 @@ internal class AppSettings
     }
 }
 
-internal class FileCompareToolSettings
+internal partial class FileCompareToolSettings
 {
     [JsonProperty("exePath")]
     public string ExePath { get; set; } = string.Empty;
@@ -56,7 +56,7 @@ internal class FileCompareToolSettings
     public string Args { get; set; } = string.Empty;
 }
 
-internal class PlatformSettings
+internal partial class PlatformSettings
 {
     [JsonProperty("os")]
     public string Os { get; set; } = string.Empty;
