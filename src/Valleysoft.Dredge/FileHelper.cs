@@ -1,4 +1,6 @@
-﻿namespace Valleysoft.Dredge;
+﻿using System.Runtime.InteropServices;
+
+namespace Valleysoft.Dredge;
 
 internal static class FileHelper
 {
@@ -19,7 +21,7 @@ internal static class FileHelper
 
             if (file.LinkTarget is not null)
             {
-                File.CreateSymbolicLink(targetFilePath, file.LinkTarget);
+                CreateSymbolicLink(targetFilePath, file.LinkTarget);
             }
             else
             {
@@ -31,6 +33,18 @@ internal static class FileHelper
         {
             string newDestinationDir = Path.Combine(destinationDir, subDir.Name);
             CopyDirectory(subDir.FullName, newDestinationDir);
+        }
+    }
+
+    public static void CreateSymbolicLink(string targetFilePath, string linkTarget)
+    {
+        try
+        {
+            File.CreateSymbolicLink(targetFilePath, linkTarget);
+        }
+        catch (IOException ex) when (RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
+        {
+            throw new Exception($"Unable to create symbolic link from '{targetFilePath}' to '{linkTarget}'. Ensure that Windows Developer mode is enabled.\n\nError:\n{ex.Message}", ex);
         }
     }
 }
