@@ -82,6 +82,8 @@ internal static class ImageHelper
     {
         Console.Error.WriteLine($"\tExtracting layer...");
 
+        Directory.CreateDirectory(layerDir);
+
         using GZipStream gZipStream = new(layerStream, CompressionMode.Decompress);
 
         // Can't use System.Formats.Tar.TarReader because it fails to read certain types of tarballs:
