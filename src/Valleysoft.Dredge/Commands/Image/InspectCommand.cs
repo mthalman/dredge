@@ -18,16 +18,13 @@ public class InspectCommand : RegistryCommandBase<InspectOptions>
         {
             using IDockerRegistryClient client = await DockerRegistryClientFactory.GetClientAsync(imageName.Registry);
             DockerManifestV2 manifest = (await ManifestHelper.GetResolvedManifestAsync(client, imageName, Options)).Manifest;
-            string? digest = manifest.Config?.Digest;
-            if (digest is null)
-            {
+            string? digest = (manifest.Config?.Digest) ??
                 throw new NotSupportedException($"Could not resolve the image config digest of '{Options.Image}'.");
-            }
-
             Stream blob = await client.Blobs.GetAsync(imageName.Repo, digest);
             using StreamReader reader = new(blob);
             string content = await reader.ReadToEndAsync();
-            object json = JsonConvert.DeserializeObject(content);
+            object? json = JsonConvert.DeserializeObject(content) ??
+                throw new Exception($"Unable to deserialize content into JSON:\n{content}");
             string output = JsonConvert.SerializeObject(json, Formatting.Indented);
             Console.Out.WriteLine(output);
         });

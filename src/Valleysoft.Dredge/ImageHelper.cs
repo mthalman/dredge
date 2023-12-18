@@ -82,6 +82,8 @@ internal static class ImageHelper
     {
         Console.Error.WriteLine($"\tExtracting layer...");
 
+        Directory.CreateDirectory(layerDir);
+
         using GZipStream gZipStream = new(layerStream, CompressionMode.Decompress);
 
         // Can't use System.Formats.Tar.TarReader because it fails to read certain types of tarballs:
@@ -182,7 +184,7 @@ internal static class ImageHelper
                         File.Delete(dest);
                     }
 
-                    File.CreateSymbolicLink(dest, layerFile.LinkTarget);
+                    FileHelper.CreateSymbolicLink(dest, layerFile.LinkTarget);
                 }
                 else
                 {
@@ -209,7 +211,7 @@ internal static class ImageHelper
                 File.Delete(filePath);
             }
 
-            File.CreateSymbolicLink(filePath, entry.TarHeader.LinkName);
+            FileHelper.CreateSymbolicLink(filePath, entry.TarHeader.LinkName);
         }
         else
         {

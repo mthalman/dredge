@@ -2,11 +2,19 @@
 
   <PropertyGroup>
     <OutputType>Exe</OutputType>
-    <TargetFrameworks>net6.0;net7.0</TargetFrameworks>
+    <TargetFrameworks>net6.0;net7.0;net8.0</TargetFrameworks>
     <Nullable>enable</Nullable>
     <AssemblyName>dredge</AssemblyName>
-    <LangVersion>10.0</LangVersion>
+    <LangVersion>11.0</LangVersion>
     <ImplicitUsings>enable</ImplicitUsings>
+  </PropertyGroup>
+
+  <PropertyGroup>
+    <PublishSingleFile>true</PublishSingleFile>
+    <PublishTrimmed>true</PublishTrimmed>
+    <PublishReadyToRun>true</PublishReadyToRun>
+    <PublishSelfContained>true</PublishSelfContained>
+    <TrimMode>partial</TrimMode>
   </PropertyGroup>
 
   <PropertyGroup>
@@ -26,10 +34,17 @@
   </PropertyGroup>
 
   <ItemGroup>
-    <PackageReference Include="SharpZipLib" Version="1.4.1" />
-    <PackageReference Include="Spectre.Console" Version="0.45.1-preview.0.47" />
+    <ProjectReference Include="../Valleysoft.Dredge.Analyzers/Valleysoft.Dredge.Analyzers.csproj" OutputItemType="Analyzer" ReferenceOutputAssembly="false" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Newtonsoft.Json" Version="13.0.3" />
+    <PackageReference Include="SharpZipLib" Version="1.4.2" />
+    <PackageReference Include="Spectre.Console" Version="0.48.0" />
     <PackageReference Include="System.CommandLine" Version="2.0.0-beta4.22272.1" />
-    <PackageReference Include="Valleysoft.DockerCredsProvider" Version="2.1.0" />
+    <PackageReference Include="System.Text.Json" Version="8.0.0" />
+    <PackageReference Include="System.Text.RegularExpressions" Version="4.3.1" />
+    <PackageReference Include="Valleysoft.DockerCredsProvider" Version="2.2.1" />
     <PackageReference Include="Valleysoft.DockerfileModel" Version="1.1.0" />
     <PackageReference Include="Valleysoft.DockerRegistryClient" Version="4.0.0" />
   </ItemGroup>
