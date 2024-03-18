@@ -28,7 +28,7 @@ internal static class CommandHelper
                         loginCommand += $" {registry}";
                     }
 
-                    message = $"Authentication required. Ensure that your credentials are stored for the registry by running '{loginCommand}'.";
+                    message = $"The repository does not exist or may require authentication. If authentication is required, ensure that your credentials are stored for the registry by running '{loginCommand}'.";
                 }
                 else
                 {
