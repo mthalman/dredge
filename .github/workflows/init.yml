@@ -1,0 +1,29 @@
+on:
+  workflow_call:
+    outputs:
+      product-version:
+        value: ${{ jobs.init.outputs.product-version }}
+      product-version-major:
+        value: ${{ jobs.init.outputs.product-version-major }}
+
+jobs:
+
+  init:
+    name: Initialize
+    runs-on: ubuntu-latest
+
+    outputs:
+      product-version: ${{ steps.version.outputs.product-version }}
+      product-version-major: ${{ steps.version.outputs.product-version-major }}
+
+    steps:
+      - uses: actions/checkout@v3
+
+      - name: Get Version
+        id: version
+        working-directory: ./
+        run: |
+          productVersion=$(cat version.txt)
+          majorVersion=$(echo "$productVersion" | cut -d'.' -f1)
+          echo "product-version=$productVersion" >> $GITHUB_OUTPUT
+          echo "product-version-major=$majorVersion" >> $GITHUB_OUTPUT
