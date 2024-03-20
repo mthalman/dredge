@@ -1,0 +1,16 @@
+name: Monitor for Base Image Update
+
+on:
+  schedule:
+  - cron: "0 5 * * *"
+
+jobs:
+  build:
+
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: mthalman/docker-bump-action@v0
+        with:
+          target-image-name: ghcr.io/mthalman/dredge:latest
+          base-image-name: mcr.microsoft.com/dotnet/runtime-deps:8.0-jammy-chiseled

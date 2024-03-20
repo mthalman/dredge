@@ -1,6 +1,8 @@
 on:
   workflow_call:
   workflow_dispatch:
+  repository_dispatch:
+    types: [base-image-update]
 
 env:
   REGISTRY: ghcr.io
