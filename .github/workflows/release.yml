@@ -3,9 +3,9 @@ name: Release
 on:
   workflow_dispatch:
     inputs:
-      packageVersion:
-        description: 'Package version'
-        required: true
+      confirmVersionIsSet:
+        description: 'Confirm version is set'
+        type: boolean
 
 env:
   REGISTRY: ghcr.io
@@ -16,9 +16,31 @@ defaults:
     working-directory: src
 
 jobs:
+
+  init:
+    name: Initialize
+    runs-on: ubuntu-latest
+
+    outputs:
+      product-version: ${{ steps.version.outputs.product-version }}
+      product-version-major: ${{ steps.version.outputs.product-version-major }}
+
+    steps:
+      - uses: actions/checkout@v3
+
+      - name: Get Version
+        id: version
+        working-directory: ./
+        run: |
+          productVersion=$(cat version.txt)
+          majorVersion=$(echo "$productVersion" | cut -d'.' -f1)
+          echo "product-version=$productVersion" >> $GITHUB_OUTPUT
+          echo "product-version-major=$majorVersion" >> $GITHUB_OUTPUT
+
   exe:
     name: Build executables
     runs-on: ubuntu-latest
+    needs: init
 
     strategy:
       matrix:
@@ -56,7 +78,7 @@ jobs:
             dredgeExt=""
           fi
           
-          exeName="dredge-${{ github.event.inputs.packageVersion }}-${{ matrix.rid }}${dredgeExt}"
+          exeName="dredge-${{ needs.init.outputs.product-version }}-${{ matrix.rid }}${dredgeExt}"
           echo "EXE_NAME=${exeName}" >> $GITHUB_ENV
           mv ${{ github.workspace }}/publish/dredge${dredgeExt} ${{ github.workspace }}/publish/${exeName}
           rm ${{ github.workspace }}/publish/dredge.pdb
@@ -98,7 +120,7 @@ jobs:
   nuget:
     name: Publish NuGet Package
     runs-on: ubuntu-latest
-    needs: save-exes
+    needs: [ init, save-exes ]
 
     steps:
       - uses: actions/checkout@v3
@@ -116,7 +138,7 @@ jobs:
 
       - name: Pack
         env:
-          PACKAGE_VERSION: ${{ github.event.inputs.packageVersion }}
+          PACKAGE_VERSION: ${{ needs.init.outputs.product-version }}
         run: dotnet pack -c Release -p:Version=$PACKAGE_VERSION Valleysoft.Dredge -p:IsPack=true
       
       - name: Publish Package
@@ -125,11 +147,11 @@ jobs:
   docker:
     name: Publish Docker Image
     runs-on: ubuntu-latest
-    needs: nuget
+    needs: [ init, nuget ]
 
     steps:
       - uses: actions/checkout@v3
-        
+
       - name: Log in to the Container registry
         uses: docker/login-action@v2
         with:
@@ -149,6 +171,9 @@ jobs:
           context: ./src
           platforms: linux/amd64,linux/arm64
           push: true
-          tags: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ github.event.inputs.packageVersion }},${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:latest
+          tags: >
+            ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ needs.init.outputs.product-version }},
+            ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ needs.init.outputs.product-version-major }},
+            ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:latest
           build-args: |
-            PACKAGE_VERSION=${{ github.event.inputs.packageVersion }}
+            PACKAGE_VERSION=${{ needs.init.outputs.product-version }}
