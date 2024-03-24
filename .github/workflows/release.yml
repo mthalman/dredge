@@ -47,7 +47,7 @@ jobs:
 
       - name: Publish
         working-directory: src/Valleysoft.Dredge
-        run: dotnet publish -f net8.0 -c Release --no-restore -o ${{ github.workspace }}/publish --runtime ${{ matrix.rid }}
+        run: dotnet publish -f net8.0 -c Release --no-restore -o ${{ github.workspace }}/publish --runtime ${{ matrix.rid }} --no-self-contained
 
       - name: Rename output
         run: |

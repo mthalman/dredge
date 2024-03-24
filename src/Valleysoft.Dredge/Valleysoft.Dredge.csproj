@@ -11,10 +11,7 @@
 
   <PropertyGroup Condition=" '$(IsPack)' != 'true' ">
     <PublishSingleFile>true</PublishSingleFile>
-    <PublishTrimmed>true</PublishTrimmed>
-    <PublishReadyToRun>true</PublishReadyToRun>
-    <PublishSelfContained>true</PublishSelfContained>
-    <TrimMode>partial</TrimMode>
+    <DebugType>embedded</DebugType>
   </PropertyGroup>
 
   <PropertyGroup>
