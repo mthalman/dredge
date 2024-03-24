@@ -1,8 +1,7 @@
 ﻿using Newtonsoft.Json;
+using Newtonsoft.Json.Serialization;
 using Spectre.Console;
 using Spectre.Console.Rendering;
-using System.Reflection;
-using System.Runtime.Serialization;
 using Valleysoft.DockerRegistryClient;
 using Valleysoft.DockerRegistryClient.Models;
 using ImageConfig = Valleysoft.DockerRegistryClient.Models.Image;
@@ -370,8 +369,11 @@ public class CompareLayersCommand : RegistryCommandBase<CompareLayersOptions>
             }
 
             private static string GetLayerDiffDisplayName(LayerDiff diff) =>
-                typeof(LayerDiff).GetMember(diff.ToString()).Single().GetCustomAttribute<EnumMemberAttribute>()?.Value ??
-                    throw new Exception($"Enum member not set for {diff}.");
+                diff switch
+                {
+                    LayerDiff.NotEqual => "Not Equal",
+                    _ => diff.ToString(),
+                };
         }
 
         private class InlineFormatter : OutputFormatter
@@ -430,7 +432,8 @@ public class CompareLayersCommand : RegistryCommandBase<CompareLayersOptions>
                 string output = JsonConvert.SerializeObject(result, new JsonSerializerSettings
                 {
                     NullValueHandling = NullValueHandling.Ignore,
-                    Formatting = Formatting.Indented
+                    Formatting = Formatting.Indented,
+                    ContractResolver = new CamelCasePropertyNamesContractResolver()
                 });
 
                 return new Text(output);
