@@ -11,10 +11,10 @@ RUN dotnet restore -a $TARGETARCH Valleysoft.Dredge/*.csproj
 
 COPY Valleysoft.Dredge/ Valleysoft.Dredge/
 COPY Valleysoft.Dredge.Analyzers/ Valleysoft.Dredge.Analyzers/
-RUN dotnet publish Valleysoft.Dredge/*.csproj -f net8.0 -o /app -a $TARGETARCH --self-contained /p:Version=$PACKAGE_VERSION --no-restore
+RUN dotnet publish Valleysoft.Dredge/*.csproj -f net8.0 -o /app -a $TARGETARCH --no-self-contained /p:Version=$PACKAGE_VERSION --no-restore
 
 
-FROM mcr.microsoft.com/dotnet/runtime-deps:8.0-jammy-chiseled
+FROM mcr.microsoft.com/dotnet/runtime:8.0-jammy-chiseled
 WORKDIR /app
 COPY --from=build /app .
 ENTRYPOINT ["./dredge"]
