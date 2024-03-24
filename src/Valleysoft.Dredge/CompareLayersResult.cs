@@ -59,13 +59,13 @@ public class LayerComparison
 [JsonConverter(typeof(StringEnumConverter))]
 public enum LayerDiff
 {
-    [EnumMember(Value = "Equal")]
+    [EnumMember(Value = "equal")]
     Equal,
-    [EnumMember(Value = "Not Equal")]
+    [EnumMember(Value = "notEqual")]
     NotEqual,
-    [EnumMember(Value = "Added")]
+    [EnumMember(Value = "added")]
     Added,
-    [EnumMember(Value = "Removed")]
+    [EnumMember(Value = "removed")]
     Removed
 }
 
