@@ -60,7 +60,6 @@ jobs:
           exeName="dredge-${{ needs.init.outputs.product-version }}-${{ matrix.rid }}${dredgeExt}"
           echo "EXE_NAME=${exeName}" >> $GITHUB_ENV
           mv ${{ github.workspace }}/publish/dredge${dredgeExt} ${{ github.workspace }}/publish/${exeName}
-          rm ${{ github.workspace }}/publish/dredge.pdb
       
       - name: Generate checksum
         run: sha256sum ${EXE_NAME} >${EXE_NAME}.sha256sum
