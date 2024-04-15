@@ -38,6 +38,7 @@ internal static class CommandHelper
 
             Console.Error.WriteLine(message);
             Console.ForegroundColor = savedColor;
+            Environment.Exit(1);
         }
     }
 }
