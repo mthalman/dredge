@@ -1,5 +1,5 @@
-// "library/python@sha256:779bcaad95871999fb6734a3923ff6a09cf6459231913d706b302eef5b6e383e"
 {
+  "__comment": "library/python@sha256:779bcaad95871999fb6734a3923ff6a09cf6459231913d706b302eef5b6e383e",
   "os": "linux",
   "history": [
     {

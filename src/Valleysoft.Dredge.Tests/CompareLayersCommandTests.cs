@@ -1,13 +1,14 @@
 namespace Valleysoft.Dredge.Tests;
 
-using Microsoft.Rest;
 using Newtonsoft.Json;
 using Spectre.Console;
 using Spectre.Console.Rendering;
 using System.Text;
-using Valleysoft.DockerRegistryClient.Models;
-using Valleysoft.Dredge.Commands;
+using Valleysoft.DockerRegistryClient.Models.Images;
+using Valleysoft.DockerRegistryClient.Models.Manifests;
+using Valleysoft.DockerRegistryClient.Models.Manifests.Docker;
 using Valleysoft.Dredge.Commands.Image;
+using JsonSerializer = System.Text.Json.JsonSerializer;
 
 public class CompareLayersCommandTests
 {
@@ -823,7 +824,7 @@ public class CompareLayersCommandTests
     }
 
     private static void CompareJson<T>(T expected, T actual) =>
-        Assert.Equal(JsonConvert.SerializeObject(expected), JsonConvert.SerializeObject(actual));
+        Assert.Equal(JsonSerializer.Serialize(expected), JsonSerializer.Serialize(actual));
 
     private static T GetJson<T>(IEnumerable<Segment> segments) =>
         JsonConvert.DeserializeObject<T>(TestHelper.GetString(segments))!;
@@ -834,25 +835,19 @@ public class CompareLayersCommandTests
         string configDigest = $"{imageName.Repo}-config-digest";
 
         registryClientMock
-            .Setup(o => o.Manifests.GetWithHttpMessagesAsync(imageName.Repo, imageName.Tag!, It.IsAny<CancellationToken>()))
-            .ReturnsAsync(new HttpOperationResponse<ManifestInfo>()
-            {
-                Body = new ManifestInfo(string.Empty, string.Empty,
-                    new DockerManifestV2
+            .Setup(o => o.Manifests.GetAsync(imageName.Repo, imageName.Tag!, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new ManifestInfo(string.Empty, string.Empty,
+                new DockerManifest
+                {
+                    Config = new ManifestConfig
                     {
-                        Config = new ManifestConfig
-                        {
-                            Digest = configDigest
-                        },
-                        Layers = layers
-                    })
-            });
+                        Digest = configDigest
+                    },
+                    Layers = layers
+                }));
         registryClientMock
-            .Setup(o => o.Blobs.GetWithHttpMessagesAsync(imageName.Repo, configDigest, It.IsAny<CancellationToken>()))
-            .ReturnsAsync(new HttpOperationResponse<Stream>
-            {
-                Body = new MemoryStream(Encoding.UTF8.GetBytes(JsonConvert.SerializeObject(imageConfig)))
-            });
+            .Setup(o => o.Blobs.GetAsync(imageName.Repo, configDigest, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new MemoryStream(Encoding.UTF8.GetBytes(JsonSerializer.Serialize(imageConfig))));
     }
 
     private static string[] ToArray(params string?[] strings) =>

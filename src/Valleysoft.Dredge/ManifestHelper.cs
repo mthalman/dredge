@@ -1,12 +1,11 @@
-﻿using Valleysoft.DockerRegistryClient;
-using Valleysoft.DockerRegistryClient.Models;
+﻿using Valleysoft.DockerRegistryClient.Models.Manifests;
 using Valleysoft.Dredge.Commands;
 
 namespace Valleysoft.Dredge;
 
 internal record ResolvedManifest(
     ManifestInfo ManifestInfo,
-    DockerManifestV2 Manifest);
+    IImageManifest Manifest);
 
 internal static class ManifestHelper
 {
@@ -14,14 +13,14 @@ internal static class ManifestHelper
         IDockerRegistryClient client, ImageName imageName, PlatformOptionsBase options)
     {
         ManifestInfo manifestInfo = await client.Manifests.GetAsync(imageName.Repo, (imageName.Tag ?? imageName.Digest)!);
-        if (manifestInfo.Manifest is ManifestList manifestList)
+        if (manifestInfo.Manifest is IManifestList manifestList)
         {
             AppSettings settings = AppSettings.Load();
             string? os = GetPlatformValue(options.Os, settings.Platform.Os);
             string? osVersion = GetPlatformValue(options.OsVersion, settings.Platform.OsVersion);
             string? architecture = GetPlatformValue(options.Architecture, settings.Platform.Architecture);
 
-            IEnumerable<ManifestReference> manifestRefs = manifestList.Manifests
+            IEnumerable<IManifestReference> manifestRefs = manifestList.Manifests
                 .Where(manifest =>
                     (os is null || manifest.Platform?.Os == os) &&
                     (osVersion is null || manifest.Platform?.OsVersion == osVersion) &&
@@ -35,7 +34,7 @@ internal static class ManifestHelper
                     $"Unable to resolve the manifest list tag to a single matching platform. Run \"dredge manifest get\" to view the underlying manifests of this tag. Use {PlatformOptionsBase.OsOptionName}, {PlatformOptionsBase.ArchOptionName}, and {PlatformOptionsBase.OsVersionOptionName} to specify the target platform to match.");
             }
 
-            ManifestReference manifestRef = manifestRefs.First();
+            IManifestReference manifestRef = manifestRefs.First();
 
             if (manifestRef.Digest is null)
             {
@@ -45,7 +44,7 @@ internal static class ManifestHelper
             manifestInfo = await client.Manifests.GetAsync(imageName.Repo, manifestRef.Digest);
         }
 
-        if (manifestInfo.Manifest is not DockerManifestV2 manifest)
+        if (manifestInfo.Manifest is not IImageManifest manifest)
         {
             throw new NotSupportedException(
                 $"The image name '{imageName}' has a media type of '{manifestInfo.MediaType}' which is not supported.");

@@ -29,7 +29,7 @@ public class ListCommand : RegistryCommandBase<ListOptions>
 
             repoNames.Sort();
 
-            string output = JsonConvert.SerializeObject(repoNames, Formatting.Indented);
+            string output = JsonConvert.SerializeObject(repoNames, JsonHelper.Settings);
 
             Console.Out.WriteLine(output);
         });

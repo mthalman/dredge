@@ -3,8 +3,9 @@ using Newtonsoft.Json.Serialization;
 using Spectre.Console;
 using Spectre.Console.Rendering;
 using Valleysoft.DockerRegistryClient;
-using Valleysoft.DockerRegistryClient.Models;
-using ImageConfig = Valleysoft.DockerRegistryClient.Models.Image;
+using Valleysoft.DockerRegistryClient.Models.Images;
+using Valleysoft.DockerRegistryClient.Models.Manifests;
+using ImageConfig = Valleysoft.DockerRegistryClient.Models.Images.Image;
 
 namespace Valleysoft.Dredge.Commands.Image;
 
@@ -187,7 +188,7 @@ public class CompareLayersCommand : RegistryCommandBase<CompareLayersOptions>
     {
         ImageName imageName = ImageName.Parse(image);
         using IDockerRegistryClient client = await DockerRegistryClientFactory.GetClientAsync(imageName.Registry);
-        DockerManifestV2 manifest = (await ManifestHelper.GetResolvedManifestAsync(client, imageName, Options)).Manifest;
+        IImageManifest manifest = (await ManifestHelper.GetResolvedManifestAsync(client, imageName, Options)).Manifest;
 
         string? digest = manifest.Config?.Digest;
         if (digest is null)
@@ -429,12 +430,7 @@ public class CompareLayersCommand : RegistryCommandBase<CompareLayersOptions>
         {
             public override IRenderable GetOutput(CompareLayersResult result, CompareLayersOptions options)
             {
-                string output = JsonConvert.SerializeObject(result, new JsonSerializerSettings
-                {
-                    NullValueHandling = NullValueHandling.Ignore,
-                    Formatting = Formatting.Indented,
-                    ContractResolver = new CamelCasePropertyNamesContractResolver()
-                });
+                string output = JsonConvert.SerializeObject(result, JsonHelper.Settings);
 
                 return new Text(output);
             }

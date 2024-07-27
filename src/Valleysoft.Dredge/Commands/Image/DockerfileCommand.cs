@@ -4,8 +4,9 @@ using System.Text.RegularExpressions;
 using Valleysoft.DockerfileModel;
 using Valleysoft.DockerfileModel.Tokens;
 using Valleysoft.DockerRegistryClient;
-using Valleysoft.DockerRegistryClient.Models;
-using ImageConfig = Valleysoft.DockerRegistryClient.Models.Image;
+using Valleysoft.DockerRegistryClient.Models.Images;
+using Valleysoft.DockerRegistryClient.Models.Manifests;
+using ImageConfig = Valleysoft.DockerRegistryClient.Models.Images.Image;
 
 namespace Valleysoft.Dredge.Commands.Image;
 
@@ -46,7 +47,7 @@ public class DockerfileCommand : RegistryCommandBase<DockerfileOptions>
     {
         ImageName imageName = ImageName.Parse(Options.Image);
         using IDockerRegistryClient client = await dockerRegistryClientFactory.GetClientAsync(imageName.Registry);
-        DockerManifestV2 manifest = (await ManifestHelper.GetResolvedManifestAsync(client, imageName, Options)).Manifest;
+        IImageManifest manifest = (await ManifestHelper.GetResolvedManifestAsync(client, imageName, Options)).Manifest;
 
         string? digest = manifest.Config?.Digest;
         if (digest is null)
@@ -100,7 +101,7 @@ public class DockerfileCommand : RegistryCommandBase<DockerfileOptions>
         return markup.ToString();
     }
 
-    private async Task<IEnumerable<LayerHistory>> GetWindowsLayersAsync(ImageConfig imageConfig, DockerManifestV2 manifest, string windowsRepo)
+    private async Task<IEnumerable<LayerHistory>> GetWindowsLayersAsync(ImageConfig imageConfig, IImageManifest manifest, string windowsRepo)
     {
         using IDockerRegistryClient mcrClient =
             await dockerRegistryClientFactory.GetClientAsync(RegistryHelper.McrRegistry);
@@ -125,7 +126,7 @@ public class DockerfileCommand : RegistryCommandBase<DockerfileOptions>
         return imageConfig.History.Skip(i);
     }
 
-    private async Task<(WindowsOsInfo Info, string Repo)> GetWindowsInfoAsync(DockerManifestV2 manifest, ImageConfig imageConfig)
+    private async Task<(WindowsOsInfo Info, string Repo)> GetWindowsInfoAsync(IImageManifest manifest, ImageConfig imageConfig)
     {
         string? initialLayerDigest = manifest.Layers.First().Digest;
         if (string.IsNullOrEmpty(initialLayerDigest))

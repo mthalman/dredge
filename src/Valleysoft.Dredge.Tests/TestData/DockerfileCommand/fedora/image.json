@@ -1,5 +1,5 @@
-// "registry.fedoraproject.org/fedora@sha256:9b8e2b468d0d0523529bde44e8a0f17aad93dcedcf876c111183ffd4ea40d724"
 {
+  "__comment": "registry.fedoraproject.org/fedora@sha256:9b8e2b468d0d0523529bde44e8a0f17aad93dcedcf876c111183ffd4ea40d724",
   "os": "linux",
   "history": [
     {

@@ -1,6 +1,5 @@
 ﻿using Newtonsoft.Json;
-using Valleysoft.DockerRegistryClient;
-using Valleysoft.DockerRegistryClient.Models;
+using Valleysoft.DockerRegistryClient.Models.Manifests;
 
 namespace Valleysoft.Dredge.Commands.Image;
 
@@ -17,7 +16,7 @@ public class InspectCommand : RegistryCommandBase<InspectOptions>
         return CommandHelper.ExecuteCommandAsync(imageName.Registry, async () =>
         {
             using IDockerRegistryClient client = await DockerRegistryClientFactory.GetClientAsync(imageName.Registry);
-            DockerManifestV2 manifest = (await ManifestHelper.GetResolvedManifestAsync(client, imageName, Options)).Manifest;
+            IImageManifest manifest = (await ManifestHelper.GetResolvedManifestAsync(client, imageName, Options)).Manifest;
             string? digest = (manifest.Config?.Digest) ??
                 throw new NotSupportedException($"Could not resolve the image config digest of '{Options.Image}'.");
             Stream blob = await client.Blobs.GetAsync(imageName.Repo, digest);
@@ -25,7 +24,7 @@ public class InspectCommand : RegistryCommandBase<InspectOptions>
             string content = await reader.ReadToEndAsync();
             object? json = JsonConvert.DeserializeObject(content) ??
                 throw new Exception($"Unable to deserialize content into JSON:\n{content}");
-            string output = JsonConvert.SerializeObject(json, Formatting.Indented);
+            string output = JsonConvert.SerializeObject(json, JsonHelper.Settings);
             Console.Out.WriteLine(output);
         });
     }
