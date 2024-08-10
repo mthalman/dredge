@@ -30,7 +30,7 @@ public class ListCommand : RegistryCommandBase<ListOptions>
 
             tags.Sort();
 
-            string output = JsonConvert.SerializeObject(tags, Formatting.Indented);
+            string output = JsonConvert.SerializeObject(tags, JsonHelper.Settings);
 
             Console.Out.WriteLine(output);
         });

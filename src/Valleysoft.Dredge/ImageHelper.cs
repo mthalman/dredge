@@ -3,6 +3,7 @@ using System.IO.Compression;
 using System.Text;
 using Valleysoft.DockerRegistryClient;
 using Valleysoft.DockerRegistryClient.Models;
+using Valleysoft.DockerRegistryClient.Models.Manifests;
 using Valleysoft.Dredge.Commands;
 
 namespace Valleysoft.Dredge;
@@ -25,7 +26,7 @@ internal static class ImageHelper
 
         ImageName imageName = ImageName.Parse(image);
         IDockerRegistryClient client = await dockerRegistryClientFactory.GetClientAsync(imageName.Registry);
-        DockerManifestV2 manifest = (await ManifestHelper.GetResolvedManifestAsync(client, imageName, options)).Manifest;
+        IImageManifest manifest = (await ManifestHelper.GetResolvedManifestAsync(client, imageName, options)).Manifest;
 
         int startIndex = 0;
         int layerCount = manifest.Layers.Length;
@@ -45,7 +46,7 @@ internal static class ImageHelper
 
         for (int i = startIndex; i < layerCount; i++)
         {
-            ManifestLayer layer = manifest.Layers[i];
+            IDescriptor layer = manifest.Layers[i];
             if (string.IsNullOrEmpty(layer.Digest))
             {
                 throw new Exception($"Layer digest not set for image '{imageName}'");

@@ -22,7 +22,7 @@ internal partial class AppSettings
         if (!File.Exists(SettingsPath))
         {
             AppSettings settings = new();
-            string settingsStr = JsonConvert.SerializeObject(settings, Formatting.Indented);
+            string settingsStr = JsonConvert.SerializeObject(settings, JsonHelper.Settings);
 
             string dirName = Path.GetDirectoryName(SettingsPath)!;
             if (!Directory.Exists(dirName))
@@ -42,7 +42,7 @@ internal partial class AppSettings
 
     public void Save()
     {
-        string settingsStr = JsonConvert.SerializeObject(this, Formatting.Indented);
+        string settingsStr = JsonConvert.SerializeObject(this, JsonHelper.Settings);
         File.WriteAllText(SettingsPath, settingsStr);
     }
 }

@@ -1,5 +1,5 @@
-// "mcr.microsoft.com/openjdk/jdk@sha256:4b13d577acde77b9fc30ec9831b1e01751d3918fe2bbc5d13d047fdc81fa2957"
 {
+  "__comment": "mcr.microsoft.com/openjdk/jdk@sha256:4b13d577acde77b9fc30ec9831b1e01751d3918fe2bbc5d13d047fdc81fa2957",
   "os": "linux",
   "history": [
     {

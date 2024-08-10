@@ -1,4 +1,4 @@
-﻿using Valleysoft.DockerRegistryClient.Models;
+﻿using Valleysoft.DockerRegistryClient.Models.Manifests;
 
 namespace Valleysoft.Dredge.Commands.Manifest;
 

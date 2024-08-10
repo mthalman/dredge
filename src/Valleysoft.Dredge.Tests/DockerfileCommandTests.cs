@@ -1,10 +1,11 @@
 ﻿namespace Valleysoft.Dredge.Tests;
 
-using Microsoft.Rest;
 using Newtonsoft.Json;
 using Spectre.Console;
 using System.Text;
-using Valleysoft.DockerRegistryClient.Models;
+using Valleysoft.DockerRegistryClient.Models.Images;
+using Valleysoft.DockerRegistryClient.Models.Manifests;
+using Valleysoft.DockerRegistryClient.Models.Manifests.Docker;
 using Valleysoft.Dredge.Commands.Image;
 
 public class DockerfileCommandTests
@@ -82,43 +83,31 @@ public class DockerfileCommandTests
             };
 
             mcrClientMock
-                .Setup(o => o.Blobs.ExistsWithHttpMessagesAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<CancellationToken>()))
-                .ReturnsAsync(new HttpOperationResponse<bool>
-                {
-                    Body = false
-                });
+                .Setup(o => o.Blobs.ExistsAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<CancellationToken>()))
+                .ReturnsAsync(false);
 
             mcrClientMock
-                .Setup(o => o.Blobs.ExistsWithHttpMessagesAsync(
+                .Setup(o => o.Blobs.ExistsAsync(
                     "windows/servercore", It.Is<string>(digest => digest == "layer0digest" || digest == "layer1digest"), It.IsAny<CancellationToken>()))
-                .ReturnsAsync(new HttpOperationResponse<bool>
-                {
-                    Body = true
-                });
+                .ReturnsAsync(true);
         }
 
         Mock<IDockerRegistryClient> registryClientMock = new();
         registryClientMock
-            .Setup(o => o.Manifests.GetWithHttpMessagesAsync(RepoName, TagName, It.IsAny<CancellationToken>()))
-            .ReturnsAsync(new HttpOperationResponse<ManifestInfo>
-            {
-                Body = new ManifestInfo("media-type", "digest",
-                    new DockerManifestV2
+            .Setup(o => o.Manifests.GetAsync(RepoName, TagName, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new ManifestInfo("media-type", "digest",
+                new DockerManifest
+                {
+                    Config = new ManifestConfig
                     {
-                        Config = new ManifestConfig
-                        {
-                            Digest = Digest
-                        },
-                        Layers = layers
-                    })
-            });
+                        Digest = Digest
+                    },
+                    Layers = layers
+                }));
 
         registryClientMock
-            .Setup(o => o.Blobs.GetWithHttpMessagesAsync(RepoName, Digest, It.IsAny<CancellationToken>()))
-            .ReturnsAsync(new HttpOperationResponse<Stream>
-            {
-                Body = new MemoryStream(Encoding.UTF8.GetBytes(File.ReadAllText(scenario.ImagePath)))
-            });
+            .Setup(o => o.Blobs.GetAsync(RepoName, Digest, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new MemoryStream(Encoding.UTF8.GetBytes(File.ReadAllText(scenario.ImagePath))));
 
         clientFactoryMock
             .Setup(o => o.GetClientAsync(Registry))

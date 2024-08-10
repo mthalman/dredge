@@ -25,7 +25,7 @@ internal partial class GetCommand : CommandWithOptions<GetOptions>
             }
             else
             {
-                Console.WriteLine(JsonConvert.SerializeObject(value, Formatting.Indented));
+                Console.WriteLine(JsonConvert.SerializeObject(value, JsonHelper.Settings));
             }
         }
 

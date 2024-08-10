@@ -1,6 +1,6 @@
-﻿using Microsoft.Rest;
-using Valleysoft.DockerCredsProvider;
+﻿using Valleysoft.DockerCredsProvider;
 using Valleysoft.DockerRegistryClient;
+using Valleysoft.DockerRegistryClient.Credentials;
 
 namespace Valleysoft.Dredge;
 
@@ -8,7 +8,7 @@ internal class DockerRegistryClientFactory : IDockerRegistryClientFactory
 {
     public async Task<IDockerRegistryClient> GetClientAsync(string? registry)
     {
-        ServiceClientCredentials? clientCreds;
+        IRegistryClientCredentials? clientCreds;
 
         string? accessToken;
         string? username;
@@ -21,11 +21,7 @@ internal class DockerRegistryClientFactory : IDockerRegistryClientFactory
         else if ((username = Environment.GetEnvironmentVariable("DREDGE_USERNAME")) is not null &&
             (password = Environment.GetEnvironmentVariable("DREDGE_PASSWORD")) is not null)
         {
-            clientCreds = new BasicAuthenticationCredentials()
-            {
-                UserName = username,
-                Password = password
-            };
+            clientCreds = new BasicAuthenticationCredentials(username, password);
         }
         else
         {
@@ -45,18 +41,14 @@ internal class DockerRegistryClientFactory : IDockerRegistryClientFactory
             }
             else
             {
-                clientCreds = new BasicAuthenticationCredentials()
-                {
-                    UserName = creds.Username,
-                    Password = creds.Password
-                };
+                clientCreds = new BasicAuthenticationCredentials(creds.Username, creds.Password);
             }
         }
 
         return new DockerRegistryClientWrapper(CreateClient(registry, clientCreds));
     }
 
-    private RegistryClient CreateClient(string? registry, ServiceClientCredentials? clientCreds = null)
+    private static RegistryClient CreateClient(string? registry, IRegistryClientCredentials? clientCreds = null)
     {
         RegistryClient client = new(DockerHubHelper.GetApiRegistry(registry), clientCreds);
         client.HttpClient.Timeout = new TimeSpan(0, 30, 0);

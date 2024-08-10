@@ -1,5 +1,5 @@
-// "mcr.microsoft.com/dotnet/sdk@sha256:321018d653470f9d9b4da5d2aea9915916752ce6a4ef9806bfb68046aed62053"
 {
+  "__comment": "mcr.microsoft.com/dotnet/sdk@sha256:321018d653470f9d9b4da5d2aea9915916752ce6a4ef9806bfb68046aed62053",
   "os": "windows",
   "os.version": "10.0.20348.1366",
   "architecture": "amd64",
