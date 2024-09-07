@@ -19,5 +19,7 @@ internal class DockerRegistryClientWrapper : IDockerRegistryClient
 
     public ITagOperations Tags => dockerRegistryClient.Tags;
 
+    public IReferrerOperations Referrers => dockerRegistryClient.Referrers;
+
     public void Dispose() => dockerRegistryClient.Dispose();
 }

@@ -42,7 +42,7 @@
     <PackageReference Include="System.Text.RegularExpressions" Version="4.3.1" />
     <PackageReference Include="Valleysoft.DockerCredsProvider" Version="2.2.3" />
     <PackageReference Include="Valleysoft.DockerfileModel" Version="1.1.1" />
-    <PackageReference Include="Valleysoft.DockerRegistryClient" Version="5.0.0" />
+    <PackageReference Include="Valleysoft.DockerRegistryClient" Version="5.0.1" />
   </ItemGroup>
 
 </Project>
