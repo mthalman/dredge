@@ -1,3 +1,5 @@
+<img src="dredge-logo.png" width="250" />
+
 # Dredge: A Container Registry Client CLI
 
 Dredge is a CLI built on .NET that provides a simple way to execute commands on a container registry's HTTP API. Currently, only read operations are supported.
