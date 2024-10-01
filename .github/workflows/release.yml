@@ -34,10 +34,10 @@ jobs:
           - linux-musl-arm64
 
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@f43a0e5ff2bd294095638e18286ca9a3d1956744 # v3
 
       - name: Setup .NET Core SDK
-        uses: actions/setup-dotnet@v3
+        uses: actions/setup-dotnet@3447fd6a9f9e57506b15f895c5b76d3b197dc7c2 # v3
         with:
           dotnet-version: "8.0.x"
 
@@ -66,7 +66,7 @@ jobs:
         working-directory: ${{ github.workspace }}/publish
 
       - name: Save build binaries
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@ff15f0306b3f739f7b6fd43fb5d26cd321bd4de5 # v3
         with:
           name: dredge-binaries-${{ matrix.rid }}
           path: ${{ github.workspace }}/publish
@@ -77,10 +77,10 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@f43a0e5ff2bd294095638e18286ca9a3d1956744 # v3
 
       - name: Download build binaries
-        uses: actions/download-artifact@v3
+        uses: actions/download-artifact@9bc31d5ccc31df68ecc42ccf4149144866c47d8a # v3
         with:
           path: ${{ github.workspace }}/publish
 
@@ -90,7 +90,7 @@ jobs:
           rm -r ${{ github.workspace }}/publish/dredge-binaries-*
 
       - name: Save build binaries
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@ff15f0306b3f739f7b6fd43fb5d26cd321bd4de5 # v3
         with:
           name: dredge-binaries
           path: ${{ github.workspace }}/publish
@@ -101,10 +101,10 @@ jobs:
     needs: [ init, save-exes ]
 
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@f43a0e5ff2bd294095638e18286ca9a3d1956744 # v3
 
       - name: Setup .NET Core SDK
-        uses: actions/setup-dotnet@v3
+        uses: actions/setup-dotnet@3447fd6a9f9e57506b15f895c5b76d3b197dc7c2 # v3
         with:
           dotnet-version: "8.0.x"
 
