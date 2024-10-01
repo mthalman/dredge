@@ -3,5 +3,5 @@
   "extends": [
     "config:best-practices"
   ],
-  "enabled": true
+  "mode": "full"
 }
