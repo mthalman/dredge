@@ -746,7 +746,7 @@ public class CompareLayersCommandTests
 
     [Theory]
     [MemberData(nameof(GetTestData), CompareLayersOutput.Json)]
-    public async void Json(
+    public async Task Json(
         string scenario, CommandOptions cmdOptions, ImageSetup baseImageSetup, ImageSetup targetImageSetup, CompareLayersResult expectedResult)
     {
         Text text = (Text)await ExecuteTestAsync(scenario, CompareLayersOutput.Json, cmdOptions, baseImageSetup, targetImageSetup);
@@ -757,7 +757,7 @@ public class CompareLayersCommandTests
 
     [Theory]
     [MemberData(nameof(GetTestData), CompareLayersOutput.Inline)]
-    public async void Inline(
+    public async Task Inline(
         string scenario, CommandOptions cmdOptions, ImageSetup baseImageSetup, ImageSetup targetImageSetup, string expectedResult)
     {
         Rows rows = (Rows)await ExecuteTestAsync(scenario, CompareLayersOutput.Inline, cmdOptions, baseImageSetup, targetImageSetup);
@@ -767,7 +767,7 @@ public class CompareLayersCommandTests
 
     [Theory]
     [MemberData(nameof(GetTestData), CompareLayersOutput.SideBySide)]
-    public async void SideBySide(
+    public async Task SideBySide(
         string scenario, CommandOptions cmdOptions, ImageSetup baseImageSetup, ImageSetup targetImageSetup, string[][] expectedRows)
     {
         Table table = (Table)await ExecuteTestAsync(scenario, CompareLayersOutput.SideBySide, cmdOptions, baseImageSetup, targetImageSetup);
