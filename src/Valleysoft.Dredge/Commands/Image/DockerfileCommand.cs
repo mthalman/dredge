@@ -152,11 +152,14 @@ public class DockerfileCommand : RegistryCommandBase<DockerfileOptions>
         const string NopMarker = "#(nop)";
 
         int nopIndex = line.IndexOf(NopMarker);
-        if (nopIndex >= 0)
+        if (nopIndex >= 0 || currentShell is null)
         {
-            currentShell ??= line[0..nopIndex].Trim();
-
-            line = line[(nopIndex + NopMarker.Length)..].Trim();
+            if (nopIndex >= 0)
+            {
+                currentShell ??= line[0..nopIndex].Trim();
+                line = line[(nopIndex + NopMarker.Length)..].Trim();
+            }
+            
             if (line.StartsWith("ADD", StringComparison.OrdinalIgnoreCase) ||
                 line.StartsWith("COPY", StringComparison.OrdinalIgnoreCase))
             {
