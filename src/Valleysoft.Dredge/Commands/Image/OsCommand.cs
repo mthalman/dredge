@@ -2,6 +2,7 @@
 using Newtonsoft.Json;
 using System.IO.Compression;
 using System.Text;
+using System.Text.RegularExpressions;
 using Valleysoft.DockerRegistryClient;
 using Valleysoft.DockerRegistryClient.Models.Manifests;
 using ImageConfig = Valleysoft.DockerRegistryClient.Models.Images.Image;
@@ -10,6 +11,8 @@ namespace Valleysoft.Dredge.Commands.Image;
 
 public class OsCommand : RegistryCommandBase<OsOptions>
 {
+    private static readonly Regex osReleaseRegex = new(@"(\./)?(etc|usr/lib)/os-release");
+
     public OsCommand(IDockerRegistryClientFactory dockerRegistryClientFactory)
         : base("os", "Gets OS info about the container image", dockerRegistryClientFactory)
     {
@@ -75,7 +78,7 @@ public class OsCommand : RegistryCommandBase<OsOptions>
             // Look for the os-release file (skip symlinks)
             if (entry is not null &&
                 entry.Size > 0 &&
-                (entry.Name == "etc/os-release" || entry.Name == "usr/lib/os-release"))
+                (osReleaseRegex.IsMatch(entry.Name)))
             {
                 using MemoryStream memStream = new();
                 tarStream.CopyEntryContents(memStream);

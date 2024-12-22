@@ -1,4 +1,4 @@
-FROM --platform=$BUILDPLATFORM mcr.microsoft.com/dotnet/sdk:8.0-jammy@sha256:4d0de0f52f1252139b2709c9fc2f7bb23155fd8e33936a44a6ebfb02df0ec45c AS build
+FROM --platform=$BUILDPLATFORM mcr.microsoft.com/dotnet/sdk:9.0-noble@sha256:991fd7c9c41fc12b47313bd2e1fb292c39e50fb50453ac11287b2877d3623d55 AS build
 
 ARG TARGETARCH
 ARG PACKAGE_VERSION
@@ -11,10 +11,10 @@ RUN dotnet restore -a $TARGETARCH Valleysoft.Dredge/*.csproj
 
 COPY Valleysoft.Dredge/ Valleysoft.Dredge/
 COPY Valleysoft.Dredge.Analyzers/ Valleysoft.Dredge.Analyzers/
-RUN dotnet publish Valleysoft.Dredge/*.csproj -f net8.0 -o /app -a $TARGETARCH --no-self-contained /p:Version=$PACKAGE_VERSION --no-restore
+RUN dotnet publish Valleysoft.Dredge/*.csproj -f net9.0 -o /app -a $TARGETARCH --no-self-contained /p:Version=$PACKAGE_VERSION --no-restore
 
 
-FROM mcr.microsoft.com/dotnet/runtime:8.0-jammy-chiseled@sha256:f50b13c931ecef4538f75f98b417947085ec03c697a4df167306ff30ff81e43f
+FROM mcr.microsoft.com/dotnet/runtime:9.0-noble-chiseled@sha256:d5c0e8bfef9e0b506a0129af076af2677c51d02f73c5995e54cd33e8ce3cc6e0
 WORKDIR /app
 COPY --from=build /app .
 ENTRYPOINT ["./dredge"]
