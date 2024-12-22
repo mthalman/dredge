@@ -2,6 +2,7 @@
 using Valleysoft.Dredge;
 using Valleysoft.Dredge.Commands.Image;
 using Valleysoft.Dredge.Commands.Manifest;
+using Valleysoft.Dredge.Commands.Referrer;
 using Valleysoft.Dredge.Commands.Repo;
 using Valleysoft.Dredge.Commands.Settings;
 using Valleysoft.Dredge.Commands.Tag;
@@ -11,6 +12,7 @@ RootCommand rootCmd = new("CLI for executing commands on a container registry's 
 {
     new ImageCommand(clientFactory),
     new ManifestCommand(clientFactory),
+    new ReferrerCommand(clientFactory),
     new RepoCommand(clientFactory),
     new TagCommand(clientFactory),
     new SettingsCommand(clientFactory),
