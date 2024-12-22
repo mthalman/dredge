@@ -18,7 +18,7 @@ The main documentation is in the [docs](docs) directory.
 Download the desired executable from the [release page](https://github.com/mthalman/dredge/releases).
 
 Prerequisites:
-* [.NET 8 runtime](https://dotnet.microsoft.com/download/dotnet/8.0)
+* [.NET 9 runtime](https://dotnet.microsoft.com/download/dotnet/9.0)
 
 ### Running as a container
 
