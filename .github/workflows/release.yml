@@ -39,7 +39,7 @@ jobs:
       - name: Setup .NET Core SDK
         uses: actions/setup-dotnet@v3
         with:
-          dotnet-version: "8.0.x"
+          dotnet-version: "9.0.x"
 
       - name: Install dependencies
         working-directory: src/Valleysoft.Dredge
@@ -47,7 +47,7 @@ jobs:
 
       - name: Publish
         working-directory: src/Valleysoft.Dredge
-        run: dotnet publish -f net8.0 -c Release --no-restore -o ${{ github.workspace }}/publish --runtime ${{ matrix.rid }} --no-self-contained
+        run: dotnet publish -f net9.0 -c Release --no-restore -o ${{ github.workspace }}/publish --runtime ${{ matrix.rid }} --no-self-contained
 
       - name: Rename output
         run: |
@@ -106,7 +106,7 @@ jobs:
       - name: Setup .NET Core SDK
         uses: actions/setup-dotnet@v3
         with:
-          dotnet-version: "8.0.x"
+          dotnet-version: "9.0.x"
 
       - name: Install dependencies
         run: dotnet restore
