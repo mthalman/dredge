@@ -45,6 +45,8 @@ jobs:
 
       - name: Publish
         working-directory: src/Valleysoft.Dredge
+        env:
+          PACKAGE_VERSION: ${{ needs.init.outputs.product-version }}
         run: dotnet publish -f net9.0 -c Release -p:Version=$PACKAGE_VERSION --no-restore -o ${{ github.workspace }}/publish --runtime ${{ matrix.rid }} --no-self-contained
 
       - name: Rename output
@@ -108,6 +110,8 @@ jobs:
         run: dotnet restore
 
       - name: Build
+        env:
+          PACKAGE_VERSION: ${{ needs.init.outputs.product-version }}
         run: dotnet build -c Release -p:Version=$PACKAGE_VERSION --no-restore Valleysoft.Dredge
 
       - name: Pack
