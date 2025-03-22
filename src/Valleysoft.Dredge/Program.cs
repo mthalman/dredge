@@ -15,7 +15,7 @@ RootCommand rootCmd = new("CLI for executing commands on a container registry's 
     new ReferrerCommand(clientFactory),
     new RepoCommand(clientFactory),
     new TagCommand(clientFactory),
-    new SettingsCommand(clientFactory),
+    new SettingsCommand(),
 };
 
 return rootCmd.Invoke(args);

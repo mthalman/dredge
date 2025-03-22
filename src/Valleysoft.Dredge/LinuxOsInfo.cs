@@ -57,13 +57,13 @@ public record LinuxOsInfo
 
     public static LinuxOsInfo Parse(string osInfoContent)
     {
-        Dictionary<string, string> osFields = new(osInfoContent
+        Dictionary<string, string> osFields = new([..osInfoContent
             .Split("\n", StringSplitOptions.RemoveEmptyEntries)
             .Select(line =>
             {
                 int index = line.IndexOf('=');
                 return new KeyValuePair<string, string>(line[..index], line[(index + 1)..].TrimStart('"').TrimEnd('"'));
-            }));
+            })]);
 
         return new LinuxOsInfo
         {

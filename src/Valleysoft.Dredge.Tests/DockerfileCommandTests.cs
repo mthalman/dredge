@@ -12,24 +12,24 @@ public class DockerfileCommandTests
 {
     private const string Registry = "test-registry.io";
 
-    public static IEnumerable<object[]> GetTestData()
+    public static IEnumerable<TheoryDataRow<TestScenario>> GetTestData()
     {
         DirectoryInfo workingDir = new(Path.Combine(Environment.CurrentDirectory, "TestData", "DockerfileCommand"));
         return workingDir.GetDirectories()
             .SelectMany(dir => new TestScenario[]
             {
-                new TestScenario(
+                new(
                     dir.Name,
                     Path.Combine(dir.FullName, "image.json"),
                     noFormat: false,
                     Path.Combine(dir.FullName, "expected-output-format.txt")),
-                new TestScenario(
+                new(
                     dir.Name,
                     Path.Combine(dir.FullName, "image.json"),
                     noFormat: true,
                     Path.Combine(dir.FullName, "expected-output-no-format.txt"))
             })
-            .Select(scenario => new object[] { scenario });
+            .Select(scenario => new TheoryDataRow<TestScenario>(scenario));
 
     }
 
@@ -66,12 +66,12 @@ public class DockerfileCommandTests
             .Setup(o => o.GetClientAsync(RegistryHelper.McrRegistry))
             .ReturnsAsync(mcrClientMock.Object);
 
-        ManifestLayer[] layers = Array.Empty<ManifestLayer>();
+        ManifestLayer[] layers = [];
         Image image = JsonConvert.DeserializeObject<Image>(File.ReadAllText(scenario.ImagePath))!;
         if (image.Os == "windows")
         {
-            layers = new[]
-            {
+            layers =
+            [
                 new ManifestLayer
                 {
                     Digest = "layer0digest"
@@ -80,7 +80,7 @@ public class DockerfileCommandTests
                 {
                     Digest = "layer1digest"
                 }
-            };
+            ];
 
             mcrClientMock
                 .Setup(o => o.Blobs.ExistsAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<CancellationToken>()))

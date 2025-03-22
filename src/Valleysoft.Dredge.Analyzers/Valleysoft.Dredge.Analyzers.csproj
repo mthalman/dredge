@@ -5,7 +5,8 @@
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
     <EnforceExtendedAnalyzerRules>true</EnforceExtendedAnalyzerRules>
-    <LangVersion>11.0</LangVersion>
+    <LangVersion>12.0</LangVersion>
+    <NoWarn>IDE0290</NoWarn>
   </PropertyGroup>
 
   <ItemGroup>

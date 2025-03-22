@@ -10,7 +10,7 @@ using ImageConfig = Valleysoft.DockerRegistryClient.Models.Images.Image;
 
 namespace Valleysoft.Dredge.Commands.Image;
 
-public class DockerfileCommand : RegistryCommandBase<DockerfileOptions>
+public partial class DockerfileCommand : RegistryCommandBase<DockerfileOptions>
 {
     private static readonly Color SymbolColor = new(250, 200, 31); // yellow
     private static readonly Color StringColor = new(202, 145, 120); // tan
@@ -18,12 +18,12 @@ public class DockerfileCommand : RegistryCommandBase<DockerfileOptions>
     private static readonly Color CommentColor = new(109, 154, 88); // green-ish
     private static readonly Color LiteralColor = new(150, 220, 254); // light turquoise
     private static readonly Color IdentifierColor = Color.Green;
-    private static readonly string[] KeyValuePairInstructions = new string[]
-    {
+    private static readonly string[] KeyValuePairInstructions =
+    [
         "ARG",
         "ENV",
         "LABEL"
-    };
+    ];
 
     private readonly IDockerRegistryClientFactory dockerRegistryClientFactory;
 
@@ -49,12 +49,7 @@ public class DockerfileCommand : RegistryCommandBase<DockerfileOptions>
         using IDockerRegistryClient client = await dockerRegistryClientFactory.GetClientAsync(imageName.Registry);
         IImageManifest manifest = (await ManifestHelper.GetResolvedManifestAsync(client, imageName, Options)).Manifest;
 
-        string? digest = manifest.Config?.Digest;
-        if (digest is null)
-        {
-            throw new NotSupportedException($"Could not resolve the image config digest of '{Options.Image}'.");
-        }
-
+        string? digest = (manifest.Config?.Digest) ?? throw new NotSupportedException($"Could not resolve the image config digest of '{Options.Image}'.");
         ImageConfig imageConfig = await client.Blobs.GetImageAsync(imageName.Repo, digest);
         bool isWindows = imageConfig.Os.Equals("windows", StringComparison.OrdinalIgnoreCase);
 
@@ -134,17 +129,13 @@ public class DockerfileCommand : RegistryCommandBase<DockerfileOptions>
             throw new Exception("No digest information defined for the initial layer of the Windows image.");
         }
         var windowsOsInfo = await OsCommand.GetWindowsOsInfoAsync(
-            imageConfig, initialLayerDigest, dockerRegistryClientFactory);
-        if (windowsOsInfo is null)
-        {
-            throw new Exception("Could not determine info about the Windows image.");
-        }
-        if (string.IsNullOrEmpty(windowsOsInfo.Value.Info.Version))
+            imageConfig, initialLayerDigest, dockerRegistryClientFactory) ?? throw new Exception("Could not determine info about the Windows image.");
+        if (string.IsNullOrEmpty(windowsOsInfo.Info.Version))
         {
             throw new Exception("No os.version information defined for the Windows image.");
         }
 
-        return (windowsOsInfo.Value.Info, windowsOsInfo.Value.Repo);
+        return (windowsOsInfo.Info, windowsOsInfo.Repo);
     }
 
     private string GetHistoryLine(string line, ref string? currentShell)
@@ -183,7 +174,7 @@ public class DockerfileCommand : RegistryCommandBase<DockerfileOptions>
                     line = line
                         .Replace("[", "[\"")
                         .Replace("]", "\"]");
-                    int cmdIndex = line.IndexOf("[");
+                    int cmdIndex = line.IndexOf('[');
                     string command = line[cmdIndex..]
                         .Replace(" ", "\", \"");
                     line = line[0..cmdIndex] + command;
@@ -205,7 +196,7 @@ public class DockerfileCommand : RegistryCommandBase<DockerfileOptions>
                 if (dockerfileConstruct is ShellInstruction shellInstruction)
                 {
                     // Track the current SHELL. This is needed in order to trim it from subsequent instructions
-                    currentShell = string.Join(" ", ((ExecFormCommand)shellInstruction.Command).Values.ToArray());
+                    currentShell = string.Join(" ", ((ExecFormCommand)shellInstruction.Command).Values);
                 }
                 else if (dockerfileConstruct is EnvInstruction envInstruction)
                 {
@@ -239,7 +230,7 @@ public class DockerfileCommand : RegistryCommandBase<DockerfileOptions>
         if (KeyValuePairInstructions.Any(instruction => line.StartsWith(instruction, StringComparison.OrdinalIgnoreCase)))
         {
             // Ensure that key-value pair instructions have their values surrounded in quotes to account for any spaces
-            line = Regex.Replace(line, "(^\\S+\\s+[A-Za-z0-9]*(\\s|=)+)(\\S*\\s.*)", "$1\"$3\"");
+            line = MyRegex().Replace(line, "$1\"$3\"");
         }
 
         return line;
@@ -249,15 +240,15 @@ public class DockerfileCommand : RegistryCommandBase<DockerfileOptions>
     {
         // Reformat to support multi-line patterns: 
         // 1. '&&' before a new line
-        line = Regex.Replace(line, @"[ \t]+&&[ \t]{2,}", $" && \\{Environment.NewLine}    ");
+        line = AndBeforeNewLineRegex().Replace(line, $" && \\{Environment.NewLine}    ");
         // 2. '&&' after a new line
-        line = Regex.Replace(line, @"[ \t]{2,}&&[ \t]+", $" \\{Environment.NewLine}    && ");
+        line = AndAfterNewLineRegex().Replace(line, $" \\{Environment.NewLine}    && ");
         // 3. ';' before a new line
-        line = Regex.Replace(line, @";[ \t]{2,}", $"; \\{Environment.NewLine}    ");
+        line = SemiColonBeforeNewLineRegex().Replace(line, $"; \\{Environment.NewLine}    ");
         // 4. '{' before a new line
-        line = Regex.Replace(line, @"[ \t]+\{[ \t]{2,}", $"{{ \\{Environment.NewLine}    ");
+        line = OpenParenBeforeNewLineRegex().Replace(line, $"{{ \\{Environment.NewLine}    ");
         // 5. '{' after a new line
-        line = Regex.Replace(line, @"[ \t]{2,}\{[ \t]+", $" \\{Environment.NewLine}    {{ ");
+        line = CloseParenAfterNewLineRegex().Replace(line, $" \\{Environment.NewLine}    {{ ");
 
         // Trim extra spaces from commands that were originally multiline but represented in layer history
         // without newlines, leading to a bunch of spaces.
@@ -271,9 +262,7 @@ public class DockerfileCommand : RegistryCommandBase<DockerfileOptions>
         {
             StringBuilder envBuilder = new();
             envBuilder.Append("ENV ");
-            List<string> vars = envInstruction.Variables
-                .Select(variable => $"{variable.Key}={variable.Value} \\")
-                .ToList();
+            List<string> vars = [.. envInstruction.Variables.Select(variable => $"{variable.Key}={variable.Value} \\")];
             for (int i = 0; i < envInstruction.Variables.Count; i++)
             {
                 IKeyValuePair variable = envInstruction.Variables[i];
@@ -298,10 +287,9 @@ public class DockerfileCommand : RegistryCommandBase<DockerfileOptions>
     {
         // A regex that captures whitespace of length 2 or more that's not contained in quotes.
         Regex nonQuotedMultiWhitespaceRegex =
-            new(@"\S+(?<whitespace>[ \t]{2,})((?=(?<singlequoted>[^'""]*'[^']*')*[^'""]*$)|(?=(?<doublequoted>[^""']*""[^""]*"")*[^""']*$))",
-            RegexOptions.Multiline);
+            TwoOrMoreWhitespaceNotInQuotesRegex();
         MatchCollection matches = nonQuotedMultiWhitespaceRegex.Matches(line);
-        if (!matches.Any())
+        if (matches.Count == 0)
         {
             return line;
         }
@@ -384,4 +372,24 @@ public class DockerfileCommand : RegistryCommandBase<DockerfileOptions>
             return tokenStr;
         }
     }
+
+    [GeneratedRegex("(^\\S+\\s+[A-Za-z0-9]*(\\s|=)+)(\\S*\\s.*)")]
+    private static partial Regex MyRegex();
+
+    [GeneratedRegex(@"[ \t]+&&[ \t]{2,}")]
+    private static partial Regex AndBeforeNewLineRegex();
+
+    [GeneratedRegex(@"[ \t]{2,}&&[ \t]+")]
+    private static partial Regex AndAfterNewLineRegex();
+    
+    [GeneratedRegex(@";[ \t]{2,}")]
+    private static partial Regex SemiColonBeforeNewLineRegex();
+    
+    [GeneratedRegex(@"[ \t]+\{[ \t]{2,}")]
+    private static partial Regex OpenParenBeforeNewLineRegex();
+    
+    [GeneratedRegex(@"[ \t]{2,}\{[ \t]+")]
+    private static partial Regex CloseParenAfterNewLineRegex();
+    [GeneratedRegex(@"\S+(?<whitespace>[ \t]{2,})((?=(?<singlequoted>[^'""]*'[^']*')*[^'""]*$)|(?=(?<doublequoted>[^""']*""[^""]*"")*[^""']*$))", RegexOptions.Multiline)]
+    private static partial Regex TwoOrMoreWhitespaceNotInQuotesRegex();
 }

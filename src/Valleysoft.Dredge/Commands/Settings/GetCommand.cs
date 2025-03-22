@@ -13,7 +13,7 @@ internal partial class GetCommand : CommandWithOptions<GetOptions>
     {
         AppSettings settings = AppSettings.Load();
 
-        Queue<string> names = new(Options.Name.Split('.'));
+        Queue<string> names = new([..Options.Name.Split('.')]);
 
         object? value = settings.GetProperty(names);
 

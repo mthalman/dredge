@@ -18,7 +18,7 @@ public class ListCommand : RegistryCommandBase<ListOptions>
         {
             using IDockerRegistryClient client = await DockerRegistryClientFactory.GetClientAsync(imageName.Registry);
 
-            List<string> tags = new();
+            List<string> tags = [];
 
             Page<RepositoryTags> tagsPage = await client.Tags.GetAsync(imageName.Repo);
             tags.AddRange(tagsPage.Value.Tags);

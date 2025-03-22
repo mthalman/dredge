@@ -17,10 +17,10 @@ public class CompareLayersCommandTests
     private static readonly ImageName baseImageName = ImageName.Parse($"{Registry}/base:latest");
     private static readonly ImageName targetImageName = ImageName.Parse($"{Registry}/target:latest");
 
-    public static object[][] GetTestData(CompareLayersOutput format)
+    public static IEnumerable<TheoryDataRow<string, CommandOptions, ImageSetup, ImageSetup, object>> GetTestData(CompareLayersOutput format)
     {
-        CommandOptions[] optionsSet = new[]
-        {
+        CommandOptions[] optionsSet =
+        [
             new CommandOptions(includeHistory: false, includeCompressedSize: false, isColorDisabled: false),
             new CommandOptions(includeHistory: false, includeCompressedSize: false, isColorDisabled: true),
             new CommandOptions(includeHistory: true, includeCompressedSize: false, isColorDisabled: false),
@@ -29,36 +29,36 @@ public class CompareLayersCommandTests
             new CommandOptions(includeHistory: false, includeCompressedSize: true, isColorDisabled: true),
             new CommandOptions(includeHistory: true, includeCompressedSize: true, isColorDisabled: false),
             new CommandOptions(includeHistory: true, includeCompressedSize: true, isColorDisabled: true)
-        };
+        ];
 
-        List<object[]> testData = new();
+        List<TheoryDataRow<string, CommandOptions, ImageSetup, ImageSetup, object>> testData = [];
 
         foreach (CommandOptions options in optionsSet)
         {
-            testData.AddRange(new object[][]
-            {
+            testData.AddRange(
+            [
                 Scenarios.GetEqualImagesTestData(format, options),
                 Scenarios.GetDifferingImagesTestData(format, options),
                 Scenarios.GetRemovedLayerFromBaseTestData(format, options),
                 Scenarios.GetAddedLayerTestData(format, options),
                 Scenarios.GetDifferByHistoryOnlyTestData(format, options),
                 Scenarios.GetWithHistoryDifferingByEmptyLayersTestData(format, options),
-            });
+            ]);
         }
 
-        return testData.ToArray();
+        return testData;
     }
 
     private static class Scenarios
     {
         // Identical images
-        public static object[] GetEqualImagesTestData(CompareLayersOutput format, CommandOptions options)
+        public static TheoryDataRow<string, CommandOptions, ImageSetup, ImageSetup, object> GetEqualImagesTestData(CompareLayersOutput format, CommandOptions options)
         {
             ImageSetup baseImageSetup = new(
                 new Image
                 {
-                    History = new LayerHistory[]
-                    {
+                    History =
+                    [
                         new LayerHistory
                         {
                             CreatedBy = "a"
@@ -67,10 +67,9 @@ public class CompareLayersCommandTests
                         {
                             CreatedBy = "b"
                         }
-                    }
+                    ]
                 },
-                new ManifestLayer[]
-                {
+                [
                     new ManifestLayer
                     {
                         Digest = "layer-0",
@@ -81,7 +80,7 @@ public class CompareLayersCommandTests
                         Digest = "layer-1",
                         Size = 1
                     }
-                });
+                ]);
 
             ImageSetup targetImageSetup = baseImageSetup;
 
@@ -89,8 +88,7 @@ public class CompareLayersCommandTests
             {
                 CompareLayersOutput.Json => new CompareLayersResult(
                     new CompareLayersSummary(areEqual: true, targetIncludesAllBaseLayers: true, lastCommonLayerIndex: 1),
-                    new LayerComparison[]
-                    {
+                    [
                         new LayerComparison(
                             new LayerInfo("layer-0", options.IncludeHistory ? "a" : null, options.IncludeCompressedSize ? 1 : null),
                             new LayerInfo("layer-0", options.IncludeHistory ? "a" : null, options.IncludeCompressedSize ? 1 : null),
@@ -99,7 +97,7 @@ public class CompareLayersCommandTests
                             new LayerInfo("layer-1", options.IncludeHistory ? "b" : null, options.IncludeCompressedSize ? 1 : null),
                             new LayerInfo("layer-1", options.IncludeHistory ? "b" : null, options.IncludeCompressedSize ? 1 : null),
                             LayerDiff.Equal)
-                    }),
+                    ]),
                 CompareLayersOutput.Inline =>
                     new StringBuilder()
                         .AppendLine("  layer-0")
@@ -123,24 +121,23 @@ public class CompareLayersCommandTests
                 _ => throw new NotSupportedException()
             };
 
-            return new object[]
-            {
+            return new TheoryDataRow<string, CommandOptions, ImageSetup, ImageSetup, object>(
                 nameof(GetEqualImagesTestData),
                 options,
                 baseImageSetup,
                 targetImageSetup,
                 expectedResult
-            };
+            );
         }
 
         // Same base layer, but next layer differs
-        public static object[] GetDifferingImagesTestData(CompareLayersOutput format, CommandOptions options)
+        public static TheoryDataRow<string, CommandOptions, ImageSetup, ImageSetup, object> GetDifferingImagesTestData(CompareLayersOutput format, CommandOptions options)
         {
             ImageSetup baseImageSetup = new(
                 new Image
                 {
-                    History = new LayerHistory[]
-                    {
+                    History =
+                    [
                         new LayerHistory
                         {
                             CreatedBy = "a"
@@ -149,10 +146,9 @@ public class CompareLayersCommandTests
                         {
                             CreatedBy = "b"
                         }
-                    }
+                    ]
                 },
-                new ManifestLayer[]
-                {
+                [
                     new ManifestLayer
                     {
                         Digest = "layer-0",
@@ -163,13 +159,13 @@ public class CompareLayersCommandTests
                         Digest = "layer-1",
                         Size = 1
                     }
-                });
+                ]);
 
             ImageSetup targetImageSetup = new(
                 new Image
                 {
-                    History = new LayerHistory[]
-                    {
+                    History =
+                    [
                         new LayerHistory
                         {
                             CreatedBy = "a"
@@ -178,10 +174,9 @@ public class CompareLayersCommandTests
                         {
                             CreatedBy = "b"
                         }
-                    }
+                    ]
                 },
-                new ManifestLayer[]
-                {
+                [
                     new ManifestLayer
                     {
                         Digest = "layer-0",
@@ -192,15 +187,14 @@ public class CompareLayersCommandTests
                         Digest = "layer-1a",
                         Size = 2
                     }
-                });
+                ]);
 
             object expectedResult = format switch
             {
                 CompareLayersOutput.Json =>
                     new CompareLayersResult(
                         new CompareLayersSummary(areEqual: false, targetIncludesAllBaseLayers: false, lastCommonLayerIndex: 0),
-                        new LayerComparison[]
-                        {
+                        [
                             new LayerComparison(
                                 new LayerInfo("layer-0", options.IncludeHistory ? "a" : null, options.IncludeCompressedSize ? 1 : null),
                                 new LayerInfo("layer-0", options.IncludeHistory ? "a" : null, options.IncludeCompressedSize ? 1 : null),
@@ -209,7 +203,7 @@ public class CompareLayersCommandTests
                                 new LayerInfo("layer-1", options.IncludeHistory ? "b" : null, options.IncludeCompressedSize ? 1 : null),
                                 new LayerInfo("layer-1a", options.IncludeHistory ? "b" : null, options.IncludeCompressedSize ? 2 : null),
                                 LayerDiff.NotEqual)
-                        }),
+                        ]),
                 CompareLayersOutput.Inline =>
                     new StringBuilder()
                         .AppendLine("  layer-0")
@@ -236,24 +230,23 @@ public class CompareLayersCommandTests
                 _ => throw new NotSupportedException()
             };
 
-            return new object[]
-            {
+            return new TheoryDataRow<string, CommandOptions, ImageSetup, ImageSetup, object>(
                 nameof(GetDifferingImagesTestData),
                 options,
                 baseImageSetup,
                 targetImageSetup,
                 expectedResult
-            };
+            );
         }
 
         // Target removes a layer from base
-        public static object[] GetRemovedLayerFromBaseTestData(CompareLayersOutput format, CommandOptions options)
+        public static TheoryDataRow<string, CommandOptions, ImageSetup, ImageSetup, object> GetRemovedLayerFromBaseTestData(CompareLayersOutput format, CommandOptions options)
         {
             ImageSetup baseImageSetup = new(
                 new Image
                 {
-                    History = new LayerHistory[]
-                    {
+                    History =
+                    [
                         new LayerHistory
                         {
                             CreatedBy = "a"
@@ -262,10 +255,9 @@ public class CompareLayersCommandTests
                         {
                             CreatedBy = "b"
                         }
-                    }
+                    ]
                 },
-                new ManifestLayer[]
-                {
+                [
                     new ManifestLayer
                     {
                         Digest = "layer-0",
@@ -276,35 +268,33 @@ public class CompareLayersCommandTests
                         Digest = "layer-1",
                         Size = 2000
                     }
-                });
+                ]);
 
             ImageSetup targetImageSetup = new(
                 new Image
                 {
-                    History = new LayerHistory[]
-                    {
+                    History =
+                    [
                         new LayerHistory
                         {
                             CreatedBy = "a"
                         }
-                    }
+                    ]
                 },
-                new ManifestLayer[]
-                {
+                [
                     new ManifestLayer
                     {
                         Digest = "layer-0",
                         Size = 1000
                     }
-                });
+                ]);
 
             object expectedResult = format switch
             {
                 CompareLayersOutput.Json =>
                     new CompareLayersResult(
                         new CompareLayersSummary(areEqual: false, targetIncludesAllBaseLayers: false, lastCommonLayerIndex: 0),
-                        new LayerComparison[]
-                        {
+                        [
                             new LayerComparison(
                                 new LayerInfo("layer-0", options.IncludeHistory ? "a" : null, options.IncludeCompressedSize ? 1000 : null),
                                 new LayerInfo("layer-0", options.IncludeHistory ? "a" : null, options.IncludeCompressedSize ? 1000 : null),
@@ -313,7 +303,7 @@ public class CompareLayersCommandTests
                                 new LayerInfo("layer-1", options.IncludeHistory ? "b" : null, options.IncludeCompressedSize ? 2000 : null),
                                 null,
                                 LayerDiff.Removed)
-                        }),
+                        ]),
                 CompareLayersOutput.Inline =>
                     new StringBuilder()
                         .AppendLine("  layer-0")
@@ -337,44 +327,42 @@ public class CompareLayersCommandTests
                 _ => throw new NotSupportedException()
             };
 
-            return new object[]
-            {
+            return new TheoryDataRow<string, CommandOptions, ImageSetup, ImageSetup, object>(
                 nameof(GetRemovedLayerFromBaseTestData),
                 options,
                 baseImageSetup,
                 targetImageSetup,
                 expectedResult
-            };
+            );
         }
 
         // Target adds a layer
-        public static object[] GetAddedLayerTestData(CompareLayersOutput format, CommandOptions options)
+        public static TheoryDataRow<string, CommandOptions, ImageSetup, ImageSetup, object> GetAddedLayerTestData(CompareLayersOutput format, CommandOptions options)
         {
             ImageSetup baseImageSetup = new(
                 new Image
                 {
-                    History = new LayerHistory[]
-                    {
+                    History =
+                    [
                         new LayerHistory
                         {
                             CreatedBy = "a"
                         }
-                    }
+                    ]
                 },
-                new ManifestLayer[]
-                {
+                [
                     new ManifestLayer
                     {
                         Digest = "layer-0",
                         Size = 1000000
                     }
-                });
+                ]);
 
             ImageSetup targetImageSetup = new(
                 new Image
                 {
-                    History = new LayerHistory[]
-                    {
+                    History =
+                    [
                         new LayerHistory
                         {
                             CreatedBy = "a"
@@ -383,10 +371,9 @@ public class CompareLayersCommandTests
                         {
                             CreatedBy = "b"
                         }
-                    }
+                    ]
                 },
-                new ManifestLayer[]
-                {
+                [
                     new ManifestLayer
                     {
                         Digest = "layer-0",
@@ -397,15 +384,14 @@ public class CompareLayersCommandTests
                         Digest = "layer-1",
                         Size = 2000000
                     }
-                });
+                ]);
 
             object expectedResult = format switch
             {
                 CompareLayersOutput.Json =>
                     new CompareLayersResult(
                         new CompareLayersSummary(areEqual: false, targetIncludesAllBaseLayers: true, lastCommonLayerIndex: 0),
-                        new LayerComparison[]
-                        {
+                        [
                             new LayerComparison(
                                 new LayerInfo("layer-0", options.IncludeHistory ? "a" : null, options.IncludeCompressedSize ? 1000000 : null),
                                 new LayerInfo("layer-0", options.IncludeHistory ? "a" : null, options.IncludeCompressedSize ? 1000000 : null),
@@ -414,7 +400,7 @@ public class CompareLayersCommandTests
                                 null,
                                 new LayerInfo("layer-1", options.IncludeHistory ? "b" : null, options.IncludeCompressedSize ? 2000000 : null),
                                 LayerDiff.Added)
-                        }),
+                        ]),
                 CompareLayersOutput.Inline =>
                     new StringBuilder()
                         .AppendLine("  layer-0")
@@ -438,24 +424,23 @@ public class CompareLayersCommandTests
                 _ => throw new NotSupportedException()
             };
 
-            return new object[]
-            {
+            return new TheoryDataRow<string, CommandOptions, ImageSetup, ImageSetup, object>(
                 nameof(GetAddedLayerTestData),
                 options,
                 baseImageSetup,
                 targetImageSetup,
                 expectedResult
-            };
+            );
         }
 
         // The images only differ by history
-        public static object[] GetDifferByHistoryOnlyTestData(CompareLayersOutput format, CommandOptions options)
+        public static TheoryDataRow<string, CommandOptions, ImageSetup, ImageSetup, object> GetDifferByHistoryOnlyTestData(CompareLayersOutput format, CommandOptions options)
         {
             ImageSetup baseImageSetup = new(
                 new Image
                 {
-                    History = new LayerHistory[]
-                    {
+                    History =
+                    [
                         new LayerHistory
                         {
                             CreatedBy = "a"
@@ -464,10 +449,9 @@ public class CompareLayersCommandTests
                         {
                             CreatedBy = "b"
                         }
-                    }
+                    ]
                 },
-                new ManifestLayer[]
-                {
+                [
                     new ManifestLayer
                     {
                         Digest = "layer-0",
@@ -478,13 +462,13 @@ public class CompareLayersCommandTests
                         Digest = "layer-1",
                         Size = 2
                     }
-                });
+                ]);
 
             ImageSetup targetImageSetup = new(
                 new Image
                 {
-                    History = new LayerHistory[]
-                    {
+                    History =
+                    [
                         new LayerHistory
                         {
                             CreatedBy = "a"
@@ -493,10 +477,9 @@ public class CompareLayersCommandTests
                         {
                             CreatedBy = "b1"
                         }
-                    }
+                    ]
                 },
-                new ManifestLayer[]
-                {
+                [
                     new ManifestLayer
                     {
                         Digest = "layer-0",
@@ -507,7 +490,7 @@ public class CompareLayersCommandTests
                         Digest = "layer-1",
                         Size = 2
                     }
-                });
+                ]);
 
             object expectedResult = format switch
             {
@@ -517,8 +500,7 @@ public class CompareLayersCommandTests
                             areEqual: !options.IncludeHistory,
                             targetIncludesAllBaseLayers: !options.IncludeHistory,
                             lastCommonLayerIndex: options.IncludeHistory ? 0 : 1),
-                        new LayerComparison[]
-                        {
+                        [
                             new LayerComparison(
                                 new LayerInfo("layer-0", options.IncludeHistory ? "a" : null, options.IncludeCompressedSize ? 1 : null),
                                 new LayerInfo("layer-0", options.IncludeHistory ? "a" : null, options.IncludeCompressedSize ? 1 : null),
@@ -527,7 +509,7 @@ public class CompareLayersCommandTests
                                 new LayerInfo("layer-1", options.IncludeHistory ? "b" : null, options.IncludeCompressedSize ? 2 : null),
                                 new LayerInfo("layer-1", options.IncludeHistory ? "b1" : null, options.IncludeCompressedSize ? 2 : null),
                                 options.IncludeHistory ? LayerDiff.NotEqual : LayerDiff.Equal)
-                        }),
+                        ]),
                 CompareLayersOutput.Inline =>
                     new StringBuilder()
                         .AppendLine("  layer-0")
@@ -558,24 +540,23 @@ public class CompareLayersCommandTests
                 _ => throw new NotSupportedException()
             };
 
-            return new object[]
-            {
+            return new TheoryDataRow<string, CommandOptions, ImageSetup, ImageSetup, object>(
                 nameof(GetDifferByHistoryOnlyTestData),
                 options,
                 baseImageSetup,
                 targetImageSetup,
                 expectedResult
-            };
+            );
         }
 
         // The images contain empty layers that differ in their history
-        public static object[] GetWithHistoryDifferingByEmptyLayersTestData(CompareLayersOutput format, CommandOptions options)
+        public static TheoryDataRow<string, CommandOptions, ImageSetup, ImageSetup, object> GetWithHistoryDifferingByEmptyLayersTestData(CompareLayersOutput format, CommandOptions options)
         {
             ImageSetup baseImageSetup = new(
                 new Image
                 {
-                    History = new LayerHistory[]
-                    {
+                    History =
+                    [
                         new LayerHistory
                         {
                             CreatedBy = "a"
@@ -589,10 +570,9 @@ public class CompareLayersCommandTests
                         {
                             CreatedBy = "c"
                         }
-                    }
+                    ]
                 },
-                new ManifestLayer[]
-                {
+                [
                     new ManifestLayer
                     {
                         Digest = "layer-0",
@@ -603,13 +583,13 @@ public class CompareLayersCommandTests
                         Digest = "layer-1",
                         Size = 2
                     }
-                });
+                ]);
 
             ImageSetup targetImageSetup = new(
                 new Image
                 {
-                    History = new LayerHistory[]
-                    {
+                    History =
+                    [
                         new LayerHistory
                         {
                             CreatedBy = "a"
@@ -623,10 +603,9 @@ public class CompareLayersCommandTests
                         {
                             CreatedBy = "c"
                         }
-                    }
+                    ]
                 },
-                new ManifestLayer[]
-                {
+                [
                     new ManifestLayer
                     {
                         Digest = "layer-0",
@@ -637,10 +616,10 @@ public class CompareLayersCommandTests
                         Digest = "layer-1",
                         Size = 2
                     }
-                });
+                ]);
 
-            List<LayerComparison> comparisons = new()
-            {
+            List<LayerComparison> comparisons =
+            [
                 new LayerComparison(
                     new LayerInfo("layer-0", options.IncludeHistory ? "a" : null, options.IncludeCompressedSize ? 1 : null),
                     new LayerInfo("layer-0", options.IncludeHistory ? "a" : null, options.IncludeCompressedSize ? 1 : null),
@@ -649,7 +628,7 @@ public class CompareLayersCommandTests
                     new LayerInfo("layer-1", options.IncludeHistory ? "c" : null, options.IncludeCompressedSize ? 2 : null),
                     new LayerInfo("layer-1", options.IncludeHistory ? "c" : null, options.IncludeCompressedSize ? 2 : null),
                     LayerDiff.Equal)
-            };
+            ];
 
             if (options.IncludeHistory)
             {
@@ -707,14 +686,13 @@ public class CompareLayersCommandTests
                 _ => throw new NotSupportedException()
             };
 
-            return new object[]
-            {
+            return new TheoryDataRow<string, CommandOptions, ImageSetup, ImageSetup, object>(
                 nameof(GetWithHistoryDifferingByEmptyLayersTestData),
                 options,
                 baseImageSetup,
                 targetImageSetup,
                 expectedResult
-            };
+            );
         }
     }
 
@@ -747,7 +725,7 @@ public class CompareLayersCommandTests
     [Theory]
     [MemberData(nameof(GetTestData), CompareLayersOutput.Json)]
     public async Task Json(
-        string scenario, CommandOptions cmdOptions, ImageSetup baseImageSetup, ImageSetup targetImageSetup, CompareLayersResult expectedResult)
+        string scenario, CommandOptions cmdOptions, ImageSetup baseImageSetup, ImageSetup targetImageSetup, object expectedResult)
     {
         Text text = (Text)await ExecuteTestAsync(scenario, CompareLayersOutput.Json, cmdOptions, baseImageSetup, targetImageSetup);
 
@@ -758,17 +736,17 @@ public class CompareLayersCommandTests
     [Theory]
     [MemberData(nameof(GetTestData), CompareLayersOutput.Inline)]
     public async Task Inline(
-        string scenario, CommandOptions cmdOptions, ImageSetup baseImageSetup, ImageSetup targetImageSetup, string expectedResult)
+        string scenario, CommandOptions cmdOptions, ImageSetup baseImageSetup, ImageSetup targetImageSetup, object expectedResult)
     {
         Rows rows = (Rows)await ExecuteTestAsync(scenario, CompareLayersOutput.Inline, cmdOptions, baseImageSetup, targetImageSetup);
         string actualResult = TestHelper.GetString(rows.GetSegments(AnsiConsole.Console));
-        Assert.Equal(TestHelper.Normalize(expectedResult), TestHelper.Normalize(actualResult));
+        Assert.Equal(TestHelper.Normalize((string)expectedResult), TestHelper.Normalize(actualResult));
     }
 
     [Theory]
     [MemberData(nameof(GetTestData), CompareLayersOutput.SideBySide)]
     public async Task SideBySide(
-        string scenario, CommandOptions cmdOptions, ImageSetup baseImageSetup, ImageSetup targetImageSetup, string[][] expectedRows)
+        string scenario, CommandOptions cmdOptions, ImageSetup baseImageSetup, ImageSetup targetImageSetup, object expectedRows)
     {
         Table table = (Table)await ExecuteTestAsync(scenario, CompareLayersOutput.SideBySide, cmdOptions, baseImageSetup, targetImageSetup);
 
@@ -776,11 +754,13 @@ public class CompareLayersCommandTests
         Assert.Equal(baseImageName.ToString(), TestHelper.GetString(table.Columns[0].Header.GetSegments(AnsiConsole.Console)));
         Assert.Equal(targetImageName.ToString(), TestHelper.GetString(table.Columns[^1].Header.GetSegments(AnsiConsole.Console)));
 
-        Assert.Equal(expectedRows.Length, table.Rows.Count);
+        string[][] expectedRowsArray = (string[][])expectedRows;
 
-        for (int rowIndex = 0; rowIndex < expectedRows.Length; rowIndex++)
+        Assert.Equal(expectedRowsArray.Length, table.Rows.Count);
+
+        for (int rowIndex = 0; rowIndex < expectedRowsArray.Length; rowIndex++)
         {
-            string[] expectedRowCells = expectedRows[rowIndex];
+            string[] expectedRowCells = expectedRowsArray[rowIndex];
             TableRow actualRow = table.Rows.ElementAt(rowIndex);
             Assert.Equal(expectedRowCells.Length, actualRow.Count);
 
@@ -851,16 +831,14 @@ public class CompareLayersCommandTests
     }
 
     private static string[] ToArray(params string?[] strings) =>
-        strings
+        [.. strings
             .Where(str => str is not null)
-            .Cast<string>()
-            .ToArray();
+            .Cast<string>()];
 
     private static string[][] ToArray(params string[]?[] stringArrays) =>
-        stringArrays
+        [.. stringArrays
             .Where(str => str is not null)
-            .Cast<string[]>()
-            .ToArray();
+            .Cast<string[]>()];
 
     private static string[]? EmptyRow(CommandOptions options) =>
         options.IncludeHistory || options.IncludeCompressedSize ?

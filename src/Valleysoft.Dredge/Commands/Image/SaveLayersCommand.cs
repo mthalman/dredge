@@ -16,12 +16,7 @@ public class SaveLayersCommand : RegistryCommandBase<SaveLayersOptions>
         {
             using IDockerRegistryClient client = await DockerRegistryClientFactory.GetClientAsync(imageName.Registry);
             IImageManifest manifest = (await ManifestHelper.GetResolvedManifestAsync(client, imageName, Options)).Manifest;
-            string? digest = manifest.Config?.Digest;
-            if (digest is null)
-            {
-                throw new NotSupportedException($"Could not resolve the image config digest of '{Options.Image}'.");
-            }
-
+            string? digest = (manifest.Config?.Digest) ?? throw new NotSupportedException($"Could not resolve the image config digest of '{Options.Image}'.");
             await ImageHelper.SaveImageLayersToDiskAsync(
                 DockerRegistryClientFactory,
                 Options.Image,
