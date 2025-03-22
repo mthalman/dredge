@@ -12,7 +12,7 @@ namespace Valleysoft.Dredge.Commands.Image;
 public class CompareLayersCommand : RegistryCommandBase<CompareLayersOptions>
 {
     private static readonly string[] SizeSuffixes =
-        { "bytes", "KB", "MB", "GB", "TB", "PB", "EB", "ZB", "YB" };
+        ["bytes", "KB", "MB", "GB", "TB", "PB", "EB", "ZB", "YB"];
 
     public CompareLayersCommand(IDockerRegistryClientFactory dockerRegistryClientFactory)
         : base("layers", "Compares two images by layers", dockerRegistryClientFactory)
@@ -77,7 +77,7 @@ public class CompareLayersCommand : RegistryCommandBase<CompareLayersOptions>
 
     private static List<LayerComparison> GetLayerComparisons(IList<LayerInfo> baseLayers, IList<LayerInfo> targetLayers)
     {
-        List<LayerComparison> layerComparisons = new();
+        List<LayerComparison> layerComparisons = [];
         int max = Math.Max(baseLayers.Count, targetLayers.Count);
         for (int i = 0; i < max; i++)
         {
@@ -190,15 +190,10 @@ public class CompareLayersCommand : RegistryCommandBase<CompareLayersOptions>
         using IDockerRegistryClient client = await DockerRegistryClientFactory.GetClientAsync(imageName.Registry);
         IImageManifest manifest = (await ManifestHelper.GetResolvedManifestAsync(client, imageName, Options)).Manifest;
 
-        string? digest = manifest.Config?.Digest;
-        if (digest is null)
-        {
-            throw new NotSupportedException($"Could not resolve the image config digest of '{image}'.");
-        }
-
+        string? digest = (manifest.Config?.Digest) ?? throw new NotSupportedException($"Could not resolve the image config digest of '{image}'.");
         ImageConfig imageConfig = await client.Blobs.GetImageAsync(imageName.Repo, digest);
 
-        List<LayerInfo> layerInfos = new();
+        List<LayerInfo> layerInfos = [];
         int layerIndex = 0;
         foreach (LayerHistory history in imageConfig.History)
         {
@@ -337,10 +332,10 @@ public class CompareLayersCommand : RegistryCommandBase<CompareLayersOptions>
 
             private static List<IRenderable> GetLayerDataRowCells(bool isColorDisabled, LayerComparison layerComparison, Func<LayerInfo?, string?> getLayerData)
             {
-                List<IRenderable> historyCells = new()
-                        {
-                            GetLayerDataMarkup(getLayerData(layerComparison.Base), layerComparison.LayerDiff, isBase: true, isColorDisabled, isInline: false)
-                        };
+                List<IRenderable> historyCells =
+                [
+                    GetLayerDataMarkup(getLayerData(layerComparison.Base), layerComparison.LayerDiff, isBase: true, isColorDisabled, isInline: false)
+                ];
 
                 if (isColorDisabled)
                 {
@@ -351,13 +346,13 @@ public class CompareLayersCommand : RegistryCommandBase<CompareLayersOptions>
                 return historyCells;
             }
 
-            private static IEnumerable<IRenderable> GetDigestRowCells(bool isColorDisabled, bool includeSupplementalData, LayerComparison layerComparison)
+            private static List<IRenderable> GetDigestRowCells(bool isColorDisabled, bool includeSupplementalData, LayerComparison layerComparison)
             {
-                List<IRenderable> shaCells = new()
-                        {
-                            GetDigestMarkup(
-                                layerComparison.Base, layerComparison.LayerDiff, isBase : true, isColorDisabled, includeSupplementalData, isInline: false)
-                        };
+                List<IRenderable> shaCells =
+                [
+                    GetDigestMarkup(
+                        layerComparison.Base, layerComparison.LayerDiff, isBase : true, isColorDisabled, includeSupplementalData, isInline: false)
+                ];
                 if (isColorDisabled)
                 {
                     shaCells.Add(new Markup(GetLayerDiffDisplayName(layerComparison.LayerDiff)));
@@ -381,7 +376,7 @@ public class CompareLayersCommand : RegistryCommandBase<CompareLayersOptions>
         {
             public override IRenderable GetOutput(CompareLayersResult result, CompareLayersOptions options)
             {
-                List<IRenderable> rows = new();
+                List<IRenderable> rows = [];
 
                 for (int i = 0; i < result.LayerComparisons.Count(); i++)
                 {

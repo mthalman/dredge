@@ -9,9 +9,9 @@ using ImageConfig = Valleysoft.DockerRegistryClient.Models.Images.Image;
 
 namespace Valleysoft.Dredge.Commands.Image;
 
-public class OsCommand : RegistryCommandBase<OsOptions>
+public partial class OsCommand : RegistryCommandBase<OsOptions>
 {
-    private static readonly Regex osReleaseRegex = new(@"(\./)?(etc|usr/lib)/os-release");
+    private static readonly Regex osReleaseRegex = OsReleaseRegex();
 
     public OsCommand(IDockerRegistryClientFactory dockerRegistryClientFactory)
         : base("os", "Gets OS info about the container image", dockerRegistryClientFactory)
@@ -26,12 +26,7 @@ public class OsCommand : RegistryCommandBase<OsOptions>
             using IDockerRegistryClient client = await DockerRegistryClientFactory.GetClientAsync(imageName.Registry);
             IImageManifest manifest = (await ManifestHelper.GetResolvedManifestAsync(client, imageName, Options)).Manifest;
 
-            string? configDigest = manifest.Config?.Digest;
-            if (configDigest is null)
-            {
-                throw new NotSupportedException($"Could not resolve the image config digest of '{Options.Image}'.");
-            }
-
+            string? configDigest = (manifest.Config?.Digest) ?? throw new NotSupportedException($"Could not resolve the image config digest of '{Options.Image}'.");
             ImageConfig imageConfig = await client.Blobs.GetImageAsync(imageName.Repo, configDigest);
 
             IDescriptor baseLayer = manifest.Layers.First();
@@ -124,4 +119,7 @@ public class OsCommand : RegistryCommandBase<OsOptions>
             return null;
         }
     }
+
+    [GeneratedRegex(@"(\./)?(etc|usr/lib)/os-release")]
+    private static partial Regex OsReleaseRegex();
 }

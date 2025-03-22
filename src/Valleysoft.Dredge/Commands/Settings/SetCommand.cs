@@ -11,7 +11,7 @@ internal partial class SetCommand : CommandWithOptions<SetOptions>
     {
         AppSettings settings = AppSettings.Load();
 
-        Queue<string> names = new(Options.Name.Split('.'));
+        Queue<string> names = new([..Options.Name.Split('.')]);
 
         settings.SetProperty(names, Options.Value);
 

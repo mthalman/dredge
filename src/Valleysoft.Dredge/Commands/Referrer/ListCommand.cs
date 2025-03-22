@@ -37,9 +37,11 @@ public class ListCommand : RegistryCommandBase<ListOptions>
             while (indexPage.NextPageLink is not null)
             {
                 Page<OciImageIndex> nextPage = await client.Referrers.GetAsync(imageName.Repo, digest, Options.ArtifactType);
-                initialIndex.Manifests = initialIndex.Manifests
-                    .Concat(nextPage.Value.Manifests)
-                    .ToArray();
+                initialIndex.Manifests =
+                [
+                    .. initialIndex.Manifests,
+                    .. nextPage.Value.Manifests
+                ];
             }
 
             string output = JsonConvert.SerializeObject(initialIndex, JsonHelper.Settings);

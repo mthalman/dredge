@@ -4,7 +4,7 @@ namespace Valleysoft.Dredge.Commands.Settings;
 
 internal class SettingsCommand : Command
 {
-    public SettingsCommand(IDockerRegistryClientFactory dockerRegistryClientFactory)
+    public SettingsCommand()
         : base("settings", "Commands related to Dredge settings")
     {
         AddCommand(new OpenCommand());

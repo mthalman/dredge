@@ -6,8 +6,8 @@ namespace Valleysoft.Dredge.Commands;
 
 public abstract class OptionsBase
 {
-    private readonly List<Argument> arguments = new();
-    private readonly List<Option> options = new();
+    private readonly List<Argument> arguments = [];
+    private readonly List<Option> options = [];
     private ParseResult? parseResult;
 
     protected Argument<T> Add<T>(Argument<T> argument)

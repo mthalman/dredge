@@ -17,7 +17,7 @@ public class ListCommand : RegistryCommandBase<ListOptions>
         {
             using IDockerRegistryClient client = await DockerRegistryClientFactory.GetClientAsync(Options.Registry);
 
-            List<string> repoNames = new();
+            List<string> repoNames = [];
 
             Page<Catalog> catalogPage = await client.Catalog.GetAsync();
             repoNames.AddRange(catalogPage.Value.RepositoryNames);
