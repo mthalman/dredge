@@ -10,7 +10,7 @@ public class GetOptions : OptionsBase
 
     public GetOptions()
     {
-        nameArg = Add(new Argument<string>("name", "Name of the setting to set"));
+        nameArg = Add(new Argument<string>("name") { Description = "Name of the setting to set" });
     }
 
     protected override void GetValues()

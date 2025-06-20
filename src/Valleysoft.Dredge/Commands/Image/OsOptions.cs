@@ -10,7 +10,7 @@ public class OsOptions : PlatformOptionsBase
 
     public OsOptions()
     {
-        imageArg = Add(new Argument<string>("image", "Name of the container image (<image>, <image>:<tag>, or <image>@<digest>)"));
+        imageArg = Add(new Argument<string>("image") { Description = "Name of the container image (<image>, <image>:<tag>, or <image>@<digest>)" });
     }
 
     protected override void GetValues()

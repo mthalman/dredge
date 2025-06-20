@@ -7,6 +7,6 @@ public class RepoCommand : Command
     public RepoCommand(IDockerRegistryClientFactory dockerRegistryClientFactory)
         : base("repo", "Commands related to container repositories")
     {
-        AddCommand(new ListCommand(dockerRegistryClientFactory));
+        Subcommands.Add(new ListCommand(dockerRegistryClientFactory));
     }
 }

@@ -16,10 +16,10 @@ public class CompareLayersOptions : CompareOptionsBase
 
     public CompareLayersOptions()
     {
-        outputOption = Add(new Option<CompareLayersOutput>("--output", () => CompareLayersOutput.SideBySide, "Output format"));
-        noColorOption = Add(new Option<bool>("--no-color", "Disables dependency on color in comparison results"));
-        historyOption = Add(new Option<bool>("--history", "Include layer history as part of the comparison"));
-        compressedSizeOption = Add(new Option<bool>("--compressed-size", "Show the compressed size of the layer"));
+        outputOption = Add(new Option<CompareLayersOutput>("--output") { Description = "Output format", DefaultValueFactory = _ => CompareLayersOutput.SideBySide });
+        noColorOption = Add(new Option<bool>("--no-color") { Description = "Disables dependency on color in comparison results" });
+        historyOption = Add(new Option<bool>("--history") { Description = "Include layer history as part of the comparison" });
+        compressedSizeOption = Add(new Option<bool>("--compressed-size") { Description = "Show the compressed size of the layer" });
     }
 
     protected override void GetValues()

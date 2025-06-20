@@ -8,7 +8,7 @@ public class OpenCommand : Command
     public OpenCommand()
         : base("open", "Opens the Dredge settings file")
     {
-        this.SetHandler(ExecuteAsync);
+        this.SetAction(parseResult => ExecuteAsync());
     }
 
     private Task ExecuteAsync()

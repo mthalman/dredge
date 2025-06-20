@@ -15,8 +15,8 @@ public class CompareOptionsBase : PlatformOptionsBase
 
     public CompareOptionsBase()
     {
-        baseImageArg = Add(new Argument<string>(BaseArg, "Name of the base container image (<image>, <image>:<tag>, or <image>@<digest>)"));
-        targetImageArg = Add(new Argument<string>(TargetArg, "Name of the target container image (<image>, <image>:<tag>, or <image>@<digest>)"));
+        baseImageArg = Add(new Argument<string>(BaseArg) { Description = "Name of the base container image (<image>, <image>:<tag>, or <image>@<digest>)" });
+        targetImageArg = Add(new Argument<string>(TargetArg) { Description = "Name of the target container image (<image>, <image>:<tag>, or <image>@<digest>)" });
     }
 
     protected override void GetValues()

@@ -25,16 +25,15 @@ public abstract class OptionsBase
     protected T GetValue<T>(Argument<T> arg)
     {
         ValidateParseResult();
-        return parseResult.GetValueForArgument(arg);
+        return parseResult!.GetValue(arg)!;
     }
 
     protected T? GetValue<T>(Option<T> option)
     {
         ValidateParseResult();
-        return parseResult.GetValueForOption(option);
+        return parseResult!.GetValue(option);
     }
 
-    [MemberNotNull(nameof(parseResult))]
     private void ValidateParseResult()
     {
         if (parseResult is null)
@@ -55,12 +54,12 @@ public abstract class OptionsBase
     {
         foreach (Argument arg in arguments)
         {
-            cmd.AddArgument(arg);
+            cmd.Arguments.Add(arg);
         }
 
         foreach (Option option in options)
         {
-            cmd.AddOption(option);
+            cmd.Options.Add(option);
         }
     }
 }

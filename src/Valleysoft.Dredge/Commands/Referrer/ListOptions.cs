@@ -12,8 +12,8 @@ public class ListOptions : OptionsBase
 
     public ListOptions()
     {
-        imageArg = Add(new Argument<string>("name", "Name of the manifest (<name>, <name>:<tag>, or <name>@<digest>)"));
-        artifactTypeArg = Add(new Option<string>("--artifact-type", "Artifact media type to filter by"));
+        imageArg = Add(new Argument<string>("name") { Description = "Name of the manifest (<name>, <name>:<tag>, or <name>@<digest>)" });
+        artifactTypeArg = Add(new Option<string>("--artifact-type") { Description = "Artifact media type to filter by" });
     }
 
     protected override void GetValues()

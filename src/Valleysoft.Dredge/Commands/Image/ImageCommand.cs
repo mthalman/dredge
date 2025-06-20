@@ -7,10 +7,10 @@ public class ImageCommand : Command
     public ImageCommand(IDockerRegistryClientFactory dockerRegistryClientFactory)
         : base("image", "Commands related to container images")
     {
-        AddCommand(new CompareCommand(dockerRegistryClientFactory));
-        AddCommand(new InspectCommand(dockerRegistryClientFactory));
-        AddCommand(new OsCommand(dockerRegistryClientFactory));
-        AddCommand(new SaveLayersCommand(dockerRegistryClientFactory));
-        AddCommand(new DockerfileCommand(dockerRegistryClientFactory));
+        Subcommands.Add(new CompareCommand(dockerRegistryClientFactory));
+        Subcommands.Add(new InspectCommand(dockerRegistryClientFactory));
+        Subcommands.Add(new OsCommand(dockerRegistryClientFactory));
+        Subcommands.Add(new SaveLayersCommand(dockerRegistryClientFactory));
+        Subcommands.Add(new DockerfileCommand(dockerRegistryClientFactory));
     }
 }

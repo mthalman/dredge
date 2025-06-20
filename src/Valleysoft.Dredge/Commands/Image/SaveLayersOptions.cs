@@ -18,10 +18,10 @@ public class SaveLayersOptions : PlatformOptionsBase
 
     public SaveLayersOptions()
     {
-        imageArg = Add(new Argument<string>("image", "Name of the container image (<image>, <image>:<tag>, or <image>@<digest>)"));
-        outputPathArg = Add(new Argument<string>("output-path", "Path to the output location"));
-        noSquashOption = Add(new Option<bool>("--no-squash", "Do not squash the image layers"));
-        layerIndexOption = Add(new Option<int?>(LayerIndexOptionName, "Index of the image layer to target"));
+        imageArg = Add(new Argument<string>("image") { Description = "Name of the container image (<image>, <image>:<tag>, or <image>@<digest>)" });
+        outputPathArg = Add(new Argument<string>("output-path") { Description = "Path to the output location" });
+        noSquashOption = Add(new Option<bool>("--no-squash") { Description = "Do not squash the image layers" });
+        layerIndexOption = Add(new Option<int?>(LayerIndexOptionName) { Description = "Index of the image layer to target" });
     }
 
     protected override void GetValues()
