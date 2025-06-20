@@ -10,7 +10,7 @@ public class GetOptions : OptionsBase
 
     public GetOptions()
     {
-        imageArg = Add(new Argument<string>("name", "Name of the manifest (<name>, <name>:<tag>, or <name>@<digest>)"));
+        imageArg = Add(new Argument<string>("name") { Description = "Name of the manifest (<name>, <name>:<tag>, or <name>@<digest>)" });
     }
 
     protected override void GetValues()

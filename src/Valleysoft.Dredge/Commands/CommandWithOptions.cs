@@ -1,5 +1,4 @@
 ﻿using System.CommandLine;
-using System.CommandLine.Invocation;
 
 namespace Valleysoft.Dredge.Commands;
 
@@ -12,13 +11,11 @@ public abstract class CommandWithOptions<TOptions> : Command
         : base(name, description)
     {
         Options.SetCommandOptions(this);
-        this.SetHandler(ExecuteAsyncCore);
-    }
-
-    private async Task ExecuteAsyncCore(InvocationContext context)
-    {
-        Options.SetParseResult(context.BindingContext.ParseResult);
-        await ExecuteAsync();
+        this.SetAction(parseResult =>
+        {
+            Options.SetParseResult(parseResult);
+            return ExecuteAsync();
+        });
     }
 
     protected abstract Task ExecuteAsync();

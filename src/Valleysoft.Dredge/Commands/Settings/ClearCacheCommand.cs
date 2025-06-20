@@ -7,7 +7,7 @@ public class ClearCacheCommand : Command
     public ClearCacheCommand()
         : base("clear-cache", "Deletes the cached files used by Dredge")
     {
-        this.SetHandler(ExecuteAsync);
+        this.SetAction(parseResult => ExecuteAsync());
     }
 
     private Task ExecuteAsync()

@@ -10,7 +10,7 @@ public class ListOptions : OptionsBase
 
     public ListOptions()
     {
-        repoArg = Add(new Argument<string>("repo", "Name of the container repository"));
+        repoArg = Add(new Argument<string>("repo") { Description = "Name of the container repository" });
     }
 
     protected override void GetValues()

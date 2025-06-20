@@ -12,8 +12,8 @@ public class SetOptions : OptionsBase
 
     public SetOptions()
     {
-        nameArg = Add(new Argument<string>("name", "Name of the setting to set"));
-        valueArg = Add(new Argument<string>("value", "Value to assign to the setting"));
+        nameArg = Add(new Argument<string>("name") { Description = "Name of the setting to set" });
+        valueArg = Add(new Argument<string>("value") { Description = "Value to assign to the setting" });
     }
 
     protected override void GetValues()

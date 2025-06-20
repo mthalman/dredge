@@ -16,9 +16,9 @@ public class CompareFilesOptions : CompareOptionsBase
 
     public CompareFilesOptions()
     {
-        baseLayerIndex = Add(new Option<int?>($"--{BaseArg}{LayerIndexSuffix}", "Non-empty layer index of the base container image to compare with"));
-        targetLayerIndex = Add(new Option<int?>($"--{TargetArg}{LayerIndexSuffix}", "Non-empty layer index of the target container image to compare against"));
-        outputOption = Add(new Option<CompareFilesOutput>("--output", () => CompareFilesOutput.ExternalTool, "Output type"));
+        baseLayerIndex = Add(new Option<int?>($"--{BaseArg}{LayerIndexSuffix}") { Description = "Non-empty layer index of the base container image to compare with" });
+        targetLayerIndex = Add(new Option<int?>($"--{TargetArg}{LayerIndexSuffix}") { Description = "Non-empty layer index of the target container image to compare against" });
+        outputOption = Add(new Option<CompareFilesOutput>("--output") { Description = "Output type", DefaultValueFactory = _ => CompareFilesOutput.ExternalTool });
     }
 
     protected override void GetValues()

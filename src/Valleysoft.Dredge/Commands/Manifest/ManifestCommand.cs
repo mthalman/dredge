@@ -6,8 +6,8 @@ public class ManifestCommand : Command
 {
     public ManifestCommand(IDockerRegistryClientFactory dockerRegistryClientFactory) : base("manifest", "Commands related to manifests")
     {
-        AddCommand(new GetCommand(dockerRegistryClientFactory));
-        AddCommand(new DigestCommand(dockerRegistryClientFactory));
-        AddCommand(new ResolveCommand(dockerRegistryClientFactory));
+        Subcommands.Add(new GetCommand(dockerRegistryClientFactory));
+        Subcommands.Add(new DigestCommand(dockerRegistryClientFactory));
+        Subcommands.Add(new ResolveCommand(dockerRegistryClientFactory));
     }
 }
