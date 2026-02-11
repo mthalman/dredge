@@ -1,4 +1,4 @@
-FROM --platform=$BUILDPLATFORM mcr.microsoft.com/dotnet/sdk:9.0-noble@sha256:456b5992e31d4398c5ed4b2ca0b6376f940c4098b1053f14f46f8883e9c2b58d AS build
+FROM --platform=$BUILDPLATFORM mcr.microsoft.com/dotnet/sdk:9.0-noble@sha256:7edd9852535e180beb1def73951a135e11af745f70eaf22787285c7e28b46d01 AS build
 
 ARG TARGETARCH
 ARG PACKAGE_VERSION
