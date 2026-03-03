@@ -10,12 +10,12 @@ You can influence the platform resolution by setting the command's platform opti
 
 The following operations make use of platform resolution:
 
-* [`manifest resolve`](commands/manifests.md#resolve-manifest)
+* [`manifest resolve`](commands/manifests.md#resolve)
 * All [`image`](commands/images.md) sub-commands
 
 ## Platform options
 
-The following [platform options](https://github.com/mthalman/dredge/pull/52) can be used to influence platform resolution:
+The following platform options can be used to influence platform resolution:
 
 * `--os`: The operating system of the platform ("linux" or "windows").
 * `--os-version`: The operating system version of the platform. This is usually only relevant for Windows images but may be relevant for Linux images in some rare cases.
@@ -23,7 +23,7 @@ The following [platform options](https://github.com/mthalman/dredge/pull/52) can
 
 ## Global platform settings
 
-[Global platform settings](https://github.com/mthalman/dredge/pull/54) allow you to statically define platform settings in the Dredge settings file that will be used for all operations that use platform resolution.
+Global platform settings allow you to statically define platform settings in the [Dredge settings file](settings.md) that will be used for all operations that use platform resolution.
 The same platform options can be used as described in the previous section.
 
 Here's the configuration of these global platform settings:
@@ -38,7 +38,7 @@ Here's the configuration of these global platform settings:
 }
 ```
 
-You can set these values by using the [`settings set`](commands/settings.md#set-settings) command:
+You can set these values by using the [`settings set`](commands/settings.md#set) command:
 
 Example:
 

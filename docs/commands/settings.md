@@ -1,31 +1,52 @@
-# Settings
+# Settings Commands
 
-Sub-commands:
+| Sub-command | Description |
+|-------------|-------------|
+| [`open`](#open) | Open the settings file |
+| [`get`](#get) | Get a setting value |
+| [`set`](#set) | Set a setting value |
+| [`clear-cache`](#clear-cache) | Delete cached layer data |
 
-* [`open`](#open-settings) - Opens the Dredge settings file
-* [`get`](#get-setting) - Gets the value of a setting
-* [`set`](#set-setting) - Sets the value of a setting
-* [`clear-cache`](#clear-cache) - Deletes the cached files used by Dredge
+## Open
 
-## Open Settings
+Opens the Dredge [settings file](../settings.md) in the default associated program. If no program is associated, outputs the file path.
 
-The `settings open` command opens the Dredge settings file in the default associated program if it can.
-Otherwise, it outputs the path to the settings file.
+```console
+dredge settings open
+```
 
-## Get Setting
+## Get
 
-The `settings get` command gets the value of a setting from the Dredge settings file.
-It takes a single argument as the name of the setting to get.
-Because the settings in the settings file are hierarchical and represented as JSON, setting names use a dot notation to separate the names to access the desired setting.
-For example: `dredge settings get fileCompareTool.exePath` gets the executable path of the file compare tool from the settings file.
+Gets the value of a setting. Setting names use dot notation for hierarchical JSON paths.
 
-## Set Setting
+```console
+dredge settings get <name>
+```
 
-The `settings set` command sets the value of a setting from the Dredge settings file.
-It takes the name of the setting to set followed by the value to set it to.
-Because the settings in the settings file are hierarchical and represented as JSON, setting names use a dot notation to separate the names to access the desired setting.
-For example: `dredge settings set platform.os linux` sets the default platform OS to "linux".
+Example:
+
+```console
+dredge settings get fileCompareTool.exePath
+```
+
+## Set
+
+Sets the value of a setting. Setting names use dot notation for hierarchical JSON paths.
+
+```console
+dredge settings set <name> <value>
+```
+
+Example:
+
+```console
+dredge settings set platform.os linux
+```
 
 ## Clear Cache
 
-The `settings clear-cache` command deletes the local cache of layer data stored in the temporary directory.
+Deletes the local cache of layer data stored in the temporary directory. This cache is created by commands like [`image compare files`](images.md#compare-files) and [`image save-layers`](images.md#save-layers).
+
+```console
+dredge settings clear-cache
+```

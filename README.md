@@ -1,35 +1,37 @@
 <img src="dredge-logo.png" width="250" />
 
-# Dredge: A Container Registry Client CLI
+# Dredge
 
-Dredge is a CLI built on .NET that provides a simple way to execute commands on a container registry's HTTP API. Currently, only read operations are supported.
+A .NET CLI for querying container registry HTTP APIs ([OCI Distribution Spec](https://github.com/opencontainers/distribution-spec)). All operations are read-only.
 
 ## Features
 
-* Access to raw JSON data from the registry's HTTP API.
-* Extended, derived data such as [image configuration](docs/commands/images.md#inspect-image-configuration), [OS information](docs/commands/images.md#image-os-information), and comparison of [layers](docs/commands/images.md#compare-image-layers) and [files](docs/commands/images.md#compare-image-files).
+* Query raw JSON data from registry APIs — [manifests](docs/commands/manifests.md), [tags](docs/commands/tags.md), [repositories](docs/commands/repositories.md), and [referrers](docs/commands/referrers.md).
+* Inspect [image configuration](docs/commands/images.md#inspect) and [OS information](docs/commands/images.md#os).
+* Compare image [layers](docs/commands/images.md#compare-layers) and [files](docs/commands/images.md#compare-files) across versions.
+* [Generate Dockerfiles](docs/commands/images.md#dockerfile) from existing images.
+* [Save image layers](docs/commands/images.md#save-layers) to disk (squashed or individual).
+* [Platform resolution](docs/platform-resolution.md) for multi-arch images.
 
-### Documentation
-
-The main documentation is in the [docs](docs) directory.
+📖 Full documentation is in the [docs](docs) directory.
 
 ## Install
 
-### Installing as a standalone executable
+### Standalone executable
 
-Download the desired executable from the [release page](https://github.com/mthalman/dredge/releases).
+Download from the [release page](https://github.com/mthalman/dredge/releases).
 
 Prerequisites:
 * [.NET 10 runtime](https://dotnet.microsoft.com/download/dotnet/10.0)
 
-### Running as a container
+### Container
 
 ```shell
 docker run --rm ghcr.io/mthalman/dredge --help
 ```
 
-### Installing as a .NET global tool
+### .NET global tool
 
 ```console
-> dotnet tool install -g Valleysoft.Dredge
+dotnet tool install -g Valleysoft.Dredge
 ```

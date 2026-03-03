@@ -1,20 +1,28 @@
-# Images
+# Image Commands
 
-Sub-commands:
+All image commands support [platform resolution](../platform-resolution.md) via `--os`, `--arch`, and `--os-version` options.
 
-* [`inspect`](#inspect-image-configuration) - Inspects an image configuration
-* [`os`](#image-os-information) - Image OS information
-* [`compare layers`](#compare-image-layers) - Compares the layers of two images
-* [`compare files`](#compare-image-files) - Compares the files of two images
-* [`save layers`](#save-layers) - Saves the layers of an image to disk
-* [`dockerfile`](#generate-dockerfile) - Generates a Dockerfile that represents the image
+| Sub-command | Description |
+|-------------|-------------|
+| [`inspect`](#inspect) | Inspect an image configuration |
+| [`os`](#os) | Show OS information |
+| [`compare layers`](#compare-layers) | Compare the layers of two images |
+| [`compare files`](#compare-files) | Compare the file contents of two images |
+| [`save-layers`](#save-layers) | Save image layers to disk |
+| [`dockerfile`](#dockerfile) | Generate a Dockerfile from an image |
 
-## Inspect Image Configuration
+## Inspect
 
-The `image inspect` command returns the image configuration of the specified image name.
+Returns the image configuration of the specified image.
 
 ```console
-> dredge image inspect amd64/ubuntu:22.04
+dredge image inspect <image> [--os <os>] [--arch <arch>] [--os-version <version>]
+```
+
+Example:
+
+```console
+dredge image inspect amd64/ubuntu:22.04
 {
   "architecture": "amd64",
   "config": {
@@ -34,14 +42,18 @@ The `image inspect` command returns the image configuration of the specified ima
 }
 ```
 
-## Image OS Information
+## OS
 
-The `image os` command returns information about the OS of the specified image name. Supports both Linux and Windows images.
-
-### Linux
+Returns information about the OS of the specified image. Supports both Linux and Windows images.
 
 ```console
-> dredge image os amd64/ubuntu:22.04
+dredge image os <image> [--os <os>] [--arch <arch>] [--os-version <version>]
+```
+
+### Linux example
+
+```console
+dredge image os amd64/ubuntu:22.04
 {
   "PRETTY_NAME": "Ubuntu 22.04.1 LTS",
   "NAME": "Ubuntu",
@@ -59,32 +71,35 @@ The `image os` command returns information about the OS of the specified image n
 }
 ```
 
-### Windows
+### Windows example
 
 ```console
-> dredge image os mcr.microsoft.com/windows/nanoserver:ltsc2022-amd64
+dredge image os mcr.microsoft.com/windows/nanoserver:ltsc2022-amd64
 {
   "Type": "Nano Server",
   "Version": "10.0.20348.1249"
 }
 ```
 
-### Compare Image Layers
+## Compare Layers
 
-The `image compare layers` command compares the layers of two images.
+Compares the layers of two images.
 
-There are a variety of output options available:
+```console
+dredge image compare layers <base> <target> [--output <format>] [--history] [--compressed-size] [--no-color] [--os <os>] [--arch <arch>] [--os-version <version>]
+```
 
-* SideBySide (default): Displays the comparison side-by-side in a table layout
-* Inline: Displays the comparison in an inline fashion
-* JSON: Returns a JSON representation of the comparison, including summary analysis
+| Option | Description |
+|--------|-------------|
+| `--output` | Output format: `SideBySide` (default), `Inline`, or `Json` |
+| `--history` | Include the layer history (Dockerfile instructions) |
+| `--compressed-size` | Show compressed layer sizes |
+| `--no-color` | Disable color output and use text-based diff indicators instead |
 
-There's also a `--history` option to include the layer history information associated with the given layer.
-
-By default, the comparison makes use of green and red colors to indicate differences. For accessibility purposes, you can choose to use the `--no-color` option which will disable the use of these colors and use textual means to indicate diffs instead.
+### Inline output example
 
 ```diff
-$ dredge image compare layers --output inline amd64/node:19.1-alpine amd64/node:19.2-alpine
+dredge image compare layers --output inline amd64/node:19.1-alpine amd64/node:19.2-alpine
   sha256:ca7dd9ec2225f2385955c43b2379305acd51543c28cf1d4e94522b3d94cce3ce
 - sha256:4487691952c066cb3964b94606825bc96c698377909c7d74c889fd12e24e36a7
 + sha256:bfebca31f7556839677aca8626941ec4be0d5e2a1a59f1bd991807828de37167
@@ -94,8 +109,10 @@ $ dredge image compare layers --output inline amd64/node:19.1-alpine amd64/node:
 + sha256:6e25476b6324255c964f6b86e587d867e79046e94933123d0f1312dbddfe87b7
 ```
 
+### Side-by-side output with history example
+
 ```
-> dredge image compare layers --history --no-color mcr.microsoft.com/dotnet/runtime:6.0.5-jammy-amd64 mcr.microsoft.com/dotnet/runtime:6.0.6-jammy-amd64
+dredge image compare layers --history --no-color mcr.microsoft.com/dotnet/runtime:6.0.5-jammy-amd64 mcr.microsoft.com/dotnet/runtime:6.0.6-jammy-amd64
 ┌──────────────────────────────────────────────────────────────────────────┬───────────┬─────────────────────────────────────────────────────────────────────────┐
 │ mcr.microsoft.com/dotnet/runtime:6.0.5-jammy-amd64                       │  Compare  │ mcr.microsoft.com/dotnet/runtime:6.0.6-jammy-amd64                      │
 ├──────────────────────────────────────────────────────────────────────────┼───────────┼─────────────────────────────────────────────────────────────────────────┤
@@ -130,21 +147,20 @@ $ dredge image compare layers --output inline amd64/node:19.1-alpine amd64/node:
 └──────────────────────────────────────────────────────────────────────────┴───────────┴─────────────────────────────────────────────────────────────────────────┘
 ```
 
-### Compare Image Files
+## Compare Files
 
-The `image compare files` command provides a way to compare the file contents of two images.
+Compares the file contents of two images by downloading and squashing their layers into local filesystem representations, then launching an external diff tool.
 
-Example usage:
-
-```shell
-> dredge image compare files amd64/node:19.1-alpine amd64/node:19.2-alpine
+```console
+dredge image compare files <base> <target> [--base-layer-index <n>] [--target-layer-index <n>] [--os <os>] [--arch <arch>] [--os-version <version>]
 ```
 
-The layers of the images are downloaded and applied (squashed) to produce a local representation of the file system for each image.
+| Option | Description |
+|--------|-------------|
+| `--base-layer-index` | Only apply layers up to this index for the base image |
+| `--target-layer-index` | Only apply layers up to this index for the target image |
 
-The actual comparison of the files requires an external tool provided by the user. This external comparison tool is configured with Dredge's settings.json file.
-
-Example:
+The external comparison tool is configured in the [settings file](../settings.md):
 
 ```json
 {
@@ -155,34 +171,52 @@ Example:
 }
 ```
 
-In addition to comparing the entire image, you can also include a subset of the image by specifying a layer index in the command options. This will only apply the layers of the image up to the specified index. For example, the following command compares only the first two layers of the images:
+Example — compare two images:
 
-```shell
-> dredge image compare files amd64/node:19.1-alpine amd64/node:19.2-alpine --base-layer-index 1 --target-layer-index 1
+```console
+dredge image compare files amd64/node:19.1-alpine amd64/node:19.2-alpine
 ```
 
-This option also enables you to compare the layers of a single image. This command compares the difference between the 2nd and 3rd layer of the `amd64/node:19.1-alpine` image:
+Example — compare only the first two layers:
 
-```shell
-> dredge image compare files amd64/node:19.1-alpine amd64/node:19.1-alpine --base-layer-index 1 --target-layer-index 2
+```console
+dredge image compare files amd64/node:19.1-alpine amd64/node:19.2-alpine --base-layer-index 1 --target-layer-index 1
 ```
 
-### Save Layers
+Example — compare layers within a single image (difference between the 2nd and 3rd layer):
 
-The `image save-layers` command provides a way to save the extracted layers of an image to disk.
-
-Example usage:
-
-```shell
-> dredge image save-layers amd64/node:19.2-alpine out/layers/node
+```console
+dredge image compare files amd64/node:19.1-alpine amd64/node:19.1-alpine --base-layer-index 1 --target-layer-index 2
 ```
 
-By default, the layers of the image are squashed and saved to a single directory. The `--no-squash` option can be used to disable this behavior and save the layers as individual directories.
+## Save Layers
 
-If you want to target a specific layer, you can use the `--layer-index` option. This will only save the specified layer (and any layers that it depends on if squashing is being applied).
+Saves the extracted layers of an image to disk.
 
-## Generate Dockerfile
+```console
+dredge image save-layers <image> <output-path> [--no-squash] [--layer-index <n>] [--os <os>] [--arch <arch>] [--os-version <version>]
+```
 
-The `image dockerfile` command generates a Dockerfile that represents an image.
+| Option | Description |
+|--------|-------------|
+| `--no-squash` | Save layers as individual directories instead of squashing |
+| `--layer-index` | Only save the specified layer (includes dependent layers when squashing) |
 
-By default, it uses a set of heuristics to generate line breaks for a Dockerfile instruction to make it more readable. This can be disabled with the `--no-format` option. The output also uses syntax coloring by default for readability. This can be disabled with the `--no-color` option.
+Example:
+
+```console
+dredge image save-layers amd64/node:19.2-alpine out/layers/node
+```
+
+## Dockerfile
+
+Generates a Dockerfile that represents an image.
+
+```console
+dredge image dockerfile <image> [--no-format] [--no-color] [--os <os>] [--arch <arch>] [--os-version <version>]
+```
+
+| Option | Description |
+|--------|-------------|
+| `--no-format` | Disable heuristic line-break formatting |
+| `--no-color` | Disable syntax coloring |

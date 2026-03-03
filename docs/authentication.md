@@ -1,5 +1,25 @@
-# Registry Authentication
+# Authentication
 
-For container registries requiring authentication, Dredge can make use of credentials stored in your environment via the `docker login` command.
-Alternatively, you can set the `DREDGE_TOKEN` environment variable to an OAuth bearer token or set the `DREDGE_USERNAME` and `DREDGE_PASSWORD` environment variables if you have credentials.
-Dredge will look for the environment variables first and fall back to any `docker login` credentials if they exist.
+For registries that require authentication, Dredge resolves credentials in the following order:
+
+1. **`DREDGE_TOKEN` environment variable** — OAuth bearer token for the registry.
+2. **`DREDGE_USERNAME` and `DREDGE_PASSWORD` environment variables** — Basic credentials.
+3. **Docker credential store** — Credentials stored via `docker login`.
+
+If none of these are available, Dredge attempts anonymous access.
+
+## Examples
+
+### Using an environment variable
+
+```shell
+export DREDGE_TOKEN="your-oauth-token"
+dredge manifest get myregistry.azurecr.io/myimage:latest
+```
+
+### Using Docker credentials
+
+```shell
+docker login myregistry.azurecr.io
+dredge manifest get myregistry.azurecr.io/myimage:latest
+```
