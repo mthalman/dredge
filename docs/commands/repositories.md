@@ -1,17 +1,23 @@
-# Repositories
+# Repository Commands
 
-Sub-commands:
+| Sub-command | Description |
+|-------------|-------------|
+| [`list`](#list) | List the repositories in a registry |
 
-* [`list`](#query-repositories) - Lists the repositories in a registry
-
-## Query Repositories
+## List
 
 Returns the list of repositories from the specified registry.
 
-> Not supported for Docker Hub.
+> **Note:** Not supported for Docker Hub.
 
 ```console
-> dredge repo list mcr.microsoft.com
+dredge repo list <registry>
+```
+
+Example:
+
+```console
+dredge repo list mcr.microsoft.com
 [
   "acc/samples/acc-perl",
   "acc/samples/attestation-inproc",

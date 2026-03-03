@@ -1,15 +1,21 @@
-# Tags
+# Tag Commands
 
-Sub-commands:
+| Sub-command | Description |
+|-------------|-------------|
+| [`list`](#list) | List the tags in a repository |
 
-* [`list`](#query-tags) - Lists the tags in a repository
-
-## Query Tags
+## List
 
 Returns the tags associated with the specified repository.
 
 ```console
-> dredge tag list ubuntu
+dredge tag list <repo>
+```
+
+Example:
+
+```console
+dredge tag list ubuntu
 [
   "10.04",
   "12.04",

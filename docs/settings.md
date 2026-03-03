@@ -26,6 +26,6 @@ The [`settings`](commands/settings.md) command can be used to manipulate the set
 }
 ```
 
-See [`image compare files`](commands/images.md#compare-image-files) for more information about the `fileCompareTool` setting.
+See [`image compare files`](commands/images.md#compare-files) for more information about the `fileCompareTool` setting.
 
 See [platform resolution](platform-resolution.md) for more information about the `platform` setting.

@@ -1,15 +1,25 @@
-# Referrers
+# Referrer Commands
 
-Sub-commands:
+| Sub-command | Description |
+|-------------|-------------|
+| [`list`](#list) | List the referrers to a manifest |
 
-* [`list`](#query-referrers) - Lists the referrers to a manifest
+## List
 
-## Query Referrers
-
-Returns the referrers to the specified manifest.
+Returns the referrers to the specified manifest. This uses the [OCI Referrers API](https://github.com/opencontainers/distribution-spec/blob/main/spec.md#listing-referrers).
 
 ```console
-> dredge referrer list mcr.microsoft.com/dotnet/core/sdk:latest
+dredge referrer list <name> [--artifact-type <type>]
+```
+
+| Option | Description |
+|--------|-------------|
+| `--artifact-type` | Filter results by artifact media type |
+
+Example:
+
+```console
+dredge referrer list mcr.microsoft.com/dotnet/core/sdk:latest
 {
   "manifests": [
     {
