@@ -1,0 +1,14 @@
+[
+  {
+    "assignment_id": "dredge-init-2026-03-02",
+    "universe": "Alien",
+    "timestamp": "2026-03-02T14:27:00Z",
+    "agents": [
+      { "name": "Dallas", "role": "Lead" },
+      { "name": "Ripley", "role": "Core Dev" },
+      { "name": "Lambert", "role": "Tester" },
+      { "name": "Parker", "role": "DevOps" }
+    ],
+    "reason": "Size fit (4 agents, capacity 8), project resonance with container/exploration theme"
+  }
+]
