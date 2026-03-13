@@ -1,4 +1,4 @@
-FROM --platform=$BUILDPLATFORM mcr.microsoft.com/dotnet/sdk:10.0-noble@sha256:e362a8dbcd691522456da26a5198b8f3ca1d7641c95624fadc5e3e82678bd08a AS build
+FROM --platform=$BUILDPLATFORM mcr.microsoft.com/dotnet/sdk:10.0-noble@sha256:478b9038d187e5b5c29bfa8173ded5d29e864b5ad06102a12106380ee01e2e49 AS build
 
 ARG TARGETARCH
 ARG PACKAGE_VERSION
@@ -14,7 +14,7 @@ COPY Valleysoft.Dredge.Analyzers/ Valleysoft.Dredge.Analyzers/
 RUN dotnet publish Valleysoft.Dredge/*.csproj -f net10.0 -o /app -a $TARGETARCH --no-self-contained /p:Version=$PACKAGE_VERSION --no-restore
 
 
-FROM mcr.microsoft.com/dotnet/runtime:10.0-noble-chiseled@sha256:3bbc20e1fdb934c07b29b990180affc3665fd4ec444e7486d3018b97c5921435
+FROM mcr.microsoft.com/dotnet/runtime:10.0-noble-chiseled@sha256:1ee35f02ce2ebf4043ab8c805e5e0296ae2aa587a10b1f02f331483bb5bc4437
 WORKDIR /app
 COPY --from=build /app .
 ENTRYPOINT ["./dredge"]
