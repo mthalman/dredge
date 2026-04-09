@@ -1,8 +1,8 @@
 [#C285BF]FROM[/] [#96DCFE]scratch[/]
 [#6D9A58]# No instruction info
 [/][#C285BF]ARG[/] [green]EULA[/][#FAC81F]=[/][#96DCFE]@EULA_FILE@[/]
-[#C285BF]COPY[/] [#96DCFE]EULA-Container.txt[/] [#96DCFE].[/] [#6D9A58]# buildkit
-[/][#C285BF]CMD[/] [#FAC81F][[[/][#CA9178]"bash"[/][#FAC81F]]][/]
+[#C285BF]COPY[/] [#96DCFE]EULA-Container.txt[/] [#96DCFE].[/] [#96DCFE]#[/] [#96DCFE]buildkit[/]
+[#C285BF]CMD[/] [#FAC81F][[[/][#CA9178]"bash"[/][#FAC81F]]][/]
 [#C285BF]ENV[/] [green]ASPNETCORE_URLS[/][#FAC81F]=[/][#96DCFE]http://+:80[/] [#FAC81F]\[/]
     [green]DOTNET_RUNNING_IN_CONTAINER[/][#FAC81F]=[/][#96DCFE]true[/]
 [#C285BF]RUN[/] [#96DCFE]/bin/sh -c tdnf install -y         ca-certificates                 glibc         icu         krb5         libgcc         libstdc++         openssl-libs         zlib     && tdnf clean all # buildkit

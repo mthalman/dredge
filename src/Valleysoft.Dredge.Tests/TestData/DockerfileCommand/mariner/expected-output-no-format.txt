@@ -1,8 +1,8 @@
 [#C285BF]FROM[/] [#96DCFE]scratch[/]
 [#6D9A58]# No instruction info
 [/][#C285BF]ARG[/] [green]EULA[/][#FAC81F]=[/][#96DCFE]@EULA_FILE@[/]
-[#C285BF]COPY[/] [#96DCFE]EULA-Container.txt[/] [#96DCFE].[/] [#6D9A58]# buildkit
-[/][#C285BF]CMD[/] [#FAC81F][[[/][#CA9178]"bash"[/][#FAC81F]]][/]
+[#C285BF]COPY[/] [#96DCFE]EULA-Container.txt[/] [#96DCFE].[/] [#96DCFE]#[/] [#96DCFE]buildkit[/]
+[#C285BF]CMD[/] [#FAC81F][[[/][#CA9178]"bash"[/][#FAC81F]]][/]
 [#C285BF]ENV[/] [green]ASPNETCORE_URLS[/][#FAC81F]=[/][#96DCFE]http://+:80[/] [green]DOTNET_RUNNING_IN_CONTAINER[/][#FAC81F]=[/][#96DCFE]true[/]
 [#C285BF]RUN[/] [#96DCFE]/bin/sh -c tdnf install -y         ca-certificates                 glibc         icu         krb5         libgcc         libstdc++         openssl-libs         zlib     && tdnf clean all # buildkit
 [/][#C285BF]RUN[/] [#96DCFE]/bin/sh -c dotnet_version=6.0.36     && curl -fSL --output dotnet-runtime-deps.rpm https://dotnetcli.azureedge.net/dotnet/Runtime/$dotnet_version/dotnet-runtime-deps-$dotnet_version-cm.2-x64.rpm     && dotnet_sha512='c480ab7722f34eef1e0e55bf60b393cf6f4dc51ea78878b5a3b0e9c8c45d054d3c81b29a8783732c01ca62d3c5b6298a166a2de7c0e07f70067f22af375b6f1c'     && echo "$dotnet_sha512  dotnet-runtime-deps.rpm" | sha512sum -c -     && tdnf install -y --disablerepo=* dotnet-runtime-deps.rpm     && rm dotnet-runtime-deps.rpm # buildkit
