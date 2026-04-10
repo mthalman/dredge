@@ -25,7 +25,7 @@
     }; [#FAC81F]\[/]
     tar -oxzf aspnetcore.zip -C $Env:ProgramFiles\dotnet ./shared/Microsoft.AspNetCore.App; [#FAC81F]\[/]
     Remove-Item -Force aspnetcore.zip
-[/][#C285BF]ENV[/] [green]ASPNETCORE_URLS[/][#FAC81F]=[/][#96DCFE][/] [#FAC81F]\[/]
+[/][#C285BF]ENV[/] [green]ASPNETCORE_URLS[/][#FAC81F]=[/] [#FAC81F]\[/]
     [green]DOTNET_GENERATE_ASPNET_CERTIFICATE[/][#FAC81F]=[/][#96DCFE]false[/] [#FAC81F]\[/]
     [green]DOTNET_NOLOGO[/][#FAC81F]=[/][#96DCFE]true[/] [#FAC81F]\[/]
     [green]DOTNET_SDK_VERSION[/][#FAC81F]=[/][#96DCFE]7.0.101[/] [#FAC81F]\[/]
