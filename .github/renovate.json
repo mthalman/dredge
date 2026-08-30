@@ -3,5 +3,6 @@
   "extends": [
     "config:best-practices"
   ],
+  "minimumReleaseAge": "10 days",
   "mode": "full"
 }
