@@ -3,7 +3,7 @@
 [/][#C285BF]ARG[/] [green]EULA[/][#FAC81F]=[/][#96DCFE]@EULA_FILE@[/]
 [#C285BF]COPY[/] [#96DCFE]file:2c9b9395238ee55ff215d908ee6cf02975b45c4e6c97b276333bcd60ee705729[/] [#96DCFE].[/]
 [#C285BF]LABEL[/] [green]Author[/][#FAC81F]=[/][#96DCFE]Microsoft[/]
-[#C285BF]LABEL[/] [green]Support[/][#FAC81F]=[/][#CA9178]"Microsoft OpenJDK Support <openjdk-support@microsoft.com>"[/]
+[#C285BF]LABEL[/] Support=Microsoft OpenJDK Support <openjdk-support@microsoft.com>
 [#C285BF]COPY[/] [#96DCFE]/staging/[/] [#96DCFE]/[/] [#96DCFE]#[/] [#96DCFE]buildkit[/]
 [#C285BF]COPY[/] [#96DCFE]/usr/jdk/[/] [#96DCFE]/usr/jdk/[/] [#96DCFE]#[/] [#96DCFE]buildkit[/]
 [#C285BF]COPY[/] [#96DCFE]/staging/home/app[/] [#96DCFE]/home/app[/] [#96DCFE]#[/] [#96DCFE]buildkit[/]
