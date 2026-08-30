@@ -814,7 +814,11 @@ public class CompareLayersCommandTests
         IAnsiConsole console = AnsiConsole.Create(new AnsiConsoleSettings
         {
             Ansi = ansiSupported ? AnsiSupport.Yes : AnsiSupport.No,
-            Out = new AnsiConsoleOutput(new StringWriter())
+            Out = new AnsiConsoleOutput(new StringWriter()),
+            Enrichment = new ProfileEnrichment
+            {
+                UseDefaultEnrichers = false
+            }
         });
         CompareLayersCommand cmd = new(clientFactoryMock.Object, console)
         {
