@@ -1,4 +1,4 @@
-# Image Commands
+# Image commands
 
 All image commands support [platform resolution](../platform-resolution.md) via `--os`, `--arch`, and `--os-version` options.
 
@@ -81,7 +81,7 @@ dredge image os mcr.microsoft.com/windows/nanoserver:ltsc2022-amd64
 }
 ```
 
-## Compare Layers
+## Compare layers
 
 Compares the layers of two images.
 
@@ -111,7 +111,7 @@ dredge image compare layers --output inline amd64/node:19.1-alpine amd64/node:19
 
 ### Side-by-side output with history example
 
-```
+```console
 dredge image compare layers --history --no-color mcr.microsoft.com/dotnet/runtime:6.0.5-jammy-amd64 mcr.microsoft.com/dotnet/runtime:6.0.6-jammy-amd64
 ┌──────────────────────────────────────────────────────────────────────────┬───────────┬─────────────────────────────────────────────────────────────────────────┐
 │ mcr.microsoft.com/dotnet/runtime:6.0.5-jammy-amd64                       │  Compare  │ mcr.microsoft.com/dotnet/runtime:6.0.6-jammy-amd64                      │
@@ -147,29 +147,24 @@ dredge image compare layers --history --no-color mcr.microsoft.com/dotnet/runtim
 └──────────────────────────────────────────────────────────────────────────┴───────────┴─────────────────────────────────────────────────────────────────────────┘
 ```
 
-## Compare Files
+## Compare files
 
-Compares the file contents of two images by downloading and squashing their layers into local filesystem representations, then launching an external diff tool.
+Compares the files in two images. Dredge downloads each image, applies its
+layers to a temporary directory, and starts the configured external comparison
+tool.
+
+Before running this command, [configure the file comparison
+tool](../settings.md#configure-the-file-comparison-tool).
 
 ```console
-dredge image compare files <base> <target> [--base-layer-index <n>] [--target-layer-index <n>] [--os <os>] [--arch <arch>] [--os-version <version>]
+dredge image compare files <base> <target> [--base-layer-index <n>] [--target-layer-index <n>] [--output <type>] [--os <os>] [--arch <arch>] [--os-version <version>]
 ```
 
 | Option | Description |
 |--------|-------------|
-| `--base-layer-index` | Only apply layers up to this index for the base image |
-| `--target-layer-index` | Only apply layers up to this index for the target image |
-
-The external comparison tool is configured in the [settings file](../settings.md):
-
-```json
-{
-  "fileCompareTool": {
-    "exePath": "C:\\Program Files\\Beyond Compare 4\\BCompare.exe",
-    "args": "{0} {1}"
-  }
-}
-```
+| `--base-layer-index` | Apply base-image layers from index `0` through this zero-based index |
+| `--target-layer-index` | Apply target-image layers from index `0` through this zero-based index |
+| `--output` | Output type. The supported and default value is `ExternalTool` |
 
 Example — compare two images:
 
@@ -189,7 +184,7 @@ Example — compare layers within a single image (difference between the 2nd and
 dredge image compare files amd64/node:19.1-alpine amd64/node:19.1-alpine --base-layer-index 1 --target-layer-index 2
 ```
 
-## Save Layers
+## Save layers
 
 Saves the extracted layers of an image to disk.
 
@@ -199,8 +194,8 @@ dredge image save-layers <image> <output-path> [--no-squash] [--layer-index <n>]
 
 | Option | Description |
 |--------|-------------|
-| `--no-squash` | Save layers as individual directories instead of squashing |
-| `--layer-index` | Only save the specified layer (includes dependent layers when squashing) |
+| `--no-squash` | Save each selected layer in a separate directory instead of merging the layers |
+| `--layer-index` | Select a zero-based layer index. With squashing, Dredge applies layers `0` through this index. With `--no-squash`, Dredge saves only this layer |
 
 Example:
 

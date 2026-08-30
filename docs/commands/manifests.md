@@ -1,4 +1,4 @@
-# Manifest Commands
+# Manifest commands
 
 | Sub-command | Description |
 |-------------|-------------|
