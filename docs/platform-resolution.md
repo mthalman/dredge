@@ -1,32 +1,42 @@
-# Platform Resolution
+# Resolve a platform-specific image
 
-For [certain operations](#operations-that-use-platform-resolution), Dredge needs to resolve a platform to a specific image manifest if a multi-arch/multi-platform tag is provided as input.
-For example, the `alpine:latest` tag points to different images for different architectures.
-For these commands, Dredge needs to know which image to use for the operation.
-If it's unable to resolve the platform, it will fail with an error.
-You can influence the platform resolution by setting the command's platform options or by setting the global platform settings.
+An image tag can identify a manifest list that contains images for multiple
+operating systems or architectures. Commands that operate on one image must
+select exactly one manifest from that list.
 
-## Operations that use platform resolution
+Dredge filters the manifest list by the platform values you provide. Resolution
+succeeds only when exactly one manifest matches. If no manifests or multiple
+manifests match, Dredge reports an error and suggests running
+`dredge manifest get` to inspect the available platforms.
 
-The following operations make use of platform resolution:
+## Commands that resolve platforms
 
-* [`manifest resolve`](commands/manifests.md#resolve)
-* All [`image`](commands/images.md) sub-commands
+The following commands use platform resolution:
 
-## Platform options
+- [`manifest resolve`](commands/manifests.md#resolve)
+- Every [`image`](commands/images.md) subcommand
 
-The following platform options can be used to influence platform resolution:
+## Select a platform
 
-* `--os`: The operating system of the platform ("linux" or "windows").
-* `--os-version`: The operating system version of the platform. This is usually only relevant for Windows images but may be relevant for Linux images in some rare cases.
-* `--arch`: The architecture of the platform (e.g. "amd64", "arm", "arm64").
+Pass one or more platform options to a command:
 
-## Global platform settings
+- `--os`: Operating system, such as `linux` or `windows`.
+- `--os-version`: Operating system version, such as `10.0.20348.1129`.
+- `--arch`: Architecture, such as `amd64`, `arm`, or `arm64`.
 
-Global platform settings allow you to statically define platform settings in the [Dredge settings file](settings.md) that will be used for all operations that use platform resolution.
-The same platform options can be used as described in the previous section.
+For example:
 
-Here's the configuration of these global platform settings:
+```console
+dredge manifest resolve alpine:latest --os linux --arch amd64
+```
+
+You do not need to specify every value. Provide enough values to leave one
+matching manifest.
+
+## Set default platform values
+
+To reuse platform values across commands, save them in the
+[Dredge settings file](settings.md):
 
 ```json
 {
@@ -38,23 +48,15 @@ Here's the configuration of these global platform settings:
 }
 ```
 
-You can set these values by using the [`settings set`](commands/settings.md#set) command:
-
-Example:
+Set each value with [`dredge settings set`](commands/settings.md#set):
 
 ```console
 dredge settings set platform.os linux
+dredge settings set platform.arch amd64
 ```
 
-## Platform resolution order
+## Precedence
 
-Since the platform options and global platform settings can be used to influence platform resolution, it's important to understand the order in which these settings are applied.
-
-Platform options provided in the call to the command take precedence over global platform settings.
-If a platform option is not provided in the call to the command, the global platform setting is used.
-
-It's not always necessary to set all of the platform values in order to successfully resolve the platform.
-For example, many images are only available for Linux.
-In that case, it's not necessary to set the `os` value because it doesn't reduce the amount of available platforms.
-For Linux, it's often enough to just set the `arch` value.
-As long as the provided platform values reduce the number of available platforms to a single platform, the platform resolution will succeed.
+For each platform value, a command-line option takes precedence over the
+corresponding saved setting. If you omit an option, Dredge uses its saved
+setting. If both values are empty, Dredge does not filter on that field.

@@ -1,4 +1,4 @@
-# Referrer Commands
+# Referrer commands
 
 | Sub-command | Description |
 |-------------|-------------|

@@ -1,16 +1,52 @@
-# Settings File
+# Configure Dredge
 
-Dredge uses a settings file to store configuration information. The settings file is a JSON file named `settings.json` that is located in the following location:
+Dredge stores persistent configuration in `settings.json`. Dredge creates the
+file when a command first loads or changes settings.
 
-* Windows: `%LOCALAPPDATA%\Valleysoft.Dredge\settings.json`
-* Linux: `$HOME/.local/share/Valleysoft.Dredge/settings.json`
-* Mac: `$HOME/Library/Application Support/Valleysoft.Dredge/settings.json`
+The default path depends on the operating system:
 
- Dredge will create the settings file automatically when it's needed.
+- Windows: `%LOCALAPPDATA%\Valleysoft.Dredge\settings.json`
+- Linux: `$HOME/.local/share/Valleysoft.Dredge/settings.json`
+- macOS: `$HOME/Library/Application Support/Valleysoft.Dredge/settings.json`
 
-The [`settings`](commands/settings.md) command can be used to manipulate the settings file.
+Run `dredge settings open` to open the file in its associated application. If
+Dredge cannot open the file, the command prints its path.
 
-## Schema
+## Available settings
+
+Setting names use dot notation with `dredge settings get` and
+`dredge settings set`.
+
+| Setting | Default | Purpose |
+|---------|---------|---------|
+| `fileCompareTool.exePath` | Empty | Executable that `image compare files` starts |
+| `fileCompareTool.args` | Empty | Arguments passed to the comparison executable |
+| `platform.os` | Empty | Operating system used for platform resolution |
+| `platform.osVersion` | Empty | Operating system version used for platform resolution |
+| `platform.arch` | Empty | Architecture used for platform resolution |
+
+An empty platform setting does not filter candidate manifests. Command-line
+platform options take precedence over the corresponding settings. See
+[Resolve a platform-specific image](platform-resolution.md).
+
+## Configure the file comparison tool
+
+The `image compare files` command requires both `fileCompareTool` settings.
+Set `exePath` to a program that compares two directories. In `args`, use `{0}`
+for the extracted base image path and `{1}` for the extracted target image
+path.
+
+For example:
+
+```console
+dredge settings set fileCompareTool.exePath "C:\Program Files\Beyond Compare 4\BCompare.exe"
+dredge settings set fileCompareTool.args "{0} {1}"
+```
+
+Quote the placeholders in `fileCompareTool.args` if the comparison program
+requires quoted paths.
+
+## Settings file schema
 
 ```json
 {
@@ -26,6 +62,5 @@ The [`settings`](commands/settings.md) command can be used to manipulate the set
 }
 ```
 
-See [`image compare files`](commands/images.md#compare-files) for more information about the `fileCompareTool` setting.
-
-See [platform resolution](platform-resolution.md) for more information about the `platform` setting.
+Use the [`settings` commands](commands/settings.md) to read or change individual
+values.
