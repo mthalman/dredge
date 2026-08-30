@@ -28,6 +28,15 @@
   </ItemGroup>
 
   <ItemGroup>
+    <None Update="TestData\DockerfileCommand\azure-cli\expected-output-format.txt">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
+    <None Update="TestData\DockerfileCommand\azure-cli\expected-output-no-format.txt">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
+    <None Update="TestData\DockerfileCommand\azure-cli\image.json">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
     <None Update="TestData\DockerfileCommand\fedora\expected-output-format.txt">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </None>

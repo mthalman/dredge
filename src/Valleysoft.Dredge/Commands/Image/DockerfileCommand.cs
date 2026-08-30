@@ -18,13 +18,6 @@ public partial class DockerfileCommand : RegistryCommandBase<DockerfileOptions>
     private static readonly Color CommentColor = new(109, 154, 88); // green-ish
     private static readonly Color LiteralColor = new(150, 220, 254); // light turquoise
     private static readonly Color IdentifierColor = Color.Green;
-    private static readonly string[] KeyValuePairInstructions =
-    [
-        "ARG",
-        "ENV",
-        "LABEL"
-    ];
-
     private readonly IDockerRegistryClientFactory dockerRegistryClientFactory;
 
     public DockerfileCommand(IDockerRegistryClientFactory dockerRegistryClientFactory)
@@ -53,19 +46,19 @@ public partial class DockerfileCommand : RegistryCommandBase<DockerfileOptions>
         ImageConfig imageConfig = await client.Blobs.GetImageAsync(imageName.Repo, digest);
         bool isWindows = imageConfig.Os.Equals("windows", StringComparison.OrdinalIgnoreCase);
 
-        StringBuilder dockerfileBuilder = new();
+        List<string> dockerfileLines = [];
         IEnumerable<LayerHistory> layers;
 
         if (isWindows)
         {
             (WindowsOsInfo windowsOsInfo, string repo) = await GetWindowsInfoAsync(manifest, imageConfig);
             layers = await GetWindowsLayersAsync(imageConfig, manifest, repo);
-            dockerfileBuilder.AppendLine($"FROM {RegistryHelper.McrRegistry}/{repo}:{windowsOsInfo.Version}-{imageConfig.Architecture}");
+            dockerfileLines.Add($"FROM {RegistryHelper.McrRegistry}/{repo}:{windowsOsInfo.Version}-{imageConfig.Architecture}");
         }
         else
         {
             layers = imageConfig.History;
-            dockerfileBuilder.AppendLine("FROM scratch");
+            dockerfileLines.Add("FROM scratch");
         }
 
         string? currentShell = null;
@@ -74,27 +67,65 @@ public partial class DockerfileCommand : RegistryCommandBase<DockerfileOptions>
         {
             if (string.IsNullOrEmpty(layerHistory.CreatedBy))
             {
-                dockerfileBuilder.AppendLine("# No instruction info");
+                dockerfileLines.Add("# No instruction info");
                 continue;
             }
 
             string line = GetHistoryLine(layerHistory.CreatedBy, ref currentShell);
-            dockerfileBuilder.AppendLine(line);
+            dockerfileLines.Add(line);
         }
 
         StringBuilder markup = new();
-        Dockerfile fullDockerfile = Dockerfile.Parse(dockerfileBuilder.ToString());
+        foreach (string line in dockerfileLines)
+        {
+            AppendLineMarkup(line, markup);
+        }
 
-        foreach (DockerfileConstruct construct in fullDockerfile.Items)
+        return markup.ToString();
+    }
+
+    private void AppendLineMarkup(string line, StringBuilder markup)
+    {
+        string source = line + Environment.NewLine;
+        Dockerfile dockerfile = Dockerfile.Parse(source);
+
+        if (!IsParseLossless(source, dockerfile))
+        {
+            // Image history can be ambiguous after the builder discards original quoting.
+            // Preserve it verbatim rather than silently dropping text or changing its meaning.
+            KeywordToken? keywordToken = dockerfile.Items
+                .SelectMany(construct => construct.Tokens)
+                .OfType<KeywordToken>()
+                .FirstOrDefault();
+            string? keyword = keywordToken?.ToString();
+            if (keywordToken is not null &&
+                keyword is not null &&
+                line.StartsWith(keyword, StringComparison.OrdinalIgnoreCase))
+            {
+                markup.Append(GetTokenMarkup(keywordToken, inRunInstruction: false));
+                markup.AppendLine(Markup.Escape(line[keyword.Length..]));
+            }
+            else
+            {
+                markup.AppendLine(Markup.Escape(line));
+            }
+            return;
+        }
+
+        foreach (DockerfileConstruct construct in dockerfile.Items)
         {
             foreach (Token token in construct.Tokens)
             {
                 markup.Append(GetTokenMarkup(token, construct is RunInstruction));
             }
         }
-
-        return markup.ToString();
     }
+
+    private static bool IsParseLossless(string source, Dockerfile dockerfile) =>
+        string.Equals(
+            source,
+            string.Concat(dockerfile.Items.SelectMany(construct => construct.Tokens)),
+            StringComparison.Ordinal);
 
     private async Task<IEnumerable<LayerHistory>> GetWindowsLayersAsync(ImageConfig imageConfig, IImageManifest manifest, string windowsRepo)
     {
@@ -182,9 +213,10 @@ public partial class DockerfileCommand : RegistryCommandBase<DockerfileOptions>
             }
 
             Dockerfile? dockerfile = null;
+            string source = line + Environment.NewLine;
             try
             {
-                dockerfile = Dockerfile.Parse(line);
+                dockerfile = Dockerfile.Parse(source);
             }
             catch (Exception)
             {
@@ -200,7 +232,7 @@ public partial class DockerfileCommand : RegistryCommandBase<DockerfileOptions>
                 }
                 else if (dockerfileConstruct is EnvInstruction envInstruction)
                 {
-                    if (!Options.NoFormat)
+                    if (!Options.NoFormat && IsParseLossless(source, dockerfile))
                     {
                         line = FormatEnvInstruction(line, envInstruction);
                     }
@@ -225,12 +257,6 @@ public partial class DockerfileCommand : RegistryCommandBase<DockerfileOptions>
 
                 line = $"RUN {line}";
             }
-        }
-
-        if (KeyValuePairInstructions.Any(instruction => line.StartsWith(instruction, StringComparison.OrdinalIgnoreCase)))
-        {
-            // Ensure that key-value pair instructions have their values surrounded in quotes to account for any spaces
-            line = MyRegex().Replace(line, "$1\"$3\"");
         }
 
         return line;
@@ -372,9 +398,6 @@ public partial class DockerfileCommand : RegistryCommandBase<DockerfileOptions>
             return tokenStr;
         }
     }
-
-    [GeneratedRegex("(^\\S+\\s+[A-Za-z0-9]*(\\s|=)+)(\\S*\\s.*)")]
-    private static partial Regex MyRegex();
 
     [GeneratedRegex(@"[ \t]+&&[ \t]{2,}")]
     private static partial Regex AndBeforeNewLineRegex();
