@@ -1,0 +1,5 @@
+[#C285BF]FROM[/] [#96DCFE]scratch[/]
+[#C285BF]LABEL[/] maintainer=Microsoft org.label-schema.schema-version=1.0 org.label-schema.vendor=Microsoft org.label-schema.name=Azure CLI org.label-schema.version=2.60.0 org.label-schema.license=MIT org.label-schema.description=A great cloud needs great tools; we're excited to introduce Azure CLI, our next generation multi-platform command line experience for Azure. org.label-schema.url=https://docs.microsoft.com/cli/azure/overview org.label-schema.usage=https://learn.microsoft.com/en-us/cli/azure/run-azure-cli-docker org.label-schema.build-date=2024-04-24T04:34:45Z org.label-schema.vcs-url=https://github.com/Azure/azure-cli.git org.label-schema.docker.cmd=docker run -v ${HOME}/.azure:/root/.azure -it mcr.microsoft.com/azure-cli:2.60.0-azure
+[#C285BF]ENV[/] A=1 B=hello world C=3
+[#C285BF]RUN[/] [#96DCFE]/bin/sh -c echo done # buildkit
+[/]

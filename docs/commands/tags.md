@@ -1,4 +1,4 @@
-# Tag Commands
+# Tag commands
 
 | Sub-command | Description |
 |-------------|-------------|
