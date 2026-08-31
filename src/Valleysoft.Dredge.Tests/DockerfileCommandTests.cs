@@ -54,6 +54,7 @@ public class DockerfileCommandTests
     [MemberData(nameof(GetTestData))]
     public async Task Test(TestScenario scenario)
     {
+        CancellationToken cancellationToken = TestContext.Current.CancellationToken;
         const string RepoName = "repo";
         const string TagName = "tag";
         const string ImageName = $"{Registry}/{RepoName}:{TagName}";
@@ -83,18 +84,20 @@ public class DockerfileCommandTests
             ];
 
             mcrClientMock
-                .Setup(o => o.Blobs.ExistsAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<CancellationToken>()))
+                .Setup(o => o.Blobs.ExistsAsync(It.IsAny<string>(), It.IsAny<string>(), cancellationToken))
                 .ReturnsAsync(false);
 
             mcrClientMock
                 .Setup(o => o.Blobs.ExistsAsync(
-                    "windows/servercore", It.Is<string>(digest => digest == "layer0digest" || digest == "layer1digest"), It.IsAny<CancellationToken>()))
+                    "windows/servercore",
+                    It.Is<string>(digest => digest == "layer0digest" || digest == "layer1digest"),
+                    cancellationToken))
                 .ReturnsAsync(true);
         }
 
         Mock<IDockerRegistryClient> registryClientMock = new();
         registryClientMock
-            .Setup(o => o.Manifests.GetAsync(RepoName, TagName, It.IsAny<CancellationToken>()))
+            .Setup(o => o.Manifests.GetAsync(RepoName, TagName, cancellationToken))
             .ReturnsAsync(new ManifestInfo("media-type", "digest",
                 new DockerManifest
                 {
@@ -106,7 +109,7 @@ public class DockerfileCommandTests
                 }));
 
         registryClientMock
-            .Setup(o => o.Blobs.GetAsync(RepoName, Digest, It.IsAny<CancellationToken>()))
+            .Setup(o => o.Blobs.GetAsync(RepoName, Digest, cancellationToken))
             .ReturnsAsync(new MemoryStream(Encoding.UTF8.GetBytes(File.ReadAllText(scenario.ImagePath))));
 
         clientFactoryMock
@@ -122,7 +125,7 @@ public class DockerfileCommandTests
             }
         };
 
-        string markupStr = await command.GetMarkupStringAsync();
+        string markupStr = await command.GetMarkupStringAsync(cancellationToken);
 
         string actual = TestHelper.Normalize(markupStr);
         string expected = TestHelper.Normalize(File.ReadAllText(scenario.ExpectedOutputPath));

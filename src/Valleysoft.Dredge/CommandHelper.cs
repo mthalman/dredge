@@ -5,11 +5,19 @@ namespace Valleysoft.Dredge;
 
 internal static class CommandHelper
 {
-    public static async Task ExecuteCommandAsync(string? registry, Func<Task> execute)
+    public static async Task ExecuteCommandAsync(
+        string? registry,
+        CancellationToken cancellationToken,
+        Func<CancellationToken, Task> execute,
+        TextWriter? errorWriter = null)
     {
         try
         {
-            await execute();
+            await execute(cancellationToken);
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+            throw;
         }
         catch (Exception e)
         {
@@ -36,7 +44,7 @@ internal static class CommandHelper
                 }
             }
 
-            Console.Error.WriteLine(message);
+            (errorWriter ?? Console.Error).WriteLine(message);
             Console.ForegroundColor = savedColor;
             Environment.Exit(1);
         }

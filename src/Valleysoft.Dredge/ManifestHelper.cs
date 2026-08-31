@@ -10,9 +10,13 @@ internal record ResolvedManifest(
 internal static class ManifestHelper
 {
     public static async Task<ResolvedManifest> GetResolvedManifestAsync(
-        IDockerRegistryClient client, ImageName imageName, PlatformOptionsBase options)
+        IDockerRegistryClient client,
+        ImageName imageName,
+        PlatformOptionsBase options,
+        CancellationToken cancellationToken)
     {
-        ManifestInfo manifestInfo = await client.Manifests.GetAsync(imageName.Repo, (imageName.Tag ?? imageName.Digest)!);
+        ManifestInfo manifestInfo = await client.Manifests.GetAsync(
+            imageName.Repo, (imageName.Tag ?? imageName.Digest)!, cancellationToken);
         if (manifestInfo.Manifest is IManifestList manifestList)
         {
             AppSettings settings = AppSettings.Load();
@@ -41,7 +45,8 @@ internal static class ManifestHelper
                 throw new Exception($"Digest of resolved manifest is not set.");
             }
 
-            manifestInfo = await client.Manifests.GetAsync(imageName.Repo, manifestRef.Digest);
+            manifestInfo = await client.Manifests.GetAsync(
+                imageName.Repo, manifestRef.Digest, cancellationToken);
         }
 
         if (manifestInfo.Manifest is not IImageManifest manifest)

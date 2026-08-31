@@ -18,16 +18,17 @@ public partial class OsCommand : RegistryCommandBase<OsOptions>
     {
     }
 
-    protected override Task ExecuteAsync()
+    protected override Task ExecuteAsync(CancellationToken cancellationToken)
     {
         ImageName imageName = ImageName.Parse(Options.Image);
-        return CommandHelper.ExecuteCommandAsync(imageName.Registry, async () =>
+        return CommandHelper.ExecuteCommandAsync(imageName.Registry, cancellationToken, async ct =>
         {
             using IDockerRegistryClient client = await DockerRegistryClientFactory.GetClientAsync(imageName.Registry);
-            IImageManifest manifest = (await ManifestHelper.GetResolvedManifestAsync(client, imageName, Options)).Manifest;
+            IImageManifest manifest =
+                (await ManifestHelper.GetResolvedManifestAsync(client, imageName, Options, ct)).Manifest;
 
             string? configDigest = (manifest.Config?.Digest) ?? throw new NotSupportedException($"Could not resolve the image config digest of '{Options.Image}'.");
-            ImageConfig imageConfig = await client.Blobs.GetImageAsync(imageName.Repo, configDigest);
+            ImageConfig imageConfig = await client.Blobs.GetImageAsync(imageName.Repo, configDigest, ct);
 
             IDescriptor baseLayer = manifest.Layers.First();
             if (baseLayer.Digest is null)
@@ -38,12 +39,13 @@ public partial class OsCommand : RegistryCommandBase<OsOptions>
             object? osInfo;
             if (imageConfig.Os.Equals("windows", StringComparison.OrdinalIgnoreCase))
             {
-                var windowsOsInfo = await GetWindowsOsInfoAsync(imageConfig, baseLayer.Digest, DockerRegistryClientFactory);
+                var windowsOsInfo =
+                    await GetWindowsOsInfoAsync(imageConfig, baseLayer.Digest, DockerRegistryClientFactory, ct);
                 osInfo = windowsOsInfo?.Info;
             }
             else
             {
-                osInfo = await GetLinuxOsInfoAsync(client, imageName, baseLayer.Digest);
+                osInfo = await GetLinuxOsInfoAsync(client, imageName, baseLayer.Digest, ct);
             }
 
             if (osInfo is null)
@@ -56,9 +58,14 @@ public partial class OsCommand : RegistryCommandBase<OsOptions>
         });
     }
 
-    private static async Task<LinuxOsInfo?> GetLinuxOsInfoAsync(IDockerRegistryClient client, ImageName imageName, string baseLayerDigest)
+    private static async Task<LinuxOsInfo?> GetLinuxOsInfoAsync(
+        IDockerRegistryClient client,
+        ImageName imageName,
+        string baseLayerDigest,
+        CancellationToken cancellationToken)
     {
-        using Stream blobStream = await client.Blobs.GetAsync(imageName.Repo, baseLayerDigest);
+        using Stream blobStream =
+            await client.Blobs.GetAsync(imageName.Repo, baseLayerDigest, cancellationToken);
         using GZipStream gZipStream = new(blobStream, CompressionMode.Decompress);
 
         // Can't use System.Formats.Tar.TarReader because it fails to read certain types of tarballs:
@@ -68,6 +75,7 @@ public partial class OsCommand : RegistryCommandBase<OsOptions>
         TarEntry? entry = null;
         do
         {
+            cancellationToken.ThrowIfCancellationRequested();
             entry = tarStream.GetNextEntry();
 
             // Look for the os-release file (skip symlinks)
@@ -76,10 +84,10 @@ public partial class OsCommand : RegistryCommandBase<OsOptions>
                 (osReleaseRegex.IsMatch(entry.Name)))
             {
                 using MemoryStream memStream = new();
-                tarStream.CopyEntryContents(memStream);
+                await tarStream.CopyEntryContentsAsync(memStream, cancellationToken);
                 memStream.Position = 0;
                 using StreamReader reader = new(memStream);
-                string content = await reader.ReadToEndAsync();
+                string content = await reader.ReadToEndAsync(cancellationToken);
                 return LinuxOsInfo.Parse(content);
             }
         } while (entry is not null);
@@ -88,7 +96,7 @@ public partial class OsCommand : RegistryCommandBase<OsOptions>
     }
 
     internal static async Task<(WindowsOsInfo Info, string Repo)?> GetWindowsOsInfoAsync(ImageConfig imageConfig, string baseLayerDigest,
-        IDockerRegistryClientFactory dockerRegistryClientFactory)
+        IDockerRegistryClientFactory dockerRegistryClientFactory, CancellationToken cancellationToken)
     {
         const string NanoServerRepo = "windows/nanoserver";
         const string ServerCoreRepo = "windows/servercore";
@@ -98,19 +106,19 @@ public partial class OsCommand : RegistryCommandBase<OsOptions>
         using IDockerRegistryClient mcrClient =
             await dockerRegistryClientFactory.GetClientAsync(RegistryHelper.McrRegistry);
 
-        if (await mcrClient.Blobs.ExistsAsync(NanoServerRepo, baseLayerDigest))
+        if (await mcrClient.Blobs.ExistsAsync(NanoServerRepo, baseLayerDigest, cancellationToken))
         {
             return (new(WindowsType.NanoServer, imageConfig.OsVersion), NanoServerRepo);
         }
-        else if (await mcrClient.Blobs.ExistsAsync(ServerCoreRepo, baseLayerDigest))
+        else if (await mcrClient.Blobs.ExistsAsync(ServerCoreRepo, baseLayerDigest, cancellationToken))
         {
             return (new(WindowsType.ServerCore, imageConfig.OsVersion), ServerCoreRepo);
         }
-        else if (await mcrClient.Blobs.ExistsAsync(ServerRepo, baseLayerDigest))
+        else if (await mcrClient.Blobs.ExistsAsync(ServerRepo, baseLayerDigest, cancellationToken))
         {
             return (new(WindowsType.Server, imageConfig.OsVersion), ServerRepo);
         }
-        else if (await mcrClient.Blobs.ExistsAsync(WindowsRepo, baseLayerDigest))
+        else if (await mcrClient.Blobs.ExistsAsync(WindowsRepo, baseLayerDigest, cancellationToken))
         {
             return (new(WindowsType.Windows, imageConfig.OsVersion), WindowsRepo);
         }

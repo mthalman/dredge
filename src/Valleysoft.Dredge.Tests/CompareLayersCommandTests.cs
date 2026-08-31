@@ -800,7 +800,7 @@ public class CompareLayersCommandTests
             }
         };
 
-        return cmd.GetOutputAsync();
+        return cmd.GetOutputAsync(TestContext.Current.CancellationToken);
     }
 
     private static void CompareJson<T>(T expected, T actual) =>

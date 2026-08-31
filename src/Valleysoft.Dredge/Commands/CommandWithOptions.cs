@@ -11,12 +11,12 @@ public abstract class CommandWithOptions<TOptions> : Command
         : base(name, description)
     {
         Options.SetCommandOptions(this);
-        this.SetAction(parseResult =>
+        this.SetAction((parseResult, cancellationToken) =>
         {
             Options.SetParseResult(parseResult);
-            return ExecuteAsync();
+            return ExecuteAsync(cancellationToken);
         });
     }
 
-    protected abstract Task ExecuteAsync();
+    protected abstract Task ExecuteAsync(CancellationToken cancellationToken);
 }
