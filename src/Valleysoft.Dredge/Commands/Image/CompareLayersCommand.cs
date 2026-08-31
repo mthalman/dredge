@@ -13,10 +13,14 @@ public class CompareLayersCommand : RegistryCommandBase<CompareLayersOptions>
 {
     private static readonly string[] SizeSuffixes =
         ["bytes", "KB", "MB", "GB", "TB", "PB", "EB", "ZB", "YB"];
+    private readonly IAnsiConsole ansiConsole;
 
-    public CompareLayersCommand(IDockerRegistryClientFactory dockerRegistryClientFactory)
+    public CompareLayersCommand(
+        IDockerRegistryClientFactory dockerRegistryClientFactory,
+        IAnsiConsole? ansiConsole = null)
         : base("layers", "Compares two images by layers", dockerRegistryClientFactory)
     {
+        this.ansiConsole = ansiConsole ?? AnsiConsole.Console;
     }
 
     protected override Task ExecuteAsync()
@@ -24,7 +28,7 @@ public class CompareLayersCommand : RegistryCommandBase<CompareLayersOptions>
         return CommandHelper.ExecuteCommandAsync(registry: null, async () =>
         {
             IRenderable output = await GetOutputAsync();
-            AnsiConsole.Write(output);
+            ansiConsole.Write(output);
         });
     }
 
@@ -32,7 +36,11 @@ public class CompareLayersCommand : RegistryCommandBase<CompareLayersOptions>
     {
         CompareLayersResult result = await GetCompareLayersResult();
         OutputFormatter formatter = OutputFormatter.Create(Options.OutputFormat);
-        IRenderable output = formatter.GetOutput(result, Options);
+        bool isColorDisabled =
+            Options.IsColorDisabled ||
+            !ansiConsole.Profile.Capabilities.Ansi ||
+            ansiConsole.Profile.Capabilities.ColorSystem == ColorSystem.NoColors;
+        IRenderable output = formatter.GetOutput(result, Options, isColorDisabled);
         return output;
     }
 
@@ -273,16 +281,22 @@ public class CompareLayersCommand : RegistryCommandBase<CompareLayersOptions>
                 _ => throw new NotImplementedException()
             };
 
-        public abstract IRenderable GetOutput(CompareLayersResult result, CompareLayersOptions options);
+        public abstract IRenderable GetOutput(
+            CompareLayersResult result,
+            CompareLayersOptions options,
+            bool isColorDisabled);
 
         private class SideBySideFormatter : OutputFormatter
         {
-            public override IRenderable GetOutput(CompareLayersResult result, CompareLayersOptions options)
+            public override IRenderable GetOutput(
+                CompareLayersResult result,
+                CompareLayersOptions options,
+                bool isColorDisabled)
             {
                 Table table = new Table()
                     .AddColumn(options.BaseImage);
 
-                if (options.IsColorDisabled)
+                if (isColorDisabled)
                 {
                     // Use a comparison column to indicate the diff result with text instead of color
                     table.AddColumn(new TableColumn("Compare") { Alignment = Justify.Center });
@@ -292,7 +306,7 @@ public class CompareLayersCommand : RegistryCommandBase<CompareLayersOptions>
 
                 for (int i = 0; i < result.LayerComparisons.Count(); i++)
                 {
-                    AddTableRows(result, options.IsColorDisabled, options.IncludeHistory, options.IncludeCompressedSize, table, i);
+                    AddTableRows(result, isColorDisabled, options.IncludeHistory, options.IncludeCompressedSize, table, i);
                 }
 
                 return table;
@@ -374,7 +388,10 @@ public class CompareLayersCommand : RegistryCommandBase<CompareLayersOptions>
 
         private class InlineFormatter : OutputFormatter
         {
-            public override IRenderable GetOutput(CompareLayersResult result, CompareLayersOptions options)
+            public override IRenderable GetOutput(
+                CompareLayersResult result,
+                CompareLayersOptions options,
+                bool isColorDisabled)
             {
                 List<IRenderable> rows = [];
 
@@ -385,14 +402,14 @@ public class CompareLayersCommand : RegistryCommandBase<CompareLayersOptions>
                     if (layerComparison.Base is not null)
                     {
                         AddInlineLayerInfo(
-                            rows, layerComparison.Base, layerComparison.LayerDiff, isBase: true, options.IsColorDisabled, options.IncludeHistory,
+                            rows, layerComparison.Base, layerComparison.LayerDiff, isBase: true, isColorDisabled, options.IncludeHistory,
                             options.IncludeCompressedSize);
                     }
 
                     if (layerComparison.LayerDiff != LayerDiff.Equal && layerComparison.Target is not null)
                     {
                         AddInlineLayerInfo(
-                            rows, layerComparison.Target, layerComparison.LayerDiff, isBase: false, options.IsColorDisabled, options.IncludeHistory,
+                            rows, layerComparison.Target, layerComparison.LayerDiff, isBase: false, isColorDisabled, options.IncludeHistory,
                             options.IncludeCompressedSize);
                     }
 
@@ -423,7 +440,10 @@ public class CompareLayersCommand : RegistryCommandBase<CompareLayersOptions>
 
         private class JsonFormatter : OutputFormatter
         {
-            public override IRenderable GetOutput(CompareLayersResult result, CompareLayersOptions options)
+            public override IRenderable GetOutput(
+                CompareLayersResult result,
+                CompareLayersOptions options,
+                bool isColorDisabled)
             {
                 string output = JsonConvert.SerializeObject(result, JsonHelper.Settings);
 
