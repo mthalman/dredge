@@ -16,7 +16,7 @@ public class CompareFilesCommand : RegistryCommandBase<CompareFilesOptions>
 
     protected override Task ExecuteAsync(CancellationToken cancellationToken)
     {
-        return CommandHelper.ExecuteCommandAsync(registry: null, cancellationToken, async ct =>
+        return ExecuteCommandAsync(registry: null, cancellationToken, async ct =>
         {
             AppSettings settings = AppSettings.Load();
             if (settings.FileCompareTool is null ||

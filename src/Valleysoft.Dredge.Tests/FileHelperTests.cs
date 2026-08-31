@@ -1,7 +1,31 @@
-namespace Valleysoft.Dredge.Tests;
+﻿namespace Valleysoft.Dredge.Tests;
 
 public class FileHelperTests
 {
+    [Fact]
+    public async Task CopyDirectoryAsync_CopiesNestedFiles()
+    {
+        string root = Path.Combine(Path.GetTempPath(), $"dredge-tests-{Guid.NewGuid():N}");
+        string source = Path.Combine(root, "source");
+        string destination = Path.Combine(root, "destination");
+        Directory.CreateDirectory(Path.Combine(source, "nested"));
+        File.WriteAllText(Path.Combine(source, "root.txt"), "root");
+        File.WriteAllText(Path.Combine(source, "nested", "child.txt"), "child");
+
+        try
+        {
+            await FileHelper.CopyDirectoryAsync(
+                source, destination, TestContext.Current.CancellationToken);
+
+            Assert.Equal("root", File.ReadAllText(Path.Combine(destination, "root.txt")));
+            Assert.Equal("child", File.ReadAllText(Path.Combine(destination, "nested", "child.txt")));
+        }
+        finally
+        {
+            Directory.Delete(root, recursive: true);
+        }
+    }
+
     [Fact]
     public async Task CopyFileAsyncPreservesMetadata()
     {
@@ -42,6 +66,20 @@ public class FileHelperTests
             }
             Directory.Delete(tempDir, recursive: true);
         }
+    }
+
+    [Fact]
+    public async Task CopyDirectoryAsync_WhenSourceDoesNotExist_Throws()
+    {
+        string source = Path.Combine(Path.GetTempPath(), $"dredge-missing-{Guid.NewGuid():N}");
+
+        DirectoryNotFoundException exception = await Assert.ThrowsAsync<DirectoryNotFoundException>(
+            () => FileHelper.CopyDirectoryAsync(
+                source,
+                Path.Combine(source, "destination"),
+                TestContext.Current.CancellationToken));
+
+        Assert.Contains(Path.GetFullPath(source), exception.Message);
     }
 
     [Fact]

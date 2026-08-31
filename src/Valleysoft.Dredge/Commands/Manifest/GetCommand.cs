@@ -5,15 +5,15 @@ namespace Valleysoft.Dredge.Commands.Manifest;
 
 public class GetCommand : RegistryCommandBase<GetOptions>
 {
-    public GetCommand(IDockerRegistryClientFactory dockerRegistryClientFactory)
-        : base("get", "Queries a manifest", dockerRegistryClientFactory)
+    public GetCommand(IDockerRegistryClientFactory dockerRegistryClientFactory, TextWriter? output = null)
+        : base("get", "Queries a manifest", dockerRegistryClientFactory, output)
     {
     }
 
     protected override Task ExecuteAsync(CancellationToken cancellationToken)
     {
         ImageName imageName = ImageName.Parse(Options.Image);
-        return CommandHelper.ExecuteCommandAsync(imageName.Registry, cancellationToken, async ct =>
+        return ExecuteCommandAsync(imageName.Registry, cancellationToken, async ct =>
         {
             using IDockerRegistryClient client = await DockerRegistryClientFactory.GetClientAsync(imageName.Registry);
 
@@ -22,7 +22,7 @@ public class GetCommand : RegistryCommandBase<GetOptions>
 
             string output = JsonConvert.SerializeObject(manifestInfo.Manifest, JsonHelper.Settings);
 
-            Console.Out.WriteLine(output);
+            Output.WriteLine(output);
         });
     }
 }

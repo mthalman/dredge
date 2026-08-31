@@ -9,7 +9,8 @@ internal static class CommandHelper
         string? registry,
         CancellationToken cancellationToken,
         Func<CancellationToken, Task> execute,
-        TextWriter? errorWriter = null)
+        TextWriter? errorWriter = null,
+        Action<int>? exit = null)
     {
         try
         {
@@ -46,7 +47,7 @@ internal static class CommandHelper
 
             (errorWriter ?? Console.Error).WriteLine(message);
             Console.ForegroundColor = savedColor;
-            Environment.Exit(1);
+            (exit ?? Environment.Exit)(1);
         }
     }
 }

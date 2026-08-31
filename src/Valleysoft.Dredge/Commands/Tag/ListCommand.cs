@@ -6,15 +6,15 @@ namespace Valleysoft.Dredge.Commands.Tag;
 
 public class ListCommand : RegistryCommandBase<ListOptions>
 {
-    public ListCommand(IDockerRegistryClientFactory dockerRegistryClientFactory)
-        : base("list", "Lists the tag contained in the container repository", dockerRegistryClientFactory)
+    public ListCommand(IDockerRegistryClientFactory dockerRegistryClientFactory, TextWriter? output = null)
+        : base("list", "Lists the tag contained in the container repository", dockerRegistryClientFactory, output)
     {
     }
 
     protected override Task ExecuteAsync(CancellationToken cancellationToken)
     {
         ImageName imageName = ImageName.Parse(Options.Repo);
-        return CommandHelper.ExecuteCommandAsync(imageName.Registry, cancellationToken, async ct =>
+        return ExecuteCommandAsync(imageName.Registry, cancellationToken, async ct =>
         {
             using IDockerRegistryClient client = await DockerRegistryClientFactory.GetClientAsync(imageName.Registry);
 
@@ -33,7 +33,7 @@ public class ListCommand : RegistryCommandBase<ListOptions>
 
             string output = JsonConvert.SerializeObject(tags, JsonHelper.Settings);
 
-            Console.Out.WriteLine(output);
+            Output.WriteLine(output);
         });
     }
 }

@@ -21,15 +21,15 @@ public partial class OsCommand : RegistryCommandBase<OsOptions>
 
     private static readonly Regex osReleaseRegex = OsReleaseRegex();
 
-    public OsCommand(IDockerRegistryClientFactory dockerRegistryClientFactory)
-        : base("os", "Gets OS info about the container image", dockerRegistryClientFactory)
+    public OsCommand(IDockerRegistryClientFactory dockerRegistryClientFactory, TextWriter? output = null)
+        : base("os", "Gets OS info about the container image", dockerRegistryClientFactory, output)
     {
     }
 
     protected override Task ExecuteAsync(CancellationToken cancellationToken)
     {
         ImageName imageName = ImageName.Parse(Options.Image);
-        return CommandHelper.ExecuteCommandAsync(imageName.Registry, cancellationToken, async ct =>
+        return ExecuteCommandAsync(imageName.Registry, cancellationToken, async ct =>
         {
             using IDockerRegistryClient client = await DockerRegistryClientFactory.GetClientAsync(imageName.Registry);
             IImageManifest manifest =
@@ -62,7 +62,7 @@ public partial class OsCommand : RegistryCommandBase<OsOptions>
             }
 
             string output = JsonConvert.SerializeObject(osInfo, JsonHelper.SettingsNoCamelCase);
-            Console.Out.WriteLine(output);
+            Output.WriteLine(output);
         });
     }
 
@@ -175,6 +175,28 @@ public partial class OsCommand : RegistryCommandBase<OsOptions>
         }
 
         return bestMatch;
+    }
+
+    internal static async Task<(WindowsOsInfo Info, string Repo)?> GetWindowsOsInfoAsync(
+        ImageConfig imageConfig,
+        string baseLayerDigest,
+        IDockerRegistryClientFactory dockerRegistryClientFactory,
+        CancellationToken cancellationToken = default)
+    {
+        using IDockerRegistryClient mcrClient =
+            await dockerRegistryClientFactory.GetClientAsync(RegistryHelper.McrRegistry);
+
+        foreach (WindowsImageDefinition definition in windowsImageDefinitions)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            if (await mcrClient.Blobs.ExistsAsync(
+                definition.Repo, baseLayerDigest, cancellationToken))
+            {
+                return (new(definition.Type, imageConfig.OsVersion), definition.Repo);
+            }
+        }
+
+        return null;
     }
 
     private static async Task<int> GetLegacyBaseHistoryCountAsync(

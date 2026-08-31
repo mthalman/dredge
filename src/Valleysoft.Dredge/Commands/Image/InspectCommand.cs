@@ -5,15 +5,15 @@ namespace Valleysoft.Dredge.Commands.Image;
 
 public class InspectCommand : RegistryCommandBase<InspectOptions>
 {
-    public InspectCommand(IDockerRegistryClientFactory dockerRegistryClientFactory)
-        : base("inspect", "Return low-level information on a container image", dockerRegistryClientFactory)
+    public InspectCommand(IDockerRegistryClientFactory dockerRegistryClientFactory, TextWriter? output = null)
+        : base("inspect", "Return low-level information on a container image", dockerRegistryClientFactory, output)
     {
     }
 
     protected override Task ExecuteAsync(CancellationToken cancellationToken)
     {
         ImageName imageName = ImageName.Parse(Options.Image);
-        return CommandHelper.ExecuteCommandAsync(imageName.Registry, cancellationToken, async ct =>
+        return ExecuteCommandAsync(imageName.Registry, cancellationToken, async ct =>
         {
             using IDockerRegistryClient client = await DockerRegistryClientFactory.GetClientAsync(imageName.Registry);
             IImageManifest manifest =
@@ -26,7 +26,7 @@ public class InspectCommand : RegistryCommandBase<InspectOptions>
             object? json = JsonConvert.DeserializeObject(content) ??
                 throw new Exception($"Unable to deserialize content into JSON:\n{content}");
             string output = JsonConvert.SerializeObject(json, JsonHelper.Settings);
-            Console.Out.WriteLine(output);
+            Output.WriteLine(output);
         });
     }
 }
