@@ -36,7 +36,10 @@ public class CompareLayersCommand : RegistryCommandBase<CompareLayersOptions>
     {
         CompareLayersResult result = await GetCompareLayersResult();
         OutputFormatter formatter = OutputFormatter.Create(Options.OutputFormat);
-        bool isColorDisabled = Options.IsColorDisabled || !ansiConsole.Profile.Capabilities.Ansi;
+        bool isColorDisabled =
+            Options.IsColorDisabled ||
+            !ansiConsole.Profile.Capabilities.Ansi ||
+            ansiConsole.Profile.Capabilities.ColorSystem == ColorSystem.NoColors;
         IRenderable output = formatter.GetOutput(result, Options, isColorDisabled);
         return output;
     }
