@@ -10,9 +10,14 @@ internal record ResolvedManifest(
 internal static class ManifestHelper
 {
     public static async Task<ResolvedManifest> GetResolvedManifestAsync(
-        IDockerRegistryClient client, ImageName imageName, PlatformOptionsBase options, AppSettings? settings = null)
+        IDockerRegistryClient client,
+        ImageName imageName,
+        PlatformOptionsBase options,
+        CancellationToken cancellationToken = default,
+        AppSettings? settings = null)
     {
-        ManifestInfo manifestInfo = await client.Manifests.GetAsync(imageName.Repo, (imageName.Tag ?? imageName.Digest)!);
+        ManifestInfo manifestInfo = await client.Manifests.GetAsync(
+            imageName.Repo, (imageName.Tag ?? imageName.Digest)!, cancellationToken);
         if (manifestInfo.Manifest is IManifestList manifestList)
         {
             string? os = options.Os;
@@ -49,7 +54,8 @@ internal static class ManifestHelper
                 throw new Exception($"Digest of resolved manifest is not set.");
             }
 
-            manifestInfo = await client.Manifests.GetAsync(imageName.Repo, manifestRef.Digest);
+            manifestInfo = await client.Manifests.GetAsync(
+                imageName.Repo, manifestRef.Digest, cancellationToken);
         }
 
         if (manifestInfo.Manifest is not IImageManifest manifest)
@@ -60,6 +66,13 @@ internal static class ManifestHelper
 
         return new ResolvedManifest(manifestInfo, manifest);
     }
+
+    public static Task<ResolvedManifest> GetResolvedManifestAsync(
+        IDockerRegistryClient client,
+        ImageName imageName,
+        PlatformOptionsBase options,
+        AppSettings settings) =>
+        GetResolvedManifestAsync(client, imageName, options, cancellationToken: default, settings);
 
     private static string? GetPlatformValue(string? options, string settings)
     {

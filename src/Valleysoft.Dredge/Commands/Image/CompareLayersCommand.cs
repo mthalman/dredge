@@ -13,33 +13,41 @@ public class CompareLayersCommand : RegistryCommandBase<CompareLayersOptions>
 {
     private static readonly string[] SizeSuffixes =
         ["bytes", "KB", "MB", "GB", "TB", "PB", "EB", "ZB", "YB"];
+    private readonly IAnsiConsole ansiConsole;
 
-    public CompareLayersCommand(IDockerRegistryClientFactory dockerRegistryClientFactory)
+    public CompareLayersCommand(
+        IDockerRegistryClientFactory dockerRegistryClientFactory,
+        IAnsiConsole? ansiConsole = null)
         : base("layers", "Compares two images by layers", dockerRegistryClientFactory)
     {
+        this.ansiConsole = ansiConsole ?? AnsiConsole.Console;
     }
 
-    protected override Task ExecuteAsync()
+    protected override Task ExecuteAsync(CancellationToken cancellationToken)
     {
-        return ExecuteCommandAsync(registry: null, async () =>
+        return ExecuteCommandAsync(registry: null, cancellationToken, async ct =>
         {
-            IRenderable output = await GetOutputAsync();
-            AnsiConsole.Write(output);
+            IRenderable output = await GetOutputAsync(ct);
+            ansiConsole.Write(output);
         });
     }
 
-    public async Task<IRenderable> GetOutputAsync()
+    public async Task<IRenderable> GetOutputAsync(CancellationToken cancellationToken = default)
     {
-        CompareLayersResult result = await GetCompareLayersResult();
+        CompareLayersResult result = await GetCompareLayersResult(cancellationToken);
         OutputFormatter formatter = OutputFormatter.Create(Options.OutputFormat);
-        IRenderable output = formatter.GetOutput(result, Options);
+        bool isColorDisabled =
+            Options.IsColorDisabled ||
+            !ansiConsole.Profile.Capabilities.Ansi ||
+            ansiConsole.Profile.Capabilities.ColorSystem == ColorSystem.NoColors;
+        IRenderable output = formatter.GetOutput(result, Options, isColorDisabled);
         return output;
     }
 
-    private async Task<CompareLayersResult> GetCompareLayersResult()
+    private async Task<CompareLayersResult> GetCompareLayersResult(CancellationToken cancellationToken)
     {
-        IList<LayerInfo> baseLayers = await GetLayersAsync(Options.BaseImage);
-        IList<LayerInfo> targetLayers = await GetLayersAsync(Options.TargetImage);
+        IList<LayerInfo> baseLayers = await GetLayersAsync(Options.BaseImage, cancellationToken);
+        IList<LayerInfo> targetLayers = await GetLayersAsync(Options.TargetImage, cancellationToken);
         List<LayerComparison> layerComparisons = GetLayerComparisons(baseLayers, targetLayers);
         CompareLayersSummary summary = GetSummary(layerComparisons);
 
@@ -184,19 +192,21 @@ public class CompareLayersCommand : RegistryCommandBase<CompareLayersOptions>
             _ => throw new NotImplementedException()
         };
 
-    private async Task<IList<LayerInfo>> GetLayersAsync(string image)
+    private async Task<IList<LayerInfo>> GetLayersAsync(string image, CancellationToken cancellationToken)
     {
         ImageName imageName = ImageName.Parse(image);
         using IDockerRegistryClient client = await DockerRegistryClientFactory.GetClientAsync(imageName.Registry);
-        IImageManifest manifest = (await ManifestHelper.GetResolvedManifestAsync(client, imageName, Options)).Manifest;
+        IImageManifest manifest =
+            (await ManifestHelper.GetResolvedManifestAsync(client, imageName, Options, cancellationToken)).Manifest;
 
         string? digest = (manifest.Config?.Digest) ?? throw new NotSupportedException($"Could not resolve the image config digest of '{image}'.");
-        ImageConfig imageConfig = await client.Blobs.GetImageAsync(imageName.Repo, digest);
+        ImageConfig imageConfig = await client.Blobs.GetImageAsync(imageName.Repo, digest, cancellationToken);
 
         List<LayerInfo> layerInfos = [];
         int layerIndex = 0;
         foreach (LayerHistory history in imageConfig.History)
         {
+            cancellationToken.ThrowIfCancellationRequested();
             if (Options.IncludeHistory || !history.IsEmptyLayer)
             {
                 string? layerDigest = !history.IsEmptyLayer ? manifest.Layers[layerIndex].Digest : null;
@@ -273,16 +283,22 @@ public class CompareLayersCommand : RegistryCommandBase<CompareLayersOptions>
                 _ => throw new NotImplementedException()
             };
 
-        public abstract IRenderable GetOutput(CompareLayersResult result, CompareLayersOptions options);
+        public abstract IRenderable GetOutput(
+            CompareLayersResult result,
+            CompareLayersOptions options,
+            bool isColorDisabled);
 
         private class SideBySideFormatter : OutputFormatter
         {
-            public override IRenderable GetOutput(CompareLayersResult result, CompareLayersOptions options)
+            public override IRenderable GetOutput(
+                CompareLayersResult result,
+                CompareLayersOptions options,
+                bool isColorDisabled)
             {
                 Table table = new Table()
                     .AddColumn(options.BaseImage);
 
-                if (options.IsColorDisabled)
+                if (isColorDisabled)
                 {
                     // Use a comparison column to indicate the diff result with text instead of color
                     table.AddColumn(new TableColumn("Compare") { Alignment = Justify.Center });
@@ -292,7 +308,7 @@ public class CompareLayersCommand : RegistryCommandBase<CompareLayersOptions>
 
                 for (int i = 0; i < result.LayerComparisons.Count(); i++)
                 {
-                    AddTableRows(result, options.IsColorDisabled, options.IncludeHistory, options.IncludeCompressedSize, table, i);
+                    AddTableRows(result, isColorDisabled, options.IncludeHistory, options.IncludeCompressedSize, table, i);
                 }
 
                 return table;
@@ -374,7 +390,10 @@ public class CompareLayersCommand : RegistryCommandBase<CompareLayersOptions>
 
         private class InlineFormatter : OutputFormatter
         {
-            public override IRenderable GetOutput(CompareLayersResult result, CompareLayersOptions options)
+            public override IRenderable GetOutput(
+                CompareLayersResult result,
+                CompareLayersOptions options,
+                bool isColorDisabled)
             {
                 List<IRenderable> rows = [];
 
@@ -385,14 +404,14 @@ public class CompareLayersCommand : RegistryCommandBase<CompareLayersOptions>
                     if (layerComparison.Base is not null)
                     {
                         AddInlineLayerInfo(
-                            rows, layerComparison.Base, layerComparison.LayerDiff, isBase: true, options.IsColorDisabled, options.IncludeHistory,
+                            rows, layerComparison.Base, layerComparison.LayerDiff, isBase: true, isColorDisabled, options.IncludeHistory,
                             options.IncludeCompressedSize);
                     }
 
                     if (layerComparison.LayerDiff != LayerDiff.Equal && layerComparison.Target is not null)
                     {
                         AddInlineLayerInfo(
-                            rows, layerComparison.Target, layerComparison.LayerDiff, isBase: false, options.IsColorDisabled, options.IncludeHistory,
+                            rows, layerComparison.Target, layerComparison.LayerDiff, isBase: false, isColorDisabled, options.IncludeHistory,
                             options.IncludeCompressedSize);
                     }
 
@@ -423,7 +442,10 @@ public class CompareLayersCommand : RegistryCommandBase<CompareLayersOptions>
 
         private class JsonFormatter : OutputFormatter
         {
-            public override IRenderable GetOutput(CompareLayersResult result, CompareLayersOptions options)
+            public override IRenderable GetOutput(
+                CompareLayersResult result,
+                CompareLayersOptions options,
+                bool isColorDisabled)
             {
                 string output = JsonConvert.SerializeObject(result, JsonHelper.Settings);
 

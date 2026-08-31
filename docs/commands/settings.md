@@ -1,4 +1,4 @@
-# Settings Commands
+# Settings commands
 
 | Sub-command | Description |
 |-------------|-------------|
@@ -43,7 +43,7 @@ Example:
 dredge settings set platform.os linux
 ```
 
-## Clear Cache
+## Clear cache
 
 Deletes the local cache of layer data stored in the temporary directory. This cache is created by commands like [`image compare files`](images.md#compare-files) and [`image save-layers`](images.md#save-layers).
 

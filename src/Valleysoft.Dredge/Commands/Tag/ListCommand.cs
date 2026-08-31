@@ -11,20 +11,21 @@ public class ListCommand : RegistryCommandBase<ListOptions>
     {
     }
 
-    protected override Task ExecuteAsync()
+    protected override Task ExecuteAsync(CancellationToken cancellationToken)
     {
         ImageName imageName = ImageName.Parse(Options.Repo);
-        return ExecuteCommandAsync(imageName.Registry, async () =>
+        return ExecuteCommandAsync(imageName.Registry, cancellationToken, async ct =>
         {
             using IDockerRegistryClient client = await DockerRegistryClientFactory.GetClientAsync(imageName.Registry);
 
             List<string> tags = [];
 
-            Page<RepositoryTags> tagsPage = await client.Tags.GetAsync(imageName.Repo);
+            Page<RepositoryTags> tagsPage =
+                await client.Tags.GetAsync(imageName.Repo, null, ct);
             tags.AddRange(tagsPage.Value.Tags);
             while (tagsPage.NextPageLink is not null)
             {
-                tagsPage = await client.Tags.GetNextAsync(tagsPage.NextPageLink);
+                tagsPage = await client.Tags.GetNextAsync(tagsPage.NextPageLink, ct);
                 tags.AddRange(tagsPage.Value.Tags);
             }
 

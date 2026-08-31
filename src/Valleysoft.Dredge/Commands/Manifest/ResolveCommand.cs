@@ -9,13 +9,14 @@ public class ResolveCommand : RegistryCommandBase<SetOptions>
     {
     }
 
-    protected override Task ExecuteAsync()
+    protected override Task ExecuteAsync(CancellationToken cancellationToken)
     {
         ImageName imageName = ImageName.Parse(Options.Image);
-        return ExecuteCommandAsync(imageName.Registry, async () =>
+        return ExecuteCommandAsync(imageName.Registry, cancellationToken, async ct =>
         {
             using IDockerRegistryClient client = await DockerRegistryClientFactory.GetClientAsync(imageName.Registry);
-            ManifestInfo manifestInfo = (await ManifestHelper.GetResolvedManifestAsync(client, imageName, Options)).ManifestInfo;
+            ManifestInfo manifestInfo =
+                (await ManifestHelper.GetResolvedManifestAsync(client, imageName, Options, ct)).ManifestInfo;
             ImageName fullyQualifiedDigest = new(imageName.Registry, imageName.Repo, tag: null, manifestInfo.DockerContentDigest);
 
             Output.WriteLine(fullyQualifiedDigest.ToString());

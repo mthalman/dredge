@@ -241,7 +241,7 @@ public class RegistryCommandTests
         {
         }
 
-        public Task RunAsync() => ExecuteAsync();
+        public Task RunAsync() => ExecuteAsync(TestContext.Current.CancellationToken);
 
         protected override TextWriter Error => TextWriter.Null;
 
@@ -255,7 +255,7 @@ public class RegistryCommandTests
         {
         }
 
-        public Task RunAsync() => ExecuteAsync();
+        public Task RunAsync() => ExecuteAsync(TestContext.Current.CancellationToken);
 
         protected override TextWriter Error => TextWriter.Null;
 
@@ -269,7 +269,7 @@ public class RegistryCommandTests
         {
         }
 
-        public Task RunAsync() => ExecuteAsync();
+        public Task RunAsync() => ExecuteAsync(TestContext.Current.CancellationToken);
 
         protected override TextWriter Error => TextWriter.Null;
 
@@ -283,7 +283,7 @@ public class RegistryCommandTests
         {
         }
 
-        public Task RunAsync() => ExecuteAsync();
+        public Task RunAsync() => ExecuteAsync(TestContext.Current.CancellationToken);
 
         protected override TextWriter Error => TextWriter.Null;
 
@@ -297,7 +297,7 @@ public class RegistryCommandTests
         {
         }
 
-        public Task RunAsync() => ExecuteAsync();
+        public Task RunAsync() => ExecuteAsync(TestContext.Current.CancellationToken);
 
         protected override TextWriter Error => TextWriter.Null;
 
@@ -311,7 +311,7 @@ public class RegistryCommandTests
         {
         }
 
-        public Task RunAsync() => ExecuteAsync();
+        public Task RunAsync() => ExecuteAsync(TestContext.Current.CancellationToken);
 
         protected override TextWriter Error => TextWriter.Null;
 
@@ -325,7 +325,7 @@ public class RegistryCommandTests
         {
         }
 
-        public Task RunAsync() => ExecuteAsync();
+        public Task RunAsync() => ExecuteAsync(TestContext.Current.CancellationToken);
 
         protected override TextWriter Error => TextWriter.Null;
 

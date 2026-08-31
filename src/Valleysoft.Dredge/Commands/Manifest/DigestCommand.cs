@@ -9,14 +9,15 @@ public class DigestCommand : RegistryCommandBase<DigestOptions>
     {
     }
 
-    protected override Task ExecuteAsync()
+    protected override Task ExecuteAsync(CancellationToken cancellationToken)
     {
         ImageName imageName = ImageName.Parse(Options.Image);
-        return ExecuteCommandAsync(imageName.Registry, async () =>
+        return ExecuteCommandAsync(imageName.Registry, cancellationToken, async ct =>
         {
             using IDockerRegistryClient client = await DockerRegistryClientFactory.GetClientAsync(imageName.Registry);
 
-            string digest = await client.Manifests.GetDigestAsync(imageName.Repo, (imageName.Tag ?? imageName.Digest)!);
+            string digest = await client.Manifests.GetDigestAsync(
+                imageName.Repo, (imageName.Tag ?? imageName.Digest)!, ct);
 
             Output.WriteLine(digest);
         });

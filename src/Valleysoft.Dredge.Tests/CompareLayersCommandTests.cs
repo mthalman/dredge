@@ -773,7 +773,50 @@ public class CompareLayersCommandTests
         }
     }
 
-    private static Task<IRenderable> ExecuteTestAsync(string scenario, CompareLayersOutput format, CommandOptions cmdOptions, ImageSetup baseImageSetup, ImageSetup targetImageSetup)
+    [Theory]
+    [MemberData(nameof(GetTestData), CompareLayersOutput.SideBySide)]
+    public async Task SideBySideWithoutAnsi(
+        string scenario, CommandOptions cmdOptions, ImageSetup baseImageSetup, ImageSetup targetImageSetup, object expectedRows)
+    {
+        Table table = (Table)await ExecuteTestAsync(
+            scenario,
+            CompareLayersOutput.SideBySide,
+            cmdOptions,
+            baseImageSetup,
+            targetImageSetup,
+            ansiSupported: false);
+
+        Assert.Equal(3, table.Columns.Count);
+        Assert.Equal("Compare", TestHelper.GetString(table.Columns[1].Header.GetSegments(AnsiConsole.Console)));
+        Assert.Equal(((string[][])expectedRows).Length, table.Rows.Count);
+    }
+
+    [Theory]
+    [MemberData(nameof(GetTestData), CompareLayersOutput.SideBySide)]
+    public async Task SideBySideWithoutColorSupport(
+        string scenario, CommandOptions cmdOptions, ImageSetup baseImageSetup, ImageSetup targetImageSetup, object expectedRows)
+    {
+        Table table = (Table)await ExecuteTestAsync(
+            scenario,
+            CompareLayersOutput.SideBySide,
+            cmdOptions,
+            baseImageSetup,
+            targetImageSetup,
+            colorSupported: false);
+
+        Assert.Equal(3, table.Columns.Count);
+        Assert.Equal("Compare", TestHelper.GetString(table.Columns[1].Header.GetSegments(AnsiConsole.Console)));
+        Assert.Equal(((string[][])expectedRows).Length, table.Rows.Count);
+    }
+
+    private static Task<IRenderable> ExecuteTestAsync(
+        string scenario,
+        CompareLayersOutput format,
+        CommandOptions cmdOptions,
+        ImageSetup baseImageSetup,
+        ImageSetup targetImageSetup,
+        bool ansiSupported = true,
+        bool colorSupported = true)
     {
         Assert.NotNull(scenario);
 
@@ -787,7 +830,17 @@ public class CompareLayersCommandTests
             .Setup(o => o.GetClientAsync(Registry))
             .ReturnsAsync(registryClientMock.Object);
 
-        CompareLayersCommand cmd = new(clientFactoryMock.Object)
+        IAnsiConsole console = AnsiConsole.Create(new AnsiConsoleSettings
+        {
+            Ansi = ansiSupported ? AnsiSupport.Yes : AnsiSupport.No,
+            ColorSystem = colorSupported ? ColorSystemSupport.EightBit : ColorSystemSupport.NoColors,
+            Out = new AnsiConsoleOutput(new StringWriter()),
+            Enrichment = new ProfileEnrichment
+            {
+                UseDefaultEnrichers = false
+            }
+        });
+        CompareLayersCommand cmd = new(clientFactoryMock.Object, console)
         {
             Options = new CompareLayersOptions
             {
@@ -800,7 +853,7 @@ public class CompareLayersCommandTests
             }
         };
 
-        return cmd.GetOutputAsync();
+        return cmd.GetOutputAsync(TestContext.Current.CancellationToken);
     }
 
     private static void CompareJson<T>(T expected, T actual) =>

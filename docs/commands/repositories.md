@@ -1,4 +1,4 @@
-# Repository Commands
+# Repository commands
 
 | Sub-command | Description |
 |-------------|-------------|

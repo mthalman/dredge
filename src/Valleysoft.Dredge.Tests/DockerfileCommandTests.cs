@@ -1,8 +1,8 @@
 ﻿namespace Valleysoft.Dredge.Tests;
 
-using Newtonsoft.Json;
 using Spectre.Console;
 using System.Text;
+using System.Text.Json;
 using Valleysoft.DockerRegistryClient.Models.Images;
 using Valleysoft.DockerRegistryClient.Models.Manifests;
 using Valleysoft.DockerRegistryClient.Models.Manifests.Docker;
@@ -54,6 +54,7 @@ public class DockerfileCommandTests
     [MemberData(nameof(GetTestData))]
     public async Task Test(TestScenario scenario)
     {
+        CancellationToken cancellationToken = TestContext.Current.CancellationToken;
         const string RepoName = "repo";
         const string TagName = "tag";
         const string ImageName = $"{Registry}/{RepoName}:{TagName}";
@@ -67,34 +68,77 @@ public class DockerfileCommandTests
             .ReturnsAsync(mcrClientMock.Object);
 
         ManifestLayer[] layers = [];
-        Image image = JsonConvert.DeserializeObject<Image>(File.ReadAllText(scenario.ImagePath))!;
+        string imageJson = File.ReadAllText(scenario.ImagePath);
+        Image image = JsonSerializer.Deserialize<Image>(imageJson)!;
         if (image.Os == "windows")
         {
+            image.RootFilesystem = new RootFilesystem
+            {
+                Type = "layers",
+                DiffIds = ["baseDiff0", "baseDiff1", "appDiff"]
+            };
+
             layers =
             [
                 new ManifestLayer
                 {
-                    Digest = "layer0digest"
+                    Digest = "repackedLayer0Digest"
                 },
                 new ManifestLayer
                 {
-                    Digest = "layer1digest"
+                    Digest = "repackedLayer1Digest"
                 }
             ];
 
             mcrClientMock
-                .Setup(o => o.Blobs.ExistsAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<CancellationToken>()))
+                .Setup(o => o.Blobs.ExistsAsync(It.IsAny<string>(), It.IsAny<string>(), cancellationToken))
                 .ReturnsAsync(false);
 
             mcrClientMock
-                .Setup(o => o.Blobs.ExistsAsync(
-                    "windows/servercore", It.Is<string>(digest => digest == "layer0digest" || digest == "layer1digest"), It.IsAny<CancellationToken>()))
+                .Setup(o => o.Manifests.ExistsAsync(
+                    It.IsAny<string>(), It.IsAny<string>(), cancellationToken))
+                .ReturnsAsync(false);
+
+            string baseImageTag = $"{image.OsVersion}-{image.Architecture}";
+            mcrClientMock
+                .Setup(o => o.Manifests.ExistsAsync(
+                    "windows/servercore", baseImageTag, cancellationToken))
                 .ReturnsAsync(true);
+
+            const string BaseConfigDigest = "baseConfigDigest";
+            mcrClientMock
+                .Setup(o => o.Manifests.GetAsync(
+                    "windows/servercore", baseImageTag, cancellationToken))
+                .ReturnsAsync(new ManifestInfo("media-type", "base-manifest-digest",
+                    new DockerManifest
+                    {
+                        Config = new ManifestConfig
+                        {
+                            Digest = BaseConfigDigest
+                        }
+                    }));
+
+            Image baseImage = new()
+            {
+                RootFilesystem = new RootFilesystem
+                {
+                    Type = "layers",
+                    DiffIds = ["baseDiff0", "baseDiff1"]
+                },
+                History = image.History.Take(2).ToArray()
+            };
+            mcrClientMock
+                .Setup(o => o.Blobs.GetAsync(
+                    "windows/servercore", BaseConfigDigest, cancellationToken))
+                .ReturnsAsync(new MemoryStream(Encoding.UTF8.GetBytes(
+                    JsonSerializer.Serialize(baseImage))));
+
+            imageJson = JsonSerializer.Serialize(image);
         }
 
         Mock<IDockerRegistryClient> registryClientMock = new();
         registryClientMock
-            .Setup(o => o.Manifests.GetAsync(RepoName, TagName, It.IsAny<CancellationToken>()))
+            .Setup(o => o.Manifests.GetAsync(RepoName, TagName, cancellationToken))
             .ReturnsAsync(new ManifestInfo("media-type", "digest",
                 new DockerManifest
                 {
@@ -106,8 +150,8 @@ public class DockerfileCommandTests
                 }));
 
         registryClientMock
-            .Setup(o => o.Blobs.GetAsync(RepoName, Digest, It.IsAny<CancellationToken>()))
-            .ReturnsAsync(new MemoryStream(Encoding.UTF8.GetBytes(File.ReadAllText(scenario.ImagePath))));
+            .Setup(o => o.Blobs.GetAsync(RepoName, Digest, cancellationToken))
+            .ReturnsAsync(new MemoryStream(Encoding.UTF8.GetBytes(imageJson)));
 
         clientFactoryMock
             .Setup(o => o.GetClientAsync(Registry))
@@ -122,7 +166,7 @@ public class DockerfileCommandTests
             }
         };
 
-        string markupStr = await command.GetMarkupStringAsync();
+        string markupStr = await command.GetMarkupStringAsync(cancellationToken);
 
         string actual = TestHelper.Normalize(markupStr);
         string expected = TestHelper.Normalize(File.ReadAllText(scenario.ExpectedOutputPath));

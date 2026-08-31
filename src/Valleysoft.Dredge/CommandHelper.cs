@@ -7,13 +7,18 @@ internal static class CommandHelper
 {
     public static async Task ExecuteCommandAsync(
         string? registry,
-        Func<Task> execute,
+        CancellationToken cancellationToken,
+        Func<CancellationToken, Task> execute,
         TextWriter? errorWriter = null,
         Action<int>? exit = null)
     {
         try
         {
-            await execute();
+            await execute(cancellationToken);
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+            throw;
         }
         catch (Exception e)
         {

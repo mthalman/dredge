@@ -14,9 +14,9 @@ public class CompareFilesCommand : RegistryCommandBase<CompareFilesOptions>
     {
     }
 
-    protected override Task ExecuteAsync()
+    protected override Task ExecuteAsync(CancellationToken cancellationToken)
     {
-        return ExecuteCommandAsync(registry: null, async () =>
+        return ExecuteCommandAsync(registry: null, cancellationToken, async ct =>
         {
             AppSettings settings = AppSettings.Load();
             if (settings.FileCompareTool is null ||
@@ -27,18 +27,26 @@ public class CompareFilesCommand : RegistryCommandBase<CompareFilesOptions>
                     $"This command requires additional configuration.{Environment.NewLine}In order to compare files, you must first set the '{AppSettings.FileCompareToolName}' setting in {AppSettings.SettingsPath}. This is an external tool of your choosing that will be executed to compare two directories containing files of the specified images. Use '{{0}}' and '{{1}}' placeholders in the args to indicate the base and target path locations that will be the inputs to the compare tool.");
             }
 
-            await SaveImageLayersToDiskAsync(Options.BaseImage, BaseOutputDirName, Options.BaseLayerIndex, CompareOptionsBase.BaseArg);
+            await SaveImageLayersToDiskAsync(
+                Options.BaseImage, BaseOutputDirName, Options.BaseLayerIndex, CompareOptionsBase.BaseArg, ct);
             Console.Error.WriteLine();
-            await SaveImageLayersToDiskAsync(Options.TargetImage, TargetOutputDirName, Options.TargetLayerIndex, CompareOptionsBase.TargetArg);
+            await SaveImageLayersToDiskAsync(
+                Options.TargetImage, TargetOutputDirName, Options.TargetLayerIndex, CompareOptionsBase.TargetArg, ct);
 
             string args = settings.FileCompareTool.Args
                 .Replace("{0}", Path.Combine(CompareTempPath, BaseOutputDirName))
                 .Replace("{1}", Path.Combine(CompareTempPath, TargetOutputDirName));
+            ct.ThrowIfCancellationRequested();
             Process.Start(settings.FileCompareTool.ExePath, args);
         });
     }
 
-    private Task SaveImageLayersToDiskAsync(string image, string outputDirName, int? layerIndex, string layerIndexArg)
+    private Task SaveImageLayersToDiskAsync(
+        string image,
+        string outputDirName,
+        int? layerIndex,
+        string layerIndexArg,
+        CancellationToken cancellationToken)
     {
         string workingDir = Path.Combine(CompareTempPath, outputDirName);
         if (Directory.Exists(workingDir))
@@ -53,6 +61,7 @@ public class CompareFilesCommand : RegistryCommandBase<CompareFilesOptions>
             layerIndex,
             layerIndexArg + CompareFilesOptions.LayerIndexSuffix,
             noSquash: false,
-            Options);
+            Options,
+            cancellationToken);
     }
 }
