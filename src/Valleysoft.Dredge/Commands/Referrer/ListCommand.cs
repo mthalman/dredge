@@ -12,10 +12,10 @@ public class ListCommand : RegistryCommandBase<ListOptions>
     {
     }
 
-    protected override Task ExecuteAsync()
+    protected override Task ExecuteAsync(CancellationToken cancellationToken)
     {
         ImageName imageName = ImageName.Parse(Options.Image);
-        return CommandHelper.ExecuteCommandAsync(imageName.Registry, async () =>
+        return CommandHelper.ExecuteCommandAsync(imageName.Registry, cancellationToken, async ct =>
         {
             using IDockerRegistryClient client = await DockerRegistryClientFactory.GetClientAsync(imageName.Registry);
 
@@ -28,15 +28,17 @@ public class ListCommand : RegistryCommandBase<ListOptions>
             }
             else
             {
-                ManifestInfo manifestInfo = await client.Manifests.GetAsync(imageName.Repo, imageName.Tag!);
+                ManifestInfo manifestInfo = await client.Manifests.GetAsync(imageName.Repo, imageName.Tag!, ct);
                 digest = manifestInfo.DockerContentDigest;
             }
 
-            Page<OciImageIndex> indexPage = await client.Referrers.GetAsync(imageName.Repo, digest, Options.ArtifactType);
+            Page<OciImageIndex> indexPage =
+                await client.Referrers.GetAsync(imageName.Repo, digest, Options.ArtifactType, ct);
             initialIndex = indexPage.Value;
             while (indexPage.NextPageLink is not null)
             {
-                Page<OciImageIndex> nextPage = await client.Referrers.GetAsync(imageName.Repo, digest, Options.ArtifactType);
+                Page<OciImageIndex> nextPage =
+                    await client.Referrers.GetAsync(imageName.Repo, digest, Options.ArtifactType, ct);
                 initialIndex.Manifests =
                 [
                     .. initialIndex.Manifests,

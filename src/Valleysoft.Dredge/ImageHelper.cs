@@ -18,7 +18,7 @@ internal static class ImageHelper
 
     public static async Task SaveImageLayersToDiskAsync(
         IDockerRegistryClientFactory dockerRegistryClientFactory, string image, string destPath, int? layerIndex,
-        string layerIndexOptionName, bool noSquash, PlatformOptionsBase options)
+        string layerIndexOptionName, bool noSquash, PlatformOptionsBase options, CancellationToken cancellationToken)
     {
         // Spec for OCI image layer filesystem changeset: https://github.com/opencontainers/image-spec/blob/main/layer.md
 
@@ -26,7 +26,8 @@ internal static class ImageHelper
 
         ImageName imageName = ImageName.Parse(image);
         IDockerRegistryClient client = await dockerRegistryClientFactory.GetClientAsync(imageName.Registry);
-        IImageManifest manifest = (await ManifestHelper.GetResolvedManifestAsync(client, imageName, options)).Manifest;
+        IImageManifest manifest =
+            (await ManifestHelper.GetResolvedManifestAsync(client, imageName, options, cancellationToken)).Manifest;
 
         int startIndex = 0;
         int layerCount = manifest.Layers.Length;
@@ -46,6 +47,7 @@ internal static class ImageHelper
 
         for (int i = startIndex; i < layerCount; i++)
         {
+            cancellationToken.ThrowIfCancellationRequested();
             IDescriptor layer = manifest.Layers[i];
             if (string.IsNullOrEmpty(layer.Digest))
             {
@@ -63,23 +65,78 @@ internal static class ImageHelper
             else
             {
                 Console.Error.WriteLine($"\tDownloading layer...");
-                using Stream layerStream = await client.Blobs.GetAsync(imageName.Repo, layer.Digest);
+                using Stream layerStream =
+                    await client.Blobs.GetAsync(imageName.Repo, layer.Digest, cancellationToken);
 
-                await ExtractLayerAsync(layerStream, layerDir);
+                await ExtractLayerToCacheAsync(layerStream, layerDir, cancellationToken);
             }
 
             if (noSquash)
             {
-                FileHelper.CopyDirectory(layerDir, Path.Combine(destPath, $"layer{i}-{layerName}"));
+                await FileHelper.CopyDirectoryAsync(
+                    layerDir, Path.Combine(destPath, $"layer{i}-{layerName}"), cancellationToken);
             }
             else
             {
-                ApplyLayer(layerDir, destPath);
+                await ApplyLayerAsync(layerDir, destPath, cancellationToken);
             }
         }
     }
 
-    private static async Task ExtractLayerAsync(Stream layerStream, string layerDir)
+    private static async Task ExtractLayerToCacheAsync(
+        Stream layerStream,
+        string layerDir,
+        CancellationToken cancellationToken)
+    {
+        string tempLayerDir = $"{layerDir}.{Guid.NewGuid():N}.tmp";
+        bool cachePublished = false;
+        bool operationCompleted = false;
+
+        try
+        {
+            await ExtractLayerAsync(layerStream, tempLayerDir, cancellationToken);
+            cancellationToken.ThrowIfCancellationRequested();
+
+            try
+            {
+                Directory.Move(tempLayerDir, layerDir);
+                cachePublished = true;
+            }
+            catch (IOException) when (Directory.Exists(layerDir))
+            {
+                // Another process published the same layer while this one was extracting it.
+            }
+
+            operationCompleted = true;
+        }
+        finally
+        {
+            if (!cachePublished && Directory.Exists(tempLayerDir))
+            {
+                try
+                {
+                    Directory.Delete(tempLayerDir, recursive: true);
+                }
+                catch (IOException e) when (!operationCompleted)
+                {
+                    ReportCleanupFailure(tempLayerDir, e);
+                }
+                catch (UnauthorizedAccessException e) when (!operationCompleted)
+                {
+                    ReportCleanupFailure(tempLayerDir, e);
+                }
+            }
+        }
+    }
+
+    private static void ReportCleanupFailure(string tempLayerDir, Exception exception) =>
+        Console.Error.WriteLine(
+            $"Failed to delete incomplete layer cache directory '{tempLayerDir}': {exception.Message}");
+
+    private static async Task ExtractLayerAsync(
+        Stream layerStream,
+        string layerDir,
+        CancellationToken cancellationToken)
     {
         Console.Error.WriteLine($"\tExtracting layer...");
 
@@ -93,6 +150,7 @@ internal static class ImageHelper
 
         while (true)
         {
+            cancellationToken.ThrowIfCancellationRequested();
             TarEntry? entry = tarStream.GetNextEntry();
 
             if (entry is null)
@@ -125,18 +183,20 @@ internal static class ImageHelper
             }
 
             entryName = Path.Combine(entryDirName, entryFileName);
-            await ExtractTarEntry(layerDir, tarStream, entry, entryName);
+            await ExtractTarEntry(layerDir, tarStream, entry, entryName, cancellationToken);
         }
     }
 
-    private static void ApplyLayer(string layerDir, string workingDir)
+    private static async Task ApplyLayerAsync(
+        string layerDir,
+        string workingDir,
+        CancellationToken cancellationToken)
     {
         Console.Error.WriteLine($"\tApplying layer...");
 
-        FileInfo[] layerFiles = new DirectoryInfo(layerDir).GetFiles("*", SearchOption.AllDirectories);
-
-        foreach (FileInfo layerFile in layerFiles)
+        foreach (FileInfo layerFile in new DirectoryInfo(layerDir).EnumerateFiles("*", SearchOption.AllDirectories))
         {
+            cancellationToken.ThrowIfCancellationRequested();
             string layerFileRelativePath = Path.GetRelativePath(layerDir, layerFile.FullName);
             string? layerfileDirName = Path.GetDirectoryName(layerFileRelativePath);
 
@@ -189,13 +249,18 @@ internal static class ImageHelper
                 }
                 else
                 {
-                    File.Copy(layerFile.FullName, dest, overwrite: true);
+                    await FileHelper.CopyFileAsync(layerFile, dest, overwrite: true, cancellationToken);
                 }
             }
         }
     }
 
-    private static async Task ExtractTarEntry(string workingDir, TarInputStream tarStream, TarEntry entry, string entryName)
+    private static async Task ExtractTarEntry(
+        string workingDir,
+        TarInputStream tarStream,
+        TarEntry entry,
+        string entryName,
+        CancellationToken cancellationToken)
     {
         string filePath = Path.Combine(workingDir, entryName);
         string? directoryPath = Path.GetDirectoryName(filePath);
@@ -217,7 +282,7 @@ internal static class ImageHelper
         else
         {
             using FileStream outputStream = File.Create(filePath);
-            await tarStream.CopyEntryContentsAsync(outputStream, CancellationToken.None);
+            await tarStream.CopyEntryContentsAsync(outputStream, cancellationToken);
         }
     }
 }

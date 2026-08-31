@@ -8,13 +8,14 @@ public class OpenCommand : Command
     public OpenCommand()
         : base("open", "Opens the Dredge settings file")
     {
-        this.SetAction(parseResult => ExecuteAsync());
+        this.SetAction((parseResult, cancellationToken) => ExecuteAsync(cancellationToken));
     }
 
-    private Task ExecuteAsync()
+    private Task ExecuteAsync(CancellationToken cancellationToken)
     {
-        return CommandHelper.ExecuteCommandAsync(null, () =>
+        return CommandHelper.ExecuteCommandAsync(null, cancellationToken, ct =>
         {
+            ct.ThrowIfCancellationRequested();
             // Ensure the settings are loaded which creates a default settings file if necessary
             AppSettings.Load();
 

@@ -10,18 +10,19 @@ public class InspectCommand : RegistryCommandBase<InspectOptions>
     {
     }
 
-    protected override Task ExecuteAsync()
+    protected override Task ExecuteAsync(CancellationToken cancellationToken)
     {
         ImageName imageName = ImageName.Parse(Options.Image);
-        return CommandHelper.ExecuteCommandAsync(imageName.Registry, async () =>
+        return CommandHelper.ExecuteCommandAsync(imageName.Registry, cancellationToken, async ct =>
         {
             using IDockerRegistryClient client = await DockerRegistryClientFactory.GetClientAsync(imageName.Registry);
-            IImageManifest manifest = (await ManifestHelper.GetResolvedManifestAsync(client, imageName, Options)).Manifest;
+            IImageManifest manifest =
+                (await ManifestHelper.GetResolvedManifestAsync(client, imageName, Options, ct)).Manifest;
             string? digest = (manifest.Config?.Digest) ??
                 throw new NotSupportedException($"Could not resolve the image config digest of '{Options.Image}'.");
-            Stream blob = await client.Blobs.GetAsync(imageName.Repo, digest);
+            Stream blob = await client.Blobs.GetAsync(imageName.Repo, digest, ct);
             using StreamReader reader = new(blob);
-            string content = await reader.ReadToEndAsync();
+            string content = await reader.ReadToEndAsync(ct);
             object? json = JsonConvert.DeserializeObject(content) ??
                 throw new Exception($"Unable to deserialize content into JSON:\n{content}");
             string output = JsonConvert.SerializeObject(json, JsonHelper.Settings);

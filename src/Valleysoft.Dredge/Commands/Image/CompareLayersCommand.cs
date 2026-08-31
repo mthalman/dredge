@@ -23,18 +23,18 @@ public class CompareLayersCommand : RegistryCommandBase<CompareLayersOptions>
         this.ansiConsole = ansiConsole ?? AnsiConsole.Console;
     }
 
-    protected override Task ExecuteAsync()
+    protected override Task ExecuteAsync(CancellationToken cancellationToken)
     {
-        return CommandHelper.ExecuteCommandAsync(registry: null, async () =>
+        return CommandHelper.ExecuteCommandAsync(registry: null, cancellationToken, async ct =>
         {
-            IRenderable output = await GetOutputAsync();
+            IRenderable output = await GetOutputAsync(ct);
             ansiConsole.Write(output);
         });
     }
 
-    public async Task<IRenderable> GetOutputAsync()
+    public async Task<IRenderable> GetOutputAsync(CancellationToken cancellationToken = default)
     {
-        CompareLayersResult result = await GetCompareLayersResult();
+        CompareLayersResult result = await GetCompareLayersResult(cancellationToken);
         OutputFormatter formatter = OutputFormatter.Create(Options.OutputFormat);
         bool isColorDisabled =
             Options.IsColorDisabled ||
@@ -44,10 +44,10 @@ public class CompareLayersCommand : RegistryCommandBase<CompareLayersOptions>
         return output;
     }
 
-    private async Task<CompareLayersResult> GetCompareLayersResult()
+    private async Task<CompareLayersResult> GetCompareLayersResult(CancellationToken cancellationToken)
     {
-        IList<LayerInfo> baseLayers = await GetLayersAsync(Options.BaseImage);
-        IList<LayerInfo> targetLayers = await GetLayersAsync(Options.TargetImage);
+        IList<LayerInfo> baseLayers = await GetLayersAsync(Options.BaseImage, cancellationToken);
+        IList<LayerInfo> targetLayers = await GetLayersAsync(Options.TargetImage, cancellationToken);
         List<LayerComparison> layerComparisons = GetLayerComparisons(baseLayers, targetLayers);
         CompareLayersSummary summary = GetSummary(layerComparisons);
 
@@ -192,19 +192,21 @@ public class CompareLayersCommand : RegistryCommandBase<CompareLayersOptions>
             _ => throw new NotImplementedException()
         };
 
-    private async Task<IList<LayerInfo>> GetLayersAsync(string image)
+    private async Task<IList<LayerInfo>> GetLayersAsync(string image, CancellationToken cancellationToken)
     {
         ImageName imageName = ImageName.Parse(image);
         using IDockerRegistryClient client = await DockerRegistryClientFactory.GetClientAsync(imageName.Registry);
-        IImageManifest manifest = (await ManifestHelper.GetResolvedManifestAsync(client, imageName, Options)).Manifest;
+        IImageManifest manifest =
+            (await ManifestHelper.GetResolvedManifestAsync(client, imageName, Options, cancellationToken)).Manifest;
 
         string? digest = (manifest.Config?.Digest) ?? throw new NotSupportedException($"Could not resolve the image config digest of '{image}'.");
-        ImageConfig imageConfig = await client.Blobs.GetImageAsync(imageName.Repo, digest);
+        ImageConfig imageConfig = await client.Blobs.GetImageAsync(imageName.Repo, digest, cancellationToken);
 
         List<LayerInfo> layerInfos = [];
         int layerIndex = 0;
         foreach (LayerHistory history in imageConfig.History)
         {
+            cancellationToken.ThrowIfCancellationRequested();
             if (Options.IncludeHistory || !history.IsEmptyLayer)
             {
                 string? layerDigest = !history.IsEmptyLayer ? manifest.Layers[layerIndex].Digest : null;

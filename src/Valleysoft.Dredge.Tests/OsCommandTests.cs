@@ -12,6 +12,7 @@ public class OsCommandTests
     [Fact]
     public async Task GetWindowsOsInfoAsyncUsesLongestDiffIdPrefixMatch()
     {
+        CancellationToken cancellationToken = TestContext.Current.CancellationToken;
         const string OsVersion = "10.0.20348.1366";
         const string Architecture = "amd64";
         const string BaseImageTag = $"{OsVersion}-{Architecture}";
@@ -68,7 +69,7 @@ public class OsCommandTests
             historyCount: 2);
 
         WindowsImageInfo? result = await OsCommand.GetWindowsOsInfoAsync(
-            targetImage, targetManifest, clientFactoryMock.Object);
+            targetImage, targetManifest, clientFactoryMock.Object, cancellationToken);
 
         Assert.NotNull(result);
         Assert.Equal(WindowsType.ServerCore, result.Info.Type);
@@ -82,6 +83,7 @@ public class OsCommandTests
     [Fact]
     public async Task GetWindowsOsInfoAsyncRetainsLegacyDigestDetection()
     {
+        CancellationToken cancellationToken = TestContext.Current.CancellationToken;
         Image targetImage = new()
         {
             Os = "windows",
@@ -115,7 +117,7 @@ public class OsCommandTests
             .ReturnsAsync(true);
 
         WindowsImageInfo? result = await OsCommand.GetWindowsOsInfoAsync(
-            targetImage, targetManifest, clientFactoryMock.Object);
+            targetImage, targetManifest, clientFactoryMock.Object, cancellationToken);
 
         Assert.NotNull(result);
         Assert.Equal(WindowsType.ServerCore, result.Info.Type);
