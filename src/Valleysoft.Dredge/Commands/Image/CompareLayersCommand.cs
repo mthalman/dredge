@@ -21,7 +21,7 @@ public class CompareLayersCommand : RegistryCommandBase<CompareLayersOptions>
 
     protected override Task ExecuteAsync()
     {
-        return CommandHelper.ExecuteCommandAsync(registry: null, async () =>
+        return ExecuteCommandAsync(registry: null, async () =>
         {
             IRenderable output = await GetOutputAsync();
             AnsiConsole.Write(output);

@@ -5,7 +5,11 @@ namespace Valleysoft.Dredge;
 
 internal static class CommandHelper
 {
-    public static async Task ExecuteCommandAsync(string? registry, Func<Task> execute)
+    public static async Task ExecuteCommandAsync(
+        string? registry,
+        Func<Task> execute,
+        TextWriter? errorWriter = null,
+        Action<int>? exit = null)
     {
         try
         {
@@ -36,9 +40,9 @@ internal static class CommandHelper
                 }
             }
 
-            Console.Error.WriteLine(message);
+            (errorWriter ?? Console.Error).WriteLine(message);
             Console.ForegroundColor = savedColor;
-            Environment.Exit(1);
+            (exit ?? Environment.Exit)(1);
         }
     }
 }

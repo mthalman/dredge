@@ -7,15 +7,15 @@ namespace Valleysoft.Dredge.Commands.Referrer;
 
 public class ListCommand : RegistryCommandBase<ListOptions>
 {
-    public ListCommand(IDockerRegistryClientFactory dockerRegistryClientFactory)
-        : base("list", "Lists the referrers to a manifest", dockerRegistryClientFactory)
+    public ListCommand(IDockerRegistryClientFactory dockerRegistryClientFactory, TextWriter? output = null)
+        : base("list", "Lists the referrers to a manifest", dockerRegistryClientFactory, output)
     {
     }
 
     protected override Task ExecuteAsync()
     {
         ImageName imageName = ImageName.Parse(Options.Image);
-        return CommandHelper.ExecuteCommandAsync(imageName.Registry, async () =>
+        return ExecuteCommandAsync(imageName.Registry, async () =>
         {
             using IDockerRegistryClient client = await DockerRegistryClientFactory.GetClientAsync(imageName.Registry);
 
@@ -36,17 +36,18 @@ public class ListCommand : RegistryCommandBase<ListOptions>
             initialIndex = indexPage.Value;
             while (indexPage.NextPageLink is not null)
             {
-                Page<OciImageIndex> nextPage = await client.Referrers.GetAsync(imageName.Repo, digest, Options.ArtifactType);
+                Page<OciImageIndex> nextPage = await client.Referrers.GetNextAsync(indexPage.NextPageLink);
                 initialIndex.Manifests =
                 [
                     .. initialIndex.Manifests,
                     .. nextPage.Value.Manifests
                 ];
+                indexPage = nextPage;
             }
 
             string output = JsonConvert.SerializeObject(initialIndex, JsonHelper.Settings);
 
-            Console.Out.WriteLine(output);
+            Output.WriteLine(output);
         });
     }
 }

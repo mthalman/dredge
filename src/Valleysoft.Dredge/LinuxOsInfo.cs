@@ -59,6 +59,8 @@ public record LinuxOsInfo
     {
         Dictionary<string, string> osFields = new([..osInfoContent
             .Split("\n", StringSplitOptions.RemoveEmptyEntries)
+            .Select(line => line.TrimEnd('\r'))
+            .Where(line => !line.StartsWith('#') && line.Contains('='))
             .Select(line =>
             {
                 int index = line.IndexOf('=');

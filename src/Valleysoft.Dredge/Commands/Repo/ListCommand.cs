@@ -6,14 +6,14 @@ namespace Valleysoft.Dredge.Commands.Repo;
 
 public class ListCommand : RegistryCommandBase<ListOptions>
 {
-    public ListCommand(IDockerRegistryClientFactory dockerRegistryClientFactory)
-        : base("list", "Lists the repositories contained in the container registry", dockerRegistryClientFactory)
+    public ListCommand(IDockerRegistryClientFactory dockerRegistryClientFactory, TextWriter? output = null)
+        : base("list", "Lists the repositories contained in the container registry", dockerRegistryClientFactory, output)
     {
     }
 
     protected override Task ExecuteAsync()
     {
-        return CommandHelper.ExecuteCommandAsync(Options.Registry, async () =>
+        return ExecuteCommandAsync(Options.Registry, async () =>
         {
             using IDockerRegistryClient client = await DockerRegistryClientFactory.GetClientAsync(Options.Registry);
 
@@ -31,7 +31,7 @@ public class ListCommand : RegistryCommandBase<ListOptions>
 
             string output = JsonConvert.SerializeObject(repoNames, JsonHelper.Settings);
 
-            Console.Out.WriteLine(output);
+            Output.WriteLine(output);
         });
     }
 }

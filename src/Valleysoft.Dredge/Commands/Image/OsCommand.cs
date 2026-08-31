@@ -13,15 +13,15 @@ public partial class OsCommand : RegistryCommandBase<OsOptions>
 {
     private static readonly Regex osReleaseRegex = OsReleaseRegex();
 
-    public OsCommand(IDockerRegistryClientFactory dockerRegistryClientFactory)
-        : base("os", "Gets OS info about the container image", dockerRegistryClientFactory)
+    public OsCommand(IDockerRegistryClientFactory dockerRegistryClientFactory, TextWriter? output = null)
+        : base("os", "Gets OS info about the container image", dockerRegistryClientFactory, output)
     {
     }
 
     protected override Task ExecuteAsync()
     {
         ImageName imageName = ImageName.Parse(Options.Image);
-        return CommandHelper.ExecuteCommandAsync(imageName.Registry, async () =>
+        return ExecuteCommandAsync(imageName.Registry, async () =>
         {
             using IDockerRegistryClient client = await DockerRegistryClientFactory.GetClientAsync(imageName.Registry);
             IImageManifest manifest = (await ManifestHelper.GetResolvedManifestAsync(client, imageName, Options)).Manifest;
@@ -52,7 +52,7 @@ public partial class OsCommand : RegistryCommandBase<OsOptions>
             }
 
             string output = JsonConvert.SerializeObject(osInfo, JsonHelper.SettingsNoCamelCase);
-            Console.Out.WriteLine(output);
+            Output.WriteLine(output);
         });
     }
 

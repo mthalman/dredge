@@ -12,7 +12,7 @@ public class SaveLayersCommand : RegistryCommandBase<SaveLayersOptions>
     protected override Task ExecuteAsync()
     {
         ImageName imageName = ImageName.Parse(Options.Image);
-        return CommandHelper.ExecuteCommandAsync(imageName.Registry, async () =>
+        return ExecuteCommandAsync(imageName.Registry, async () =>
         {
             using IDockerRegistryClient client = await DockerRegistryClientFactory.GetClientAsync(imageName.Registry);
             IImageManifest manifest = (await ManifestHelper.GetResolvedManifestAsync(client, imageName, Options)).Manifest;

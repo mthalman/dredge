@@ -36,7 +36,7 @@ public partial class DockerfileCommand : RegistryCommandBase<DockerfileOptions>
     protected override async Task ExecuteAsync()
     {
         ImageName imageName = ImageName.Parse(Options.Image);
-        await CommandHelper.ExecuteCommandAsync(imageName.Registry, async () =>
+        await ExecuteCommandAsync(imageName.Registry, async () =>
         {
             Markup markupOutput = new(await GetMarkupStringAsync());
             AnsiConsole.Write(markupOutput);

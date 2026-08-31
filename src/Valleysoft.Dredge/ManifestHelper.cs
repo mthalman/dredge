@@ -10,15 +10,23 @@ internal record ResolvedManifest(
 internal static class ManifestHelper
 {
     public static async Task<ResolvedManifest> GetResolvedManifestAsync(
-        IDockerRegistryClient client, ImageName imageName, PlatformOptionsBase options)
+        IDockerRegistryClient client, ImageName imageName, PlatformOptionsBase options, AppSettings? settings = null)
     {
         ManifestInfo manifestInfo = await client.Manifests.GetAsync(imageName.Repo, (imageName.Tag ?? imageName.Digest)!);
         if (manifestInfo.Manifest is IManifestList manifestList)
         {
-            AppSettings settings = AppSettings.Load();
-            string? os = GetPlatformValue(options.Os, settings.Platform.Os);
-            string? osVersion = GetPlatformValue(options.OsVersion, settings.Platform.OsVersion);
-            string? architecture = GetPlatformValue(options.Architecture, settings.Platform.Architecture);
+            string? os = options.Os;
+            string? osVersion = options.OsVersion;
+            string? architecture = options.Architecture;
+            if (string.IsNullOrEmpty(os) ||
+                string.IsNullOrEmpty(osVersion) ||
+                string.IsNullOrEmpty(architecture))
+            {
+                settings ??= AppSettings.Load();
+                os = GetPlatformValue(os, settings.Platform.Os);
+                osVersion = GetPlatformValue(osVersion, settings.Platform.OsVersion);
+                architecture = GetPlatformValue(architecture, settings.Platform.Architecture);
+            }
 
             IEnumerable<IManifestReference> manifestRefs = manifestList.Manifests
                 .Where(manifest =>
