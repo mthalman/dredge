@@ -9,8 +9,9 @@ internal partial class GetCommand : CommandWithOptions<GetOptions>
     {
     }
 
-    protected override Task ExecuteAsync()
+    protected override Task ExecuteAsync(CancellationToken cancellationToken)
     {
+        cancellationToken.ThrowIfCancellationRequested();
         AppSettings settings = AppSettings.Load();
 
         Queue<string> names = new([..Options.Name.Split('.')]);

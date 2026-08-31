@@ -26,24 +26,26 @@ public partial class DockerfileCommand : RegistryCommandBase<DockerfileOptions>
         this.dockerRegistryClientFactory = dockerRegistryClientFactory;
     }
 
-    protected override async Task ExecuteAsync()
+    protected override async Task ExecuteAsync(CancellationToken cancellationToken)
     {
         ImageName imageName = ImageName.Parse(Options.Image);
-        await CommandHelper.ExecuteCommandAsync(imageName.Registry, async () =>
+        await CommandHelper.ExecuteCommandAsync(imageName.Registry, cancellationToken, async ct =>
         {
-            Markup markupOutput = new(await GetMarkupStringAsync());
+            Markup markupOutput = new(await GetMarkupStringAsync(ct));
             AnsiConsole.Write(markupOutput);
         });
     }
 
-    public async Task<string> GetMarkupStringAsync()
+    public async Task<string> GetMarkupStringAsync(CancellationToken cancellationToken = default)
     {
         ImageName imageName = ImageName.Parse(Options.Image);
         using IDockerRegistryClient client = await dockerRegistryClientFactory.GetClientAsync(imageName.Registry);
-        IImageManifest manifest = (await ManifestHelper.GetResolvedManifestAsync(client, imageName, Options)).Manifest;
+        IImageManifest manifest =
+            (await ManifestHelper.GetResolvedManifestAsync(client, imageName, Options, cancellationToken)).Manifest;
 
         string? digest = (manifest.Config?.Digest) ?? throw new NotSupportedException($"Could not resolve the image config digest of '{Options.Image}'.");
-        ImageConfig imageConfig = await client.Blobs.GetImageAsync(imageName.Repo, digest);
+        ImageConfig imageConfig =
+            await client.Blobs.GetImageAsync(imageName.Repo, digest, cancellationToken);
         bool isWindows = imageConfig.Os.Equals("windows", StringComparison.OrdinalIgnoreCase);
 
         List<string> dockerfileLines = [];
@@ -51,8 +53,9 @@ public partial class DockerfileCommand : RegistryCommandBase<DockerfileOptions>
 
         if (isWindows)
         {
-            (WindowsOsInfo windowsOsInfo, string repo) = await GetWindowsInfoAsync(manifest, imageConfig);
-            layers = await GetWindowsLayersAsync(imageConfig, manifest, repo);
+            (WindowsOsInfo windowsOsInfo, string repo) =
+                await GetWindowsInfoAsync(manifest, imageConfig, cancellationToken);
+            layers = await GetWindowsLayersAsync(imageConfig, manifest, repo, cancellationToken);
             dockerfileLines.Add($"FROM {RegistryHelper.McrRegistry}/{repo}:{windowsOsInfo.Version}-{imageConfig.Architecture}");
         }
         else
@@ -65,6 +68,7 @@ public partial class DockerfileCommand : RegistryCommandBase<DockerfileOptions>
 
         foreach (LayerHistory layerHistory in layers)
         {
+            cancellationToken.ThrowIfCancellationRequested();
             if (string.IsNullOrEmpty(layerHistory.CreatedBy))
             {
                 dockerfileLines.Add("# No instruction info");
@@ -78,13 +82,16 @@ public partial class DockerfileCommand : RegistryCommandBase<DockerfileOptions>
         StringBuilder markup = new();
         foreach (string line in dockerfileLines)
         {
-            AppendLineMarkup(line, markup);
+            AppendLineMarkup(line, markup, cancellationToken);
         }
 
         return markup.ToString();
     }
 
-    private void AppendLineMarkup(string line, StringBuilder markup)
+    private void AppendLineMarkup(
+        string line,
+        StringBuilder markup,
+        CancellationToken cancellationToken)
     {
         string source = line + Environment.NewLine;
         Dockerfile dockerfile = Dockerfile.Parse(source);
@@ -114,6 +121,7 @@ public partial class DockerfileCommand : RegistryCommandBase<DockerfileOptions>
 
         foreach (DockerfileConstruct construct in dockerfile.Items)
         {
+            cancellationToken.ThrowIfCancellationRequested();
             foreach (Token token in construct.Tokens)
             {
                 markup.Append(GetTokenMarkup(token, construct is RunInstruction));
@@ -127,7 +135,11 @@ public partial class DockerfileCommand : RegistryCommandBase<DockerfileOptions>
             string.Concat(dockerfile.Items.SelectMany(construct => construct.Tokens)),
             StringComparison.Ordinal);
 
-    private async Task<IEnumerable<LayerHistory>> GetWindowsLayersAsync(ImageConfig imageConfig, IImageManifest manifest, string windowsRepo)
+    private async Task<IEnumerable<LayerHistory>> GetWindowsLayersAsync(
+        ImageConfig imageConfig,
+        IImageManifest manifest,
+        string windowsRepo,
+        CancellationToken cancellationToken)
     {
         using IDockerRegistryClient mcrClient =
             await dockerRegistryClientFactory.GetClientAsync(RegistryHelper.McrRegistry);
@@ -137,12 +149,13 @@ public partial class DockerfileCommand : RegistryCommandBase<DockerfileOptions>
         int i;
         for (i = 0; i < manifest.Layers.Length; i++)
         {
+            cancellationToken.ThrowIfCancellationRequested();
             string? layerDigest = manifest.Layers[i].Digest;
             if (string.IsNullOrEmpty(layerDigest))
             {
                 throw new Exception($"No digest information defined for layer index {i} of the Windows image.");
             }
-            bool exists = await mcrClient.Blobs.ExistsAsync(windowsRepo, layerDigest);
+            bool exists = await mcrClient.Blobs.ExistsAsync(windowsRepo, layerDigest, cancellationToken);
             if (!exists)
             {
                 break;
@@ -152,7 +165,10 @@ public partial class DockerfileCommand : RegistryCommandBase<DockerfileOptions>
         return imageConfig.History.Skip(i);
     }
 
-    private async Task<(WindowsOsInfo Info, string Repo)> GetWindowsInfoAsync(IImageManifest manifest, ImageConfig imageConfig)
+    private async Task<(WindowsOsInfo Info, string Repo)> GetWindowsInfoAsync(
+        IImageManifest manifest,
+        ImageConfig imageConfig,
+        CancellationToken cancellationToken)
     {
         string? initialLayerDigest = manifest.Layers.First().Digest;
         if (string.IsNullOrEmpty(initialLayerDigest))
@@ -160,7 +176,8 @@ public partial class DockerfileCommand : RegistryCommandBase<DockerfileOptions>
             throw new Exception("No digest information defined for the initial layer of the Windows image.");
         }
         var windowsOsInfo = await OsCommand.GetWindowsOsInfoAsync(
-            imageConfig, initialLayerDigest, dockerRegistryClientFactory) ?? throw new Exception("Could not determine info about the Windows image.");
+            imageConfig, initialLayerDigest, dockerRegistryClientFactory, cancellationToken) ??
+            throw new Exception("Could not determine info about the Windows image.");
         if (string.IsNullOrEmpty(windowsOsInfo.Info.Version))
         {
             throw new Exception("No os.version information defined for the Windows image.");

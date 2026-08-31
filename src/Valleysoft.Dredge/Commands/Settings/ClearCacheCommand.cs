@@ -7,18 +7,20 @@ public class ClearCacheCommand : Command
     public ClearCacheCommand()
         : base("clear-cache", "Deletes the cached files used by Dredge")
     {
-        this.SetAction(parseResult => ExecuteAsync());
+        this.SetAction((parseResult, cancellationToken) => ExecuteAsync(cancellationToken));
     }
 
-    private Task ExecuteAsync()
+    private Task ExecuteAsync(CancellationToken cancellationToken)
     {
-        return CommandHelper.ExecuteCommandAsync(null, () =>
+        return CommandHelper.ExecuteCommandAsync(null, cancellationToken, ct =>
         {
+            ct.ThrowIfCancellationRequested();
             DirectoryInfo dredgeTempDir = new(DredgeState.DredgeTempPath);
 
             if (dredgeTempDir.Exists)
             {
-                long dirSize = DirSize(dredgeTempDir);
+                long dirSize = DirSize(dredgeTempDir, ct);
+                ct.ThrowIfCancellationRequested();
                 dredgeTempDir.Delete(recursive: true);
 
                 Console.WriteLine($"{dirSize:n0} bytes deleted from '{DredgeState.DredgeTempPath}'");
@@ -32,19 +34,18 @@ public class ClearCacheCommand : Command
         });
     }
 
-    private static long DirSize(DirectoryInfo dir)
+    private static long DirSize(DirectoryInfo dir, CancellationToken cancellationToken)
     {
         long size = 0;
-        FileInfo[] files = dir.GetFiles();
-        foreach (FileInfo file in files)
+        foreach (FileInfo file in dir.EnumerateFiles())
         {
+            cancellationToken.ThrowIfCancellationRequested();
             size += file.Length;
         }
 
-        DirectoryInfo[] subDirs = dir.GetDirectories();
-        foreach (DirectoryInfo subDir in subDirs)
+        foreach (DirectoryInfo subDir in dir.EnumerateDirectories())
         {
-            size += DirSize(subDir);
+            size += DirSize(subDir, cancellationToken);
         }
 
         return size;

@@ -10,14 +10,15 @@ public class GetCommand : RegistryCommandBase<GetOptions>
     {
     }
 
-    protected override Task ExecuteAsync()
+    protected override Task ExecuteAsync(CancellationToken cancellationToken)
     {
         ImageName imageName = ImageName.Parse(Options.Image);
-        return CommandHelper.ExecuteCommandAsync(imageName.Registry, async () =>
+        return CommandHelper.ExecuteCommandAsync(imageName.Registry, cancellationToken, async ct =>
         {
             using IDockerRegistryClient client = await DockerRegistryClientFactory.GetClientAsync(imageName.Registry);
 
-            ManifestInfo manifestInfo = await client.Manifests.GetAsync(imageName.Repo, (imageName.Tag ?? imageName.Digest)!);
+            ManifestInfo manifestInfo = await client.Manifests.GetAsync(
+                imageName.Repo, (imageName.Tag ?? imageName.Digest)!, ct);
 
             string output = JsonConvert.SerializeObject(manifestInfo.Manifest, JsonHelper.Settings);
 

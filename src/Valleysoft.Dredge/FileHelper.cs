@@ -4,8 +4,12 @@ namespace Valleysoft.Dredge;
 
 internal static class FileHelper
 {
-    public static void CopyDirectory(string sourceDir, string destinationDir)
+    public static async Task CopyDirectoryAsync(
+        string sourceDir,
+        string destinationDir,
+        CancellationToken cancellationToken)
     {
+        cancellationToken.ThrowIfCancellationRequested();
         DirectoryInfo dir = new(sourceDir);
         if (!dir.Exists)
         {
@@ -14,9 +18,9 @@ internal static class FileHelper
 
         Directory.CreateDirectory(destinationDir);
 
-        DirectoryInfo[] dirs = dir.GetDirectories();
-        foreach (FileInfo file in dir.GetFiles())
+        foreach (FileInfo file in dir.EnumerateFiles())
         {
+            cancellationToken.ThrowIfCancellationRequested();
             string targetFilePath = Path.Combine(destinationDir, file.Name);
 
             if (file.LinkTarget is not null)
@@ -25,14 +29,52 @@ internal static class FileHelper
             }
             else
             {
-                file.CopyTo(targetFilePath);
+                await CopyFileAsync(file, targetFilePath, overwrite: false, cancellationToken);
             }
         }
         
-        foreach (DirectoryInfo subDir in dirs)
+        foreach (DirectoryInfo subDir in dir.EnumerateDirectories())
         {
             string newDestinationDir = Path.Combine(destinationDir, subDir.Name);
-            CopyDirectory(subDir.FullName, newDestinationDir);
+            await CopyDirectoryAsync(subDir.FullName, newDestinationDir, cancellationToken);
+        }
+    }
+
+    public static async Task CopyFileAsync(
+        FileInfo sourceFile,
+        string destinationPath,
+        bool overwrite,
+        CancellationToken cancellationToken)
+    {
+        DateTime creationTimeUtc = sourceFile.CreationTimeUtc;
+        DateTime lastAccessTimeUtc = sourceFile.LastAccessTimeUtc;
+        DateTime lastWriteTimeUtc = sourceFile.LastWriteTimeUtc;
+        FileAttributes attributes = sourceFile.Attributes;
+        UnixFileMode unixFileMode = default;
+        if (!OperatingSystem.IsWindows())
+        {
+            unixFileMode = File.GetUnixFileMode(sourceFile.FullName);
+        }
+
+        await using (FileStream source = sourceFile.OpenRead())
+        await using (FileStream destination = new(
+            destinationPath,
+            overwrite ? FileMode.Create : FileMode.CreateNew,
+            FileAccess.Write,
+            FileShare.None,
+            bufferSize: 4096,
+            FileOptions.Asynchronous))
+        {
+            await source.CopyToAsync(destination, cancellationToken);
+        }
+
+        File.SetCreationTimeUtc(destinationPath, creationTimeUtc);
+        File.SetLastAccessTimeUtc(destinationPath, lastAccessTimeUtc);
+        File.SetLastWriteTimeUtc(destinationPath, lastWriteTimeUtc);
+        File.SetAttributes(destinationPath, attributes);
+        if (!OperatingSystem.IsWindows())
+        {
+            File.SetUnixFileMode(destinationPath, unixFileMode);
         }
     }
 
