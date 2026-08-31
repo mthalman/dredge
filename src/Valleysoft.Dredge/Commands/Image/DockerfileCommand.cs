@@ -51,9 +51,10 @@ public partial class DockerfileCommand : RegistryCommandBase<DockerfileOptions>
 
         if (isWindows)
         {
-            (WindowsOsInfo windowsOsInfo, string repo) = await GetWindowsInfoAsync(manifest, imageConfig);
-            layers = await GetWindowsLayersAsync(imageConfig, manifest, repo);
-            dockerfileLines.Add($"FROM {RegistryHelper.McrRegistry}/{repo}:{windowsOsInfo.Version}-{imageConfig.Architecture}");
+            WindowsImageInfo windowsImageInfo = await GetWindowsInfoAsync(manifest, imageConfig);
+            layers = imageConfig.History.Skip(windowsImageInfo.BaseHistoryCount);
+            dockerfileLines.Add(
+                $"FROM {RegistryHelper.McrRegistry}/{windowsImageInfo.Repo}:{windowsImageInfo.Info.Version}-{imageConfig.Architecture}");
         }
         else
         {
@@ -127,46 +128,16 @@ public partial class DockerfileCommand : RegistryCommandBase<DockerfileOptions>
             string.Concat(dockerfile.Items.SelectMany(construct => construct.Tokens)),
             StringComparison.Ordinal);
 
-    private async Task<IEnumerable<LayerHistory>> GetWindowsLayersAsync(ImageConfig imageConfig, IImageManifest manifest, string windowsRepo)
+    private async Task<WindowsImageInfo> GetWindowsInfoAsync(IImageManifest manifest, ImageConfig imageConfig)
     {
-        using IDockerRegistryClient mcrClient =
-            await dockerRegistryClientFactory.GetClientAsync(RegistryHelper.McrRegistry);
-
-        // For Windows images, the layers that we want to generate a Dockerfile from start after the initial set of base
-        // Windows layers. There is no "FROM scratch" possible with Windows images.
-        int i;
-        for (i = 0; i < manifest.Layers.Length; i++)
-        {
-            string? layerDigest = manifest.Layers[i].Digest;
-            if (string.IsNullOrEmpty(layerDigest))
-            {
-                throw new Exception($"No digest information defined for layer index {i} of the Windows image.");
-            }
-            bool exists = await mcrClient.Blobs.ExistsAsync(windowsRepo, layerDigest);
-            if (!exists)
-            {
-                break;
-            }
-        }
-
-        return imageConfig.History.Skip(i);
-    }
-
-    private async Task<(WindowsOsInfo Info, string Repo)> GetWindowsInfoAsync(IImageManifest manifest, ImageConfig imageConfig)
-    {
-        string? initialLayerDigest = manifest.Layers.First().Digest;
-        if (string.IsNullOrEmpty(initialLayerDigest))
-        {
-            throw new Exception("No digest information defined for the initial layer of the Windows image.");
-        }
-        var windowsOsInfo = await OsCommand.GetWindowsOsInfoAsync(
-            imageConfig, initialLayerDigest, dockerRegistryClientFactory) ?? throw new Exception("Could not determine info about the Windows image.");
+        WindowsImageInfo windowsOsInfo = await OsCommand.GetWindowsOsInfoAsync(
+            imageConfig, manifest, dockerRegistryClientFactory) ?? throw new Exception("Could not determine info about the Windows image.");
         if (string.IsNullOrEmpty(windowsOsInfo.Info.Version))
         {
             throw new Exception("No os.version information defined for the Windows image.");
         }
 
-        return (windowsOsInfo.Info, windowsOsInfo.Repo);
+        return windowsOsInfo;
     }
 
     private string GetHistoryLine(string line, ref string? currentShell)
