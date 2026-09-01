@@ -603,6 +603,27 @@ public class ReferrerArtifactCommandTests
     }
 
     [Fact]
+    public async Task GetCommand_RejectsUnsupportedEmbeddedPayloadDigestAlgorithm()
+    {
+        byte[] content = Encoding.UTF8.GetBytes("embedded");
+        OciDescriptor payload = CreatePayload("unknown:value", "text/plain", content.Length);
+        payload.Data = Convert.ToBase64String(content);
+        Mock<IDockerRegistryClient> client = CreateClient(CreateArtifact(payload));
+        using MemoryStream output = new();
+        using StringWriter error = new();
+        TestGetCommand command = new(CreateFactory(client.Object), output, error)
+        {
+            Options = CreateGetOptions()
+        };
+
+        CommandExitException exception = await Assert.ThrowsAsync<CommandExitException>(command.RunAsync);
+
+        Assert.Equal(1, exception.ExitCode);
+        Assert.Contains("digest algorithm 'unknown' is not supported", error.ToString());
+        Assert.Empty(output.ToArray());
+    }
+
+    [Fact]
     public async Task GetCommand_SelectsPayloadByIndex()
     {
         byte[] content = Encoding.UTF8.GetBytes("second");

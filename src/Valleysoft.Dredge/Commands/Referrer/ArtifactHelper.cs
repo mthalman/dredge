@@ -122,6 +122,7 @@ internal static class ArtifactHelper
             throw new InvalidDataException($"Payload digest '{digest}' is not valid.");
         }
 
+        string algorithm = digest[..separatorIndex];
         byte[] hash = algorithm.ToLowerInvariant() switch
         {
             "sha256" => SHA256.HashData(content),
@@ -130,8 +131,7 @@ internal static class ArtifactHelper
                 $"Payload digest algorithm '{algorithm}' is not supported for embedded payload verification.")
         };
 
-        if (hash is not null &&
-            !Convert.ToHexString(hash).Equals(
+        if (!Convert.ToHexString(hash).Equals(
                 digest[(separatorIndex + 1)..],
                 StringComparison.OrdinalIgnoreCase))
         {
