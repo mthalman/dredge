@@ -10,7 +10,8 @@ Dredge does not modify registry content.
 
 - Query raw JSON data for [manifests](docs/commands/manifests.md),
   [tags](docs/commands/tags.md), [repositories](docs/commands/repositories.md),
-  and [referrers](docs/commands/referrers.md).
+  and [referrers](docs/commands/referrers.md), including OCI artifact inspection
+  and payload retrieval.
 - Inspect an image's [configuration](docs/commands/images.md#inspect) and
   [operating system information](docs/commands/images.md#os).
 - Compare [layers](docs/commands/images.md#compare-layers) or
