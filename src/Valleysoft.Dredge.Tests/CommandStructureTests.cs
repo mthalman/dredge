@@ -9,6 +9,8 @@ using Valleysoft.Dredge.Commands.Referrer;
 using Valleysoft.Dredge.Commands.Repo;
 using Valleysoft.Dredge.Commands.Settings;
 using Valleysoft.Dredge.Commands.Tag;
+using ReferrerGetOptions = Valleysoft.Dredge.Commands.Referrer.GetOptions;
+using ReferrerInspectOptions = Valleysoft.Dredge.Commands.Referrer.InspectOptions;
 
 public class CommandStructureTests
 {
@@ -23,7 +25,9 @@ public class CommandStructureTests
         Assert.Equal(
             ["get", "digest", "resolve"],
             new ManifestCommand(factory.Object).Subcommands.Select(command => command.Name));
-        Assert.Equal(["list"], new ReferrerCommand(factory.Object).Subcommands.Select(command => command.Name));
+        Assert.Equal(
+            ["list", "inspect", "get"],
+            new ReferrerCommand(factory.Object).Subcommands.Select(command => command.Name));
         Assert.Equal(["list"], new RepoCommand(factory.Object).Subcommands.Select(command => command.Name));
         Assert.Equal(["list"], new TagCommand(factory.Object).Subcommands.Select(command => command.Name));
         Assert.Equal(
@@ -85,6 +89,51 @@ public class CommandStructureTests
         Assert.False(options.IsColorDisabled);
         Assert.False(options.IncludeHistory);
         Assert.False(options.IncludeCompressedSize);
+    }
+
+    [Fact]
+    public void ReferrerInspectOptions_BindArgumentsAndOutput()
+    {
+        ReferrerInspectOptions options = Bind(
+            new ReferrerInspectOptions(),
+            "registry.example/repo:tag",
+            "sha256:artifact",
+            "--output",
+            "Json");
+
+        Assert.Equal("registry.example/repo:tag", options.Image);
+        Assert.Equal("sha256:artifact", options.ArtifactDigest);
+        Assert.Equal(ArtifactInspectOutput.Json, options.OutputFormat);
+    }
+
+    [Fact]
+    public void ReferrerGetOptions_BindArgumentsAndOptions()
+    {
+        ReferrerGetOptions options = Bind(
+            new ReferrerGetOptions(),
+            "registry.example/repo:tag",
+            "sha256:artifact",
+            "--payload",
+            "2",
+            "--output",
+            "artifact.json");
+
+        Assert.Equal("registry.example/repo:tag", options.Image);
+        Assert.Equal("sha256:artifact", options.ArtifactDigest);
+        Assert.Equal("2", options.Payload);
+        Assert.Equal("artifact.json", options.OutputPath);
+    }
+
+    [Fact]
+    public void ReferrerArtifactOptions_UseNameArgument()
+    {
+        Command inspect = new("inspect");
+        new ReferrerInspectOptions().SetCommandOptions(inspect);
+        Command get = new("get");
+        new ReferrerGetOptions().SetCommandOptions(get);
+
+        Assert.Equal(["name", "artifact-digest"], inspect.Arguments.Select(argument => argument.Name));
+        Assert.Equal(["name", "artifact-digest"], get.Arguments.Select(argument => argument.Name));
     }
 
     private static TOptions Bind<TOptions>(TOptions options, params string[] args)
