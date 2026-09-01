@@ -17,12 +17,39 @@ internal static class ManifestHelper
     {
         ManifestInfo manifestInfo = await client.Manifests.GetAsync(
             imageName.Repo, (imageName.Tag ?? imageName.Digest)!, cancellationToken);
+        return await GetResolvedManifestAsync(client, imageName, options, manifestInfo, cancellationToken);
+    }
+
+    public static async Task<ResolvedManifest> GetResolvedManifestAsync(
+        IDockerRegistryClient client,
+        ImageName imageName,
+        PlatformOptionsBase options,
+        ManifestInfo manifestInfo,
+        CancellationToken cancellationToken)
+    {
+        return await GetResolvedManifestAsync(
+            client,
+            imageName,
+            options,
+            manifestInfo,
+            () => AppSettings.Load().Platform,
+            cancellationToken);
+    }
+
+    internal static async Task<ResolvedManifest> GetResolvedManifestAsync(
+        IDockerRegistryClient client,
+        ImageName imageName,
+        PlatformOptionsBase options,
+        ManifestInfo manifestInfo,
+        Func<PlatformSettings> platformSettingsProvider,
+        CancellationToken cancellationToken)
+    {
         if (manifestInfo.Manifest is IManifestList manifestList)
         {
-            AppSettings settings = AppSettings.Load();
-            string? os = GetPlatformValue(options.Os, settings.Platform.Os);
-            string? osVersion = GetPlatformValue(options.OsVersion, settings.Platform.OsVersion);
-            string? architecture = GetPlatformValue(options.Architecture, settings.Platform.Architecture);
+            PlatformSettings settings = platformSettingsProvider();
+            string? os = GetPlatformValue(options.Os, settings.Os);
+            string? osVersion = GetPlatformValue(options.OsVersion, settings.OsVersion);
+            string? architecture = GetPlatformValue(options.Architecture, settings.Architecture);
 
             IEnumerable<IManifestReference> manifestRefs = manifestList.Manifests
                 .Where(manifest =>

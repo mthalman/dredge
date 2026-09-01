@@ -21,32 +21,37 @@ internal static class CommandHelper
         }
         catch (Exception e)
         {
-            ConsoleColor savedColor = Console.ForegroundColor;
-            Console.ForegroundColor = ConsoleColor.Red;
-
-            string message = e.Message;
-            if (e is RegistryException dockerRegistryException)
-            {
-                Error? error = dockerRegistryException.Errors.FirstOrDefault();
-                if (error?.Code == "UNAUTHORIZED")
-                {
-                    string loginCommand = "docker login";
-                    if (registry is not null)
-                    {
-                        loginCommand += $" {registry}";
-                    }
-
-                    message = $"The repository does not exist or may require authentication. If authentication is required, ensure that your credentials are stored for the registry by running '{loginCommand}'.";
-                }
-                else
-                {
-                    message = error?.Message ?? message;
-                }
-            }
-
-            (errorWriter ?? Console.Error).WriteLine(message);
-            Console.ForegroundColor = savedColor;
+            WriteError(e, registry, errorWriter);
             Environment.Exit(1);
         }
+    }
+
+    private static void WriteError(Exception e, string? registry, TextWriter? errorWriter)
+    {
+        ConsoleColor savedColor = Console.ForegroundColor;
+        Console.ForegroundColor = ConsoleColor.Red;
+
+        string message = e.Message;
+        if (e is RegistryException dockerRegistryException)
+        {
+            Error? error = dockerRegistryException.Errors.FirstOrDefault();
+            if (error?.Code == "UNAUTHORIZED")
+            {
+                string loginCommand = "docker login";
+                if (registry is not null)
+                {
+                    loginCommand += $" {registry}";
+                }
+
+                message = $"The repository does not exist or may require authentication. If authentication is required, ensure that your credentials are stored for the registry by running '{loginCommand}'.";
+            }
+            else
+            {
+                message = error?.Message ?? message;
+            }
+        }
+
+        (errorWriter ?? Console.Error).WriteLine(message);
+        Console.ForegroundColor = savedColor;
     }
 }

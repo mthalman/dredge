@@ -1,8 +1,4 @@
-﻿using Newtonsoft.Json;
-using Newtonsoft.Json.Converters;
-using System.Runtime.Serialization;
-
-namespace Valleysoft.Dredge;
+﻿namespace Valleysoft.Dredge;
 
 public class CompareLayersResult
 {
@@ -44,7 +40,7 @@ public class CompareLayersSummary
 
 public class LayerComparison
 {
-    public LayerComparison(LayerInfo? @base, LayerInfo? target, LayerDiff layerDiff)
+    public LayerComparison(LayerInfo? @base, LayerInfo? target, CompareDiff layerDiff)
     {
         Base = @base;
         Target = target;
@@ -53,20 +49,7 @@ public class LayerComparison
 
     public LayerInfo? Base { get; }
     public LayerInfo? Target { get; }
-    public LayerDiff LayerDiff { get; }
-}
-
-[JsonConverter(typeof(StringEnumConverter))]
-public enum LayerDiff
-{
-    [EnumMember(Value = "equal")]
-    Equal,
-    [EnumMember(Value = "notEqual")]
-    NotEqual,
-    [EnumMember(Value = "added")]
-    Added,
-    [EnumMember(Value = "removed")]
-    Removed
+    public CompareDiff LayerDiff { get; }
 }
 
 public class LayerInfo

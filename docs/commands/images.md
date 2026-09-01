@@ -6,6 +6,7 @@ All image commands support [platform resolution](../platform-resolution.md) via 
 |-------------|-------------|
 | [`inspect`](#inspect) | Inspect an image configuration |
 | [`os`](#os) | Show OS information |
+| [`compare metadata`](#compare-metadata) | Compare image configuration and platform metadata |
 | [`compare layers`](#compare-layers) | Compare the layers of two images |
 | [`compare files`](#compare-files) | Compare the file contents of two images |
 | [`save-layers`](#save-layers) | Save image layers to disk |
@@ -80,6 +81,52 @@ dredge image os mcr.microsoft.com/windows/nanoserver:ltsc2022-amd64
   "Version": "10.0.20348.1249"
 }
 ```
+
+## Compare metadata
+
+Compares image configuration, manifest descriptors, and platform metadata
+without downloading image layers.
+
+```console
+dredge image compare metadata <base> <target> [--output <format>] [--no-color] [--os <os>] [--arch <arch>] [--os-version <version>]
+```
+
+| Option | Description |
+|--------|-------------|
+| `--output` | Output format: `SideBySide` (default), `Inline`, or `Json` |
+| `--no-color` | Disable color output and use text-based diff indicators instead |
+
+The comparison includes:
+
+- Available platforms and their descriptors
+- Manifest media types, annotations, config descriptors, and layer descriptors
+- Image creation, author, operating system, architecture, and root filesystem metadata
+- Entrypoint, command, environment variables, labels, exposed ports, volumes, user, and working directory
+- Image history, including creation time, command, author, comment, and empty-layer status
+
+For a multi-platform reference, Dredge compares the complete platform index.
+The platform options select the per-platform manifests and image configurations
+for the deeper comparison. Dredge uses the configured
+[platform resolution](../platform-resolution.md) defaults when platform options
+are omitted.
+
+Example:
+
+```console
+dredge image compare metadata --output inline mcr.microsoft.com/dotnet/runtime:9.0.0 mcr.microsoft.com/dotnet/runtime:10.0.0 --os linux --arch amd64
+```
+
+```diff
+- Config.environment["DOTNET_VERSION"] = "9.0.0"
++ Config.environment["DOTNET_VERSION"] = "10.0.0"
+```
+
+The command returns the following exit codes:
+
+| Exit code | Meaning |
+|----------:|---------|
+| `0` | The comparison completed, whether the metadata is equal or different |
+| `1` | The command failed before completing the comparison |
 
 ## Compare layers
 
