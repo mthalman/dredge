@@ -27,14 +27,27 @@ public class CompareLayersCommand : RegistryCommandBase<CompareLayersOptions>
     {
         return ExecuteCommandAsync(registry: null, cancellationToken, async ct =>
         {
-            IRenderable output = await GetOutputAsync(ct);
-            ansiConsole.Write(output);
+            CompareLayersResult result = await GetCompareLayersResult(ct);
+            if (Options.OutputFormat == CompareOutput.Json)
+            {
+                ansiConsole.Profile.Out.Writer.WriteLine(
+                    JsonConvert.SerializeObject(result, JsonHelper.Settings));
+            }
+            else
+            {
+                ansiConsole.Write(GetOutput(result));
+            }
         });
     }
 
     public async Task<IRenderable> GetOutputAsync(CancellationToken cancellationToken = default)
     {
         CompareLayersResult result = await GetCompareLayersResult(cancellationToken);
+        return GetOutput(result);
+    }
+
+    private IRenderable GetOutput(CompareLayersResult result)
+    {
         OutputFormatter formatter = OutputFormatter.Create(Options.OutputFormat);
         bool isColorDisabled =
             Options.IsColorDisabled ||
@@ -58,11 +71,11 @@ public class CompareLayersCommand : RegistryCommandBase<CompareLayersOptions>
 
     private static CompareLayersSummary GetSummary(List<LayerComparison> layerComparisons)
     {
-        bool areEqual = layerComparisons.All(comparison => comparison.LayerDiff == LayerDiff.Equal);
+        bool areEqual = layerComparisons.All(comparison => comparison.LayerDiff == CompareDiff.Equal);
         bool targetIncludesAllBaseLayers =
             areEqual ||
             !layerComparisons
-                .Any(comparison => comparison.LayerDiff == LayerDiff.NotEqual || comparison.LayerDiff == LayerDiff.Removed);
+                .Any(comparison => comparison.LayerDiff == CompareDiff.NotEqual || comparison.LayerDiff == CompareDiff.Removed);
         int lastCommonLayerIndex = -1;
         if (areEqual)
         {
@@ -71,7 +84,7 @@ public class CompareLayersCommand : RegistryCommandBase<CompareLayersOptions>
         else
         {
             int equalLayerCount = layerComparisons
-                .TakeWhile(comparison => comparison.LayerDiff == LayerDiff.Equal)
+                .TakeWhile(comparison => comparison.LayerDiff == CompareDiff.Equal)
                 .Count();
             if (equalLayerCount >= 0)
             {
@@ -100,14 +113,14 @@ public class CompareLayersCommand : RegistryCommandBase<CompareLayersOptions>
                 targetLayer = targetLayers[i];
             }
 
-            LayerDiff diff = GetLayerDiff(baseLayer, targetLayer);
+            CompareDiff diff = GetLayerDiff(baseLayer, targetLayer);
             layerComparisons.Add(new LayerComparison(baseLayer, targetLayer, diff));
         }
 
         return layerComparisons;
     }
 
-    private static LayerDiff GetLayerDiff(LayerInfo? baseLayer, LayerInfo? targetLayer)
+    private static CompareDiff GetLayerDiff(LayerInfo? baseLayer, LayerInfo? targetLayer)
     {
         if (baseLayer is null)
         {
@@ -116,46 +129,46 @@ public class CompareLayersCommand : RegistryCommandBase<CompareLayersOptions>
                 throw new Exception("Unexpected layer result: two null layers");
             }
 
-            return LayerDiff.Added;
+            return CompareDiff.Added;
         }
         else
         {
             if (targetLayer is null)
             {
-                return LayerDiff.Removed;
+                return CompareDiff.Removed;
             }
             else
             {
                 if (string.Equals(baseLayer.Digest, targetLayer.Digest, StringComparison.OrdinalIgnoreCase) &&
                     string.Equals(baseLayer.History, targetLayer.History, StringComparison.Ordinal))
                 {
-                    return LayerDiff.Equal;
+                    return CompareDiff.Equal;
                 }
                 else
                 {
-                    return LayerDiff.NotEqual;
+                    return CompareDiff.NotEqual;
                 }
             }
         }
     }
 
-    private static Color GetLayerDiffColor(LayerDiff diff, bool isBaseLayer, bool isColorDisabled) =>
+    private static Color GetLayerDiffColor(CompareDiff diff, bool isBaseLayer, bool isColorDisabled) =>
         isColorDisabled ? Color.Default : diff switch
         {
-            LayerDiff.Removed => Color.Red,
-            LayerDiff.Added => Color.Green,
-            LayerDiff.NotEqual => isBaseLayer ? Color.Red : Color.Green,
-            LayerDiff.Equal => Color.Default,
+            CompareDiff.Removed => Color.Red,
+            CompareDiff.Added => Color.Green,
+            CompareDiff.NotEqual => isBaseLayer ? Color.Red : Color.Green,
+            CompareDiff.Equal => Color.Default,
             _ => throw new NotImplementedException()
         };
 
-    private static Markup GetLayerDataMarkup(string? layerData, LayerDiff diff, bool isBase, bool isColorDisabled,
+    private static Markup GetLayerDataMarkup(string? layerData, CompareDiff diff, bool isBase, bool isColorDisabled,
         bool isInline) =>
         new(
             Markup.Escape($"{GetTextOffset(diff, isInline, isBase)}{layerData ?? string.Empty}"),
             new Style(GetLayerDiffColor(diff, isBaseLayer: isBase, isColorDisabled)));
 
-    private static Markup GetDigestMarkup(LayerInfo? layer, LayerDiff diff, bool isBase, bool isColorDisabled,
+    private static Markup GetDigestMarkup(LayerInfo? layer, CompareDiff diff, bool isBase, bool isColorDisabled,
         bool includeSupplementalData, bool isInline)
     {
         if (layer is null)
@@ -182,13 +195,13 @@ public class CompareLayersCommand : RegistryCommandBase<CompareLayersOptions>
             new Style(GetLayerDiffColor(diff, isBase, isColorDisabled)));
     }
 
-    private static string GetTextOffset(LayerDiff diff, bool isInline, bool isBase) =>
+    private static string GetTextOffset(CompareDiff diff, bool isInline, bool isBase) =>
         !isInline ? string.Empty : diff switch
         {
-            LayerDiff.Added => "+ ",
-            LayerDiff.Equal => "  ",
-            LayerDiff.NotEqual => isBase ? "- " : "+ ",
-            LayerDiff.Removed => "- ",
+            CompareDiff.Added => "+ ",
+            CompareDiff.Equal => "  ",
+            CompareDiff.NotEqual => isBase ? "- " : "+ ",
+            CompareDiff.Removed => "- ",
             _ => throw new NotImplementedException()
         };
 
@@ -274,12 +287,12 @@ public class CompareLayersCommand : RegistryCommandBase<CompareLayersOptions>
 
     private abstract class OutputFormatter
     {
-        public static OutputFormatter Create(CompareLayersOutput outputFormat) =>
+        public static OutputFormatter Create(CompareOutput outputFormat) =>
             outputFormat switch
             {
-                CompareLayersOutput.Inline => new InlineFormatter(),
-                CompareLayersOutput.Json => new JsonFormatter(),
-                CompareLayersOutput.SideBySide => new SideBySideFormatter(),
+                CompareOutput.Inline => new InlineFormatter(),
+                CompareOutput.Json => new JsonFormatter(),
+                CompareOutput.SideBySide => new SideBySideFormatter(),
                 _ => throw new NotImplementedException()
             };
 
@@ -380,10 +393,10 @@ public class CompareLayersCommand : RegistryCommandBase<CompareLayersOptions>
                 return shaCells;
             }
 
-            private static string GetLayerDiffDisplayName(LayerDiff diff) =>
+            private static string GetLayerDiffDisplayName(CompareDiff diff) =>
                 diff switch
                 {
-                    LayerDiff.NotEqual => "Not Equal",
+                    CompareDiff.NotEqual => "Not Equal",
                     _ => diff.ToString(),
                 };
         }
@@ -408,7 +421,7 @@ public class CompareLayersCommand : RegistryCommandBase<CompareLayersOptions>
                             options.IncludeCompressedSize);
                     }
 
-                    if (layerComparison.LayerDiff != LayerDiff.Equal && layerComparison.Target is not null)
+                    if (layerComparison.LayerDiff != CompareDiff.Equal && layerComparison.Target is not null)
                     {
                         AddInlineLayerInfo(
                             rows, layerComparison.Target, layerComparison.LayerDiff, isBase: false, isColorDisabled, options.IncludeHistory,
@@ -425,7 +438,7 @@ public class CompareLayersCommand : RegistryCommandBase<CompareLayersOptions>
                 return new Rows(rows);
             }
 
-            private static void AddInlineLayerInfo(List<IRenderable> rows, LayerInfo layer, LayerDiff diff, bool isBase,
+            private static void AddInlineLayerInfo(List<IRenderable> rows, LayerInfo layer, CompareDiff diff, bool isBase,
                 bool isColorDisabled, bool includeHistory, bool includeCompressedSize)
             {
                 rows.Add(GetDigestMarkup(layer, diff, isBase, isColorDisabled, includeHistory || includeCompressedSize, isInline: true));

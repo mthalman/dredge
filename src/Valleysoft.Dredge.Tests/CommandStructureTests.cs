@@ -81,7 +81,7 @@ public class CommandStructureTests
     {
         CompareLayersOptions options = Bind(new CompareLayersOptions(), "base", "target");
 
-        Assert.Equal(CompareLayersOutput.SideBySide, options.OutputFormat);
+        Assert.Equal(CompareOutput.SideBySide, options.OutputFormat);
         Assert.False(options.IsColorDisabled);
         Assert.False(options.IncludeHistory);
         Assert.False(options.IncludeCompressedSize);

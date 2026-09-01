@@ -4,6 +4,8 @@ namespace Valleysoft.Dredge;
 
 internal partial class AppSettings
 {
+    private static readonly object settingsFileLock = new();
+
     public static readonly string SettingsPath =
         Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "Valleysoft.Dredge", "settings.json");
 
@@ -17,33 +19,39 @@ internal partial class AppSettings
 
     private AppSettings() {}
 
-    public static AppSettings Load()
-    {
-        if (!File.Exists(SettingsPath))
-        {
-            AppSettings settings = new();
-            string settingsStr = JsonConvert.SerializeObject(settings, JsonHelper.Settings);
+    public static AppSettings Load() => Load(SettingsPath);
 
-            string dirName = Path.GetDirectoryName(SettingsPath)!;
-            if (!Directory.Exists(dirName))
+    internal static AppSettings Load(string settingsPath)
+    {
+        lock (settingsFileLock)
+        {
+            if (!File.Exists(settingsPath))
             {
-                Directory.CreateDirectory(dirName);
+                AppSettings settings = new();
+                string settingsStr = JsonConvert.SerializeObject(settings, JsonHelper.Settings);
+
+                string? dirName = Path.GetDirectoryName(settingsPath);
+                if (!string.IsNullOrEmpty(dirName) && !Directory.Exists(dirName))
+                {
+                    Directory.CreateDirectory(dirName);
+                }
+
+                File.WriteAllText(settingsPath, settingsStr);
+                return settings;
             }
 
-            File.WriteAllText(SettingsPath, settingsStr);
-            return settings;
-        }
-        else
-        {
-            string settings = File.ReadAllText(SettingsPath);
-            return JsonConvert.DeserializeObject<AppSettings>(settings)!;
+            string settingsContent = File.ReadAllText(settingsPath);
+            return JsonConvert.DeserializeObject<AppSettings>(settingsContent)!;
         }
     }
 
     public void Save()
     {
-        string settingsStr = JsonConvert.SerializeObject(this, JsonHelper.Settings);
-        File.WriteAllText(SettingsPath, settingsStr);
+        lock (settingsFileLock)
+        {
+            string settingsStr = JsonConvert.SerializeObject(this, JsonHelper.Settings);
+            File.WriteAllText(SettingsPath, settingsStr);
+        }
     }
 }
 

@@ -3,6 +3,7 @@ namespace Valleysoft.Dredge.Tests;
 using Newtonsoft.Json;
 using Spectre.Console;
 using Spectre.Console.Rendering;
+using System.CommandLine;
 using System.Text;
 using Valleysoft.DockerRegistryClient.Models.Images;
 using Valleysoft.DockerRegistryClient.Models.Manifests;
@@ -17,7 +18,7 @@ public class CompareLayersCommandTests
     private static readonly ImageName baseImageName = ImageName.Parse($"{Registry}/base:latest");
     private static readonly ImageName targetImageName = ImageName.Parse($"{Registry}/target:latest");
 
-    public static IEnumerable<TheoryDataRow<string, CommandOptions, ImageSetup, ImageSetup, object>> GetTestData(CompareLayersOutput format)
+    public static IEnumerable<TheoryDataRow<string, CommandOptions, ImageSetup, ImageSetup, object>> GetTestData(CompareOutput format)
     {
         CommandOptions[] optionsSet =
         [
@@ -52,7 +53,7 @@ public class CompareLayersCommandTests
     private static class Scenarios
     {
         // Identical images
-        public static TheoryDataRow<string, CommandOptions, ImageSetup, ImageSetup, object> GetEqualImagesTestData(CompareLayersOutput format, CommandOptions options)
+        public static TheoryDataRow<string, CommandOptions, ImageSetup, ImageSetup, object> GetEqualImagesTestData(CompareOutput format, CommandOptions options)
         {
             ImageSetup baseImageSetup = new(
                 new Image
@@ -86,19 +87,19 @@ public class CompareLayersCommandTests
 
             object expectedResult = format switch
             {
-                CompareLayersOutput.Json => new CompareLayersResult(
+                CompareOutput.Json => new CompareLayersResult(
                     new CompareLayersSummary(areEqual: true, targetIncludesAllBaseLayers: true, lastCommonLayerIndex: 1),
                     [
                         new LayerComparison(
                             new LayerInfo("layer-0", options.IncludeHistory ? "a" : null, options.IncludeCompressedSize ? 1 : null),
                             new LayerInfo("layer-0", options.IncludeHistory ? "a" : null, options.IncludeCompressedSize ? 1 : null),
-                            LayerDiff.Equal),
+                            CompareDiff.Equal),
                         new LayerComparison(
                             new LayerInfo("layer-1", options.IncludeHistory ? "b" : null, options.IncludeCompressedSize ? 1 : null),
                             new LayerInfo("layer-1", options.IncludeHistory ? "b" : null, options.IncludeCompressedSize ? 1 : null),
-                            LayerDiff.Equal)
+                            CompareDiff.Equal)
                     ]),
-                CompareLayersOutput.Inline =>
+                CompareOutput.Inline =>
                     new StringBuilder()
                         .AppendLine("  layer-0")
                         .Append(options.IncludeHistory ? $"  a{NL}" : string.Empty)
@@ -108,13 +109,13 @@ public class CompareLayersCommandTests
                         .Append(options.IncludeHistory ? $"  b{NL}" : string.Empty)
                         .Append(options.IncludeCompressedSize ? $"  Size (compressed): 1 bytes{NL}" : string.Empty)
                         .ToString(),
-                CompareLayersOutput.SideBySide =>
+                CompareOutput.SideBySide =>
                     ToArray(
-                        DigestRow("layer-0", "layer-0", options, LayerDiff.Equal),
+                        DigestRow("layer-0", "layer-0", options, CompareDiff.Equal),
                         HistoryRow("a", "a", options),
                         CompressedSizeRow("Size (compressed): 1 bytes", "Size (compressed): 1 bytes", options),
                         EmptyRow(options),
-                        DigestRow("layer-1", "layer-1", options, LayerDiff.Equal),
+                        DigestRow("layer-1", "layer-1", options, CompareDiff.Equal),
                         HistoryRow("b", "b", options),
                         CompressedSizeRow("Size (compressed): 1 bytes", "Size (compressed): 1 bytes", options)
                     ),
@@ -131,7 +132,7 @@ public class CompareLayersCommandTests
         }
 
         // Same base layer, but next layer differs
-        public static TheoryDataRow<string, CommandOptions, ImageSetup, ImageSetup, object> GetDifferingImagesTestData(CompareLayersOutput format, CommandOptions options)
+        public static TheoryDataRow<string, CommandOptions, ImageSetup, ImageSetup, object> GetDifferingImagesTestData(CompareOutput format, CommandOptions options)
         {
             ImageSetup baseImageSetup = new(
                 new Image
@@ -191,20 +192,20 @@ public class CompareLayersCommandTests
 
             object expectedResult = format switch
             {
-                CompareLayersOutput.Json =>
+                CompareOutput.Json =>
                     new CompareLayersResult(
                         new CompareLayersSummary(areEqual: false, targetIncludesAllBaseLayers: false, lastCommonLayerIndex: 0),
                         [
                             new LayerComparison(
                                 new LayerInfo("layer-0", options.IncludeHistory ? "a" : null, options.IncludeCompressedSize ? 1 : null),
                                 new LayerInfo("layer-0", options.IncludeHistory ? "a" : null, options.IncludeCompressedSize ? 1 : null),
-                                LayerDiff.Equal),
+                                CompareDiff.Equal),
                             new LayerComparison(
                                 new LayerInfo("layer-1", options.IncludeHistory ? "b" : null, options.IncludeCompressedSize ? 1 : null),
                                 new LayerInfo("layer-1a", options.IncludeHistory ? "b" : null, options.IncludeCompressedSize ? 2 : null),
-                                LayerDiff.NotEqual)
+                                CompareDiff.NotEqual)
                         ]),
-                CompareLayersOutput.Inline =>
+                CompareOutput.Inline =>
                     new StringBuilder()
                         .AppendLine("  layer-0")
                         .Append(options.IncludeHistory ? $"  a{NL}" : string.Empty)
@@ -217,13 +218,13 @@ public class CompareLayersCommandTests
                         .Append(options.IncludeHistory ? $"+ b{NL}" : string.Empty)
                         .Append(options.IncludeCompressedSize ? $"+ Size (compressed): 2 bytes{NL}" : string.Empty)
                         .ToString(),
-                CompareLayersOutput.SideBySide =>
+                CompareOutput.SideBySide =>
                     ToArray(
-                        DigestRow("layer-0", "layer-0", options, LayerDiff.Equal),
+                        DigestRow("layer-0", "layer-0", options, CompareDiff.Equal),
                         HistoryRow("a", "a", options),
                         CompressedSizeRow("Size (compressed): 1 bytes", "Size (compressed): 1 bytes", options),
                         EmptyRow(options),
-                        DigestRow("layer-1", "layer-1a", options, LayerDiff.NotEqual),
+                        DigestRow("layer-1", "layer-1a", options, CompareDiff.NotEqual),
                         HistoryRow("b", "b", options),
                         CompressedSizeRow("Size (compressed): 1 bytes", "Size (compressed): 2 bytes", options)
                     ),
@@ -240,7 +241,7 @@ public class CompareLayersCommandTests
         }
 
         // Target removes a layer from base
-        public static TheoryDataRow<string, CommandOptions, ImageSetup, ImageSetup, object> GetRemovedLayerFromBaseTestData(CompareLayersOutput format, CommandOptions options)
+        public static TheoryDataRow<string, CommandOptions, ImageSetup, ImageSetup, object> GetRemovedLayerFromBaseTestData(CompareOutput format, CommandOptions options)
         {
             ImageSetup baseImageSetup = new(
                 new Image
@@ -291,20 +292,20 @@ public class CompareLayersCommandTests
 
             object expectedResult = format switch
             {
-                CompareLayersOutput.Json =>
+                CompareOutput.Json =>
                     new CompareLayersResult(
                         new CompareLayersSummary(areEqual: false, targetIncludesAllBaseLayers: false, lastCommonLayerIndex: 0),
                         [
                             new LayerComparison(
                                 new LayerInfo("layer-0", options.IncludeHistory ? "a" : null, options.IncludeCompressedSize ? 1000 : null),
                                 new LayerInfo("layer-0", options.IncludeHistory ? "a" : null, options.IncludeCompressedSize ? 1000 : null),
-                                LayerDiff.Equal),
+                                CompareDiff.Equal),
                             new LayerComparison(
                                 new LayerInfo("layer-1", options.IncludeHistory ? "b" : null, options.IncludeCompressedSize ? 2000 : null),
                                 null,
-                                LayerDiff.Removed)
+                                CompareDiff.Removed)
                         ]),
-                CompareLayersOutput.Inline =>
+                CompareOutput.Inline =>
                     new StringBuilder()
                         .AppendLine("  layer-0")
                         .Append(options.IncludeHistory ? $"  a{NL}" : string.Empty)
@@ -314,13 +315,13 @@ public class CompareLayersCommandTests
                         .Append(options.IncludeHistory ? $"- b{NL}" : string.Empty)
                         .Append(options.IncludeCompressedSize ? $"- Size (compressed): 2 KB{NL}" : string.Empty)
                         .ToString(),
-                CompareLayersOutput.SideBySide =>
+                CompareOutput.SideBySide =>
                     ToArray(
-                        DigestRow("layer-0", "layer-0", options, LayerDiff.Equal),
+                        DigestRow("layer-0", "layer-0", options, CompareDiff.Equal),
                         HistoryRow("a", "a", options),
                         CompressedSizeRow("Size (compressed): 1 KB", "Size (compressed): 1 KB", options),
                         EmptyRow(options),
-                        DigestRow("layer-1", string.Empty, options, LayerDiff.Removed),
+                        DigestRow("layer-1", string.Empty, options, CompareDiff.Removed),
                         HistoryRow("b", string.Empty, options),
                         CompressedSizeRow("Size (compressed): 2 KB", string.Empty, options)
                     ),
@@ -337,7 +338,7 @@ public class CompareLayersCommandTests
         }
 
         // Target adds a layer
-        public static TheoryDataRow<string, CommandOptions, ImageSetup, ImageSetup, object> GetAddedLayerTestData(CompareLayersOutput format, CommandOptions options)
+        public static TheoryDataRow<string, CommandOptions, ImageSetup, ImageSetup, object> GetAddedLayerTestData(CompareOutput format, CommandOptions options)
         {
             ImageSetup baseImageSetup = new(
                 new Image
@@ -388,20 +389,20 @@ public class CompareLayersCommandTests
 
             object expectedResult = format switch
             {
-                CompareLayersOutput.Json =>
+                CompareOutput.Json =>
                     new CompareLayersResult(
                         new CompareLayersSummary(areEqual: false, targetIncludesAllBaseLayers: true, lastCommonLayerIndex: 0),
                         [
                             new LayerComparison(
                                 new LayerInfo("layer-0", options.IncludeHistory ? "a" : null, options.IncludeCompressedSize ? 1000000 : null),
                                 new LayerInfo("layer-0", options.IncludeHistory ? "a" : null, options.IncludeCompressedSize ? 1000000 : null),
-                                LayerDiff.Equal),
+                                CompareDiff.Equal),
                             new LayerComparison(
                                 null,
                                 new LayerInfo("layer-1", options.IncludeHistory ? "b" : null, options.IncludeCompressedSize ? 2000000 : null),
-                                LayerDiff.Added)
+                                CompareDiff.Added)
                         ]),
-                CompareLayersOutput.Inline =>
+                CompareOutput.Inline =>
                     new StringBuilder()
                         .AppendLine("  layer-0")
                         .Append(options.IncludeHistory ? $"  a{NL}" : string.Empty)
@@ -411,13 +412,13 @@ public class CompareLayersCommandTests
                         .Append(options.IncludeHistory ? $"+ b{NL}" : string.Empty)
                         .Append(options.IncludeCompressedSize ? $"+ Size (compressed): 1.9 MB{NL}" : string.Empty)
                         .ToString(),
-                CompareLayersOutput.SideBySide =>
+                CompareOutput.SideBySide =>
                     ToArray(
-                        DigestRow("layer-0", "layer-0", options, LayerDiff.Equal),
+                        DigestRow("layer-0", "layer-0", options, CompareDiff.Equal),
                         HistoryRow("a", "a", options),
                         CompressedSizeRow("Size (compressed): 976.6 KB", "Size (compressed): 976.6 KB", options),
                         EmptyRow(options),
-                        DigestRow(string.Empty, "layer-1", options, LayerDiff.Added),
+                        DigestRow(string.Empty, "layer-1", options, CompareDiff.Added),
                         HistoryRow(string.Empty, "b", options),
                         CompressedSizeRow(string.Empty, "Size (compressed): 1.9 MB", options)
                     ),
@@ -434,7 +435,7 @@ public class CompareLayersCommandTests
         }
 
         // The images only differ by history
-        public static TheoryDataRow<string, CommandOptions, ImageSetup, ImageSetup, object> GetDifferByHistoryOnlyTestData(CompareLayersOutput format, CommandOptions options)
+        public static TheoryDataRow<string, CommandOptions, ImageSetup, ImageSetup, object> GetDifferByHistoryOnlyTestData(CompareOutput format, CommandOptions options)
         {
             ImageSetup baseImageSetup = new(
                 new Image
@@ -494,7 +495,7 @@ public class CompareLayersCommandTests
 
             object expectedResult = format switch
             {
-                CompareLayersOutput.Json =>
+                CompareOutput.Json =>
                     new CompareLayersResult(
                         new CompareLayersSummary(
                             areEqual: !options.IncludeHistory,
@@ -504,13 +505,13 @@ public class CompareLayersCommandTests
                             new LayerComparison(
                                 new LayerInfo("layer-0", options.IncludeHistory ? "a" : null, options.IncludeCompressedSize ? 1 : null),
                                 new LayerInfo("layer-0", options.IncludeHistory ? "a" : null, options.IncludeCompressedSize ? 1 : null),
-                                LayerDiff.Equal),
+                                CompareDiff.Equal),
                             new LayerComparison(
                                 new LayerInfo("layer-1", options.IncludeHistory ? "b" : null, options.IncludeCompressedSize ? 2 : null),
                                 new LayerInfo("layer-1", options.IncludeHistory ? "b1" : null, options.IncludeCompressedSize ? 2 : null),
-                                options.IncludeHistory ? LayerDiff.NotEqual : LayerDiff.Equal)
+                                options.IncludeHistory ? CompareDiff.NotEqual : CompareDiff.Equal)
                         ]),
-                CompareLayersOutput.Inline =>
+                CompareOutput.Inline =>
                     new StringBuilder()
                         .AppendLine("  layer-0")
                         .Append(options.IncludeHistory ? $"  a{NL}" : string.Empty)
@@ -527,13 +528,13 @@ public class CompareLayersCommandTests
                         .Append(options.IncludeHistory && options.IncludeCompressedSize ? "+ " : "  ")
                         .Append(options.IncludeHistory && options.IncludeCompressedSize ? $"Size (compressed): 2 bytes{NL}" : string.Empty)
                         .ToString(),
-                CompareLayersOutput.SideBySide =>
+                CompareOutput.SideBySide =>
                     ToArray(
-                        DigestRow("layer-0", "layer-0", options, LayerDiff.Equal),
+                        DigestRow("layer-0", "layer-0", options, CompareDiff.Equal),
                         HistoryRow("a", "a", options),
                         CompressedSizeRow("Size (compressed): 1 bytes", "Size (compressed): 1 bytes", options),
                         EmptyRow(options),
-                        DigestRow("layer-1", "layer-1", options, options.IncludeHistory ? LayerDiff.NotEqual : LayerDiff.Equal),
+                        DigestRow("layer-1", "layer-1", options, options.IncludeHistory ? CompareDiff.NotEqual : CompareDiff.Equal),
                         HistoryRow("b", "b1", options),
                         CompressedSizeRow("Size (compressed): 2 bytes", "Size (compressed): 2 bytes", options)
                     ),
@@ -550,7 +551,7 @@ public class CompareLayersCommandTests
         }
 
         // The images contain empty layers that differ in their history
-        public static TheoryDataRow<string, CommandOptions, ImageSetup, ImageSetup, object> GetWithHistoryDifferingByEmptyLayersTestData(CompareLayersOutput format, CommandOptions options)
+        public static TheoryDataRow<string, CommandOptions, ImageSetup, ImageSetup, object> GetWithHistoryDifferingByEmptyLayersTestData(CompareOutput format, CommandOptions options)
         {
             ImageSetup baseImageSetup = new(
                 new Image
@@ -623,11 +624,11 @@ public class CompareLayersCommandTests
                 new LayerComparison(
                     new LayerInfo("layer-0", options.IncludeHistory ? "a" : null, options.IncludeCompressedSize ? 1 : null),
                     new LayerInfo("layer-0", options.IncludeHistory ? "a" : null, options.IncludeCompressedSize ? 1 : null),
-                    LayerDiff.Equal),
+                    CompareDiff.Equal),
                 new LayerComparison(
                     new LayerInfo("layer-1", options.IncludeHistory ? "c" : null, options.IncludeCompressedSize ? 2 : null),
                     new LayerInfo("layer-1", options.IncludeHistory ? "c" : null, options.IncludeCompressedSize ? 2 : null),
-                    LayerDiff.Equal)
+                    CompareDiff.Equal)
             ];
 
             if (options.IncludeHistory)
@@ -636,19 +637,19 @@ public class CompareLayersCommandTests
                     new LayerComparison(
                         new LayerInfo(null, "b", options.IncludeCompressedSize ? 0 : null),
                         new LayerInfo(null, "b1", options.IncludeCompressedSize ? 0 : null),
-                        LayerDiff.NotEqual));
+                        CompareDiff.NotEqual));
             }
 
             object expectedResult = format switch
             {
-                CompareLayersOutput.Json =>
+                CompareOutput.Json =>
                     new CompareLayersResult(
                         new CompareLayersSummary(
                             areEqual: !options.IncludeHistory,
                             targetIncludesAllBaseLayers: !options.IncludeHistory,
                             lastCommonLayerIndex: options.IncludeHistory ? 0 : 1),
                         comparisons),
-                CompareLayersOutput.Inline =>
+                CompareOutput.Inline =>
                     new StringBuilder()
                         .AppendLine("  layer-0")
                         .Append(options.IncludeHistory ? $"  a{NL}" : string.Empty)
@@ -665,21 +666,21 @@ public class CompareLayersCommandTests
                         .Append(options.IncludeHistory ? $"  c{NL}" : string.Empty)
                         .Append(options.IncludeCompressedSize ? $"  Size (compressed): 2 bytes{NL}" : string.Empty)
                         .ToString(),
-                CompareLayersOutput.SideBySide =>
+                CompareOutput.SideBySide =>
                     ToArray(
-                        DigestRow("layer-0", "layer-0", options, LayerDiff.Equal),
+                        DigestRow("layer-0", "layer-0", options, CompareDiff.Equal),
                         HistoryRow("a", "a", options),
                         CompressedSizeRow("Size (compressed): 1 bytes", "Size (compressed): 1 bytes", options),
                         EmptyRow(options),
                         options.IncludeHistory ?
-                            DigestRow("<empty layer>", "<empty layer>", options, LayerDiff.NotEqual) :
+                            DigestRow("<empty layer>", "<empty layer>", options, CompareDiff.NotEqual) :
                             null,
                         HistoryRow("b", "b1", options),
                         options.IncludeHistory ?
                             CompressedSizeRow("Size (compressed): 0 bytes", "Size (compressed): 0 bytes", options) :
                             null,
                         options.IncludeHistory ? EmptyRow(options) : null,
-                        DigestRow("layer-1", "layer-1", options, LayerDiff.Equal),
+                        DigestRow("layer-1", "layer-1", options, CompareDiff.Equal),
                         HistoryRow("c", "c", options),
                         CompressedSizeRow("Size (compressed): 2 bytes", "Size (compressed): 2 bytes", options)
                     ),
@@ -723,32 +724,88 @@ public class CompareLayersCommandTests
     }
 
     [Theory]
-    [MemberData(nameof(GetTestData), CompareLayersOutput.Json)]
+    [MemberData(nameof(GetTestData), CompareOutput.Json)]
     public async Task Json(
         string scenario, CommandOptions cmdOptions, ImageSetup baseImageSetup, ImageSetup targetImageSetup, object expectedResult)
     {
-        Text text = (Text)await ExecuteTestAsync(scenario, CompareLayersOutput.Json, cmdOptions, baseImageSetup, targetImageSetup);
+        Text text = (Text)await ExecuteTestAsync(scenario, CompareOutput.Json, cmdOptions, baseImageSetup, targetImageSetup);
 
         CompareLayersResult actualResult = GetJson<CompareLayersResult>(text.GetSegments(AnsiConsole.Console));
         CompareJson(expectedResult, actualResult);
     }
 
+    [Fact]
+    public async Task JsonCommandInvocationDoesNotWrapLongValues()
+    {
+        string longHistory = new('x', 200);
+        ImageSetup setup = new(
+            new Image
+            {
+                History =
+                [
+                    new LayerHistory
+                    {
+                        CreatedBy = longHistory
+                    }
+                ]
+            },
+            [
+                new ManifestLayer
+                {
+                    Digest = "layer-0",
+                    Size = 1
+                }
+            ]);
+        Mock<IDockerRegistryClient> registryClient = new();
+        SetupDockerRegistryClient(registryClient, baseImageName, setup.Image, setup.Layers);
+        SetupDockerRegistryClient(registryClient, targetImageName, setup.Image, setup.Layers);
+        Mock<IDockerRegistryClientFactory> clientFactory = new();
+        clientFactory
+            .Setup(factory => factory.GetClientAsync(Registry))
+            .ReturnsAsync(registryClient.Object);
+        StringWriter output = new();
+        IAnsiConsole console = AnsiConsole.Create(new AnsiConsoleSettings
+        {
+            Out = new AnsiConsoleOutput(output),
+            Enrichment = new ProfileEnrichment
+            {
+                UseDefaultEnrichers = false
+            }
+        });
+        CompareLayersCommand command = new(clientFactory.Object, console);
+
+        int exitCode = await command
+            .Parse([
+                baseImageName.ToString(),
+                targetImageName.ToString(),
+                "--output",
+                "Json",
+                "--history"])
+            .InvokeAsync(new InvocationConfiguration(), TestContext.Current.CancellationToken);
+
+        Assert.Equal(0, exitCode);
+        CompareLayersResult? result =
+            JsonConvert.DeserializeObject<CompareLayersResult>(output.ToString());
+        Assert.NotNull(result);
+        Assert.Equal(longHistory, result.LayerComparisons.First().Base!.History);
+    }
+
     [Theory]
-    [MemberData(nameof(GetTestData), CompareLayersOutput.Inline)]
+    [MemberData(nameof(GetTestData), CompareOutput.Inline)]
     public async Task Inline(
         string scenario, CommandOptions cmdOptions, ImageSetup baseImageSetup, ImageSetup targetImageSetup, object expectedResult)
     {
-        Rows rows = (Rows)await ExecuteTestAsync(scenario, CompareLayersOutput.Inline, cmdOptions, baseImageSetup, targetImageSetup);
+        Rows rows = (Rows)await ExecuteTestAsync(scenario, CompareOutput.Inline, cmdOptions, baseImageSetup, targetImageSetup);
         string actualResult = TestHelper.GetString(rows.GetSegments(AnsiConsole.Console));
         Assert.Equal(TestHelper.Normalize((string)expectedResult), TestHelper.Normalize(actualResult));
     }
 
     [Theory]
-    [MemberData(nameof(GetTestData), CompareLayersOutput.SideBySide)]
+    [MemberData(nameof(GetTestData), CompareOutput.SideBySide)]
     public async Task SideBySide(
         string scenario, CommandOptions cmdOptions, ImageSetup baseImageSetup, ImageSetup targetImageSetup, object expectedRows)
     {
-        Table table = (Table)await ExecuteTestAsync(scenario, CompareLayersOutput.SideBySide, cmdOptions, baseImageSetup, targetImageSetup);
+        Table table = (Table)await ExecuteTestAsync(scenario, CompareOutput.SideBySide, cmdOptions, baseImageSetup, targetImageSetup);
 
         Assert.Equal(cmdOptions.IsColorDisabled ? 3 : 2, table.Columns.Count);
         Assert.Equal(baseImageName.ToString(), TestHelper.GetString(table.Columns[0].Header.GetSegments(AnsiConsole.Console)));
@@ -774,13 +831,13 @@ public class CompareLayersCommandTests
     }
 
     [Theory]
-    [MemberData(nameof(GetTestData), CompareLayersOutput.SideBySide)]
+    [MemberData(nameof(GetTestData), CompareOutput.SideBySide)]
     public async Task SideBySideWithoutAnsi(
         string scenario, CommandOptions cmdOptions, ImageSetup baseImageSetup, ImageSetup targetImageSetup, object expectedRows)
     {
         Table table = (Table)await ExecuteTestAsync(
             scenario,
-            CompareLayersOutput.SideBySide,
+            CompareOutput.SideBySide,
             cmdOptions,
             baseImageSetup,
             targetImageSetup,
@@ -792,13 +849,13 @@ public class CompareLayersCommandTests
     }
 
     [Theory]
-    [MemberData(nameof(GetTestData), CompareLayersOutput.SideBySide)]
+    [MemberData(nameof(GetTestData), CompareOutput.SideBySide)]
     public async Task SideBySideWithoutColorSupport(
         string scenario, CommandOptions cmdOptions, ImageSetup baseImageSetup, ImageSetup targetImageSetup, object expectedRows)
     {
         Table table = (Table)await ExecuteTestAsync(
             scenario,
-            CompareLayersOutput.SideBySide,
+            CompareOutput.SideBySide,
             cmdOptions,
             baseImageSetup,
             targetImageSetup,
@@ -811,7 +868,7 @@ public class CompareLayersCommandTests
 
     private static Task<IRenderable> ExecuteTestAsync(
         string scenario,
-        CompareLayersOutput format,
+        CompareOutput format,
         CommandOptions cmdOptions,
         ImageSetup baseImageSetup,
         ImageSetup targetImageSetup,
@@ -898,7 +955,7 @@ public class CompareLayersCommandTests
             ToArray(string.Empty, options.IsColorDisabled ? string.Empty : null, string.Empty) :
             null;
 
-    private static string[] DigestRow(string baseDigest, string targetDigest, CommandOptions options, LayerDiff diff) =>
+    private static string[] DigestRow(string baseDigest, string targetDigest, CommandOptions options, CompareDiff diff) =>
         ToArray(baseDigest, options.IsColorDisabled ? GetDisplayName(diff) : null, targetDigest);
 
     private static string[]? HistoryRow(string baseHistory, string targetHistory, CommandOptions options) =>
@@ -907,13 +964,13 @@ public class CompareLayersCommandTests
     private static string[]? CompressedSizeRow(string baseSize, string targetSize, CommandOptions options) =>
         options.IncludeCompressedSize ? ToArray(baseSize, options.IsColorDisabled ? string.Empty : null, targetSize) : null;
 
-    private static string GetDisplayName(LayerDiff diff) =>
+    private static string GetDisplayName(CompareDiff diff) =>
         diff switch
         {
-            LayerDiff.Equal => "Equal",
-            LayerDiff.NotEqual => "Not Equal",
-            LayerDiff.Added => "Added",
-            LayerDiff.Removed => "Removed",
+            CompareDiff.Equal => "Equal",
+            CompareDiff.NotEqual => "Not Equal",
+            CompareDiff.Added => "Added",
+            CompareDiff.Removed => "Removed",
             _ => throw new NotSupportedException()
         };
 }

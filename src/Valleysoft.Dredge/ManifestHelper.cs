@@ -18,6 +18,39 @@ internal static class ManifestHelper
     {
         ManifestInfo manifestInfo = await client.Manifests.GetAsync(
             imageName.Repo, (imageName.Tag ?? imageName.Digest)!, cancellationToken);
+        return await GetResolvedManifestAsync(
+            client,
+            imageName,
+            options,
+            manifestInfo,
+            () => (settings ??= AppSettings.Load()).Platform,
+            cancellationToken);
+    }
+
+    public static async Task<ResolvedManifest> GetResolvedManifestAsync(
+        IDockerRegistryClient client,
+        ImageName imageName,
+        PlatformOptionsBase options,
+        ManifestInfo manifestInfo,
+        CancellationToken cancellationToken)
+    {
+        return await GetResolvedManifestAsync(
+            client,
+            imageName,
+            options,
+            manifestInfo,
+            () => AppSettings.Load().Platform,
+            cancellationToken);
+    }
+
+    internal static async Task<ResolvedManifest> GetResolvedManifestAsync(
+        IDockerRegistryClient client,
+        ImageName imageName,
+        PlatformOptionsBase options,
+        ManifestInfo manifestInfo,
+        Func<PlatformSettings> platformSettingsProvider,
+        CancellationToken cancellationToken)
+    {
         if (manifestInfo.Manifest is IManifestList manifestList)
         {
             string? os = options.Os;
@@ -27,10 +60,10 @@ internal static class ManifestHelper
                 string.IsNullOrEmpty(osVersion) ||
                 string.IsNullOrEmpty(architecture))
             {
-                settings ??= AppSettings.Load();
-                os = GetPlatformValue(os, settings.Platform.Os);
-                osVersion = GetPlatformValue(osVersion, settings.Platform.OsVersion);
-                architecture = GetPlatformValue(architecture, settings.Platform.Architecture);
+                PlatformSettings settings = platformSettingsProvider();
+                os = GetPlatformValue(os, settings.Os);
+                osVersion = GetPlatformValue(osVersion, settings.OsVersion);
+                architecture = GetPlatformValue(architecture, settings.Architecture);
             }
 
             IEnumerable<IManifestReference> manifestRefs = manifestList.Manifests

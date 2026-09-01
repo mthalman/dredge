@@ -9,5 +9,6 @@ public class CompareCommand : Command
     {
         Subcommands.Add(new CompareLayersCommand(dockerRegistryClientFactory));
         Subcommands.Add(new CompareFilesCommand(dockerRegistryClientFactory));
+        Subcommands.Add(new CompareMetadataCommand(dockerRegistryClientFactory));
     }
 }

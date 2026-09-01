@@ -4,19 +4,19 @@ namespace Valleysoft.Dredge.Commands.Image;
 
 public class CompareLayersOptions : CompareOptionsBase
 {
-    private readonly Option<CompareLayersOutput> outputOption;
+    private readonly Option<CompareOutput> outputOption;
     private readonly Option<bool> noColorOption;
     private readonly Option<bool> historyOption;
     private readonly Option<bool> compressedSizeOption;
 
-    public CompareLayersOutput OutputFormat { get; set; }
+    public CompareOutput OutputFormat { get; set; }
     public bool IsColorDisabled { get; set; }
     public bool IncludeHistory { get; set; }
     public bool IncludeCompressedSize { get; set; }
 
     public CompareLayersOptions()
     {
-        outputOption = Add(new Option<CompareLayersOutput>("--output") { Description = "Output format", DefaultValueFactory = _ => CompareLayersOutput.SideBySide });
+        outputOption = Add(new Option<CompareOutput>("--output") { Description = "Output format", DefaultValueFactory = _ => CompareOutput.SideBySide });
         noColorOption = Add(new Option<bool>("--no-color") { Description = "Disables dependency on color in comparison results" });
         historyOption = Add(new Option<bool>("--history") { Description = "Include layer history as part of the comparison" });
         compressedSizeOption = Add(new Option<bool>("--compressed-size") { Description = "Show the compressed size of the layer" });
