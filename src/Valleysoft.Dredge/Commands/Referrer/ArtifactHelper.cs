@@ -122,12 +122,12 @@ internal static class ArtifactHelper
             throw new InvalidDataException($"Payload digest '{digest}' is not valid.");
         }
 
-        string algorithm = digest[..separatorIndex];
-        byte[]? hash = algorithm.ToLowerInvariant() switch
+        byte[] hash = algorithm.ToLowerInvariant() switch
         {
             "sha256" => SHA256.HashData(content),
             "sha512" => SHA512.HashData(content),
-            _ => null
+            _ => throw new InvalidDataException(
+                $"Payload digest algorithm '{algorithm}' is not supported for embedded payload verification.")
         };
 
         if (hash is not null &&
