@@ -1,5 +1,6 @@
 namespace Valleysoft.Dredge.Tests;
 
+using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
 using Valleysoft.DockerRegistryClient.Models.Manifests;
@@ -547,7 +548,10 @@ public class ReferrerArtifactCommandTests
     public async Task GetCommand_ReadsEmbeddedPayloadData()
     {
         byte[] content = Encoding.UTF8.GetBytes("embedded");
-        OciDescriptor payload = CreatePayload("sha256:embedded", "text/plain", content.Length);
+        OciDescriptor payload = CreatePayload(
+            $"sha256:{Convert.ToHexStringLower(SHA256.HashData(content))}",
+            "text/plain",
+            content.Length);
         payload.Data = Convert.ToBase64String(content);
         Mock<IDockerRegistryClient> client = CreateClient(CreateArtifact(payload));
         using MemoryStream output = new();
@@ -565,6 +569,37 @@ public class ReferrerArtifactCommandTests
                 It.IsAny<string>(),
                 It.IsAny<CancellationToken>()),
             Times.Never);
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task GetCommand_RejectsEmbeddedPayloadDescriptorMismatch(bool mismatchDigest)
+    {
+        byte[] content = Encoding.UTF8.GetBytes("embedded");
+        string digest = mismatchDigest
+            ? $"sha256:{new string('0', 64)}"
+            : $"sha256:{Convert.ToHexStringLower(SHA256.HashData(content))}";
+        OciDescriptor payload = CreatePayload(
+            digest,
+            "text/plain",
+            mismatchDigest ? content.Length : content.Length + 1);
+        payload.Data = Convert.ToBase64String(content);
+        Mock<IDockerRegistryClient> client = CreateClient(CreateArtifact(payload));
+        using MemoryStream output = new();
+        using StringWriter error = new();
+        TestGetCommand command = new(CreateFactory(client.Object), output, error)
+        {
+            Options = CreateGetOptions()
+        };
+
+        CommandExitException exception = await Assert.ThrowsAsync<CommandExitException>(command.RunAsync);
+
+        Assert.Equal(1, exception.ExitCode);
+        Assert.Contains(
+            mismatchDigest ? "does not match payload digest" : "descriptor declares",
+            error.ToString());
+        Assert.Empty(output.ToArray());
     }
 
     [Fact]

@@ -1,3 +1,4 @@
+using System.Security.Cryptography;
 using Valleysoft.DockerRegistryClient.Models.Manifests;
 using Valleysoft.DockerRegistryClient.Models.Manifests.Oci;
 
@@ -87,10 +88,10 @@ internal static class ArtifactHelper
     {
         if (payload.Data is not null)
         {
+            byte[] content;
             try
             {
-                return Task.FromResult<Stream>(
-                    new MemoryStream(Convert.FromBase64String(payload.Data), writable: false));
+                content = Convert.FromBase64String(payload.Data);
             }
             catch (FormatException ex)
             {
@@ -98,9 +99,45 @@ internal static class ArtifactHelper
                     $"Embedded data for payload '{payload.Digest}' is not valid base64.",
                     ex);
             }
+
+            if (content.LongLength != payload.Size)
+            {
+                throw new InvalidDataException(
+                    $"Embedded data for payload '{payload.Digest}' has size {content.LongLength}, " +
+                    $"but its descriptor declares {payload.Size}.");
+            }
+
+            VerifyDigest(content, payload.Digest);
+            return Task.FromResult<Stream>(new MemoryStream(content, writable: false));
         }
 
         return client.Blobs.GetAsync(repository, payload.Digest, cancellationToken);
+    }
+
+    private static void VerifyDigest(byte[] content, string digest)
+    {
+        int separatorIndex = digest.IndexOf(':');
+        if (separatorIndex < 1 || separatorIndex == digest.Length - 1)
+        {
+            throw new InvalidDataException($"Payload digest '{digest}' is not valid.");
+        }
+
+        string algorithm = digest[..separatorIndex];
+        byte[]? hash = algorithm.ToLowerInvariant() switch
+        {
+            "sha256" => SHA256.HashData(content),
+            "sha512" => SHA512.HashData(content),
+            _ => null
+        };
+
+        if (hash is not null &&
+            !Convert.ToHexString(hash).Equals(
+                digest[(separatorIndex + 1)..],
+                StringComparison.OrdinalIgnoreCase))
+        {
+            throw new InvalidDataException(
+                $"Embedded data does not match payload digest '{digest}'.");
+        }
     }
 }
 
