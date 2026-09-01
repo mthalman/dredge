@@ -36,7 +36,7 @@ public class CompareMetadataCommand : RegistryCommandBase<CompareMetadataOptions
 
     protected override Task ExecuteAsync(CancellationToken cancellationToken)
     {
-        return CommandHelper.ExecuteCommandAsync(
+        return ExecuteCommandAsync(
             registry: null,
             cancellationToken,
             async ct =>

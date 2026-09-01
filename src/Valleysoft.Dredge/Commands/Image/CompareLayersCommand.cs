@@ -25,7 +25,7 @@ public class CompareLayersCommand : RegistryCommandBase<CompareLayersOptions>
 
     protected override Task ExecuteAsync(CancellationToken cancellationToken)
     {
-        return CommandHelper.ExecuteCommandAsync(registry: null, cancellationToken, async ct =>
+        return ExecuteCommandAsync(registry: null, cancellationToken, async ct =>
         {
             CompareLayersResult result = await GetCompareLayersResult(ct);
             if (Options.OutputFormat == CompareOutput.Json)

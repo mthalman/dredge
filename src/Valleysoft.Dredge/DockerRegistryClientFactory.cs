@@ -6,6 +6,18 @@ namespace Valleysoft.Dredge;
 
 internal class DockerRegistryClientFactory : IDockerRegistryClientFactory
 {
+    private readonly IEnvironmentVariableProvider environmentVariableProvider;
+
+    public DockerRegistryClientFactory()
+        : this(new EnvironmentVariableProvider())
+    {
+    }
+
+    internal DockerRegistryClientFactory(IEnvironmentVariableProvider environmentVariableProvider)
+    {
+        this.environmentVariableProvider = environmentVariableProvider;
+    }
+
     public async Task<IDockerRegistryClient> GetClientAsync(string? registry)
     {
         IRegistryClientCredentials? clientCreds;
@@ -14,12 +26,12 @@ internal class DockerRegistryClientFactory : IDockerRegistryClientFactory
         string? username;
         string? password;
 
-        if ((accessToken = Environment.GetEnvironmentVariable("DREDGE_TOKEN")) is not null)
+        if ((accessToken = environmentVariableProvider.GetVariable("DREDGE_TOKEN")) is not null)
         {
             clientCreds = new TokenCredentials(accessToken);
         }
-        else if ((username = Environment.GetEnvironmentVariable("DREDGE_USERNAME")) is not null &&
-            (password = Environment.GetEnvironmentVariable("DREDGE_PASSWORD")) is not null)
+        else if ((username = environmentVariableProvider.GetVariable("DREDGE_USERNAME")) is not null &&
+            (password = environmentVariableProvider.GetVariable("DREDGE_PASSWORD")) is not null)
         {
             clientCreds = new BasicAuthenticationCredentials(username, password);
         }

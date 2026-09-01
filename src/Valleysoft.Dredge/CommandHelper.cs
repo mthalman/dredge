@@ -9,7 +9,8 @@ internal static class CommandHelper
         string? registry,
         CancellationToken cancellationToken,
         Func<CancellationToken, Task> execute,
-        TextWriter? errorWriter = null)
+        TextWriter? errorWriter = null,
+        Action<int>? exit = null)
     {
         try
         {
@@ -22,7 +23,7 @@ internal static class CommandHelper
         catch (Exception e)
         {
             WriteError(e, registry, errorWriter);
-            Environment.Exit(1);
+            (exit ?? Environment.Exit)(1);
         }
     }
 

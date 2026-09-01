@@ -13,11 +13,18 @@ internal static class ManifestHelper
         IDockerRegistryClient client,
         ImageName imageName,
         PlatformOptionsBase options,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken = default,
+        AppSettings? settings = null)
     {
         ManifestInfo manifestInfo = await client.Manifests.GetAsync(
             imageName.Repo, (imageName.Tag ?? imageName.Digest)!, cancellationToken);
-        return await GetResolvedManifestAsync(client, imageName, options, manifestInfo, cancellationToken);
+        return await GetResolvedManifestAsync(
+            client,
+            imageName,
+            options,
+            manifestInfo,
+            () => (settings ??= AppSettings.Load()).Platform,
+            cancellationToken);
     }
 
     public static async Task<ResolvedManifest> GetResolvedManifestAsync(
@@ -46,10 +53,18 @@ internal static class ManifestHelper
     {
         if (manifestInfo.Manifest is IManifestList manifestList)
         {
-            PlatformSettings settings = platformSettingsProvider();
-            string? os = GetPlatformValue(options.Os, settings.Os);
-            string? osVersion = GetPlatformValue(options.OsVersion, settings.OsVersion);
-            string? architecture = GetPlatformValue(options.Architecture, settings.Architecture);
+            string? os = options.Os;
+            string? osVersion = options.OsVersion;
+            string? architecture = options.Architecture;
+            if (string.IsNullOrEmpty(os) ||
+                string.IsNullOrEmpty(osVersion) ||
+                string.IsNullOrEmpty(architecture))
+            {
+                PlatformSettings settings = platformSettingsProvider();
+                os = GetPlatformValue(os, settings.Os);
+                osVersion = GetPlatformValue(osVersion, settings.OsVersion);
+                architecture = GetPlatformValue(architecture, settings.Architecture);
+            }
 
             IEnumerable<IManifestReference> manifestRefs = manifestList.Manifests
                 .Where(manifest =>
@@ -84,6 +99,13 @@ internal static class ManifestHelper
 
         return new ResolvedManifest(manifestInfo, manifest);
     }
+
+    public static Task<ResolvedManifest> GetResolvedManifestAsync(
+        IDockerRegistryClient client,
+        ImageName imageName,
+        PlatformOptionsBase options,
+        AppSettings settings) =>
+        GetResolvedManifestAsync(client, imageName, options, cancellationToken: default, settings);
 
     private static string? GetPlatformValue(string? options, string settings)
     {
