@@ -30,11 +30,11 @@ internal partial class AppSettings
                 AppSettings settings = new();
                 string settingsStr = JsonConvert.SerializeObject(settings, JsonHelper.Settings);
 
-                string dirName = Path.GetDirectoryName(settingsPath)!;
-                if (!Directory.Exists(dirName))
-                {
-                    Directory.CreateDirectory(dirName);
-                }
+string? dirName = Path.GetDirectoryName(settingsPath);
+if (!string.IsNullOrEmpty(dirName) && !Directory.Exists(dirName))
+{
+    Directory.CreateDirectory(dirName);
+}
 
                 File.WriteAllText(settingsPath, settingsStr);
                 return settings;
