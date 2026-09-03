@@ -113,10 +113,13 @@ internal sealed class ImageFileSystem
         ImageFileSystemEntry? selected = null;
         if (path.Length > 0)
         {
-            entries.TryGetValue(path, out selected);
-            if (selected is null && showDeleted)
+            try
             {
-                deletedEntries.TryGetValue(path, out selected);
+                selected = ResolvePath(path, followFinalSymbolicLink: false);
+            }
+            catch (FileNotFoundException) when (
+                showDeleted && deletedEntries.TryGetValue(path, out selected))
+            {
             }
             if (selected is null)
             {
@@ -126,7 +129,7 @@ internal sealed class ImageFileSystem
 
         if (selected is not null && selected.Type != ImageFileType.Directory)
         {
-            return [selected];
+            return [selected.Path == path ? selected : selected with { Path = path }];
         }
 
         IEnumerable<ImageFileSystemEntry> results = entries.Values;
@@ -135,7 +138,8 @@ internal sealed class ImageFileSystem
             results = results.Concat(deletedEntries.Values);
         }
 
-        string prefix = path.Length == 0 ? string.Empty : $"{path}/";
+        string resolvedPath = selected?.Path ?? path;
+        string prefix = resolvedPath.Length == 0 ? string.Empty : $"{resolvedPath}/";
         return results
             .Where(entry =>
             {
@@ -148,6 +152,9 @@ internal sealed class ImageFileSystem
                 string relative = entry.Path[prefix.Length..];
                 return recursive || !relative.Contains('/');
             })
+            .Select(entry => resolvedPath == path
+                ? entry
+                : entry with { Path = $"{path}/{entry.Path[prefix.Length..]}" })
             .OrderBy(entry => entry.Path, StringComparer.Ordinal)
             .ToArray();
     }
@@ -171,10 +178,10 @@ internal sealed class ImageFileSystem
         string sourcePath = ImagePath.NormalizeRequested(requestedPath);
         bool extractingRoot = sourcePath.Length == 0;
         ImageFileSystemEntry? source = null;
-        if (!extractingRoot &&
-            !entries.TryGetValue(sourcePath, out source))
+        if (!extractingRoot)
         {
-            throw new FileNotFoundException($"Path '/{sourcePath}' does not exist in the image.");
+            source = ResolvePath(sourcePath, followFinalSymbolicLink: false);
+            sourcePath = source.Path;
         }
         if (source?.Type == ImageFileType.Other)
         {
@@ -214,9 +221,11 @@ internal sealed class ImageFileSystem
 
         Dictionary<string, string> hardLinkTargets = selected
             .Where(entry => entry.Type == ImageFileType.HardLink)
+            .Select(entry => (Entry: entry, Target: TryGetHardLinkTargetPath(entry)))
+            .Where(item => item.Target is not null)
             .ToDictionary(
-                entry => entry.Path,
-                entry => GetHardLinkTargetPath(entry),
+                item => item.Entry.Path,
+                item => item.Target!,
                 StringComparer.Ordinal);
         HashSet<string> preservableHardLinks = selected
             .Where(entry =>
@@ -224,8 +233,8 @@ internal sealed class ImageFileSystem
                 entry.ContentLinkTarget is null)
             .Where(entry =>
             {
-                string targetPath = hardLinkTargets[entry.Path];
-                return destinations.ContainsKey(targetPath) &&
+                return hardLinkTargets.TryGetValue(entry.Path, out string? targetPath) &&
+                    destinations.ContainsKey(targetPath) &&
                     entries.TryGetValue(targetPath, out ImageFileSystemEntry? target) &&
                     target.ContentLayerIndex == entry.ContentLayerIndex &&
                     target.ContentPath == entry.ContentPath &&
@@ -312,8 +321,9 @@ internal sealed class ImageFileSystem
                     entry.ContentLinkTarget is not null))
             {
                 cancellationToken.ThrowIfCancellationRequested();
-                string targetPath = GetHardLinkTargetPath(hardLink);
-                bool targetsDirectory = TryResolvePath(targetPath)?.Type ==
+                string? targetPath = TryGetHardLinkTargetPath(hardLink);
+                bool targetsDirectory = targetPath is not null &&
+                    TryResolvePath(targetPath)?.Type ==
                     ImageFileType.Directory;
                 FileHelper.CreateSymbolicLink(
                     destinations[hardLink.Path],
@@ -526,6 +536,7 @@ internal sealed class ImageFileSystem
                 }
                 current = current with
                 {
+                    Size = target.Size,
                     ContentLayerIndex = target.ContentLayerIndex,
                     ContentPath = target.ContentPath,
                     ContentEntryIndex = target.ContentEntryIndex,
@@ -642,7 +653,9 @@ internal sealed class ImageFileSystem
         return entry;
     }
 
-    private ImageFileSystemEntry ResolvePath(string requestedPath)
+    private ImageFileSystemEntry ResolvePath(
+        string requestedPath,
+        bool followFinalSymbolicLink = true)
     {
         string current = ImagePath.NormalizeRequested(requestedPath);
         for (int hop = 0; hop < MaximumLinkHops; hop++)
@@ -658,7 +671,8 @@ internal sealed class ImageFileSystem
                         $"Path '/{requestedPath}' resolves to missing path '/{candidate}'.");
                 }
 
-                if (entry.Type != ImageFileType.SymbolicLink)
+                if (entry.Type != ImageFileType.SymbolicLink ||
+                    (!followFinalSymbolicLink && i == segments.Length - 1))
                 {
                     continue;
                 }
@@ -731,6 +745,22 @@ internal sealed class ImageFileSystem
                 $"Hard link '/{entry.Path}' targets path '/{targetPath}' with a non-directory parent.");
         }
         return $"{parent.Path}/{ImagePath.GetFileName(targetPath)}";
+    }
+
+    private string? TryGetHardLinkTargetPath(ImageFileSystemEntry entry)
+    {
+        try
+        {
+            return GetHardLinkTargetPath(entry);
+        }
+        catch (FileNotFoundException)
+        {
+            return null;
+        }
+        catch (InvalidDataException)
+        {
+            return null;
+        }
     }
 
     private async Task CopyContentEntriesAsync(

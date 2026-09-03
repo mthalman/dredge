@@ -117,6 +117,43 @@ public class ImageFileSystemTests
         }
     }
 
+    [Fact]
+    public async Task ListAndExtract_ResolveIntermediateSymbolicLinks()
+    {
+        string output = Path.Combine(
+            Path.GetTempPath(),
+            $"dredge-filesystem-{Guid.NewGuid():N}");
+        using IDockerRegistryClient client = CreateClient(
+        [
+            CreateLayer(
+                Entry.File("usr/bin/tool", "tool"),
+                Entry.SymbolicLink("bin", "/usr/bin"))
+        ]).Object;
+        ImageFileSystem fileSystem = await ImageFileSystem.CreateAsync(
+            client,
+            ImageName,
+            new PlatformOptionsBase(),
+            TestContext.Current.CancellationToken);
+
+        try
+        {
+            ImageFileSystemEntry listed = Assert.Single(
+                fileSystem.List("bin/tool", recursive: false, showDeleted: false));
+            Assert.Equal("bin/tool", listed.Path);
+
+            await fileSystem.ExtractAsync(
+                "bin/tool",
+                output,
+                TestContext.Current.CancellationToken);
+
+            Assert.Equal("tool", File.ReadAllText(output));
+        }
+        finally
+        {
+            File.Delete(output);
+        }
+    }
+
     [Theory]
     [InlineData(TarEntryFormat.Pax)]
     [InlineData(TarEntryFormat.Gnu)]
@@ -311,6 +348,44 @@ public class ImageFileSystemTests
             {
                 Directory.Delete(rootOutput, recursive: true);
             }
+        }
+    }
+
+    [Fact]
+    public async Task Extract_HardLinkSurvivesWhiteoutedTargetParent()
+    {
+        string output = Path.Combine(
+            Path.GetTempPath(),
+            $"dredge-filesystem-{Guid.NewGuid():N}");
+        using IDockerRegistryClient client = CreateClient(
+        [
+            CreateLayer(
+                Entry.File("original/file", "content"),
+                Entry.HardLink("survivor", "original/file")),
+            CreateLayer(Entry.File(".wh.original", ""))
+        ]).Object;
+        ImageFileSystem fileSystem = await ImageFileSystem.CreateAsync(
+            client,
+            ImageName,
+            new PlatformOptionsBase(),
+            TestContext.Current.CancellationToken);
+
+        try
+        {
+            ImageFileSystemEntry listed = Assert.Single(
+                fileSystem.List("survivor", recursive: false, showDeleted: false));
+            Assert.Equal(7, listed.Size);
+
+            await fileSystem.ExtractAsync(
+                "survivor",
+                output,
+                TestContext.Current.CancellationToken);
+
+            Assert.Equal("content", File.ReadAllText(output));
+        }
+        finally
+        {
+            File.Delete(output);
         }
     }
 
