@@ -3,6 +3,7 @@
 | Sub-command | Description |
 |-------------|-------------|
 | [`list`](#list) | List the referrers to a manifest |
+| [`check`](#check) | Check for required OCI referrer artifact types |
 | [`inspect`](#inspect) | Inspect an OCI artifact referenced by an image |
 | [`get`](#get) | Retrieve an OCI artifact payload |
 
@@ -41,6 +42,80 @@ dredge referrer list mcr.microsoft.com/dotnet/core/sdk:latest
   "mediaType": "application/vnd.oci.image.index.v1+json"
 }
 ```
+
+## Check
+
+Checks that an image has every required OCI referrer artifact type. Tagged
+references are resolved to their manifest digest, and all pages of referrers
+are checked.
+
+Artifact types use exact, case-sensitive matching. This command checks only
+for matching referrer descriptors; it does not inspect artifact payloads or
+verify signatures.
+
+```console
+dredge referrer check <name> --artifact-type <type> [--artifact-type <type>]... [--output <format>]
+```
+
+| Option | Description |
+|--------|-------------|
+| `--artifact-type` | Required artifact media type. Specify once for each required type |
+| `--output` | Output format: `summary` (default) or `json` |
+
+The summary reports every requested artifact type and the digest of each
+matching referrer:
+
+```console
+dredge referrer check mcr.microsoft.com/dotnet/sdk:10.0.300 \
+  --artifact-type application/vnd.cncf.notary.signature \
+  --artifact-type application/spdx+json
+PASS application/vnd.cncf.notary.signature
+  sha256:ed1eda051b8d154c19e0499ae5dadf3022e1c07f38fef2b6652beaeac2ce5069
+FAIL application/spdx+json
+```
+
+JSON output includes the overall result, each artifact type's status, and the
+complete OCI descriptor for every matching referrer:
+
+```console
+dredge referrer check mcr.microsoft.com/dotnet/sdk:10.0.300 \
+  --artifact-type application/vnd.cncf.notary.signature \
+  --artifact-type application/spdx+json \
+  --output json
+{
+  "succeeded": false,
+  "results": [
+    {
+      "artifactType": "application/vnd.cncf.notary.signature",
+      "found": true,
+      "referrers": [
+        {
+          "mediaType": "application/vnd.oci.image.manifest.v1+json",
+          "digest": "sha256:ed1eda051b8d154c19e0499ae5dadf3022e1c07f38fef2b6652beaeac2ce5069",
+          "size": 990,
+          "urls": [],
+          "annotations": {
+            "io.cncf.notary.x509chain.thumbprint#S256": "[\"5461c8da6c44fc19706a093ae02cf04548a6c13242ae983d954be429666e6440\",\"9b1894f223d934cbd6575af3c6e1f6096b9221a7da132185f5a5cdc92235b5dc\",\"23ffe2b8bdb9a1711515d4cffda04bc7f793d513c76c243f1020507d8669b7db\"]",
+            "org.opencontainers.image.created": "2026-05-20T21:19:22.3944247Z"
+          },
+          "artifactType": "application/vnd.cncf.notary.signature"
+        }
+      ]
+    },
+    {
+      "artifactType": "application/spdx+json",
+      "found": false,
+      "referrers": []
+    }
+  ]
+}
+```
+
+| Exit code | Meaning |
+|----------:|---------|
+| `0` | Every required artifact type exists |
+| `1` | A configuration, registry, or execution error occurred |
+| `2` | At least one required artifact type is missing |
 
 ## Inspect
 

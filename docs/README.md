@@ -7,7 +7,7 @@ configure authentication, settings, and platform selection.
 
 - [`image`](commands/images.md) — Inspect, compare, and export container images
 - [`manifest`](commands/manifests.md) — Query and resolve manifests
-- [`referrer`](commands/referrers.md) — List and inspect referrers and retrieve artifact payloads
+- [`referrer`](commands/referrers.md) — List, check, and inspect referrers and retrieve artifact payloads
 - [`repo`](commands/repositories.md) — List repositories in a registry
 - [`tag`](commands/tags.md) — List tags in a repository
 - [`settings`](commands/settings.md) — Manage Dredge configuration
