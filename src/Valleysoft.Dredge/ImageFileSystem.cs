@@ -113,13 +113,11 @@ internal sealed class ImageFileSystem
         ImageFileSystemEntry? selected = null;
         if (path.Length > 0)
         {
-            try
+            string lookupPath = ResolveParentComponents(path);
+            entries.TryGetValue(lookupPath, out selected);
+            if (selected is null && showDeleted)
             {
-                selected = ResolvePath(path, followFinalSymbolicLink: false);
-            }
-            catch (FileNotFoundException) when (
-                showDeleted && deletedEntries.TryGetValue(path, out selected))
-            {
+                deletedEntries.TryGetValue(lookupPath, out selected);
             }
             if (selected is null)
             {
@@ -180,7 +178,12 @@ internal sealed class ImageFileSystem
         ImageFileSystemEntry? source = null;
         if (!extractingRoot)
         {
-            source = ResolvePath(sourcePath, followFinalSymbolicLink: false);
+            string lookupPath = ResolveParentComponents(sourcePath);
+            if (!entries.TryGetValue(lookupPath, out source))
+            {
+                throw new FileNotFoundException(
+                    $"Path '/{sourcePath}' does not exist in the image.");
+            }
             sourcePath = source.Path;
         }
         if (source?.Type == ImageFileType.Other)
@@ -207,6 +210,13 @@ internal sealed class ImageFileSystem
                 .ThenBy(entry => entry.Path, StringComparer.Ordinal)
                 .ToList()
             : [source];
+        ImageFileSystemEntry? unsupported = selected.FirstOrDefault(
+            entry => entry.Type == ImageFileType.Other);
+        if (unsupported is not null)
+        {
+            throw new NotSupportedException(
+                $"Path '/{unsupported.Path}' has unsupported file type '{unsupported.Type}'.");
+        }
 
         Dictionary<string, string> destinations = selected.ToDictionary(
             entry => entry.Path,
@@ -653,9 +663,7 @@ internal sealed class ImageFileSystem
         return entry;
     }
 
-    private ImageFileSystemEntry ResolvePath(
-        string requestedPath,
-        bool followFinalSymbolicLink = true)
+    private ImageFileSystemEntry ResolvePath(string requestedPath)
     {
         string current = ImagePath.NormalizeRequested(requestedPath);
         for (int hop = 0; hop < MaximumLinkHops; hop++)
@@ -671,8 +679,7 @@ internal sealed class ImageFileSystem
                         $"Path '/{requestedPath}' resolves to missing path '/{candidate}'.");
                 }
 
-                if (entry.Type != ImageFileType.SymbolicLink ||
-                    (!followFinalSymbolicLink && i == segments.Length - 1))
+                if (entry.Type != ImageFileType.SymbolicLink)
                 {
                     continue;
                 }
@@ -703,6 +710,23 @@ internal sealed class ImageFileSystem
 
         throw new InvalidDataException(
             $"Link resolution for '/{requestedPath}' exceeded {MaximumLinkHops} hops.");
+    }
+
+    private string ResolveParentComponents(string path)
+    {
+        string parentPath = ImagePath.GetDirectoryName(path);
+        if (parentPath.Length == 0)
+        {
+            return path;
+        }
+
+        ImageFileSystemEntry parent = ResolvePath(parentPath);
+        if (parent.Type != ImageFileType.Directory)
+        {
+            throw new InvalidDataException(
+                $"Path '/{path}' has a non-directory parent '/{parent.Path}'.");
+        }
+        return $"{parent.Path}/{ImagePath.GetFileName(path)}";
     }
 
     private ImageFileSystemEntry? TryResolvePath(string requestedPath)

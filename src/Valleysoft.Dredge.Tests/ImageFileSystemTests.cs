@@ -154,6 +154,29 @@ public class ImageFileSystemTests
         }
     }
 
+    [Fact]
+    public async Task List_ShowDeletedResolvesIntermediateSymbolicLinks()
+    {
+        using IDockerRegistryClient client = CreateClient(
+        [
+            CreateLayer(
+                Entry.File("usr/bin/deleted", "content"),
+                Entry.SymbolicLink("bin", "/usr/bin")),
+            CreateLayer(Entry.File("usr/bin/.wh.deleted", ""))
+        ]).Object;
+        ImageFileSystem fileSystem = await ImageFileSystem.CreateAsync(
+            client,
+            ImageName,
+            new PlatformOptionsBase(),
+            TestContext.Current.CancellationToken);
+
+        ImageFileSystemEntry listed = Assert.Single(
+            fileSystem.List("bin/deleted", recursive: false, showDeleted: true));
+
+        Assert.Equal("bin/deleted", listed.Path);
+        Assert.Equal(1, listed.DeletedLayer?.Index);
+    }
+
     [Theory]
     [InlineData(TarEntryFormat.Pax)]
     [InlineData(TarEntryFormat.Gnu)]
@@ -387,6 +410,35 @@ public class ImageFileSystemTests
         {
             File.Delete(output);
         }
+    }
+
+    [Fact]
+    public async Task Extract_DirectoryRejectsUnsupportedDescendant()
+    {
+        string output = Path.Combine(
+            Path.GetTempPath(),
+            $"dredge-filesystem-{Guid.NewGuid():N}");
+        using IDockerRegistryClient client = CreateClient(
+        [
+            CreateLayer(
+                Entry.File("tree/file", "content"),
+                Entry.Other("tree/device"))
+        ]).Object;
+        ImageFileSystem fileSystem = await ImageFileSystem.CreateAsync(
+            client,
+            ImageName,
+            new PlatformOptionsBase(),
+            TestContext.Current.CancellationToken);
+
+        NotSupportedException exception = await Assert.ThrowsAsync<NotSupportedException>(
+            () => fileSystem.ExtractAsync(
+                "tree",
+                output,
+                TestContext.Current.CancellationToken));
+
+        Assert.Contains("/tree/device", exception.Message);
+        Assert.False(File.Exists(output));
+        Assert.False(Directory.Exists(output));
     }
 
     [Fact]
@@ -919,5 +971,8 @@ public class ImageFileSystemTests
 
         public static Entry HardLink(string path, string target) =>
             new(TarEntryType.HardLink, path, null, target);
+
+        public static Entry Other(string path) =>
+            new(TarEntryType.Fifo, path, null, null);
     }
 }
