@@ -85,7 +85,7 @@ dredge image os mcr.microsoft.com/windows/nanoserver:ltsc2022-amd64
 }
 ```
 
-## LS
+## Ls
 
 Lists the effective filesystem entries in a Linux image without extracting the
 complete image.

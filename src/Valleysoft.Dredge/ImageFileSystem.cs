@@ -709,15 +709,28 @@ internal sealed class ImageFileSystem
         }
     }
 
-    private static string GetHardLinkTargetPath(ImageFileSystemEntry entry)
+    private string GetHardLinkTargetPath(ImageFileSystemEntry entry)
     {
         string target = entry.LinkTarget ??
             throw new InvalidDataException($"Hard link '/{entry.Path}' has no target.");
-        return ImagePath.ResolveLinkTarget(
+        string targetPath = ImagePath.ResolveLinkTarget(
             string.Empty,
             target,
             string.Empty,
             entry.Path);
+        string parentPath = ImagePath.GetDirectoryName(targetPath);
+        if (parentPath.Length == 0)
+        {
+            return targetPath;
+        }
+
+        ImageFileSystemEntry parent = ResolvePath(parentPath);
+        if (parent.Type != ImageFileType.Directory)
+        {
+            throw new InvalidDataException(
+                $"Hard link '/{entry.Path}' targets path '/{targetPath}' with a non-directory parent.");
+        }
+        return $"{parent.Path}/{ImagePath.GetFileName(targetPath)}";
     }
 
     private async Task CopyContentEntriesAsync(
@@ -968,18 +981,6 @@ internal sealed class ImageFileSystem
         if (PathExists(outputPath))
         {
             throw new IOException($"Destination '{outputPath}' already exists.");
-        }
-
-        string? parent = Path.GetDirectoryName(outputPath);
-        while (parent is not null)
-        {
-            if (PathExists(parent) &&
-                File.GetAttributes(parent).HasFlag(FileAttributes.ReparsePoint))
-            {
-                throw new InvalidDataException(
-                    $"Destination '{outputPath}' traverses a symbolic link.");
-            }
-            parent = Path.GetDirectoryName(parent);
         }
     }
 

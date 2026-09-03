@@ -83,7 +83,10 @@ public class ImageFileSystemTests
                 Entry.SymbolicLink("absolute", "/data/value"),
                 Entry.SymbolicLink("unicode", unicodePath),
                 Entry.HardLink("hard", "data/value"),
-                Entry.HardLink("hard-symbolic", "relative")),
+                Entry.HardLink("hard-symbolic", "relative"),
+                Entry.File("usr/bin/tool", "tool"),
+                Entry.SymbolicLink("bin", "/usr/bin"),
+                Entry.HardLink("hard-symlinked-parent", "bin/tool")),
             CreateLayer(Entry.File("data/value", binary))
         ];
         using IDockerRegistryClient client = CreateClient(layers).Object;
@@ -101,7 +104,8 @@ public class ImageFileSystemTests
             ("unicode", Encoding.UTF8.GetBytes("certificate")),
             ("duplicate", Encoding.UTF8.GetBytes("second")),
             ("hard", Encoding.UTF8.GetBytes("old")),
-            ("hard-symbolic", binary)
+            ("hard-symbolic", binary),
+            ("hard-symlinked-parent", Encoding.UTF8.GetBytes("tool"))
         })
         {
             using MemoryStream output = new();
@@ -338,11 +342,50 @@ public class ImageFileSystemTests
                 "1199",
                 File.ReadAllText(Path.Combine(output, "file-1199")));
         }
+
         finally
         {
             if (Directory.Exists(output))
             {
                 Directory.Delete(output, recursive: true);
+            }
+        }
+    }
+
+    [Fact]
+    public async Task Extract_AllowsUserSelectedSymlinkedParent()
+    {
+        string root = Path.Combine(
+            Path.GetTempPath(),
+            $"dredge-filesystem-{Guid.NewGuid():N}");
+        string actualParent = Path.Combine(root, "actual");
+        string linkedParent = Path.Combine(root, "linked");
+        string output = Path.Combine(linkedParent, "file");
+        using IDockerRegistryClient client =
+            CreateClient([CreateLayer(Entry.File("file", "value"))]).Object;
+        ImageFileSystem fileSystem = await ImageFileSystem.CreateAsync(
+            client,
+            ImageName,
+            new PlatformOptionsBase(),
+            TestContext.Current.CancellationToken);
+
+        try
+        {
+            Directory.CreateDirectory(actualParent);
+            Directory.CreateSymbolicLink(linkedParent, actualParent);
+
+            await fileSystem.ExtractAsync(
+                "file",
+                output,
+                TestContext.Current.CancellationToken);
+
+            Assert.Equal("value", File.ReadAllText(Path.Combine(actualParent, "file")));
+        }
+        finally
+        {
+            if (Directory.Exists(root))
+            {
+                Directory.Delete(root, recursive: true);
             }
         }
     }
