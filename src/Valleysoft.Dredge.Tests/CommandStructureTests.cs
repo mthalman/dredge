@@ -26,7 +26,7 @@ public class CommandStructureTests
             ["get", "digest", "resolve"],
             new ManifestCommand(factory.Object).Subcommands.Select(command => command.Name));
         Assert.Equal(
-            ["list", "inspect", "get"],
+            ["list", "check", "inspect", "get"],
             new ReferrerCommand(factory.Object).Subcommands.Select(command => command.Name));
         Assert.Equal(["list"], new RepoCommand(factory.Object).Subcommands.Select(command => command.Name));
         Assert.Equal(["list"], new TagCommand(factory.Object).Subcommands.Select(command => command.Name));
@@ -104,6 +104,55 @@ public class CommandStructureTests
         Assert.Equal("registry.example/repo:tag", options.Image);
         Assert.Equal("sha256:artifact", options.ArtifactDigest);
         Assert.Equal(ArtifactInspectOutput.Json, options.OutputFormat);
+    }
+
+    [Fact]
+    public void ReferrerCheckOptions_BindRequiredArtifactTypesAndOutput()
+    {
+        CheckOptions options = Bind(
+            new CheckOptions(),
+            "registry.example/repo:tag",
+            "--artifact-type",
+            "application/spdx+json",
+            "--artifact-type",
+            "application/vnd.in-toto+json",
+            "--output",
+            "Json");
+
+        Assert.Equal("registry.example/repo:tag", options.Image);
+        Assert.Equal(
+            ["application/spdx+json", "application/vnd.in-toto+json"],
+            options.ArtifactTypes);
+        Assert.Equal(CheckOutput.Json, options.OutputFormat);
+    }
+
+    [Fact]
+    public void ReferrerCheckOptions_RequireArtifactType()
+    {
+        Command command = new("check");
+        new CheckOptions().SetCommandOptions(command);
+
+        ParseResult parseResult = command.Parse("registry.example/repo:tag");
+
+        Assert.Single(parseResult.Errors);
+        Assert.Contains("--artifact-type", parseResult.Errors[0].Message);
+    }
+
+    [Theory]
+    [InlineData("")]
+    [InlineData("  ")]
+    public void ReferrerCheckOptions_RejectEmptyArtifactType(string artifactType)
+    {
+        Command command = new("check");
+        new CheckOptions().SetCommandOptions(command);
+
+        ParseResult parseResult = command.Parse(
+            ["registry.example/repo:tag", "--artifact-type", artifactType]);
+
+        Assert.Single(parseResult.Errors);
+        Assert.Equal(
+            "Artifact types cannot be empty or whitespace.",
+            parseResult.Errors[0].Message);
     }
 
     [Fact]

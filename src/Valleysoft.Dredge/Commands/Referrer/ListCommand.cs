@@ -1,6 +1,4 @@
-﻿using Newtonsoft.Json;
-using Valleysoft.DockerRegistryClient;
-using Valleysoft.DockerRegistryClient.Models.Manifests;
+using Newtonsoft.Json;
 using Valleysoft.DockerRegistryClient.Models.Manifests.Oci;
 
 namespace Valleysoft.Dredge.Commands.Referrer;
@@ -18,36 +16,9 @@ public class ListCommand : RegistryCommandBase<ListOptions>
         return ExecuteCommandAsync(imageName.Registry, cancellationToken, async ct =>
         {
             using IDockerRegistryClient client = await DockerRegistryClientFactory.GetClientAsync(imageName.Registry);
-
-            OciImageIndex initialIndex;
-
-            string digest;
-            if (!string.IsNullOrEmpty(imageName.Digest))
-            {
-                digest = imageName.Digest;
-            }
-            else
-            {
-                ManifestInfo manifestInfo = await client.Manifests.GetAsync(imageName.Repo, imageName.Tag!, ct);
-                digest = manifestInfo.DockerContentDigest;
-            }
-
-            Page<OciImageIndex> indexPage =
-                await client.Referrers.GetAsync(imageName.Repo, digest, Options.ArtifactType, ct);
-            initialIndex = indexPage.Value;
-            while (indexPage.NextPageLink is not null)
-            {
-                Page<OciImageIndex> nextPage =
-                    await client.Referrers.GetNextAsync(indexPage.NextPageLink, ct);
-                initialIndex.Manifests =
-                [
-                    .. initialIndex.Manifests,
-                    .. nextPage.Value.Manifests
-                ];
-                indexPage = nextPage;
-            }
-
-            string output = JsonConvert.SerializeObject(initialIndex, JsonHelper.Settings);
+            OciImageIndex index =
+                await ReferrerHelper.GetReferrersAsync(client, imageName, Options.ArtifactType, ct);
+            string output = JsonConvert.SerializeObject(index, JsonHelper.Settings);
 
             Output.WriteLine(output);
         });

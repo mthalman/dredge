@@ -8,6 +8,7 @@ public class ReferrerCommand : Command
         : base("referrer", "Commands related to referrers")
     {
         Subcommands.Add(new ListCommand(dockerRegistryClientFactory));
+        Subcommands.Add(new CheckCommand(dockerRegistryClientFactory));
         Subcommands.Add(new InspectCommand(dockerRegistryClientFactory));
         Subcommands.Add(new GetCommand(dockerRegistryClientFactory));
     }
