@@ -652,6 +652,28 @@ public class ImageFileSystemTests
     }
 
     [Fact]
+    public async Task Extract_WhenDirectoryCreationIsCanceled_RemovesOutput()
+    {
+        string output = Path.Combine(
+            Path.GetTempPath(),
+            $"dredge-filesystem-{Guid.NewGuid():N}");
+        using IDockerRegistryClient client = CreateClient(
+            [CreateLayer(Entry.Directory("tree/nested"))]).Object;
+        ImageFileSystem fileSystem = await ImageFileSystem.CreateAsync(
+            client,
+            ImageName,
+            new PlatformOptionsBase(),
+            TestContext.Current.CancellationToken);
+        using CancellationTokenSource cancellation = new();
+        cancellation.Cancel();
+
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(
+            () => fileSystem.ExtractAsync("tree", output, cancellation.Token));
+
+        Assert.False(Directory.Exists(output));
+    }
+
+    [Fact]
     public async Task Operations_RejectTraversalAndHonorCancellation()
     {
         using IDockerRegistryClient client =
