@@ -269,6 +269,17 @@ public class ImageFileSystemTests
                 TestContext.Current.CancellationToken));
     }
 
+    [Theory]
+    [InlineData("control\npath")]
+    [InlineData("control\u001bpath")]
+    public void ImagePath_RejectsControlCharacters(string path)
+    {
+        Assert.Throws<InvalidDataException>(() => ImagePath.NormalizeArchive(path));
+        Assert.Throws<InvalidDataException>(() => ImagePath.NormalizeRequested(path));
+        Assert.Throws<InvalidDataException>(
+            () => ImagePath.ResolveLinkTarget(string.Empty, path, string.Empty, "link"));
+    }
+
     [Fact]
     public async Task Index_WhenLayerArchiveIsInvalid_ProvidesLayerContext()
     {

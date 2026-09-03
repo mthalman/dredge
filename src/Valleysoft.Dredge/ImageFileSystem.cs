@@ -463,7 +463,7 @@ internal sealed class ImageFileSystem
             string? linkTarget = type is ImageFileType.SymbolicLink or ImageFileType.HardLink
                 ? tarEntry.LinkName
                 : null;
-            if (linkTarget is not null && linkTarget.IndexOf('\0') >= 0)
+            if (linkTarget is not null && ImagePath.ContainsControlCharacter(linkTarget))
             {
                 throw new InvalidDataException(
                     $"Link '/{path}' has an invalid target.");
@@ -1191,7 +1191,7 @@ internal static class ImagePath
 {
     public static string NormalizeArchive(string value)
     {
-        if (string.IsNullOrEmpty(value) || value.IndexOf('\0') >= 0)
+        if (string.IsNullOrEmpty(value) || ContainsControlCharacter(value))
         {
             throw new InvalidDataException($"Invalid archive entry path '{value}'.");
         }
@@ -1206,7 +1206,7 @@ internal static class ImagePath
     public static string NormalizeRequested(string? value)
     {
         value = string.IsNullOrEmpty(value) ? string.Empty : value;
-        if (value.Contains('\\') || value.IndexOf('\0') >= 0)
+        if (value.Contains('\\') || ContainsControlCharacter(value))
         {
             throw new InvalidDataException($"Invalid image path '{value}'.");
         }
@@ -1219,7 +1219,7 @@ internal static class ImagePath
         string remainder,
         string linkPath)
     {
-        if (target.Contains('\\') || target.IndexOf('\0') >= 0)
+        if (target.Contains('\\') || ContainsControlCharacter(target))
         {
             throw new InvalidDataException(
                 $"Link '/{linkPath}' has invalid target '{target}'.");
@@ -1252,7 +1252,7 @@ internal static class ImagePath
             value is "." or ".." ||
             value.Contains('/') ||
             value.Contains('\\') ||
-            value.IndexOf('\0') >= 0)
+            ContainsControlCharacter(value))
         {
             throw new InvalidDataException($"Invalid {description} '{value}'.");
         }
@@ -1294,4 +1294,7 @@ internal static class ImagePath
         first.Length == 0 ? second :
         second.Length == 0 ? first :
         $"{first}/{second}";
+
+    internal static bool ContainsControlCharacter(string value) =>
+        value.Any(char.IsControl);
 }
