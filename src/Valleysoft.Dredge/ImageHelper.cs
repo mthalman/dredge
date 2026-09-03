@@ -1,6 +1,5 @@
-﻿using ICSharpCode.SharpZipLib.Tar;
+﻿using System.Formats.Tar;
 using System.IO.Compression;
-using System.Text;
 using Valleysoft.DockerRegistryClient;
 using Valleysoft.DockerRegistryClient.Models;
 using Valleysoft.DockerRegistryClient.Models.Manifests;
@@ -147,21 +146,21 @@ internal static class ImageHelper
 
         using GZipStream gZipStream = new(layerStream, CompressionMode.Decompress);
 
-        // Can't use System.Formats.Tar.TarReader because it fails to read certain types of tarballs:
-        // https://github.com/dotnet/runtime/issues/74316#issuecomment-1312227247
-        using TarInputStream tarStream = new(gZipStream, Encoding.UTF8);
+        using TarReader tarReader = new(gZipStream, leaveOpen: true);
 
         while (true)
         {
             cancellationToken.ThrowIfCancellationRequested();
-            TarEntry? entry = tarStream.GetNextEntry();
+            TarEntry? entry = await tarReader.GetNextEntryAsync(
+                copyData: false,
+                cancellationToken);
 
             if (entry is null)
             {
                 break;
             }
 
-            if (entry.IsDirectory)
+            if (entry.EntryType == TarEntryType.Directory)
             {
                 string directoryPath = GetContainedPath(layerDir, entry.Name);
                 if (!Directory.Exists(directoryPath))
@@ -193,7 +192,7 @@ internal static class ImageHelper
 
             entryName = Path.Combine(entryDirName, entryFileName);
             await ExtractTarEntry(
-                layerDir, tarStream, entry, entryName, hardLinks, cancellationToken);
+                layerDir, entry, entryName, hardLinks, cancellationToken);
         }
 
         while (hardLinks.Count > 0)
@@ -332,7 +331,6 @@ internal static class ImageHelper
 
     private static async Task ExtractTarEntry(
         string workingDir,
-        TarInputStream tarStream,
         TarEntry entry,
         string entryName,
         List<(string Path, string Target)> hardLinks,
@@ -345,25 +343,28 @@ internal static class ImageHelper
             Directory.CreateDirectory(directoryPath);
         }
 
-        if (entry.TarHeader.TypeFlag == TarHeader.LF_LINK && !string.IsNullOrEmpty(entry.TarHeader.LinkName))
+        if (entry.EntryType == TarEntryType.HardLink && !string.IsNullOrEmpty(entry.LinkName))
         {
-            hardLinks.Add((filePath, entry.TarHeader.LinkName));
+            hardLinks.Add((filePath, entry.LinkName));
         }
-        else if (entry.TarHeader.TypeFlag == TarHeader.LF_SYMLINK && !string.IsNullOrEmpty(entry.TarHeader.LinkName))
+        else if (entry.EntryType == TarEntryType.SymbolicLink && !string.IsNullOrEmpty(entry.LinkName))
         {
             if (File.Exists(filePath))
             {
                 File.Delete(filePath);
             }
 
-            string targetPath = GetLinkTargetPath(workingDir, filePath, entry.TarHeader.LinkName);
+            string targetPath = GetLinkTargetPath(workingDir, filePath, entry.LinkName);
             string relativeTarget = Path.GetRelativePath(directoryPath!, targetPath);
             FileHelper.CreateSymbolicLink(filePath, relativeTarget);
         }
         else
         {
             using FileStream outputStream = File.Create(filePath);
-            await tarStream.CopyEntryContentsAsync(outputStream, cancellationToken);
+            if (entry.DataStream is not null)
+            {
+                await entry.DataStream.CopyToAsync(outputStream, cancellationToken);
+            }
         }
     }
 

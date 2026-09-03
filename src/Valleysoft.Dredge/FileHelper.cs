@@ -1,4 +1,5 @@
-﻿using System.Runtime.InteropServices;
+﻿using System.ComponentModel;
+using System.Runtime.InteropServices;
 
 namespace Valleysoft.Dredge;
 
@@ -78,15 +79,50 @@ internal static class FileHelper
         }
     }
 
-    public static void CreateSymbolicLink(string targetFilePath, string linkTarget)
+    public static void CreateSymbolicLink(
+        string targetFilePath,
+        string linkTarget,
+        bool targetIsDirectory = false)
     {
         try
         {
-            File.CreateSymbolicLink(targetFilePath, linkTarget);
+            if (targetIsDirectory)
+            {
+                Directory.CreateSymbolicLink(targetFilePath, linkTarget);
+            }
+            else
+            {
+                File.CreateSymbolicLink(targetFilePath, linkTarget);
+            }
         }
         catch (IOException ex) when (RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
         {
             throw new Exception($"Unable to create symbolic link from '{targetFilePath}' to '{linkTarget}'. Ensure that Windows Developer mode is enabled.\n\nError:\n{ex.Message}", ex);
         }
     }
+
+    public static void CreateHardLink(string linkPath, string targetPath)
+    {
+        bool success = OperatingSystem.IsWindows()
+            ? CreateHardLinkWindows(linkPath, targetPath, IntPtr.Zero)
+            : CreateHardLinkUnix(targetPath, linkPath) == 0;
+        if (!success)
+        {
+            throw new IOException(
+                $"Unable to create hard link from '{linkPath}' to '{targetPath}'.",
+                new Win32Exception(Marshal.GetLastPInvokeError()));
+        }
+    }
+
+    [DllImport("kernel32.dll", EntryPoint = "CreateHardLinkW", CharSet = CharSet.Unicode, SetLastError = true)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static extern bool CreateHardLinkWindows(
+        string fileName,
+        string existingFileName,
+        IntPtr securityAttributes);
+
+    [DllImport("libc", EntryPoint = "link", SetLastError = true)]
+    private static extern int CreateHardLinkUnix(
+        [MarshalAs(UnmanagedType.LPUTF8Str)] string existingPath,
+        [MarshalAs(UnmanagedType.LPUTF8Str)] string newPath);
 }

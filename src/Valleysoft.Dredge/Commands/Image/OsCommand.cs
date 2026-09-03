@@ -1,7 +1,6 @@
-﻿using ICSharpCode.SharpZipLib.Tar;
+﻿using System.Formats.Tar;
 using Newtonsoft.Json;
 using System.IO.Compression;
-using System.Text;
 using System.Text.RegularExpressions;
 using Valleysoft.DockerRegistryClient;
 using Valleysoft.DockerRegistryClient.Models.Manifests;
@@ -76,27 +75,31 @@ public partial class OsCommand : RegistryCommandBase<OsOptions>
             await client.Blobs.GetAsync(imageName.Repo, baseLayerDigest, cancellationToken);
         using GZipStream gZipStream = new(blobStream, CompressionMode.Decompress);
 
-        // Can't use System.Formats.Tar.TarReader because it fails to read certain types of tarballs:
-        // https://github.com/dotnet/runtime/issues/74316#issuecomment-1312227247
-
-        using TarInputStream tarStream = new(gZipStream, Encoding.UTF8);
+        using TarReader tarReader = new(gZipStream, leaveOpen: true);
         TarEntry? entry = null;
         do
         {
             cancellationToken.ThrowIfCancellationRequested();
-            entry = tarStream.GetNextEntry();
+            entry = await tarReader.GetNextEntryAsync(
+                copyData: false,
+                cancellationToken);
 
             // Look for the os-release file (skip symlinks)
             if (entry is not null &&
-                entry.Size > 0 &&
+                entry.EntryType is not TarEntryType.SymbolicLink and not TarEntryType.HardLink &&
+                entry.Length > 0 &&
                 (osReleaseRegex.IsMatch(entry.Name)))
             {
                 using MemoryStream memStream = new();
-                await tarStream.CopyEntryContentsAsync(memStream, cancellationToken);
+                await entry.DataStream!.CopyToAsync(memStream, cancellationToken);
                 memStream.Position = 0;
                 using StreamReader reader = new(memStream);
                 string content = await reader.ReadToEndAsync(cancellationToken);
                 return LinuxOsInfo.Parse(content);
+            }
+            if (entry?.DataStream is not null)
+            {
+                await entry.DataStream.CopyToAsync(Stream.Null, cancellationToken);
             }
         } while (entry is not null);
 

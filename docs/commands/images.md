@@ -6,6 +6,9 @@ All image commands support [platform resolution](../platform-resolution.md) via 
 |-------------|-------------|
 | [`inspect`](#inspect) | Inspect an image configuration |
 | [`os`](#os) | Show OS information |
+| [`ls`](#ls) | List image filesystem entries and layer provenance |
+| [`cat`](#cat) | Write an image file to standard output |
+| [`extract`](#extract) | Extract an image file or directory |
 | [`compare metadata`](#compare-metadata) | Compare image configuration and platform metadata |
 | [`compare layers`](#compare-layers) | Compare the layers of two images |
 | [`compare files`](#compare-files) | Compare the file contents of two images |
@@ -81,6 +84,131 @@ dredge image os mcr.microsoft.com/windows/nanoserver:ltsc2022-amd64
   "Version": "10.0.20348.1249"
 }
 ```
+
+## LS
+
+Lists the effective filesystem entries in a Linux image without extracting the
+complete image.
+
+```console
+dredge image ls <image> [path] [-l|--long] [--provenance] [--recursive] [--show-deleted] [--output <text|json>] [--os <os>] [--arch <arch>] [--os-version <version>]
+```
+
+The command lists direct children of the image root or selected directory by
+default. Use `--recursive` to list all descendants. If `path` identifies a
+file or link, the command lists only that entry. Paths may start with `/`.
+
+Text output uses terminal-width name columns relative to the listed directory
+by default, similar to `ls`. Redirected output uses one name per line without
+terminal padding. Use `-l` or `--long` to show file type and mode, UID, GID,
+size, UTC modification time (marked with `Z`), and symbolic-link target. Use
+`--provenance` independently or with `--long` to show the layer index and an
+abbreviated digest for the layer that introduced, modified, or deleted each
+path. Text output labels these values `i`, `m`, and `d`, respectively.
+
+For example, list the periodic task directories in Alpine. Piping the output
+shows the redirected, one-name-per-line format:
+
+```console
+$ dredge image ls alpine:3.22.1 /etc/periodic | cat
+15min
+daily
+hourly
+monthly
+weekly
+```
+
+This multi-layer .NET image shows that `/etc/apk/world` was introduced by
+layer 0 and modified by layer 1:
+
+```console
+$ dredge image ls mcr.microsoft.com/dotnet/runtime-deps:10.0.8-alpine3.23-amd64 /etc/apk/world -l --provenance
+-rw-r--r-- 0 0 127 2026-05-12 05:31Z etc/apk/world  i=0:6a0ac1617861 m=1:243c8d038cfe
+```
+
+Ordinary and opaque OCI whiteouts remove entries from the effective
+filesystem. Removed entries are hidden by default. Use `--show-deleted` to
+include them; combine it with `--provenance` to show the layer that removed
+them.
+
+Layer numbers are zero-based. Use `--output json` for camel-cased
+machine-readable output; text detail options do not alter JSON:
+
+```console
+$ dredge image ls alpine:3.22.1 /etc/alpine-release --output json
+[
+  {
+    "path": "etc/alpine-release",
+    "type": "File",
+    "mode": 420,
+    "userId": 0,
+    "groupId": 0,
+    "size": 7,
+    "modifiedTime": "2025-07-15T10:41:41Z",
+    "introducedLayer": {
+      "index": 0,
+      "digest": "sha256:9824c27679d3b27c5e1cb00a73adb6f4f8d556994111c12db3c5d61a0c843df8"
+    }
+  }
+]
+```
+
+## Cat
+
+Writes the effective contents of one Linux image file to standard output.
+Standard output contains only file bytes, so the command is safe to use in a
+pipeline or redirect to a binary file.
+
+```console
+dredge image cat <image> <path> [--os <os>] [--arch <arch>] [--os-version <version>]
+```
+
+The command follows symbolic links with Linux path semantics and follows hard
+links to their image-layer content. Link resolution cannot escape the image
+root and fails for dangling links or link loops. The command rejects
+directories, deleted paths, and unsupported file types.
+
+For example:
+
+```console
+$ dredge image cat alpine:3.22.1 /etc/alpine-release
+3.22.1
+```
+
+## Extract
+
+Extracts one effective file or a directory subtree from a Linux image. For a
+directory, Dredge reads the effective entries from all layers but writes only
+the selected subtree.
+
+```console
+dredge image extract <image> <path> <output-path> [--os <os>] [--arch <arch>] [--os-version <version>]
+```
+
+`output-path` must not exist. Dredge validates all archive paths and
+destinations before writing, and it does not overwrite files. Use `/` as
+`path` to extract the complete effective image filesystem.
+
+For example:
+
+```console
+$ dredge image extract alpine:3.22.1 /etc/alpine-release alpine-release
+$ cat alpine-release
+3.22.1
+```
+
+Dredge preserves modification times and, on Unix hosts, available file modes.
+It reports UID and GID through `image ls` but does not apply image
+ownership to the host. Extraction preserves safe hard and symbolic links when
+possible. Symbolic links retain their original targets, including dangling
+targets and targets outside the selected subtree. Hard links whose targets are
+also selected remain hard links; otherwise, Dredge materializes their effective
+content. Archive entries and extraction destinations cannot escape their
+respective roots.
+
+The `ls`, `cat`, and `extract` commands support gzip-compressed Linux tar
+layers. They reject Windows image layers with an explicit unsupported-platform
+error.
 
 ## Compare metadata
 
