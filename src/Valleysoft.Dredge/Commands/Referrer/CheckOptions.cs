@@ -6,7 +6,7 @@ public class CheckOptions : OptionsBase
 {
     private readonly Argument<string> nameArgument;
     private readonly Option<string[]> artifactTypeOption;
-    private readonly Option<CheckOutput> outputOption;
+    private readonly CliOutputOption<CheckOutput> outputOption;
 
     public string Image { get; set; } = string.Empty;
     public string[] ArtifactTypes { get; set; } = [];
@@ -31,17 +31,18 @@ public class CheckOptions : OptionsBase
                 result.AddError("Artifact types cannot be empty or whitespace.");
             }
         });
-        outputOption = Add(new Option<CheckOutput>("--output")
-        {
-            Description = "Output format",
-            DefaultValueFactory = _ => CheckOutput.Summary
-        });
+        outputOption = new CliOutputOption<CheckOutput>(
+            "Output format",
+            CheckOutput.Summary,
+            ("summary", CheckOutput.Summary),
+            ("json", CheckOutput.Json));
+        Add(outputOption.Option);
     }
 
     protected override void GetValues()
     {
         Image = GetValue(nameArgument);
         ArtifactTypes = GetValue(artifactTypeOption) ?? [];
-        OutputFormat = GetValue(outputOption);
+        OutputFormat = outputOption.GetValue(GetValue(outputOption.Option));
     }
 }

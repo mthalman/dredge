@@ -6,7 +6,7 @@ public class InspectOptions : OptionsBase
 {
     private readonly Argument<string> nameArgument;
     private readonly Argument<string> artifactDigestArgument;
-    private readonly Option<ArtifactInspectOutput> outputOption;
+    private readonly CliOutputOption<ArtifactInspectOutput> outputOption;
 
     public string Image { get; set; } = string.Empty;
     public string ArtifactDigest { get; set; } = string.Empty;
@@ -22,17 +22,18 @@ public class InspectOptions : OptionsBase
         {
             Description = "Digest of the artifact manifest"
         });
-        outputOption = Add(new Option<ArtifactInspectOutput>("--output")
-        {
-            Description = "Output format",
-            DefaultValueFactory = _ => ArtifactInspectOutput.Summary
-        });
+        outputOption = new CliOutputOption<ArtifactInspectOutput>(
+            "Output format",
+            ArtifactInspectOutput.Summary,
+            ("summary", ArtifactInspectOutput.Summary),
+            ("json", ArtifactInspectOutput.Json));
+        Add(outputOption.Option);
     }
 
     protected override void GetValues()
     {
         Image = GetValue(nameArgument);
         ArtifactDigest = GetValue(artifactDigestArgument);
-        OutputFormat = GetValue(outputOption);
+        OutputFormat = outputOption.GetValue(GetValue(outputOption.Option));
     }
 }

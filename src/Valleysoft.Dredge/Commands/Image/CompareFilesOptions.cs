@@ -8,7 +8,7 @@ public class CompareFilesOptions : CompareOptionsBase
 
     private readonly Option<int?> baseLayerIndex;
     private readonly Option<int?> targetLayerIndex;
-    private readonly Option<CompareFilesOutput> outputOption;
+    private readonly CliOutputOption<CompareFilesOutput> outputOption;
 
     public int? BaseLayerIndex { get; set; }
     public int? TargetLayerIndex { get; set; }
@@ -18,7 +18,11 @@ public class CompareFilesOptions : CompareOptionsBase
     {
         baseLayerIndex = Add(new Option<int?>($"--{BaseArg}{LayerIndexSuffix}") { Description = "Non-empty layer index of the base container image to compare with" });
         targetLayerIndex = Add(new Option<int?>($"--{TargetArg}{LayerIndexSuffix}") { Description = "Non-empty layer index of the target container image to compare against" });
-        outputOption = Add(new Option<CompareFilesOutput>("--output") { Description = "Output type", DefaultValueFactory = _ => CompareFilesOutput.ExternalTool });
+        outputOption = new CliOutputOption<CompareFilesOutput>(
+            "Output type",
+            CompareFilesOutput.ExternalTool,
+            ("external-tool", CompareFilesOutput.ExternalTool));
+        Add(outputOption.Option);
     }
 
     protected override void GetValues()
@@ -26,6 +30,6 @@ public class CompareFilesOptions : CompareOptionsBase
         base.GetValues();
         BaseLayerIndex = GetValue(baseLayerIndex);
         TargetLayerIndex = GetValue(targetLayerIndex);
-        OutputType = GetValue(outputOption);
+        OutputType = outputOption.GetValue(GetValue(outputOption.Option));
     }
 }
