@@ -8,6 +8,9 @@ public class ImageCommand : Command
         : base("image", "Commands related to container images")
     {
         Subcommands.Add(new CompareCommand(dockerRegistryClientFactory));
+        Subcommands.Add(new LsCommand(dockerRegistryClientFactory));
+        Subcommands.Add(new CatCommand(dockerRegistryClientFactory));
+        Subcommands.Add(new ExtractCommand(dockerRegistryClientFactory));
         Subcommands.Add(new InspectCommand(dockerRegistryClientFactory));
         Subcommands.Add(new OsCommand(dockerRegistryClientFactory));
         Subcommands.Add(new SaveLayersCommand(dockerRegistryClientFactory));

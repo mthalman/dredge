@@ -14,6 +14,8 @@ Dredge does not modify registry content.
 - Inspect and retrieve OCI artifacts or check for required artifact types in CI.
 - Inspect an image's [configuration](docs/commands/images.md#inspect) and
   [operating system information](docs/commands/images.md#os).
+- Browse, read, and selectively [extract files from Linux
+  images](docs/commands/images.md#ls) with layer provenance.
 - Compare [layers](docs/commands/images.md#compare-layers) or
   [files](docs/commands/images.md#compare-files) between images.
 - [Generate a Dockerfile](docs/commands/images.md#dockerfile) from an image.

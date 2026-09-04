@@ -20,7 +20,7 @@ public class CommandStructureTests
         Mock<IDockerRegistryClientFactory> factory = new();
 
         Assert.Equal(
-            ["compare", "inspect", "os", "save-layers", "dockerfile"],
+            ["compare", "ls", "cat", "extract", "inspect", "os", "save-layers", "dockerfile"],
             new ImageCommand(factory.Object).Subcommands.Select(command => command.Name));
         Assert.Equal(
             ["get", "digest", "resolve"],
@@ -33,6 +33,74 @@ public class CommandStructureTests
         Assert.Equal(
             ["open", "get", "set", "clear-cache"],
             new SettingsCommand().Subcommands.Select(command => command.Name));
+    }
+
+    [Fact]
+    public void ImageFilesystemOptions_BindArgumentsOptionsAndPlatform()
+    {
+        LsOptions ls = Bind(
+            new LsOptions(),
+            "image:tag",
+            "/etc",
+            "--recursive",
+            "--show-deleted",
+            "-l",
+            "--provenance",
+            "--output",
+            "json",
+            "--os",
+            "linux",
+            "--arch",
+            "arm64");
+        CatOptions cat = Bind(new CatOptions(), "image:tag", "/etc/hosts", "--os-version", "1");
+        ExtractOptions extract = Bind(
+            new ExtractOptions(),
+            "image:tag",
+            "/etc",
+            "output",
+            "--arch",
+            "amd64");
+
+        Assert.Equal("/etc", ls.Path);
+        Assert.True(ls.Recursive);
+        Assert.True(ls.ShowDeleted);
+        Assert.True(ls.Long);
+        Assert.True(ls.ShowProvenance);
+        Assert.Equal(LsOutput.Json, ls.OutputFormat);
+        Assert.Equal("linux", ls.Os);
+        Assert.Equal("arm64", ls.Architecture);
+        Assert.Equal("/etc/hosts", cat.Path);
+        Assert.Equal("1", cat.OsVersion);
+        Assert.Equal("/etc", extract.Path);
+        Assert.Equal("output", extract.OutputPath);
+        Assert.Equal("amd64", extract.Architecture);
+    }
+
+    [Fact]
+    public void LsOptions_UseExpectedDefaults()
+    {
+        LsOptions options = Bind(new LsOptions(), "image");
+
+        Assert.Null(options.Path);
+        Assert.False(options.Recursive);
+        Assert.False(options.ShowDeleted);
+        Assert.False(options.Long);
+        Assert.False(options.ShowProvenance);
+        Assert.Equal(LsOutput.Text, options.OutputFormat);
+    }
+
+    [Fact]
+    public void LsOptions_AdvertiseLowercaseOutputValues()
+    {
+        LsOptions options = new();
+        Command command = new("test");
+        options.SetCommandOptions(command);
+        Option outputOption = Assert.Single(
+            command.Options,
+            option => option.Name == "--output");
+
+        Assert.Equal("text|json", outputOption.HelpName);
+        Assert.Empty(command.Parse(["image", "--output", "Json"]).Errors);
     }
 
     [Fact]
