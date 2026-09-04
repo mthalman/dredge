@@ -109,7 +109,7 @@ public class CommandStructureTests
             option => option.Name == "--output");
 
         Assert.Equal("text|json", outputOption.HelpName);
-        Assert.Empty(command.Parse(["image", "--output", "Json"]).Errors);
+        Assert.Empty(command.Parse(["image", "--output", "JSON"]).Errors);
     }
 
     [Fact]
@@ -148,7 +148,9 @@ public class CommandStructureTests
             "--base-layer-index",
             "1",
             "--target-layer-index",
-            "2");
+            "2",
+            "--output",
+            "EXTERNAL-TOOL");
 
         Assert.Equal("base", options.BaseImage);
         Assert.Equal("target", options.TargetImage);
@@ -166,6 +168,86 @@ public class CommandStructureTests
         Assert.False(options.IsColorDisabled);
         Assert.False(options.IncludeHistory);
         Assert.False(options.IncludeCompressedSize);
+    }
+
+    [Fact]
+    public void CompareOptions_BindCliStyleOutputValuesCaseInsensitively()
+    {
+        CompareLayersOptions layers = Bind(
+            new CompareLayersOptions(),
+            "base",
+            "target",
+            "--output",
+            "SIDE-BY-SIDE");
+        CompareMetadataOptions metadata = Bind(
+            new CompareMetadataOptions(),
+            "base",
+            "target",
+            "--output",
+            "INLINE");
+
+        Assert.Equal(CompareOutput.SideBySide, layers.OutputFormat);
+        Assert.Equal(CompareOutput.Inline, metadata.OutputFormat);
+    }
+
+    [Fact]
+    public void OutputOptions_AdvertiseCliStyleValues()
+    {
+        (OptionsBase Options, string ExpectedHelpName)[] cases =
+        [
+            (new CompareFilesOptions(), "external-tool"),
+            (new CompareLayersOptions(), "side-by-side|inline|json"),
+            (new CompareMetadataOptions(), "side-by-side|inline|json"),
+            (new LsOptions(), "text|json"),
+            (new CheckOptions(), "summary|json"),
+            (new ReferrerInspectOptions(), "summary|json")
+        ];
+
+        foreach ((OptionsBase options, string expectedHelpName) in cases)
+        {
+            Command command = new("test");
+            options.SetCommandOptions(command);
+            Option outputOption = Assert.Single(
+                command.Options,
+                option => option.Name == "--output");
+
+            Assert.Equal(expectedHelpName, outputOption.HelpName);
+        }
+    }
+
+    [Theory]
+    [InlineData("SideBySide", "side-by-side", "inline", "json")]
+    [InlineData("sidebyside", "side-by-side", "inline", "json")]
+    public void CompareLayersOptions_RejectLegacyOutputValues(
+        string value,
+        params string[] expectedValues)
+    {
+        Command command = new("test");
+        new CompareLayersOptions().SetCommandOptions(command);
+
+        ParseResult result = command.Parse(["base", "target", "--output", value]);
+
+        Assert.Single(result.Errors);
+        Assert.Equal(
+            $"Invalid output value '{value}'. Expected one of: " +
+            $"{string.Join(", ", expectedValues.Select(expected => $"'{expected}'"))}.",
+            result.Errors[0].Message);
+    }
+
+    [Theory]
+    [InlineData("ExternalTool")]
+    [InlineData("externaltool")]
+    public void CompareFilesOptions_RejectLegacyOutputValues(string value)
+    {
+        Command command = new("test");
+        new CompareFilesOptions().SetCommandOptions(command);
+
+        ParseResult result = command.Parse(["base", "target", "--output", value]);
+
+        Assert.Single(result.Errors);
+        Assert.Equal(
+            $"Invalid output value '{value}'. Expected one of: 'external-tool'.",
+            result.Errors[0].Message);
     }
 
     [Fact]

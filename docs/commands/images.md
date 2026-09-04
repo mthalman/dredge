@@ -221,7 +221,7 @@ dredge image compare metadata <base> <target> [--output <format>] [--no-color] [
 
 | Option | Description |
 |--------|-------------|
-| `--output` | Output format: `SideBySide` (default), `Inline`, or `Json` |
+| `--output` | Output format: `side-by-side` (default), `inline`, or `json` |
 | `--no-color` | Disable color output and use text-based diff indicators instead |
 
 The comparison includes:
@@ -266,7 +266,7 @@ dredge image compare layers <base> <target> [--output <format>] [--history] [--c
 
 | Option | Description |
 |--------|-------------|
-| `--output` | Output format: `SideBySide` (default), `Inline`, or `Json` |
+| `--output` | Output format: `side-by-side` (default), `inline`, or `json` |
 | `--history` | Include the layer history (Dockerfile instructions) |
 | `--compressed-size` | Show compressed layer sizes |
 | `--no-color` | Disable color output and use text-based diff indicators instead |
@@ -339,7 +339,7 @@ dredge image compare files <base> <target> [--base-layer-index <n>] [--target-la
 |--------|-------------|
 | `--base-layer-index` | Apply base-image layers from index `0` through this zero-based index |
 | `--target-layer-index` | Apply target-image layers from index `0` through this zero-based index |
-| `--output` | Output type. The supported and default value is `ExternalTool` |
+| `--output` | Output type. The supported and default value is `external-tool` |
 
 Example — compare two images:
 

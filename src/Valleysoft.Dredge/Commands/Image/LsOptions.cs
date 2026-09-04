@@ -1,20 +1,16 @@
 using System.CommandLine;
-using System.CommandLine.Completions;
 
 namespace Valleysoft.Dredge.Commands.Image;
 
 public class LsOptions : PlatformOptionsBase
 {
-    private const string TextOutput = "text";
-    private const string JsonOutput = "json";
-
     private readonly Argument<string> imageArgument;
     private readonly Argument<string?> pathArgument;
     private readonly Option<bool> recursiveOption;
     private readonly Option<bool> showDeletedOption;
     private readonly Option<bool> longOption;
     private readonly Option<bool> provenanceOption;
-    private readonly Option<string> outputOption;
+    private readonly CliOutputOption<LsOutput> outputOption;
 
     public string Image { get; set; } = string.Empty;
     public string? Path { get; set; }
@@ -52,24 +48,12 @@ public class LsOptions : PlatformOptionsBase
         {
             Description = "Show layer provenance"
         });
-        outputOption = Add(new Option<string>("--output")
-        {
-            Description = "Output format",
-            HelpName = $"{TextOutput}|{JsonOutput}",
-            DefaultValueFactory = _ => TextOutput
-        });
-        outputOption.CompletionSources.Add(
-            _ => [new CompletionItem(TextOutput), new CompletionItem(JsonOutput)]);
-        outputOption.Validators.Add(result =>
-        {
-            string? value = result.GetValueOrDefault<string>();
-            if (!string.Equals(value, TextOutput, StringComparison.OrdinalIgnoreCase) &&
-                !string.Equals(value, JsonOutput, StringComparison.OrdinalIgnoreCase))
-            {
-                result.AddError(
-                    $"Invalid output format '{value}'. Expected '{TextOutput}' or '{JsonOutput}'.");
-            }
-        });
+        outputOption = new CliOutputOption<LsOutput>(
+            "Output format",
+            LsOutput.Text,
+            ("text", LsOutput.Text),
+            ("json", LsOutput.Json));
+        Add(outputOption.Option);
     }
 
     protected override void GetValues()
@@ -81,12 +65,6 @@ public class LsOptions : PlatformOptionsBase
         ShowDeleted = GetValue(showDeletedOption);
         Long = GetValue(longOption);
         ShowProvenance = GetValue(provenanceOption);
-        OutputFormat = GetValue(outputOption)?.ToLowerInvariant() switch
-        {
-            TextOutput => LsOutput.Text,
-            JsonOutput => LsOutput.Json,
-            var value => throw new NotSupportedException(
-                $"Unsupported output format '{value}'.")
-        };
+        OutputFormat = outputOption.GetValue(GetValue(outputOption.Option));
     }
 }

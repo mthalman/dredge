@@ -4,7 +4,7 @@ namespace Valleysoft.Dredge.Commands.Image;
 
 public class CompareMetadataOptions : CompareOptionsBase
 {
-    private readonly Option<CompareOutput> outputOption;
+    private readonly CliOutputOption<CompareOutput> outputOption;
     private readonly Option<bool> noColorOption;
 
     public CompareOutput OutputFormat { get; set; }
@@ -12,11 +12,13 @@ public class CompareMetadataOptions : CompareOptionsBase
 
     public CompareMetadataOptions()
     {
-        outputOption = Add(new Option<CompareOutput>("--output")
-        {
-            Description = "Output format",
-            DefaultValueFactory = _ => CompareOutput.SideBySide
-        });
+        outputOption = new CliOutputOption<CompareOutput>(
+            "Output format",
+            CompareOutput.SideBySide,
+            ("side-by-side", CompareOutput.SideBySide),
+            ("inline", CompareOutput.Inline),
+            ("json", CompareOutput.Json));
+        Add(outputOption.Option);
         noColorOption = Add(new Option<bool>("--no-color")
         {
             Description = "Disables dependency on color in comparison results"
@@ -26,7 +28,7 @@ public class CompareMetadataOptions : CompareOptionsBase
     protected override void GetValues()
     {
         base.GetValues();
-        OutputFormat = GetValue(outputOption);
+        OutputFormat = outputOption.GetValue(GetValue(outputOption.Option));
         IsColorDisabled = GetValue(noColorOption);
     }
 }
