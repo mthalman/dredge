@@ -9,8 +9,17 @@ using Valleysoft.Dredge.Commands.Referrer;
 using Valleysoft.Dredge.Commands.Repo;
 using Valleysoft.Dredge.Commands.Settings;
 using Valleysoft.Dredge.Commands.Tag;
+using ImageInspectOptions = Valleysoft.Dredge.Commands.Image.InspectOptions;
+using ManifestDigestOptions = Valleysoft.Dredge.Commands.Manifest.DigestOptions;
+using ManifestGetOptions = Valleysoft.Dredge.Commands.Manifest.GetOptions;
+using ManifestResolveOptions = Valleysoft.Dredge.Commands.Manifest.SetOptions;
 using ReferrerGetOptions = Valleysoft.Dredge.Commands.Referrer.GetOptions;
 using ReferrerInspectOptions = Valleysoft.Dredge.Commands.Referrer.InspectOptions;
+using ReferrerListOptions = Valleysoft.Dredge.Commands.Referrer.ListOptions;
+using RepoListOptions = Valleysoft.Dredge.Commands.Repo.ListOptions;
+using SettingsGetOptions = Valleysoft.Dredge.Commands.Settings.GetOptions;
+using SettingsSetOptions = Valleysoft.Dredge.Commands.Settings.SetOptions;
+using TagListOptions = Valleysoft.Dredge.Commands.Tag.ListOptions;
 
 public class CommandStructureTests
 {
@@ -242,15 +251,86 @@ public class CommandStructureTests
     }
 
     [Fact]
-    public void ReferrerArtifactOptions_UseNameArgument()
+    public void PositionalArguments_UseConsistentNamesAndDescriptions()
     {
-        Command inspect = new("inspect");
-        new ReferrerInspectOptions().SetCommandOptions(inspect);
-        Command get = new("get");
-        new ReferrerGetOptions().SetCommandOptions(get);
+        const string ImageSyntax = "(<image>, <image>:<tag>, or <image>@<digest>)";
+        const string ImageDescription = "Container image reference " + ImageSyntax;
 
-        Assert.Equal(["name", "artifact-digest"], inspect.Arguments.Select(argument => argument.Name));
-        Assert.Equal(["name", "artifact-digest"], get.Arguments.Select(argument => argument.Name));
+        AssertArguments(new ImageInspectOptions(), ("image", ImageDescription));
+        AssertArguments(new OsOptions(), ("image", ImageDescription));
+        AssertArguments(
+            new LsOptions(),
+            ("image", ImageDescription),
+            ("path", "Image path to list"));
+        AssertArguments(
+            new CatOptions(),
+            ("image", ImageDescription),
+            ("path", "Image file path to write to standard output"));
+        AssertArguments(
+            new ExtractOptions(),
+            ("image", ImageDescription),
+            ("path", "Image file or directory path to extract"),
+            ("output-path", "New destination path"));
+        AssertArguments(
+            new CompareFilesOptions(),
+            ("base", "Base container image reference " + ImageSyntax),
+            ("target", "Target container image reference " + ImageSyntax));
+        AssertArguments(
+            new SaveLayersOptions(),
+            ("image", ImageDescription),
+            ("output-path", "Path to the output location"));
+        AssertArguments(new DockerfileOptions(), ("image", ImageDescription));
+
+        AssertArguments(new ManifestGetOptions(), ("image", ImageDescription));
+        AssertArguments(new ManifestDigestOptions(), ("image", ImageDescription));
+        AssertArguments(new ManifestResolveOptions(), ("image", ImageDescription));
+
+        AssertArguments(new ReferrerListOptions(), ("image", ImageDescription));
+        AssertArguments(
+            new CheckOptions(),
+            ("image", ImageDescription));
+        AssertArguments(
+            new ReferrerInspectOptions(),
+            ("image", ImageDescription),
+            ("artifact-digest", "Digest of the artifact manifest"));
+        AssertArguments(
+            new ReferrerGetOptions(),
+            ("image", ImageDescription),
+            ("artifact-digest", "Digest of the artifact manifest"));
+
+        AssertArguments(new RepoListOptions(), ("registry", "Container registry host"));
+        AssertArguments(new TagListOptions(), ("repository", "Container repository name"));
+        AssertArguments(new SettingsGetOptions(), ("setting", "Setting name to get"));
+        AssertArguments(
+            new SettingsSetOptions(),
+            ("setting", "Setting name to set"),
+            ("value", "Value to assign to the setting"));
+    }
+
+    [Fact]
+    public void CommandDescriptions_UseCorrectGrammar()
+    {
+        Mock<IDockerRegistryClientFactory> factory = new();
+
+        Assert.Equal(
+            "Lists the tags contained in the container repository",
+            new Valleysoft.Dredge.Commands.Tag.ListCommand(factory.Object).Description);
+        Assert.Equal(
+            "Returns low-level information on a container image",
+            new Valleysoft.Dredge.Commands.Image.InspectCommand(factory.Object).Description);
+    }
+
+    private static void AssertArguments(
+        OptionsBase options,
+        params (string Name, string Description)[] expected)
+    {
+        Command command = new("test");
+        options.SetCommandOptions(command);
+
+        Assert.Equal(
+            expected,
+            command.Arguments.Select(
+                argument => (argument.Name, argument.Description!)).ToArray());
     }
 
     private static TOptions Bind<TOptions>(TOptions options, params string[] args)

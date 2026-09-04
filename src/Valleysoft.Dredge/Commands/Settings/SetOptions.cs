@@ -4,7 +4,7 @@ namespace Valleysoft.Dredge.Commands.Settings;
 
 public class SetOptions : OptionsBase
 {
-    private readonly Argument<string> nameArg;
+    private readonly Argument<string> settingArg;
     private readonly Argument<string> valueArg;
 
     public string Name { get; set; } = string.Empty;
@@ -12,13 +12,13 @@ public class SetOptions : OptionsBase
 
     public SetOptions()
     {
-        nameArg = Add(new Argument<string>("name") { Description = "Name of the setting to set" });
+        settingArg = Add(new Argument<string>("setting") { Description = "Setting name to set" });
         valueArg = Add(new Argument<string>("value") { Description = "Value to assign to the setting" });
     }
 
     protected override void GetValues()
     {
-        Name = GetValue(nameArg);
+        Name = GetValue(settingArg);
         Value = GetValue(valueArg);
     }
 }

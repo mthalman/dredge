@@ -14,7 +14,7 @@ public class CatOptions : PlatformOptionsBase
     {
         imageArgument = Add(new Argument<string>("image")
         {
-            Description = "Name of the container image (<image>, <image>:<tag>, or <image>@<digest>)"
+            Description = "Container image reference (<image>, <image>:<tag>, or <image>@<digest>)"
         });
         pathArgument = Add(new Argument<string>("path")
         {

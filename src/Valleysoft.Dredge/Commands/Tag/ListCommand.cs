@@ -7,7 +7,7 @@ namespace Valleysoft.Dredge.Commands.Tag;
 public class ListCommand : RegistryCommandBase<ListOptions>
 {
     public ListCommand(IDockerRegistryClientFactory dockerRegistryClientFactory, TextWriter? output = null)
-        : base("list", "Lists the tag contained in the container repository", dockerRegistryClientFactory, output)
+        : base("list", "Lists the tags contained in the container repository", dockerRegistryClientFactory, output)
     {
     }
 

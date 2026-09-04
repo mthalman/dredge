@@ -12,7 +12,7 @@ public class ListOptions : OptionsBase
 
     public ListOptions()
     {
-        imageArg = Add(new Argument<string>("name") { Description = "Name of the manifest (<name>, <name>:<tag>, or <name>@<digest>)" });
+        imageArg = Add(new Argument<string>("image") { Description = "Container image reference (<image>, <image>:<tag>, or <image>@<digest>)" });
         artifactTypeArg = Add(new Option<string>("--artifact-type") { Description = "Artifact media type to filter by" });
     }
 

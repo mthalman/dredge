@@ -4,17 +4,17 @@ namespace Valleysoft.Dredge.Commands.Settings;
 
 public class GetOptions : OptionsBase
 {
-    private readonly Argument<string> nameArg;
+    private readonly Argument<string> settingArg;
 
     public string Name { get; set; } = string.Empty;
 
     public GetOptions()
     {
-        nameArg = Add(new Argument<string>("name") { Description = "Name of the setting to set" });
+        settingArg = Add(new Argument<string>("setting") { Description = "Setting name to get" });
     }
 
     protected override void GetValues()
     {
-        Name = GetValue(nameArg);
+        Name = GetValue(settingArg);
     }
 }

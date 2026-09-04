@@ -20,7 +20,7 @@ dredge settings open
 Gets the value of a setting. Setting names use dot notation for hierarchical JSON paths.
 
 ```console
-dredge settings get <name>
+dredge settings get <setting>
 ```
 
 Example:
@@ -34,7 +34,7 @@ dredge settings get fileCompareTool.exePath
 Sets the value of a setting. Setting names use dot notation for hierarchical JSON paths.
 
 ```console
-dredge settings set <name> <value>
+dredge settings set <setting> <value>
 ```
 
 Example:

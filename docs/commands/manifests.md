@@ -11,7 +11,7 @@
 Returns the manifest of the specified image name.
 
 ```console
-dredge manifest get <name>
+dredge manifest get <image>
 ```
 
 Example:
@@ -58,7 +58,7 @@ dredge manifest get ubuntu:22.04
 Returns the digest of the specified image name.
 
 ```console
-dredge manifest digest <name>
+dredge manifest digest <image>
 ```
 
 Example:

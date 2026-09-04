@@ -4,7 +4,7 @@ namespace Valleysoft.Dredge.Commands.Referrer;
 
 public class CheckOptions : OptionsBase
 {
-    private readonly Argument<string> nameArgument;
+    private readonly Argument<string> imageArgument;
     private readonly Option<string[]> artifactTypeOption;
     private readonly Option<CheckOutput> outputOption;
 
@@ -14,9 +14,9 @@ public class CheckOptions : OptionsBase
 
     public CheckOptions()
     {
-        nameArgument = Add(new Argument<string>("name")
+        imageArgument = Add(new Argument<string>("image")
         {
-            Description = "Name of the subject manifest (<name>, <name>:<tag>, or <name>@<digest>)"
+            Description = "Container image reference (<image>, <image>:<tag>, or <image>@<digest>)"
         });
         artifactTypeOption = Add(new Option<string[]>("--artifact-type")
         {
@@ -40,7 +40,7 @@ public class CheckOptions : OptionsBase
 
     protected override void GetValues()
     {
-        Image = GetValue(nameArgument);
+        Image = GetValue(imageArgument);
         ArtifactTypes = GetValue(artifactTypeOption) ?? [];
         OutputFormat = GetValue(outputOption);
     }

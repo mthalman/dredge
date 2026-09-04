@@ -6,7 +6,7 @@ namespace Valleysoft.Dredge.Commands.Image;
 public class InspectCommand : RegistryCommandBase<InspectOptions>
 {
     public InspectCommand(IDockerRegistryClientFactory dockerRegistryClientFactory, TextWriter? output = null)
-        : base("inspect", "Return low-level information on a container image", dockerRegistryClientFactory, output)
+        : base("inspect", "Returns low-level information on a container image", dockerRegistryClientFactory, output)
     {
     }
 
