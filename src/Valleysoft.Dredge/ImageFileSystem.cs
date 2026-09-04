@@ -137,6 +137,7 @@ internal sealed class ImageFileSystem
             CreateExtractionSubdirectories(plan, cancellationToken);
             List<(ImageFileSystemEntry Entry, string Destination)> content =
                 GetContentExtractionRequests(plan);
+            // A failed or canceled copy may leave a partial file that must be rolled back.
             state.OutputCreated |= content.Count > 0;
             await ExtractContentEntriesAsync(content, cancellationToken);
             CreatePreservedHardLinks(plan, state, cancellationToken);

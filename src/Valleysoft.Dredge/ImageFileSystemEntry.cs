@@ -29,6 +29,8 @@ public sealed record ImageFileSystemEntry
     public ImageLayerReference? ModifiedLayer { get; init; }
     public ImageLayerReference? DeletedLayer { get; init; }
 
+    // These coordinates reopen the exact content-producing tar entry. The ordinal
+    // disambiguates duplicate paths in non-conforming layers.
     [JsonIgnore]
     internal int ContentLayerIndex { get; init; }
 
@@ -36,10 +38,10 @@ public sealed record ImageFileSystemEntry
     internal string? ContentPath { get; init; }
 
     [JsonIgnore]
-    // The ordinal disambiguates duplicate paths in non-conforming layers so content reads
-    // reopen the exact entry that produced the index metadata.
     internal int ContentEntryIndex { get; init; }
 
+    // A hard link to a symlink shares its inode, so extraction must recreate the
+    // symlink instead of dereferencing it into ordinary file content.
     [JsonIgnore]
     internal string? ContentLinkTarget { get; init; }
 
