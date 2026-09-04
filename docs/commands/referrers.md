@@ -12,7 +12,7 @@
 Returns the referrers to the specified manifest. This uses the [OCI Referrers API](https://github.com/opencontainers/distribution-spec/blob/main/spec.md#listing-referrers).
 
 ```console
-dredge referrer list <name> [--artifact-type <type>]
+dredge referrer list <image> [--artifact-type <type>]
 ```
 
 | Option | Description |
@@ -54,7 +54,7 @@ for matching referrer descriptors; it does not inspect artifact payloads or
 verify signatures.
 
 ```console
-dredge referrer check <name> --artifact-type <type> [--artifact-type <type>]... [--output <format>]
+dredge referrer check <image> --artifact-type <type> [--artifact-type <type>]... [--output <format>]
 ```
 
 | Option | Description |
@@ -123,7 +123,7 @@ Displays metadata and payload information for an OCI artifact referenced by an
 image.
 
 ```console
-dredge referrer inspect <name> <artifact-digest> [--output <format>]
+dredge referrer inspect <image> <artifact-digest> [--output <format>]
 ```
 
 | Option | Description |
@@ -169,7 +169,7 @@ Payloads:
 Streams an artifact payload without modifying registry content.
 
 ```console
-dredge referrer get <name> <artifact-digest> [--payload <index-or-digest>] [--output <path>]
+dredge referrer get <image> <artifact-digest> [--payload <index-or-digest>] [--output <path>]
 ```
 
 | Option | Description |

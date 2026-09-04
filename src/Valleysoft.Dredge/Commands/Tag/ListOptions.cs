@@ -4,17 +4,17 @@ namespace Valleysoft.Dredge.Commands.Tag;
 
 public class ListOptions : OptionsBase
 {
-    private readonly Argument<string> repoArg;
+    private readonly Argument<string> repositoryArg;
 
     public string Repo { get; set; } = string.Empty;
 
     public ListOptions()
     {
-        repoArg = Add(new Argument<string>("repo") { Description = "Name of the container repository" });
+        repositoryArg = Add(new Argument<string>("repository") { Description = "Container repository name" });
     }
 
     protected override void GetValues()
     {
-        Repo = GetValue(repoArg);
+        Repo = GetValue(repositoryArg);
     }
 }

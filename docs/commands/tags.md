@@ -9,7 +9,7 @@
 Returns the tags associated with the specified repository.
 
 ```console
-dredge tag list <repo>
+dredge tag list <repository>
 ```
 
 Example:

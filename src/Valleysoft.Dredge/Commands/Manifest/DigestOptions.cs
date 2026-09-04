@@ -10,7 +10,7 @@ public class DigestOptions : OptionsBase
 
     public DigestOptions()
     {
-        imageArg = Add(new Argument<string>("name") { Description = "Name of the manifest (<name>, <name>:<tag>, or <name>@<digest>)" });
+        imageArg = Add(new Argument<string>("image") { Description = "Container image reference (<image>, <image>:<tag>, or <image>@<digest>)" });
     }
 
     protected override void GetValues()

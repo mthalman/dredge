@@ -10,7 +10,7 @@ public class ListOptions : OptionsBase
 
     public ListOptions()
     {
-        registryArg = Add(new Argument<string>("repo") { Description = "Name of the container registry" });
+        registryArg = Add(new Argument<string>("registry") { Description = "Container registry host" });
     }
 
     protected override void GetValues()

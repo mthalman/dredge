@@ -4,7 +4,7 @@ namespace Valleysoft.Dredge.Commands.Referrer;
 
 public class InspectOptions : OptionsBase
 {
-    private readonly Argument<string> nameArgument;
+    private readonly Argument<string> imageArgument;
     private readonly Argument<string> artifactDigestArgument;
     private readonly Option<ArtifactInspectOutput> outputOption;
 
@@ -14,9 +14,9 @@ public class InspectOptions : OptionsBase
 
     public InspectOptions()
     {
-        nameArgument = Add(new Argument<string>("name")
+        imageArgument = Add(new Argument<string>("image")
         {
-            Description = "Name of the subject manifest (<name>, <name>:<tag>, or <name>@<digest>)"
+            Description = "Container image reference (<image>, <image>:<tag>, or <image>@<digest>)"
         });
         artifactDigestArgument = Add(new Argument<string>("artifact-digest")
         {
@@ -31,7 +31,7 @@ public class InspectOptions : OptionsBase
 
     protected override void GetValues()
     {
-        Image = GetValue(nameArgument);
+        Image = GetValue(imageArgument);
         ArtifactDigest = GetValue(artifactDigestArgument);
         OutputFormat = GetValue(outputOption);
     }
