@@ -19,12 +19,13 @@ public class ListCommand : RegistryCommandBase<ListOptions>
 
             List<string> repoNames = [];
 
-            Page<Catalog> catalogPage = await client.Catalog.GetAsync(null, ct);
-            repoNames.AddRange(catalogPage.Value.RepositoryNames);
-            while (catalogPage.NextPageLink is not null)
+            Page<Catalog> catalogPage = await client.Catalog.GetAsync(Options.Limit, ct);
+            BoundedListHelper.AddItems(repoNames, catalogPage.Value.RepositoryNames, Options.Limit);
+            while (!BoundedListHelper.IsLimitReached(repoNames, Options.Limit) &&
+                catalogPage.NextPageLink is not null)
             {
                 catalogPage = await client.Catalog.GetNextAsync(catalogPage.NextPageLink, ct);
-                repoNames.AddRange(catalogPage.Value.RepositoryNames);
+                BoundedListHelper.AddItems(repoNames, catalogPage.Value.RepositoryNames, Options.Limit);
             }
 
             repoNames.Sort();

@@ -2,7 +2,7 @@
 
 namespace Valleysoft.Dredge.Commands.Referrer;
 
-public class ListOptions : OptionsBase
+public class ListOptions : BoundedListOptionsBase
 {
     private readonly Argument<string> imageArg;
     private readonly Option<string> artifactTypeArg;
@@ -20,5 +20,6 @@ public class ListOptions : OptionsBase
     {
         Image = GetValue(imageArg);
         ArtifactType = GetValue(artifactTypeArg);
+        GetBoundedListValues();
     }
 }

@@ -21,12 +21,13 @@ public class ListCommand : RegistryCommandBase<ListOptions>
             List<string> tags = [];
 
             Page<RepositoryTags> tagsPage =
-                await client.Tags.GetAsync(imageName.Repo, null, ct);
-            tags.AddRange(tagsPage.Value.Tags);
-            while (tagsPage.NextPageLink is not null)
+                await client.Tags.GetAsync(imageName.Repo, Options.Limit, ct);
+            BoundedListHelper.AddItems(tags, tagsPage.Value.Tags, Options.Limit);
+            while (!BoundedListHelper.IsLimitReached(tags, Options.Limit) &&
+                tagsPage.NextPageLink is not null)
             {
                 tagsPage = await client.Tags.GetNextAsync(tagsPage.NextPageLink, ct);
-                tags.AddRange(tagsPage.Value.Tags);
+                BoundedListHelper.AddItems(tags, tagsPage.Value.Tags, Options.Limit);
             }
 
             tags.Sort();

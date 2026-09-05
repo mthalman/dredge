@@ -155,6 +155,29 @@ public class RegistryCommandTests
     }
 
     [Fact]
+    public async Task RepoListCommand_LimitWithinFirstPage_TruncatesAndDoesNotRequestNextPage()
+    {
+        Mock<IDockerRegistryClient> client = CreateClient();
+        client
+            .Setup(o => o.Catalog.GetAsync(2, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new Page<Catalog>(
+                new Catalog { RepositoryNames = ["zebra", "alpha", "middle"] },
+                "next"));
+        using StringWriter output = new();
+        TestRepoListCommand command = new(CreateFactory(client.Object), output)
+        {
+            Options = new RepoListOptions { Registry = Registry, Limit = 2 }
+        };
+
+        await command.RunAsync();
+
+        Assert.Equal(["alpha", "zebra"], JArray.Parse(output.ToString()).Values<string>());
+        client.Verify(
+            o => o.Catalog.GetNextAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()),
+            Times.Never);
+    }
+
+    [Fact]
     public async Task TagListCommand_CombinesPagesAndSortsTags()
     {
         Mock<IDockerRegistryClient> client = CreateClient();
@@ -177,6 +200,37 @@ public class RegistryCommandTests
         await command.RunAsync();
 
         Assert.Equal(["a", "m", "z"], JArray.Parse(output.ToString()).Values<string>());
+    }
+
+    [Fact]
+    public async Task TagListCommand_LimitWithinLaterPage_StopsAfterLimitAndSortsSubset()
+    {
+        Mock<IDockerRegistryClient> client = CreateClient();
+        client
+            .Setup(o => o.Tags.GetAsync("library/repo", 3, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new Page<RepositoryTags>(
+                new RepositoryTags { RepositoryName = "library/repo", Tags = ["z", "a"] },
+                "next"));
+        client
+            .Setup(o => o.Tags.GetNextAsync("next", It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new Page<RepositoryTags>(
+                new RepositoryTags { RepositoryName = "library/repo", Tags = ["y", "m"] },
+                "unused"));
+        using StringWriter output = new();
+        TestTagListCommand command = new(CreateFactory(client.Object), output)
+        {
+            Options = new TagListOptions { Repo = "repo", Limit = 3 }
+        };
+
+        await command.RunAsync();
+
+        Assert.Equal(["a", "y", "z"], JArray.Parse(output.ToString()).Values<string>());
+        client.Verify(
+            o => o.Tags.GetNextAsync("next", It.IsAny<CancellationToken>()),
+            Times.Once);
+        client.Verify(
+            o => o.Tags.GetNextAsync("unused", It.IsAny<CancellationToken>()),
+            Times.Never);
     }
 
     [Fact]
@@ -212,6 +266,43 @@ public class RegistryCommandTests
 
         Assert.Equal(["sha256:first", "sha256:second"], digests);
         client.Verify(o => o.Referrers.GetNextAsync("next", It.IsAny<CancellationToken>()), Times.Once);
+    }
+
+    [Fact]
+    public async Task ReferrerListCommand_LimitAtPageBoundary_DoesNotRequestNextPage()
+    {
+        OciManifestReference first = new() { Digest = "sha256:first" };
+        OciManifestReference second = new() { Digest = "sha256:second" };
+        Mock<IDockerRegistryClient> client = CreateClient();
+        client
+            .Setup(o => o.Referrers.GetAsync("repo", "sha256:image", null, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new Page<OciImageIndex>(
+                new OciImageIndex
+                {
+                    Manifests = [first, second],
+                    Annotations = new Dictionary<string, string> { ["source"] = "first-page" }
+                },
+                "next"));
+        using StringWriter output = new();
+        TestReferrerListCommand command = new(CreateFactory(client.Object), output)
+        {
+            Options = new ReferrerListOptions
+            {
+                Image = $"{Registry}/repo@sha256:image",
+                Limit = 2
+            }
+        };
+
+        await command.RunAsync();
+        JObject json = JObject.Parse(output.ToString());
+
+        Assert.Equal(
+            ["sha256:first", "sha256:second"],
+            json["manifests"]!.Select(manifest => (string)manifest["digest"]!));
+        Assert.Equal("first-page", (string?)json["annotations"]?["source"]);
+        client.Verify(
+            o => o.Referrers.GetNextAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()),
+            Times.Never);
     }
 
     private static Mock<IDockerRegistryClient> CreateClient() =>
