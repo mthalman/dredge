@@ -1,4 +1,3 @@
-using Newtonsoft.Json;
 using Valleysoft.DockerRegistryClient.Models.Manifests.Oci;
 
 namespace Valleysoft.Dredge.Commands.Referrer;
@@ -50,7 +49,7 @@ public class CheckCommand : RegistryCommandBase<CheckOptions>
     {
         if (Options.OutputFormat == CheckOutput.Json)
         {
-            Output.WriteLine(JsonConvert.SerializeObject(result, JsonHelper.Settings));
+            Output.WriteLine(JsonHelper.Serialize(result));
             return;
         }
 

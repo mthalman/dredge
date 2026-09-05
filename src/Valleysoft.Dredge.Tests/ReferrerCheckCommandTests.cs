@@ -1,6 +1,6 @@
 namespace Valleysoft.Dredge.Tests;
 
-using Newtonsoft.Json.Linq;
+using System.Text.Json.Nodes;
 using Valleysoft.DockerRegistryClient;
 using Valleysoft.DockerRegistryClient.Models.Manifests;
 using Valleysoft.DockerRegistryClient.Models.Manifests.Docker;
@@ -157,13 +157,13 @@ public class ReferrerCheckCommandTests
         };
 
         await command.RunAsync();
-        JObject json = JObject.Parse(output.ToString());
+        JsonObject json = JsonNode.Parse(output.ToString())!.AsObject();
 
-        Assert.True((bool)json["succeeded"]!);
-        Assert.True((bool)json["results"]![0]!["found"]!);
-        Assert.Equal("application/spdx+json", (string?)json["results"]![0]!["artifactType"]);
-        Assert.Equal("sha256:sbom", (string?)json["results"]![0]!["referrers"]![0]!["digest"]);
-        Assert.Equal(123, (int)json["results"]![0]!["referrers"]![0]!["size"]!);
+        Assert.True(json["succeeded"]!.GetValue<bool>());
+        Assert.True(json["results"]![0]!["found"]!.GetValue<bool>());
+        Assert.Equal("application/spdx+json", json["results"]![0]!["artifactType"]!.GetValue<string>());
+        Assert.Equal("sha256:sbom", json["results"]![0]!["referrers"]![0]!["digest"]!.GetValue<string>());
+        Assert.Equal(123, json["results"]![0]!["referrers"]![0]!["size"]!.GetValue<int>());
     }
 
     [Fact]

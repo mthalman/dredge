@@ -1,5 +1,4 @@
-﻿using Newtonsoft.Json;
-using Newtonsoft.Json.Serialization;
+﻿using System.Text.Json;
 using Spectre.Console;
 using Spectre.Console.Rendering;
 using Valleysoft.DockerRegistryClient;
@@ -31,7 +30,7 @@ public class CompareLayersCommand : RegistryCommandBase<CompareLayersOptions>
             if (Options.OutputFormat == CompareOutput.Json)
             {
                 ansiConsole.Profile.Out.Writer.WriteLine(
-                    JsonConvert.SerializeObject(result, JsonHelper.Settings));
+                    JsonHelper.Serialize(result));
             }
             else
             {
@@ -460,7 +459,7 @@ public class CompareLayersCommand : RegistryCommandBase<CompareLayersOptions>
                 CompareLayersOptions options,
                 bool isColorDisabled)
             {
-                string output = JsonConvert.SerializeObject(result, JsonHelper.Settings);
+                string output = JsonHelper.Serialize(result);
 
                 return new Text(output);
             }

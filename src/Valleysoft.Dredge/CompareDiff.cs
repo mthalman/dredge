@@ -1,18 +1,16 @@
-using Newtonsoft.Json;
-using Newtonsoft.Json.Converters;
-using System.Runtime.Serialization;
+using System.Text.Json.Serialization;
 
 namespace Valleysoft.Dredge;
 
-[JsonConverter(typeof(StringEnumConverter))]
+[JsonConverter(typeof(JsonStringEnumConverter<CompareDiff>))]
 public enum CompareDiff
 {
-    [EnumMember(Value = "equal")]
+    [JsonStringEnumMemberName("equal")]
     Equal,
-    [EnumMember(Value = "notEqual")]
+    [JsonStringEnumMemberName("notEqual")]
     NotEqual,
-    [EnumMember(Value = "added")]
+    [JsonStringEnumMemberName("added")]
     Added,
-    [EnumMember(Value = "removed")]
+    [JsonStringEnumMemberName("removed")]
     Removed
 }

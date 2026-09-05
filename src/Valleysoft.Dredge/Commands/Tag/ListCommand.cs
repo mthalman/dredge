@@ -1,5 +1,4 @@
-﻿using Newtonsoft.Json;
-using Valleysoft.DockerRegistryClient;
+﻿using Valleysoft.DockerRegistryClient;
 using Valleysoft.DockerRegistryClient.Models;
 
 namespace Valleysoft.Dredge.Commands.Tag;
@@ -32,7 +31,7 @@ public class ListCommand : RegistryCommandBase<ListOptions>
 
             tags.Sort();
 
-            string output = JsonConvert.SerializeObject(tags, JsonHelper.Settings);
+            string output = JsonHelper.Serialize(tags);
 
             Output.WriteLine(output);
         });

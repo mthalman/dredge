@@ -1,5 +1,4 @@
-﻿using Newtonsoft.Json;
-using Valleysoft.DockerRegistryClient.Models.Manifests;
+﻿using Valleysoft.DockerRegistryClient.Models.Manifests;
 
 namespace Valleysoft.Dredge.Commands.Image;
 
@@ -23,9 +22,8 @@ public class InspectCommand : RegistryCommandBase<InspectOptions>
             Stream blob = await client.Blobs.GetAsync(imageName.Repo, digest, ct);
             using StreamReader reader = new(blob);
             string content = await reader.ReadToEndAsync(ct);
-            object? json = JsonConvert.DeserializeObject(content) ??
+            string output = JsonHelper.FormatJson(content) ??
                 throw new Exception($"Unable to deserialize content into JSON:\n{content}");
-            string output = JsonConvert.SerializeObject(json, JsonHelper.Settings);
             Output.WriteLine(output);
         });
     }

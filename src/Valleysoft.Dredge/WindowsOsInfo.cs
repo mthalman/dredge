@@ -1,6 +1,4 @@
-﻿using Newtonsoft.Json;
-using Newtonsoft.Json.Converters;
-using System.Runtime.Serialization;
+﻿using System.Text.Json.Serialization;
 
 namespace Valleysoft.Dredge;
 
@@ -17,18 +15,18 @@ public record WindowsOsInfo
     public string? Version { get; private set; }
 }
 
-[JsonConverter(typeof(StringEnumConverter))]
+[JsonConverter(typeof(JsonStringEnumConverter<WindowsType>))]
 public enum WindowsType
 {
-    [EnumMember(Value = "Nano Server")]
+    [JsonStringEnumMemberName("Nano Server")]
     NanoServer,
 
-    [EnumMember(Value = "Server Core")]
+    [JsonStringEnumMemberName("Server Core")]
     ServerCore,
 
-    [EnumMember(Value = "Server")]
+    [JsonStringEnumMemberName("Server")]
     Server,
 
-    [EnumMember(Value = "Windows")]
+    [JsonStringEnumMemberName("Windows")]
     Windows
 }

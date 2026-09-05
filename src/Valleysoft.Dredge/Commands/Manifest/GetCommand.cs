@@ -1,5 +1,4 @@
-﻿using Newtonsoft.Json;
-using Valleysoft.DockerRegistryClient.Models.Manifests;
+﻿using Valleysoft.DockerRegistryClient.Models.Manifests;
 
 namespace Valleysoft.Dredge.Commands.Manifest;
 
@@ -20,7 +19,7 @@ public class GetCommand : RegistryCommandBase<GetOptions>
             ManifestInfo manifestInfo = await client.Manifests.GetAsync(
                 imageName.Repo, (imageName.Tag ?? imageName.Digest)!, ct);
 
-            string output = JsonConvert.SerializeObject(manifestInfo.Manifest, JsonHelper.Settings);
+            string output = JsonHelper.Serialize(manifestInfo.Manifest);
 
             Output.WriteLine(output);
         });
