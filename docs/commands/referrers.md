@@ -12,12 +12,19 @@
 Returns the referrers to the specified manifest. This uses the [OCI Referrers API](https://github.com/opencontainers/distribution-spec/blob/main/spec.md#listing-referrers).
 
 ```console
-dredge referrer list <image> [--artifact-type <type>]
+dredge referrer list <image> [--artifact-type <type>] [--limit <count>]
 ```
 
 | Option | Description |
 |--------|-------------|
 | `--artifact-type` | Filter results by artifact media type |
+| `--limit` | Return at most this many referrers; must be greater than zero |
+
+Without `--limit`, Dredge retrieves all result pages. With `--limit <count>`,
+Dredge returns the first `<count>` referrers in the order provided by the
+registry. Dredge stops requesting pages once it has collected the requested
+number of referrers. The command does not return a continuation value for
+retrieving later referrers. Output remains an OCI image index JSON document.
 
 Example:
 

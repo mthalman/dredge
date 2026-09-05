@@ -10,7 +10,8 @@ internal static class ReferrerHelper
         IDockerRegistryClient client,
         ImageName imageName,
         string? artifactType,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        int? limit = null)
     {
         string digest;
         if (!string.IsNullOrEmpty(imageName.Digest))
@@ -27,16 +28,16 @@ internal static class ReferrerHelper
         Page<OciImageIndex> indexPage =
             await client.Referrers.GetAsync(imageName.Repo, digest, artifactType, cancellationToken);
         OciImageIndex index = indexPage.Value;
-        while (indexPage.NextPageLink is not null)
+        List<ManifestReference> manifests = [];
+        BoundedListHelper.AddItems(manifests, index.Manifests, limit);
+        while (!BoundedListHelper.IsLimitReached(manifests, limit) &&
+            indexPage.NextPageLink is not null)
         {
             indexPage = await client.Referrers.GetNextAsync(indexPage.NextPageLink, cancellationToken);
-            index.Manifests =
-            [
-                .. index.Manifests,
-                .. indexPage.Value.Manifests
-            ];
+            BoundedListHelper.AddItems(manifests, indexPage.Value.Manifests, limit);
         }
 
+        index.Manifests = manifests.ToArray();
         return index;
     }
 }

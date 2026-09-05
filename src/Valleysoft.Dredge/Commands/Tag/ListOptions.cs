@@ -2,7 +2,7 @@
 
 namespace Valleysoft.Dredge.Commands.Tag;
 
-public class ListOptions : OptionsBase
+public class ListOptions : BoundedListOptionsBase
 {
     private readonly Argument<string> repositoryArg;
 
@@ -16,5 +16,6 @@ public class ListOptions : OptionsBase
     protected override void GetValues()
     {
         Repo = GetValue(repositoryArg);
+        GetBoundedListValues();
     }
 }

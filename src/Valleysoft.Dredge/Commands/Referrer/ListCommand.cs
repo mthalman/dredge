@@ -17,7 +17,12 @@ public class ListCommand : RegistryCommandBase<ListOptions>
         {
             using IDockerRegistryClient client = await DockerRegistryClientFactory.GetClientAsync(imageName.Registry);
             OciImageIndex index =
-                await ReferrerHelper.GetReferrersAsync(client, imageName, Options.ArtifactType, ct);
+                await ReferrerHelper.GetReferrersAsync(
+                    client,
+                    imageName,
+                    Options.ArtifactType,
+                    ct,
+                    Options.Limit);
             string output = JsonConvert.SerializeObject(index, JsonHelper.Settings);
 
             Output.WriteLine(output);

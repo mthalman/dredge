@@ -315,6 +315,46 @@ public class CommandStructureTests
     }
 
     [Fact]
+    public void BoundedListOptions_BindLimit()
+    {
+        RepoListOptions repo = Bind(new RepoListOptions(), "registry.example", "--limit", "3");
+        TagListOptions tag = Bind(new TagListOptions(), "registry.example/repo", "--limit", "3");
+        ReferrerListOptions referrer = Bind(
+            new ReferrerListOptions(),
+            "registry.example/repo:tag",
+            "--limit",
+            "3");
+
+        Assert.Equal(3, repo.Limit);
+        Assert.Equal(3, tag.Limit);
+        Assert.Equal(3, referrer.Limit);
+    }
+
+    [Theory]
+    [InlineData("0")]
+    [InlineData("-1")]
+    public void BoundedListOptions_RejectNonPositiveLimit(string limit)
+    {
+        OptionsBase[] options =
+        [
+            new RepoListOptions(),
+            new TagListOptions(),
+            new ReferrerListOptions()
+        ];
+
+        foreach (OptionsBase listOptions in options)
+        {
+            Command command = new("list");
+            listOptions.SetCommandOptions(command);
+
+            ParseResult parseResult = command.Parse(["registry.example/repo:tag", "--limit", limit]);
+
+            Assert.Single(parseResult.Errors);
+            Assert.Equal("Limit must be greater than zero.", parseResult.Errors[0].Message);
+        }
+    }
+
+    [Fact]
     public void ReferrerGetOptions_BindArgumentsAndOptions()
     {
         ReferrerGetOptions options = Bind(
