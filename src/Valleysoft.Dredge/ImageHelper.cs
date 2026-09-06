@@ -18,9 +18,11 @@ internal static class ImageHelper
     public static async Task SaveImageLayersToDiskAsync(
         IDockerRegistryClientFactory dockerRegistryClientFactory, string image, string destPath, int? layerIndex,
         string layerIndexOptionName, bool noSquash, PlatformOptionsBase options,
-        CancellationToken cancellationToken = default)
+        CancellationToken cancellationToken = default, bool overwriteExisting = false)
     {
         // Spec for OCI image layer filesystem changeset: https://github.com/opencontainers/image-spec/blob/main/layer.md
+
+        ValidateDestinationPath(destPath);
 
         Console.Error.WriteLine($"Getting layers for {image}");
 
@@ -74,12 +76,25 @@ internal static class ImageHelper
 
             if (noSquash)
             {
+                string layerOutputPath = GetContainedPath(
+                    destPath,
+                    $"layer{i}-{layerName}",
+                    allowFinalLink: overwriteExisting);
+                if (overwriteExisting)
+                {
+                    DeleteDestinationEntry(layerOutputPath);
+                }
+
                 await FileHelper.CopyDirectoryAsync(
-                    layerDir, Path.Combine(destPath, $"layer{i}-{layerName}"), cancellationToken);
+                    layerDir, layerOutputPath, cancellationToken);
             }
             else
             {
-                await ApplyLayerAsync(layerDir, destPath, cancellationToken);
+                await ApplyLayerAsync(
+                    layerDir,
+                    destPath,
+                    overwriteExisting,
+                    cancellationToken);
             }
         }
     }
@@ -223,6 +238,7 @@ internal static class ImageHelper
     private static async Task ApplyLayerAsync(
         string layerDir,
         string workingDir,
+        bool overwriteExisting,
         CancellationToken cancellationToken)
     {
         Console.Error.WriteLine($"\tApplying layer...");
@@ -240,11 +256,11 @@ internal static class ImageHelper
                 throw new Exception("The opaque whiteout file marker should not exist in the root directory.");
             }
 
-            string fullDirPath = GetContainedPath(workingDir, layerFileDirName);
-            if (Directory.Exists(fullDirPath))
-            {
-                Directory.Delete(fullDirPath, recursive: true);
-            }
+            string fullDirPath = GetContainedPath(
+                workingDir,
+                layerFileDirName,
+                allowFinalLink: true);
+            DeleteDestinationEntry(fullDirPath);
         }
 
         foreach (FileInfo layerFile in layerFiles.Where(IsWhiteout))
@@ -256,35 +272,30 @@ internal static class ImageHelper
             ValidatePathSegment(actualFileName, "whiteout target");
             string fullPath = GetContainedPath(
                 workingDir,
-                Path.Combine(layerFileDirName ?? string.Empty, actualFileName));
-
-            if (File.Exists(fullPath))
-            {
-                File.Delete(fullPath);
-            }
-            else if (Directory.Exists(fullPath))
-            {
-                bool isLink = File.GetAttributes(fullPath).HasFlag(FileAttributes.ReparsePoint);
-                Directory.Delete(fullPath, recursive: !isLink);
-            }
+                Path.Combine(layerFileDirName ?? string.Empty, actualFileName),
+                allowFinalLink: true);
+            DeleteDestinationEntry(fullPath);
         }
 
         foreach (FileInfo layerFile in layerFiles.Where(file => !IsOpaqueWhiteout(file) && !IsWhiteout(file)))
         {
             cancellationToken.ThrowIfCancellationRequested();
             string layerFileRelativePath = Path.GetRelativePath(layerDir, layerFile.FullName);
-            string dest = GetContainedPath(workingDir, layerFileRelativePath);
+            string dest = GetContainedPath(
+                workingDir,
+                layerFileRelativePath,
+                allowFinalLink: true);
             string destDir = Path.GetDirectoryName(dest)!;
             if (!Directory.Exists(destDir))
             {
-                Directory.CreateDirectory(destDir);
+                CreateDestinationDirectory(workingDir, destDir, overwriteExisting);
             }
 
             if (layerFile.LinkTarget is not null)
             {
                 if (File.Exists(dest) || Directory.Exists(dest))
                 {
-                    File.Delete(dest);
+                    DeleteDestinationEntry(dest);
                 }
 
                 string sourceTarget = GetLinkTargetPath(layerDir, layerFile.FullName, layerFile.LinkTarget);
@@ -295,9 +306,73 @@ internal static class ImageHelper
             }
             else
             {
+                if (IsReparsePoint(dest) ||
+                    (overwriteExisting && Directory.Exists(dest)))
+                {
+                    DeleteDestinationEntry(dest);
+                }
+
                 await FileHelper.CopyFileAsync(
                     layerFile, dest, overwrite: true, cancellationToken);
             }
+        }
+    }
+
+    private static void CreateDestinationDirectory(
+        string workingDir,
+        string directoryPath,
+        bool overwriteExisting)
+    {
+        if (!overwriteExisting)
+        {
+            Directory.CreateDirectory(directoryPath);
+            return;
+        }
+
+        string currentPath = Path.GetFullPath(workingDir);
+        Directory.CreateDirectory(currentPath);
+        string relativePath = Path.GetRelativePath(currentPath, directoryPath);
+        if (relativePath == ".")
+        {
+            return;
+        }
+
+        foreach (string segment in relativePath.Split(
+            [Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar],
+            StringSplitOptions.RemoveEmptyEntries))
+        {
+            currentPath = Path.Combine(currentPath, segment);
+            if (File.Exists(currentPath))
+            {
+                File.Delete(currentPath);
+            }
+
+            Directory.CreateDirectory(currentPath);
+        }
+    }
+
+    private static void DeleteDestinationEntry(string path)
+    {
+        if (IsReparsePoint(path))
+        {
+            FileAttributes attributes = File.GetAttributes(path);
+            if (attributes.HasFlag(FileAttributes.Directory))
+            {
+                Directory.Delete(path);
+            }
+            else
+            {
+                File.Delete(path);
+            }
+        }
+        else if (File.Exists(path))
+        {
+            File.Delete(path);
+        }
+        else if (Directory.Exists(path))
+        {
+            bool isLink = File.GetAttributes(path).HasFlag(FileAttributes.ReparsePoint);
+            Directory.Delete(path, recursive: !isLink);
         }
     }
 
@@ -377,7 +452,10 @@ internal static class ImageHelper
         return GetContainedPath(workingDir, target);
     }
 
-    private static string GetContainedPath(string rootPath, string relativePath)
+    private static string GetContainedPath(
+        string rootPath,
+        string relativePath,
+        bool allowFinalLink = false)
     {
         string fullRootPath = Path.GetFullPath(rootPath);
         string fullPath = Path.GetFullPath(Path.Combine(fullRootPath, relativePath));
@@ -392,21 +470,36 @@ internal static class ImageHelper
         }
 
         ValidateNoLinkParents(fullRootPath, fullPath);
-        if (IsReparsePoint(fullPath))
+        if (!allowFinalLink && IsReparsePoint(fullPath))
         {
             throw new InvalidDataException($"Path '{fullPath}' is a symbolic link.");
         }
         return fullPath;
     }
 
+    internal static void ValidateDestinationPath(string destinationPath)
+    {
+        string fullPath = Path.GetFullPath(destinationPath);
+        if (IsReparsePoint(fullPath))
+        {
+            throw new InvalidDataException(
+                $"Output path '{fullPath}' cannot be a symbolic link.");
+        }
+    }
+
     private static void ValidateNoLinkParents(string rootPath, string fullPath)
     {
         string? path = Path.GetDirectoryName(fullPath);
-        while (path is not null && !Path.GetFullPath(path).Equals(rootPath, StringComparison.OrdinalIgnoreCase))
+        while (path is not null)
         {
             if (IsReparsePoint(path))
             {
                 throw new InvalidDataException($"Path '{fullPath}' traverses a symbolic link.");
+            }
+
+            if (Path.GetFullPath(path).Equals(rootPath, StringComparison.OrdinalIgnoreCase))
+            {
+                break;
             }
 
             path = Path.GetDirectoryName(path);
