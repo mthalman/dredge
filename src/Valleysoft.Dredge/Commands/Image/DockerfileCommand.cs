@@ -19,11 +19,20 @@ public partial class DockerfileCommand : RegistryCommandBase<DockerfileOptions>
     private static readonly Color LiteralColor = new(150, 220, 254); // light turquoise
     private static readonly Color IdentifierColor = Color.Green;
     private readonly IDockerRegistryClientFactory dockerRegistryClientFactory;
+    private readonly IAnsiConsole ansiConsole;
 
     public DockerfileCommand(IDockerRegistryClientFactory dockerRegistryClientFactory)
+        : this(dockerRegistryClientFactory, AnsiConsole.Console)
+    {
+    }
+
+    internal DockerfileCommand(
+        IDockerRegistryClientFactory dockerRegistryClientFactory,
+        IAnsiConsole ansiConsole)
         : base("dockerfile", "Generates a Dockerfile that represents the image", dockerRegistryClientFactory)
     {
         this.dockerRegistryClientFactory = dockerRegistryClientFactory;
+        this.ansiConsole = ansiConsole;
     }
 
     protected override async Task ExecuteAsync(CancellationToken cancellationToken)
@@ -32,7 +41,7 @@ public partial class DockerfileCommand : RegistryCommandBase<DockerfileOptions>
         await ExecuteCommandAsync(imageName.Registry, cancellationToken, async ct =>
         {
             Markup markupOutput = new(await GetMarkupStringAsync(ct));
-            AnsiConsole.Write(markupOutput);
+            ansiConsole.Write(markupOutput);
         });
     }
 

@@ -4,9 +4,24 @@ namespace Valleysoft.Dredge.Commands.Settings;
 
 public class ClearCacheCommand : Command
 {
+    private readonly IDredgePathProvider pathProvider;
+    private readonly TextWriter output;
+    private readonly IProcessTerminator processTerminator;
+
     public ClearCacheCommand()
+        : this(new DredgePathProvider(), Console.Out, new ProcessTerminator())
+    {
+    }
+
+    internal ClearCacheCommand(
+        IDredgePathProvider pathProvider,
+        TextWriter output,
+        IProcessTerminator processTerminator)
         : base("clear-cache", "Deletes the cached files used by Dredge")
     {
+        this.pathProvider = pathProvider;
+        this.output = output;
+        this.processTerminator = processTerminator;
         this.SetAction((parseResult, cancellationToken) => ExecuteAsync(cancellationToken));
     }
 
@@ -15,7 +30,8 @@ public class ClearCacheCommand : Command
         return CommandHelper.ExecuteCommandAsync(null, cancellationToken, ct =>
         {
             ct.ThrowIfCancellationRequested();
-            DirectoryInfo dredgeTempDir = new(DredgeState.DredgeTempPath);
+            string cachePath = pathProvider.TempPath;
+            DirectoryInfo dredgeTempDir = new(cachePath);
 
             if (dredgeTempDir.Exists)
             {
@@ -23,15 +39,15 @@ public class ClearCacheCommand : Command
                 ct.ThrowIfCancellationRequested();
                 dredgeTempDir.Delete(recursive: true);
 
-                Console.WriteLine($"{dirSize:n0} bytes deleted from '{DredgeState.DredgeTempPath}'");
+                output.WriteLine($"{dirSize:n0} bytes deleted from '{cachePath}'");
             }
             else
             {
-                Console.WriteLine($"Nothing to do. Cache directory '{DredgeState.DredgeTempPath}' does not exist.");
+                output.WriteLine($"Nothing to do. Cache directory '{cachePath}' does not exist.");
             }
 
             return Task.CompletedTask;
-        });
+        }, exit: processTerminator.Exit);
     }
 
     private static long DirSize(DirectoryInfo dir, CancellationToken cancellationToken)
