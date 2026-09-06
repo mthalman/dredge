@@ -271,6 +271,14 @@ dredge image compare layers <base> <target> [--output <format>] [--history] [--c
 | `--compressed-size` | Show compressed layer sizes |
 | `--no-color` | Disable color output and use text-based diff indicators instead |
 
+The command returns the following exit codes:
+
+| Exit code | Meaning |
+|----------:|---------|
+| `0` | The images have equal layers |
+| `1` | The command failed before completing the comparison |
+| `2` | The comparison completed and found layer differences |
+
 ### Inline output example
 
 ```diff

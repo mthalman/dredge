@@ -22,9 +22,10 @@ public class CompareLayersCommand : RegistryCommandBase<CompareLayersOptions>
         this.ansiConsole = ansiConsole ?? AnsiConsole.Console;
     }
 
-    protected override Task ExecuteAsync(CancellationToken cancellationToken)
+    protected override async Task ExecuteAsync(CancellationToken cancellationToken)
     {
-        return ExecuteCommandAsync(registry: null, cancellationToken, async ct =>
+        bool areEqual = true;
+        await ExecuteCommandAsync(registry: null, cancellationToken, async ct =>
         {
             CompareLayersResult result = await GetCompareLayersResult(ct);
             if (Options.OutputFormat == CompareOutput.Json)
@@ -36,7 +37,14 @@ public class CompareLayersCommand : RegistryCommandBase<CompareLayersOptions>
             {
                 ansiConsole.Write(GetOutput(result));
             }
+
+            areEqual = result.Summary.AreEqual;
         });
+
+        if (!areEqual)
+        {
+            Exit(2);
+        }
     }
 
     public async Task<IRenderable> GetOutputAsync(CancellationToken cancellationToken = default)

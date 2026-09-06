@@ -790,6 +790,66 @@ public class CompareLayersCommandTests
         Assert.Equal(longHistory, result.LayerComparisons.First().Base!.History);
     }
 
+    [Fact]
+    public async Task EqualImages_DoNotRequestNonzeroExitCode()
+    {
+        ImageSetup setup = new(new Image(), []);
+        TestCompareLayersCommand command = CreateTestCommand(setup, setup);
+        RecordingProcessTerminator processTerminator = new();
+        ((IProcessTerminationAware)command).ProcessTerminator = processTerminator;
+
+        await command.RunAsync();
+
+        Assert.True(processTerminator.ExitCode is null or 0);
+    }
+
+    [Fact]
+    public async Task DifferentImages_ExitTwo()
+    {
+        ImageSetup baseSetup = new(new Image(), []);
+        ImageSetup targetSetup = new(
+            new Image
+            {
+                History =
+                [
+                    new LayerHistory
+                    {
+                        CreatedBy = "added layer"
+                    }
+                ]
+            },
+            [
+                new ManifestLayer
+                {
+                    Digest = "layer-0",
+                    Size = 1
+                }
+            ]);
+        TestCompareLayersCommand command = CreateTestCommand(baseSetup, targetSetup);
+        RecordingProcessTerminator processTerminator = new();
+        ((IProcessTerminationAware)command).ProcessTerminator = processTerminator;
+
+        await command.RunAsync();
+
+        Assert.Equal(2, processTerminator.ExitCode);
+    }
+
+    [Fact]
+    public async Task RegistryFailure_ExitsOne()
+    {
+        Mock<IDockerRegistryClientFactory> clientFactory = new();
+        clientFactory
+            .Setup(o => o.GetClientAsync(Registry))
+            .ThrowsAsync(new InvalidOperationException("failure"));
+        TestCompareLayersCommand command = CreateTestCommand(clientFactory.Object);
+        RecordingProcessTerminator processTerminator = new();
+        ((IProcessTerminationAware)command).ProcessTerminator = processTerminator;
+
+        await command.RunAsync();
+
+        Assert.Equal(1, processTerminator.ExitCode);
+    }
+
     [Theory]
     [MemberData(nameof(GetTestData), CompareOutput.Inline)]
     public async Task Inline(
@@ -940,6 +1000,51 @@ public class CompareLayersCommandTests
             .ReturnsAsync(new MemoryStream(Encoding.UTF8.GetBytes(JsonSerializer.Serialize(imageConfig))));
     }
 
+    private static TestCompareLayersCommand CreateTestCommand(
+        ImageSetup baseImageSetup,
+        ImageSetup targetImageSetup)
+    {
+        Mock<IDockerRegistryClient> registryClient = new();
+        SetupDockerRegistryClient(
+            registryClient,
+            baseImageName,
+            baseImageSetup.Image,
+            baseImageSetup.Layers);
+        SetupDockerRegistryClient(
+            registryClient,
+            targetImageName,
+            targetImageSetup.Image,
+            targetImageSetup.Layers);
+        Mock<IDockerRegistryClientFactory> clientFactory = new();
+        clientFactory
+            .Setup(o => o.GetClientAsync(Registry))
+            .ReturnsAsync(registryClient.Object);
+
+        return CreateTestCommand(clientFactory.Object);
+    }
+
+    private static TestCompareLayersCommand CreateTestCommand(
+        IDockerRegistryClientFactory clientFactory)
+    {
+        IAnsiConsole console = AnsiConsole.Create(new AnsiConsoleSettings
+        {
+            Out = new AnsiConsoleOutput(new StringWriter()),
+            Enrichment = new ProfileEnrichment
+            {
+                UseDefaultEnrichers = false
+            }
+        });
+
+        return new TestCompareLayersCommand(clientFactory, console)
+        {
+            Options = new CompareLayersOptions
+            {
+                BaseImage = baseImageName.ToString(),
+                TargetImage = targetImageName.ToString()
+            }
+        };
+    }
+
     private static string[] ToArray(params string?[] strings) =>
         [.. strings
             .Where(str => str is not null)
@@ -973,4 +1078,18 @@ public class CompareLayersCommandTests
             CompareDiff.Removed => "Removed",
             _ => throw new NotSupportedException()
         };
+
+    private sealed class TestCompareLayersCommand : CompareLayersCommand
+    {
+        public TestCompareLayersCommand(
+            IDockerRegistryClientFactory dockerRegistryClientFactory,
+            IAnsiConsole ansiConsole)
+            : base(dockerRegistryClientFactory, ansiConsole)
+        {
+        }
+
+        public Task RunAsync() => ExecuteAsync(TestContext.Current.CancellationToken);
+
+        protected override TextWriter Error => TextWriter.Null;
+    }
 }
