@@ -72,6 +72,9 @@ internal sealed class RegistryIntegrationScenarios
         Assert.Equal(1, terminator.ExitCode);
         Assert.Empty(output.ToString());
         Assert.NotEmpty(error.ToString());
+        Assert.DoesNotContain("Unhandled exception", error.ToString());
+        Assert.DoesNotContain("RegistryException", error.ToString());
+        Assert.DoesNotContain(" at Valleysoft.Dredge", error.ToString());
     }
 
     public async Task ListCommands_QueryLiveRegistry()

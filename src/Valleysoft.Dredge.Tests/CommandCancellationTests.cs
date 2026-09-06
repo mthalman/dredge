@@ -8,6 +8,34 @@ public class CommandCancellationTests
     private static readonly TimeSpan TestTimeout = TimeSpan.FromSeconds(5);
 
     [Fact]
+    public void RootInvocationWritesConciseErrorAndReturnsFailure()
+    {
+        FailureCommand command = new();
+        using StringWriter error = new();
+
+        int exitCode = CommandHelper.InvokeRootCommand(
+            command.Parse([]),
+            new InvocationConfiguration { Error = error });
+
+        Assert.Equal(1, exitCode);
+        Assert.Equal($"failure{Environment.NewLine}", error.ToString());
+    }
+
+    [Fact]
+    public void CancellationAtRootReturnsFailureWithoutWritingError()
+    {
+        CancellationCommand command = new();
+        using StringWriter error = new();
+
+        int exitCode = CommandHelper.InvokeRootCommand(
+            command.Parse([]),
+            new InvocationConfiguration { Error = error });
+
+        Assert.Equal(1, exitCode);
+        Assert.Empty(error.ToString());
+    }
+
+    [Fact]
     public async Task CancellationPropagatesFromCommandHelper()
     {
         using CancellationTokenSource cancellationTokenSource = new();
@@ -29,6 +57,23 @@ public class CommandCancellationTests
 
         Assert.True(executed);
         Assert.Empty(error.ToString());
+    }
+
+    [Fact]
+    public async Task CancellationFromCommandIsFailureWhenInvocationTokenIsNotCanceled()
+    {
+        using StringWriter error = new();
+        int? exitCode = null;
+
+        await CommandHelper.ExecuteCommandAsync(
+            registry: null,
+            CancellationToken.None,
+            ct => throw new OperationCanceledException("failure"),
+            error,
+            code => exitCode = code);
+
+        Assert.Equal(1, exitCode);
+        Assert.Equal($"failure{Environment.NewLine}", error.ToString());
     }
 
     [Fact]
@@ -67,6 +112,28 @@ public class CommandCancellationTests
             Started.SetResult();
             await Task.Delay(Timeout.InfiniteTimeSpan, cancellationToken);
         }
+    }
+
+    private sealed class FailureCommand : CommandWithOptions<TestOptions>
+    {
+        public FailureCommand()
+            : base("failure", "Failure command")
+        {
+        }
+
+        protected override Task ExecuteAsync(CancellationToken cancellationToken) =>
+            throw new InvalidOperationException("failure");
+    }
+
+    private sealed class CancellationCommand : CommandWithOptions<TestOptions>
+    {
+        public CancellationCommand()
+            : base("cancel", "Cancellation command")
+        {
+        }
+
+        protected override Task ExecuteAsync(CancellationToken cancellationToken) =>
+            throw new OperationCanceledException();
     }
 
     public sealed class TestOptions : OptionsBase
