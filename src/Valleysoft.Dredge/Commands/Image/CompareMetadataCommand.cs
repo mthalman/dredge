@@ -15,23 +15,23 @@ public class CompareMetadataCommand : RegistryCommandBase<CompareMetadataOptions
     };
 
     private readonly IAnsiConsole ansiConsole;
-    private readonly Func<PlatformSettings> platformSettingsProvider;
+    private readonly IAppSettingsStore settingsStore;
 
     public CompareMetadataCommand(
         IDockerRegistryClientFactory dockerRegistryClientFactory,
         IAnsiConsole? ansiConsole = null)
-        : this(dockerRegistryClientFactory, ansiConsole, () => AppSettings.Load().Platform)
+        : this(dockerRegistryClientFactory, ansiConsole, new AppSettingsStore())
     {
     }
 
     internal CompareMetadataCommand(
         IDockerRegistryClientFactory dockerRegistryClientFactory,
         IAnsiConsole? ansiConsole,
-        Func<PlatformSettings> platformSettingsProvider)
+        IAppSettingsStore settingsStore)
         : base("metadata", "Compares two images by configuration and platform metadata", dockerRegistryClientFactory)
     {
         this.ansiConsole = ansiConsole ?? AnsiConsole.Console;
-        this.platformSettingsProvider = platformSettingsProvider;
+        this.settingsStore = settingsStore;
     }
 
     protected override Task ExecuteAsync(CancellationToken cancellationToken)
@@ -209,7 +209,7 @@ public class CompareMetadataCommand : RegistryCommandBase<CompareMetadataOptions
             imageName,
             Options,
             initialManifest,
-            platformSettingsProvider,
+            settingsStore,
             cancellationToken);
 
         string configDigest = resolvedManifest.Manifest.Config?.Digest ??

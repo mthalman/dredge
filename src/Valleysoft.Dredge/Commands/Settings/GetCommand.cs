@@ -4,15 +4,25 @@ namespace Valleysoft.Dredge.Commands.Settings;
 
 internal partial class GetCommand : CommandWithOptions<GetOptions>
 {
+    private readonly IAppSettingsStore settingsStore;
+    private readonly TextWriter output;
+
     public GetCommand()
+        : this(new AppSettingsStore(), Console.Out)
+    {
+    }
+
+    internal GetCommand(IAppSettingsStore settingsStore, TextWriter output)
         : base("get", "Gets the value of the specified setting")
     {
+        this.settingsStore = settingsStore;
+        this.output = output;
     }
 
     protected override Task ExecuteAsync(CancellationToken cancellationToken)
     {
         cancellationToken.ThrowIfCancellationRequested();
-        AppSettings settings = AppSettings.Load();
+        AppSettings settings = settingsStore.Load();
 
         Queue<string> names = new([..Options.Name.Split('.')]);
 
@@ -22,11 +32,11 @@ internal partial class GetCommand : CommandWithOptions<GetOptions>
         {
             if (value.GetType().IsValueType || value is string)
             {
-                Console.WriteLine(value);
+                output.WriteLine(value);
             }
             else
             {
-                Console.WriteLine(JsonConvert.SerializeObject(value, JsonHelper.Settings));
+                output.WriteLine(JsonConvert.SerializeObject(value, JsonHelper.Settings));
             }
         }
 

@@ -404,11 +404,14 @@ public class CompareMetadataCommandTests
         factory
             .Setup(clientFactory => clientFactory.GetClientAsync(Registry))
             .ReturnsAsync(client.Object);
+        AppSettings settings = (AppSettings)Activator.CreateInstance(
+            typeof(AppSettings),
+            nonPublic: true)!;
 
         CompareMetadataCommand command = new(
             factory.Object,
             CreateConsole(ansiSupported, outputWriter),
-            () => new PlatformSettings());
+            new TestAppSettingsStore(settings));
         command.Options.BaseImage = baseImageName.ToString();
         command.Options.TargetImage = targetImageName.ToString();
         command.Options.OutputFormat = output;

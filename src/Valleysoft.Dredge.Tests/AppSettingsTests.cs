@@ -5,6 +5,30 @@ using Newtonsoft.Json;
 public class AppSettingsTests
 {
     [Fact]
+    public async Task Load_WhenSettingsJsonIsMalformedThrows()
+    {
+        string settingsPath = Path.Combine(
+            Path.GetTempPath(),
+            $"dredge-invalid-settings-{Guid.NewGuid():N}",
+            "settings.json");
+        Directory.CreateDirectory(Path.GetDirectoryName(settingsPath)!);
+        await File.WriteAllTextAsync(
+            settingsPath,
+            "{ invalid json",
+            TestContext.Current.CancellationToken);
+
+        try
+        {
+            Assert.Throws<Newtonsoft.Json.JsonReaderException>(
+                () => AppSettings.Load(settingsPath));
+        }
+        finally
+        {
+            Directory.Delete(Path.GetDirectoryName(settingsPath)!, recursive: true);
+        }
+    }
+
+    [Fact]
     public async Task ConcurrentLoadCreatesValidSettingsFile()
     {
         string tempDir = Path.Combine(Path.GetTempPath(), Guid.NewGuid().ToString("N"));

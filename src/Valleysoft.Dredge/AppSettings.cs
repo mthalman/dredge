@@ -5,6 +5,7 @@ namespace Valleysoft.Dredge;
 internal partial class AppSettings
 {
     private static readonly object settingsFileLock = new();
+    private string settingsPath = SettingsPath;
 
     public static readonly string SettingsPath =
         Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "Valleysoft.Dredge", "settings.json");
@@ -27,8 +28,8 @@ internal partial class AppSettings
         {
             if (!File.Exists(settingsPath))
             {
-                AppSettings settings = new();
-                string settingsStr = JsonConvert.SerializeObject(settings, JsonHelper.Settings);
+                AppSettings defaultSettings = new() { settingsPath = settingsPath };
+                string settingsStr = JsonConvert.SerializeObject(defaultSettings, JsonHelper.Settings);
 
                 string? dirName = Path.GetDirectoryName(settingsPath);
                 if (!string.IsNullOrEmpty(dirName) && !Directory.Exists(dirName))
@@ -37,11 +38,13 @@ internal partial class AppSettings
                 }
 
                 File.WriteAllText(settingsPath, settingsStr);
-                return settings;
+                return defaultSettings;
             }
 
             string settingsContent = File.ReadAllText(settingsPath);
-            return JsonConvert.DeserializeObject<AppSettings>(settingsContent)!;
+            AppSettings settings = JsonConvert.DeserializeObject<AppSettings>(settingsContent)!;
+            settings.settingsPath = settingsPath;
+            return settings;
         }
     }
 
@@ -50,7 +53,7 @@ internal partial class AppSettings
         lock (settingsFileLock)
         {
             string settingsStr = JsonConvert.SerializeObject(this, JsonHelper.Settings);
-            File.WriteAllText(SettingsPath, settingsStr);
+            File.WriteAllText(settingsPath, settingsStr);
         }
     }
 }

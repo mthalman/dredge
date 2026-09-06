@@ -94,6 +94,88 @@ public class ImageHelperTests
         }
     }
 
+    [Fact]
+    public async Task SaveImageLayersToDiskAsync_ConcurrentCallsPublishSameLayerAtomically()
+    {
+        string id = Guid.NewGuid().ToString("N");
+        string digest = $"sha256:{id}";
+        string tempRoot = Path.Combine(Path.GetTempPath(), $"dredge-concurrent-cache-{id}");
+        string firstOutput = Path.Combine(tempRoot, "first-output");
+        string secondOutput = Path.Combine(tempRoot, "second-output");
+        string layersPath = Path.Combine(tempRoot, "layers");
+        TaskCompletionSource bothDownloadsStarted = new(
+            TaskCreationOptions.RunContinuationsAsynchronously);
+        int downloadCount = 0;
+        Mock<IDockerRegistryClient> client = CreateSingleLayerClient(
+            digest,
+            () => CreateLayer(("file.txt", "content")));
+        client
+            .Setup(o => o.Blobs.GetAsync(
+                "library/image",
+                digest,
+                It.IsAny<CancellationToken>()))
+            .Returns(async () =>
+            {
+                if (Interlocked.Increment(ref downloadCount) == 2)
+                {
+                    bothDownloadsStarted.SetResult();
+                }
+                await bothDownloadsStarted.Task.WaitAsync(
+                    TestContext.Current.CancellationToken);
+                return CreateLayer(("file.txt", "content"));
+            });
+        Mock<IDockerRegistryClientFactory> factory = new();
+        factory.Setup(o => o.GetClientAsync(null)).ReturnsAsync(client.Object);
+        TestDredgePathProvider pathProvider = new(tempRoot);
+
+        try
+        {
+            Task first = ImageHelper.SaveImageLayersToDiskAsync(
+                factory.Object,
+                "image",
+                firstOutput,
+                layerIndex: null,
+                "--layer-index",
+                noSquash: false,
+                new PlatformOptionsBase(),
+                TestContext.Current.CancellationToken,
+                pathProvider);
+            Task second = ImageHelper.SaveImageLayersToDiskAsync(
+                factory.Object,
+                "image",
+                secondOutput,
+                layerIndex: null,
+                "--layer-index",
+                noSquash: false,
+                new PlatformOptionsBase(),
+                TestContext.Current.CancellationToken,
+                pathProvider);
+
+            await Task.WhenAll(first, second);
+
+            Assert.Equal(2, downloadCount);
+            Assert.Equal(
+                "content",
+                await File.ReadAllTextAsync(
+                    Path.Combine(firstOutput, "file.txt"),
+                    TestContext.Current.CancellationToken));
+            Assert.Equal(
+                "content",
+                await File.ReadAllTextAsync(
+                    Path.Combine(secondOutput, "file.txt"),
+                    TestContext.Current.CancellationToken));
+            Assert.True(Directory.Exists(Path.Combine(layersPath, id)));
+            Assert.Empty(Directory.EnumerateDirectories(layersPath, "*.tmp"));
+        }
+        finally
+        {
+            if (Directory.Exists(tempRoot))
+            {
+                Directory.Delete(tempRoot, recursive: true);
+            }
+        }
+    }
+
     [Theory]
     [InlineData(-1)]
     [InlineData(2)]

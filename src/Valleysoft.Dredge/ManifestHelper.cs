@@ -14,7 +14,7 @@ internal static class ManifestHelper
         ImageName imageName,
         PlatformOptionsBase options,
         CancellationToken cancellationToken = default,
-        AppSettings? settings = null)
+        IAppSettingsStore? settingsStore = null)
     {
         ManifestInfo manifestInfo = await client.Manifests.GetAsync(
             imageName.Repo, (imageName.Tag ?? imageName.Digest)!, cancellationToken);
@@ -23,7 +23,7 @@ internal static class ManifestHelper
             imageName,
             options,
             manifestInfo,
-            () => (settings ??= AppSettings.Load()).Platform,
+            settingsStore ?? new AppSettingsStore(),
             cancellationToken);
     }
 
@@ -39,7 +39,7 @@ internal static class ManifestHelper
             imageName,
             options,
             manifestInfo,
-            () => AppSettings.Load().Platform,
+            new AppSettingsStore(),
             cancellationToken);
     }
 
@@ -48,7 +48,7 @@ internal static class ManifestHelper
         ImageName imageName,
         PlatformOptionsBase options,
         ManifestInfo manifestInfo,
-        Func<PlatformSettings> platformSettingsProvider,
+        IAppSettingsStore settingsStore,
         CancellationToken cancellationToken)
     {
         if (manifestInfo.Manifest is IManifestList manifestList)
@@ -60,7 +60,7 @@ internal static class ManifestHelper
                 string.IsNullOrEmpty(osVersion) ||
                 string.IsNullOrEmpty(architecture))
             {
-                PlatformSettings settings = platformSettingsProvider();
+                PlatformSettings settings = settingsStore.Load().Platform;
                 os = GetPlatformValue(os, settings.Os);
                 osVersion = GetPlatformValue(osVersion, settings.OsVersion);
                 architecture = GetPlatformValue(architecture, settings.Architecture);
@@ -99,13 +99,6 @@ internal static class ManifestHelper
 
         return new ResolvedManifest(manifestInfo, manifest);
     }
-
-    public static Task<ResolvedManifest> GetResolvedManifestAsync(
-        IDockerRegistryClient client,
-        ImageName imageName,
-        PlatformOptionsBase options,
-        AppSettings settings) =>
-        GetResolvedManifestAsync(client, imageName, options, cancellationToken: default, settings);
 
     private static string? GetPlatformValue(string? options, string settings)
     {

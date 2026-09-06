@@ -13,12 +13,11 @@ internal static class ImageHelper
     private const string WhiteoutMarkerPrefix = ".wh.";
     private const string OpaqueWhiteoutMarker = ".wh..wh..opq";
 
-    private static readonly string LayersTempPath = Path.Combine(DredgeState.DredgeTempPath, "layers");
-
     public static async Task SaveImageLayersToDiskAsync(
         IDockerRegistryClientFactory dockerRegistryClientFactory, string image, string destPath, int? layerIndex,
         string layerIndexOptionName, bool noSquash, PlatformOptionsBase options,
-        CancellationToken cancellationToken = default)
+        CancellationToken cancellationToken = default,
+        IDredgePathProvider? pathProvider = null)
     {
         // Spec for OCI image layer filesystem changeset: https://github.com/opencontainers/image-spec/blob/main/layer.md
 
@@ -58,7 +57,10 @@ internal static class ImageHelper
 
             string layerName = layer.Digest[(layer.Digest.IndexOf(':') + 1)..];
             ValidateLayerDigest(layerName);
-            string layerDir = GetContainedPath(LayersTempPath, layerName);
+            string layersTempPath = Path.Combine(
+                (pathProvider ?? new DredgePathProvider()).TempPath,
+                "layers");
+            string layerDir = GetContainedPath(layersTempPath, layerName);
             if (Directory.Exists(layerDir))
             {
                 Console.Error.WriteLine($"\tUsing cached layer on disk...");

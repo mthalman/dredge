@@ -1,6 +1,8 @@
 ﻿namespace Valleysoft.Dredge.Commands;
 
-public abstract class RegistryCommandBase<TOptions> : CommandWithOptions<TOptions>
+public abstract class RegistryCommandBase<TOptions> :
+    CommandWithOptions<TOptions>,
+    IProcessTerminationAware
     where TOptions : OptionsBase, new()
 {
     public IDockerRegistryClientFactory DockerRegistryClientFactory { get; }
@@ -15,7 +17,16 @@ public abstract class RegistryCommandBase<TOptions> : CommandWithOptions<TOption
     {
         DockerRegistryClientFactory = dockerRegistryClientFactory;
         Output = output ?? Console.Out;
+        ProcessTerminator = new ProcessTerminator();
     }
+
+    IProcessTerminator IProcessTerminationAware.ProcessTerminator
+    {
+        get => ProcessTerminator;
+        set => ProcessTerminator = value;
+    }
+
+    private IProcessTerminator ProcessTerminator { get; set; }
 
     protected Task ExecuteCommandAsync(
         string? registry,
@@ -25,5 +36,5 @@ public abstract class RegistryCommandBase<TOptions> : CommandWithOptions<TOption
 
     protected virtual TextWriter Error => Console.Error;
 
-    protected virtual void Exit(int exitCode) => Environment.Exit(exitCode);
+    protected virtual void Exit(int exitCode) => ProcessTerminator.Exit(exitCode);
 }
