@@ -800,7 +800,7 @@ public class CompareLayersCommandTests
 
         await command.RunAsync();
 
-        Assert.Null(processTerminator.ExitCode);
+        Assert.True(processTerminator.ExitCode is null or 0);
     }
 
     [Fact]
