@@ -4,9 +4,19 @@ namespace Valleysoft.Dredge.Commands.Image;
 
 public class SaveLayersCommand : RegistryCommandBase<SaveLayersOptions>
 {
+    private readonly IDredgePathProvider pathProvider;
+
     public SaveLayersCommand(IDockerRegistryClientFactory dockerRegistryClientFactory)
+        : this(dockerRegistryClientFactory, new DredgePathProvider())
+    {
+    }
+
+    internal SaveLayersCommand(
+        IDockerRegistryClientFactory dockerRegistryClientFactory,
+        IDredgePathProvider pathProvider)
         : base("save-layers", "Saves an image's extracted layers to disk", dockerRegistryClientFactory)
     {
+        this.pathProvider = pathProvider;
     }
 
     protected override Task ExecuteAsync(CancellationToken cancellationToken)
@@ -29,6 +39,7 @@ public class SaveLayersCommand : RegistryCommandBase<SaveLayersOptions>
                 Options.NoSquash,
                 Options,
                 ct,
+                pathProvider,
                 overwriteExisting: Options.Force);
         });
     }

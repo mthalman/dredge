@@ -71,7 +71,7 @@ public class ManifestHelperTests
                 Os = "linux",
                 OsVersion = "1"
             },
-            settings);
+            settingsStore: new TestAppSettingsStore(settings));
 
         Assert.Same(resolvedManifest, result.Manifest);
         Assert.Equal("sha256:arm64", result.ManifestInfo.DockerContentDigest);
