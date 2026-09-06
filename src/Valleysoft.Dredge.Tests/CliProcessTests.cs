@@ -25,6 +25,20 @@ public sealed class CliProcessTests
         Assert.Contains("not-a-command", result.StandardError);
     }
 
+    [Theory]
+    [InlineData("get", "unknown")]
+    [InlineData("set", "unknown", "value")]
+    public async Task InvalidSetting_ReturnsConciseFailure(params string[] args)
+    {
+        ProcessResult result = await InvokeDredgeProcessAsync(["settings", ..args]);
+
+        Assert.Equal(1, result.ExitCode);
+        Assert.Contains("Unknown property: unknown", result.StandardError);
+        Assert.DoesNotContain("Unhandled exception", result.StandardError);
+        Assert.DoesNotContain("System.ArgumentException", result.StandardError);
+        Assert.DoesNotContain(" at Valleysoft.Dredge", result.StandardError);
+    }
+
     private static async Task<ProcessResult> InvokeDredgeProcessAsync(params string[] args)
     {
         ProcessStartInfo startInfo = new("dotnet")

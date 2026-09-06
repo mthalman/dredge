@@ -271,6 +271,14 @@ dredge image compare layers <base> <target> [--output <format>] [--history] [--c
 | `--compressed-size` | Show compressed layer sizes |
 | `--no-color` | Disable color output and use text-based diff indicators instead |
 
+The command returns the following exit codes:
+
+| Exit code | Meaning |
+|----------:|---------|
+| `0` | The images have equal layers |
+| `1` | The command failed before completing the comparison |
+| `2` | The comparison completed and found layer differences |
+
 ### Inline output example
 
 ```diff
@@ -364,13 +372,18 @@ dredge image compare files amd64/node:19.1-alpine amd64/node:19.1-alpine --base-
 Saves the extracted layers of an image to disk.
 
 ```console
-dredge image save-layers <image> <output-path> [--no-squash] [--layer-index <n>] [--os <os>] [--arch <arch>] [--os-version <version>]
+dredge image save-layers <image> <output-path> [--no-squash] [--layer-index <n>] [--force] [--os <os>] [--arch <arch>] [--os-version <version>]
 ```
+
+Set `output-path` to a new path or an existing regular directory. By default,
+an existing directory must be empty. Use `--force` to write to a non-empty
+directory.
 
 | Option | Description |
 |--------|-------------|
 | `--no-squash` | Save each selected layer in a separate directory instead of merging the layers |
 | `--layer-index` | Select a zero-based layer index. With squashing, Dredge applies layers `0` through this index. With `--no-squash`, Dredge saves only this layer |
+| `--force` | Allow writes to a non-empty output directory. Squashed output may overwrite, replace, or delete entries, including entries targeted by OCI whiteouts. With `--no-squash`, Dredge replaces each matching `layer<index>-<digest>` directory |
 
 Example:
 

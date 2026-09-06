@@ -121,6 +121,7 @@ public class CommandStructureTests
             "image:tag",
             "output",
             "--no-squash",
+            "--force",
             "--layer-index",
             "3",
             "--os",
@@ -133,6 +134,7 @@ public class CommandStructureTests
         Assert.Equal("image:tag", options.Image);
         Assert.Equal("output", options.OutputPath);
         Assert.True(options.NoSquash);
+        Assert.True(options.Force);
         Assert.Equal(3, options.LayerIndex);
         Assert.Equal("linux", options.Os);
         Assert.Equal("1", options.OsVersion);
