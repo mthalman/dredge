@@ -297,10 +297,7 @@ internal static class ImageHelper
 
             if (layerFile.LinkTarget is not null)
             {
-                if (File.Exists(dest) || Directory.Exists(dest))
-                {
-                    DeleteDestinationEntry(dest);
-                }
+                DeleteDestinationEntry(dest);
 
                 string sourceTarget = GetLinkTargetPath(layerDir, layerFile.FullName, layerFile.LinkTarget);
                 string destTarget = GetContainedPath(

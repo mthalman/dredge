@@ -169,6 +169,47 @@ public class SaveLayersCommandTests
     }
 
     [Fact]
+    public async Task ExecuteAsync_WithForce_ReplacesDanglingDirectoryLinkWithFileLink()
+    {
+        string id = Guid.NewGuid().ToString("N");
+        string digest = $"sha256:{id}";
+        string outputPath = CreateOutputPath();
+        string layerCachePath = Path.Combine(DredgeState.DredgeTempPath, "layers", id);
+        string linkPath = Path.Combine(outputPath, "link");
+        Directory.CreateDirectory(outputPath);
+        Directory.CreateSymbolicLink(linkPath, Path.Combine(outputPath, "missing"));
+        Mock<IDockerRegistryClient> client = CreateClient(
+            digest,
+            () => CreateSymbolicLinkLayer("link", "target.txt"));
+        Mock<IDockerRegistryClientFactory> factory = new();
+        factory.Setup(item => item.GetClientAsync(null)).ReturnsAsync(client.Object);
+        TestSaveLayersCommand command = new(factory.Object, TextWriter.Null)
+        {
+            Options = new SaveLayersOptions
+            {
+                Image = "image",
+                OutputPath = outputPath,
+                Force = true
+            }
+        };
+
+        try
+        {
+            await command.RunAsync();
+
+            Assert.Equal("target.txt", new FileInfo(linkPath).LinkTarget);
+        }
+        finally
+        {
+            Directory.Delete(outputPath, recursive: true);
+            if (Directory.Exists(layerCachePath))
+            {
+                Directory.Delete(layerCachePath, recursive: true);
+            }
+        }
+    }
+
+    [Fact]
     public async Task ExecuteAsync_WhenOutputPathIsFile_RejectsEvenWithForce()
     {
         string outputPath = Path.Combine(
@@ -317,6 +358,21 @@ public class SaveLayersCommandTests
                 };
                 writer.WriteEntry(entry);
             }
+        }
+        compressed.Position = 0;
+        return compressed;
+    }
+
+    private static Stream CreateSymbolicLinkLayer(string name, string target)
+    {
+        MemoryStream compressed = new();
+        using (GZipStream gzip = new(compressed, CompressionMode.Compress, leaveOpen: true))
+        using (TarWriter writer = new(gzip, leaveOpen: true))
+        {
+            writer.WriteEntry(new PaxTarEntry(TarEntryType.SymbolicLink, name)
+            {
+                LinkName = target
+            });
         }
         compressed.Position = 0;
         return compressed;
