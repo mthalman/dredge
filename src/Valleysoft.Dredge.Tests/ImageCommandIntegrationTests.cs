@@ -228,14 +228,20 @@ internal sealed class ImageCommandIntegrationScenarios
         IDockerRegistryClientFactory factory = fixture.CreateClientFactory();
 
         StringWriter layerOutput = new();
-        int layerExitCode = await InvokeAsync(
-            new CompareLayersCommand(factory, CreateConsole(layerOutput)),
-            baseName,
-            targetName,
-            "--output",
-            "json",
-            "--history",
-            "--compressed-size");
+        CompareLayersCommand layerCommand = new(factory, CreateConsole(layerOutput));
+        RecordingProcessTerminator layerProcessTerminator = new();
+        ((IProcessTerminationAware)layerCommand).ProcessTerminator = layerProcessTerminator;
+        await layerCommand
+            .Parse([
+                baseName,
+                targetName,
+                "--output",
+                "json",
+                "--history",
+                "--compressed-size"])
+            .InvokeAsync(
+                new InvocationConfiguration(),
+                TestContext.Current.CancellationToken);
 
         StringWriter metadataOutput = new();
         string settingsRoot = GetTempPath();
@@ -257,7 +263,7 @@ internal sealed class ImageCommandIntegrationScenarios
             DeleteDirectory(settingsRoot);
         }
 
-        Assert.Equal(0, layerExitCode);
+        Assert.Equal(2, layerProcessTerminator.ExitCode);
         JsonObject layers = JsonNode.Parse(layerOutput.ToString())!.AsObject();
         Assert.False(layers["summary"]!["areEqual"]!.GetValue<bool>());
         Assert.True(layers["summary"]!["targetIncludesAllBaseLayers"]!.GetValue<bool>());
