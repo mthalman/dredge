@@ -46,10 +46,18 @@ public class CompareFilesCommand : RegistryCommandBase<CompareFilesOptions>
             }
 
             await SaveImageLayersToDiskAsync(
-                Options.BaseImage, BaseOutputDirName, Options.BaseLayerIndex, CompareOptionsBase.BaseArg, ct);
+                Options.BaseImage,
+                BaseOutputDirName,
+                Options.BaseLayerIndex,
+                CompareFilesOptions.BaseLayerIndexOptionName,
+                ct);
             Console.Error.WriteLine();
             await SaveImageLayersToDiskAsync(
-                Options.TargetImage, TargetOutputDirName, Options.TargetLayerIndex, CompareOptionsBase.TargetArg, ct);
+                Options.TargetImage,
+                TargetOutputDirName,
+                Options.TargetLayerIndex,
+                CompareFilesOptions.TargetLayerIndexOptionName,
+                ct);
 
             string compareTempPath = Path.Combine(pathProvider.TempPath, "compare");
             string args = settings.FileCompareTool.Args
@@ -64,7 +72,7 @@ public class CompareFilesCommand : RegistryCommandBase<CompareFilesOptions>
         string image,
         string outputDirName,
         int? layerIndex,
-        string layerIndexArg,
+        string layerIndexOptionName,
         CancellationToken cancellationToken)
     {
         string workingDir = Path.Combine(pathProvider.TempPath, "compare", outputDirName);
@@ -78,7 +86,7 @@ public class CompareFilesCommand : RegistryCommandBase<CompareFilesOptions>
             image,
             workingDir,
             layerIndex,
-            layerIndexArg + CompareFilesOptions.LayerIndexSuffix,
+            layerIndexOptionName,
             noSquash: false,
             Options,
             cancellationToken,

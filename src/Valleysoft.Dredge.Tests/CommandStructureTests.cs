@@ -2,6 +2,7 @@
 
 using System.CommandLine;
 using System.CommandLine.Parsing;
+using System.Globalization;
 using Valleysoft.Dredge.Commands;
 using Valleysoft.Dredge.Commands.Image;
 using Valleysoft.Dredge.Commands.Manifest;
@@ -159,6 +160,147 @@ public class CommandStructureTests
         Assert.Equal(1, options.BaseLayerIndex);
         Assert.Equal(2, options.TargetLayerIndex);
         Assert.Equal(CompareFilesOutput.ExternalTool, options.OutputType);
+    }
+
+    [Fact]
+    public void LayerIndexOptions_DescribeIndexesAsZeroBased()
+    {
+        (OptionsBase Options, string OptionName, string ExpectedDescription)[] cases =
+        [
+            (
+                new SaveLayersOptions(),
+                "--layer-index",
+                "Zero-based index of the image layer to target"),
+            (
+                new CompareFilesOptions(),
+                CompareFilesOptions.BaseLayerIndexOptionName,
+                "Zero-based non-empty layer index of the base container image to compare with"),
+            (
+                new CompareFilesOptions(),
+                CompareFilesOptions.TargetLayerIndexOptionName,
+                "Zero-based non-empty layer index of the target container image to compare against")
+        ];
+
+        foreach ((OptionsBase options, string optionName, string expectedDescription) in cases)
+        {
+            Command command = new("test");
+            options.SetCommandOptions(command);
+
+            Option option = Assert.Single(command.Options, option => option.Name == optionName);
+
+            Assert.Equal(expectedDescription, option.Description);
+        }
+    }
+
+    [Fact]
+    public void LayerIndexOptions_RejectNegativeValuesAndAcceptZero()
+    {
+        (OptionsBase Options, string[] Arguments, string OptionName)[] cases =
+        [
+            (
+                new SaveLayersOptions(),
+                ["image", "output", "--layer-index"],
+                "--layer-index"),
+            (
+                new CompareFilesOptions(),
+                ["base", "target", CompareFilesOptions.BaseLayerIndexOptionName],
+                CompareFilesOptions.BaseLayerIndexOptionName),
+            (
+                new CompareFilesOptions(),
+                ["base", "target", CompareFilesOptions.TargetLayerIndexOptionName],
+                CompareFilesOptions.TargetLayerIndexOptionName)
+        ];
+
+        foreach ((OptionsBase options, string[] arguments, string optionName) in cases)
+        {
+            Command command = new("test");
+            options.SetCommandOptions(command);
+
+            ParseResult negativeResult = command.Parse([.. arguments, "-1"]);
+            ParseResult zeroResult = command.Parse([.. arguments, "0"]);
+
+            Assert.Single(negativeResult.Errors);
+            Assert.Equal(
+                $"Layer index for option '{optionName}' must be zero or greater.",
+                negativeResult.Errors[0].Message);
+            Assert.Empty(zeroResult.Errors);
+        }
+    }
+
+    [Theory]
+    [InlineData("invalid")]
+    [InlineData("2147483648")]
+    [InlineData("-2147483649")]
+    public void LayerIndexOptions_ReportInvalidIntegerValuesWithoutThrowing(string value)
+    {
+        (OptionsBase Options, string[] Arguments)[] cases =
+        [
+            (
+                new SaveLayersOptions(),
+                ["image", "output", "--layer-index"]),
+            (
+                new CompareFilesOptions(),
+                ["base", "target", CompareFilesOptions.BaseLayerIndexOptionName]),
+            (
+                new CompareFilesOptions(),
+                ["base", "target", CompareFilesOptions.TargetLayerIndexOptionName])
+        ];
+
+        foreach ((OptionsBase options, string[] arguments) in cases)
+        {
+            Command command = new("test");
+            options.SetCommandOptions(command);
+
+            ParseResult result = command.Parse([.. arguments, value]);
+
+            Assert.Single(result.Errors);
+            Assert.Contains(value, result.Errors[0].Message);
+        }
+    }
+
+    [Fact]
+    public void LayerIndexOptions_RejectCultureSpecificNegativeValues()
+    {
+        (OptionsBase Options, string[] Arguments, string OptionName)[] cases =
+        [
+            (
+                new SaveLayersOptions(),
+                ["image", "output", "--layer-index"],
+                "--layer-index"),
+            (
+                new CompareFilesOptions(),
+                ["base", "target", CompareFilesOptions.BaseLayerIndexOptionName],
+                CompareFilesOptions.BaseLayerIndexOptionName),
+            (
+                new CompareFilesOptions(),
+                ["base", "target", CompareFilesOptions.TargetLayerIndexOptionName],
+                CompareFilesOptions.TargetLayerIndexOptionName)
+        ];
+        CultureInfo originalCulture = CultureInfo.CurrentCulture;
+
+        try
+        {
+            CultureInfo.CurrentCulture = new CultureInfo("sv-SE");
+            string negativeOne =
+                $"{CultureInfo.CurrentCulture.NumberFormat.NegativeSign}1";
+
+            foreach ((OptionsBase options, string[] arguments, string optionName) in cases)
+            {
+                Command command = new("test");
+                options.SetCommandOptions(command);
+
+                ParseResult result = command.Parse([.. arguments, negativeOne]);
+
+                Assert.Single(result.Errors);
+                Assert.Equal(
+                    $"Layer index for option '{optionName}' must be zero or greater.",
+                    result.Errors[0].Message);
+            }
+        }
+        finally
+        {
+            CultureInfo.CurrentCulture = originalCulture;
+        }
     }
 
     [Fact]

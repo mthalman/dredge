@@ -176,6 +176,68 @@ public class ImageHelperTests
         }
     }
 
+    [Fact]
+    public async Task SaveImageLayersToDiskAsync_WhenLayerIndexIsLastManifestLayer_Succeeds()
+    {
+        string id = Guid.NewGuid().ToString("N");
+        string firstDigest = $"sha256:{id}-one";
+        string secondDigest = $"sha256:{id}-two";
+        string tempRoot = Path.Combine(Path.GetTempPath(), $"dredge-layer-boundary-{id}");
+        Mock<IDockerRegistryClient> client = new() { DefaultValue = DefaultValue.Mock };
+        client
+            .Setup(o => o.Manifests.GetAsync("library/image", "latest", It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new ManifestInfo(
+                "application/test",
+                "sha256:manifest",
+                new DockerManifest
+                {
+                    Layers =
+                    [
+                        new ManifestLayer { Digest = firstDigest },
+                        new ManifestLayer { Digest = secondDigest }
+                    ]
+                }));
+        client
+            .Setup(o => o.Blobs.GetAsync("library/image", secondDigest, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(() => CreateLayer(("file.txt", "content")));
+        Mock<IDockerRegistryClientFactory> factory = new();
+        factory.Setup(o => o.GetClientAsync(null)).ReturnsAsync(client.Object);
+
+        try
+        {
+            await ImageHelper.SaveImageLayersToDiskAsync(
+                factory.Object,
+                "image",
+                Path.Combine(tempRoot, "output"),
+                layerIndex: 1,
+                "--layer-index",
+                noSquash: true,
+                new PlatformOptionsBase(),
+                TestContext.Current.CancellationToken,
+                new TestDredgePathProvider(tempRoot));
+
+            client.Verify(
+                o => o.Blobs.GetAsync(
+                    "library/image",
+                    firstDigest,
+                    It.IsAny<CancellationToken>()),
+                Times.Never);
+            client.Verify(
+                o => o.Blobs.GetAsync(
+                    "library/image",
+                    secondDigest,
+                    It.IsAny<CancellationToken>()),
+                Times.Once);
+        }
+        finally
+        {
+            if (Directory.Exists(tempRoot))
+            {
+                Directory.Delete(tempRoot, recursive: true);
+            }
+        }
+    }
+
     [Theory]
     [InlineData(-1)]
     [InlineData(2)]
@@ -206,9 +268,44 @@ public class ImageHelperTests
                 layerIndex,
                 "--layer-index",
                 noSquash: false,
-                new PlatformOptionsBase()));
+                new PlatformOptionsBase(),
+                TestContext.Current.CancellationToken));
 
-        Assert.Equal("Value is out of range for the '--layer-index' option.", exception.Message);
+        Assert.Equal(
+            "Value for the '--layer-index' option must be in the range 0-1.",
+            exception.Message);
+        client.Verify(
+            o => o.Blobs.GetAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<CancellationToken>()),
+            Times.Never);
+    }
+
+    [Fact]
+    public async Task SaveImageLayersToDiskAsync_WhenManifestHasNoLayers_Throws()
+    {
+        Mock<IDockerRegistryClient> client = new() { DefaultValue = DefaultValue.Mock };
+        client
+            .Setup(o => o.Manifests.GetAsync("library/image", "latest", It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new ManifestInfo(
+                "application/test",
+                "sha256:manifest",
+                new DockerManifest { Layers = [] }));
+        Mock<IDockerRegistryClientFactory> factory = new();
+        factory.Setup(o => o.GetClientAsync(null)).ReturnsAsync(client.Object);
+
+        Exception exception = await Assert.ThrowsAsync<Exception>(
+            () => ImageHelper.SaveImageLayersToDiskAsync(
+                factory.Object,
+                "image",
+                "output",
+                layerIndex: 0,
+                "--layer-index",
+                noSquash: false,
+                new PlatformOptionsBase(),
+                TestContext.Current.CancellationToken));
+
+        Assert.Equal(
+            "The image has no layers, so the '--layer-index' option cannot be used.",
+            exception.Message);
         client.Verify(
             o => o.Blobs.GetAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<CancellationToken>()),
             Times.Never);

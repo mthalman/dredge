@@ -5,6 +5,8 @@ namespace Valleysoft.Dredge.Commands.Image;
 public class CompareFilesOptions : CompareOptionsBase
 {
     public const string LayerIndexSuffix = "-layer-index";
+    public const string BaseLayerIndexOptionName = $"--{BaseArg}{LayerIndexSuffix}";
+    public const string TargetLayerIndexOptionName = $"--{TargetArg}{LayerIndexSuffix}";
 
     private readonly Option<int?> baseLayerIndex;
     private readonly Option<int?> targetLayerIndex;
@@ -16,8 +18,12 @@ public class CompareFilesOptions : CompareOptionsBase
 
     public CompareFilesOptions()
     {
-        baseLayerIndex = Add(new Option<int?>($"--{BaseArg}{LayerIndexSuffix}") { Description = "Non-empty layer index of the base container image to compare with" });
-        targetLayerIndex = Add(new Option<int?>($"--{TargetArg}{LayerIndexSuffix}") { Description = "Non-empty layer index of the target container image to compare against" });
+        baseLayerIndex = Add(LayerIndexOption.Create(
+            BaseLayerIndexOptionName,
+            "non-empty layer index of the base container image to compare with"));
+        targetLayerIndex = Add(LayerIndexOption.Create(
+            TargetLayerIndexOptionName,
+            "non-empty layer index of the target container image to compare against"));
         outputOption = new CliOutputOption<CompareFilesOutput>(
             "Output type",
             CompareFilesOutput.ExternalTool,
