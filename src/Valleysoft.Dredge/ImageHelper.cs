@@ -38,7 +38,10 @@ internal static class ImageHelper
         {
             if (layerIndex < 0 || layerIndex >= manifest.Layers.Length)
             {
-                throw new Exception($"Value is out of range for the '{layerIndexOptionName}' option.");
+                string message = manifest.Layers.Length is 0
+                    ? $"The image has no layers, so the '{layerIndexOptionName}' option cannot be used."
+                    : $"Value for the '{layerIndexOptionName}' option must be in the range 0-{manifest.Layers.Length - 1}.";
+                throw new Exception(message);
             }
             layerCount = layerIndex.Value + 1;
 
