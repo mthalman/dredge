@@ -6,6 +6,12 @@ namespace Valleysoft.Dredge.Tests;
 public class JsonHelperTests
 {
     [Fact]
+    public void Serialize_NullReturnsNullLiteral()
+    {
+        Assert.Equal("null", JsonHelper.Serialize(null));
+    }
+
+    [Fact]
     public void Serialize_UsesClrPropertyNamesAndCamelCasesDictionaryKeys()
     {
         SerializerContract value = new()

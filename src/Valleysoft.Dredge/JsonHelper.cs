@@ -50,8 +50,10 @@ internal static class JsonHelper
         TypeInfoResolver = CreateTypeInfoResolver(namingPolicy: null),
     };
 
-    public static string Serialize(object value, JsonSerializerOptions? options = null) =>
-        JsonSerializer.Serialize(value, value.GetType(), options ?? Settings);
+    public static string Serialize(object? value, JsonSerializerOptions? options = null) =>
+        value is null
+            ? JsonSerializer.Serialize(value, options ?? Settings)
+            : JsonSerializer.Serialize(value, value.GetType(), options ?? Settings);
 
     public static T? Deserialize<T>(string json, JsonSerializerOptions? options = null) =>
         JsonSerializer.Deserialize<T>(json, options ?? Settings);
