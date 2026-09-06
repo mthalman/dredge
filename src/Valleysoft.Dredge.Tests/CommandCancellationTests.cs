@@ -24,7 +24,7 @@ public class CommandCancellationTests
     [Fact]
     public void CancellationAtRootReturnsFailureWithoutWritingError()
     {
-        CancellationCommand command = new();
+        CanceledCommand command = new();
         using StringWriter error = new();
 
         int exitCode = CommandHelper.InvokeRootCommand(
@@ -33,6 +33,20 @@ public class CommandCancellationTests
 
         Assert.Equal(1, exitCode);
         Assert.Empty(error.ToString());
+    }
+
+    [Fact]
+    public void UnrelatedCancellationAtRootWritesConciseErrorAndReturnsFailure()
+    {
+        CancellationCommand command = new();
+        using StringWriter error = new();
+
+        int exitCode = CommandHelper.InvokeRootCommand(
+            command.Parse([]),
+            new InvocationConfiguration { Error = error });
+
+        Assert.Equal(1, exitCode);
+        Assert.Equal($"failure{Environment.NewLine}", error.ToString());
     }
 
     [Fact]
@@ -133,7 +147,18 @@ public class CommandCancellationTests
         }
 
         protected override Task ExecuteAsync(CancellationToken cancellationToken) =>
-            throw new OperationCanceledException();
+            throw new OperationCanceledException("failure");
+    }
+
+    private sealed class CanceledCommand : CommandWithOptions<TestOptions>
+    {
+        public CanceledCommand()
+            : base("canceled", "Canceled command")
+        {
+        }
+
+        protected override Task ExecuteAsync(CancellationToken cancellationToken) =>
+            throw new OperationCanceledException(new CancellationToken(canceled: true));
     }
 
     public sealed class TestOptions : OptionsBase

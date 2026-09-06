@@ -17,7 +17,7 @@ internal static class CommandHelper
         {
             return parseResult.Invoke(configuration);
         }
-        catch (OperationCanceledException)
+        catch (OperationCanceledException e) when (e.CancellationToken.IsCancellationRequested)
         {
             return 1;
         }
