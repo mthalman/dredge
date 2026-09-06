@@ -1,7 +1,7 @@
-using Newtonsoft.Json.Linq;
 using Spectre.Console;
 using System.CommandLine;
 using System.Text;
+using System.Text.Json.Nodes;
 using Valleysoft.Dredge.Commands.Image;
 
 namespace Valleysoft.Dredge.Tests;
@@ -122,13 +122,13 @@ internal sealed class ImageCommandIntegrationScenarios
             Assert.Equal(0, catExitCode);
             Assert.Equal("new", Encoding.UTF8.GetString(catOutput.ToArray()));
             Assert.Equal(0, listExitCode);
-            JArray entries = JArray.Parse(listOutput.ToString());
+            JsonArray entries = JsonNode.Parse(listOutput.ToString())!.AsArray();
             Assert.Contains(entries, entry =>
-                (string?)entry["path"] == "app/value" &&
-                (int?)entry["modifiedLayer"]?["index"] == 1);
+                entry?["path"]?.GetValue<string>() == "app/value" &&
+                entry["modifiedLayer"]?["index"]?.GetValue<int>() == 1);
             Assert.Contains(entries, entry =>
-                (string?)entry["path"] == "app/removed" &&
-                (int?)entry["deletedLayer"]?["index"] == 1);
+                entry?["path"]?.GetValue<string>() == "app/removed" &&
+                entry["deletedLayer"]?["index"]?.GetValue<int>() == 1);
         }
         finally
         {
@@ -181,14 +181,14 @@ internal sealed class ImageCommandIntegrationScenarios
         string dockerfile = dockerfileOutput.ToString();
 
         Assert.Equal(0, inspectExitCode);
-        JObject config = JObject.Parse(inspectOutput.ToString());
-        Assert.Equal("amd64", (string?)config["architecture"]);
-        Assert.Equal("linux", (string?)config["os"]);
-        Assert.Equal(layer.DiffId, (string?)config["rootfs"]?["diff_ids"]?[0]);
+        JsonObject config = JsonNode.Parse(inspectOutput.ToString())!.AsObject();
+        Assert.Equal("amd64", config["architecture"]?.GetValue<string>());
+        Assert.Equal("linux", config["os"]?.GetValue<string>());
+        Assert.Equal(layer.DiffId, config["rootfs"]?["diff_ids"]?[0]?.GetValue<string>());
         Assert.Equal(0, osExitCode);
-        JObject os = JObject.Parse(osOutput.ToString());
-        Assert.Equal("Integration Linux", (string?)os.GetValue("name", StringComparison.OrdinalIgnoreCase));
-        Assert.Equal("1.0", (string?)os.GetValue("version", StringComparison.OrdinalIgnoreCase));
+        JsonObject os = JsonNode.Parse(osOutput.ToString())!.AsObject();
+        Assert.Equal("Integration Linux", os["NAME"]?.GetValue<string>());
+        Assert.Equal("1.0", os["VERSION"]?.GetValue<string>());
         Assert.Equal(0, dockerfileExitCode);
         Assert.Contains("FROM scratch", dockerfile);
         Assert.Contains("ADD file:abc /", dockerfile);
@@ -258,19 +258,19 @@ internal sealed class ImageCommandIntegrationScenarios
         }
 
         Assert.Equal(0, layerExitCode);
-        JObject layers = JObject.Parse(layerOutput.ToString());
-        Assert.False((bool)layers["summary"]!["areEqual"]!);
-        Assert.True((bool)layers["summary"]!["targetIncludesAllBaseLayers"]!);
-        Assert.Equal("added", (string?)layers["layerComparisons"]?[1]?["layerDiff"]);
+        JsonObject layers = JsonNode.Parse(layerOutput.ToString())!.AsObject();
+        Assert.False(layers["summary"]!["areEqual"]!.GetValue<bool>());
+        Assert.True(layers["summary"]!["targetIncludesAllBaseLayers"]!.GetValue<bool>());
+        Assert.Equal("added", layers["layerComparisons"]?[1]?["layerDiff"]?.GetValue<string>());
         Assert.Equal(0, metadataExitCode);
-        JObject metadata = JObject.Parse(metadataOutput.ToString());
-        Assert.False((bool)metadata["summary"]!["areEqual"]!);
+        JsonObject metadata = JsonNode.Parse(metadataOutput.ToString())!.AsObject();
+        Assert.False(metadata["summary"]!["areEqual"]!.GetValue<bool>());
         Assert.Contains(
-            metadata["comparisons"]!,
-            comparison => (string?)comparison["path"] == "environment[\"VALUE\"]");
+            metadata["comparisons"]!.AsArray(),
+            comparison => comparison?["path"]?.GetValue<string>() == "environment[\"VALUE\"]");
         Assert.Contains(
-            metadata["comparisons"]!,
-            comparison => (string?)comparison["path"] == "environment[\"ADDED\"]");
+            metadata["comparisons"]!.AsArray(),
+            comparison => comparison?["path"]?.GetValue<string>() == "environment[\"ADDED\"]");
     }
 
     public async Task CompareFilesCommand_ExtractsLiveImagesForConfiguredTool()

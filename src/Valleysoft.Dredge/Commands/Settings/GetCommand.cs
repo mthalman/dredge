@@ -1,6 +1,4 @@
-﻿using Newtonsoft.Json;
-
-namespace Valleysoft.Dredge.Commands.Settings;
+﻿namespace Valleysoft.Dredge.Commands.Settings;
 
 internal partial class GetCommand : CommandWithOptions<GetOptions>
 {
@@ -36,7 +34,7 @@ internal partial class GetCommand : CommandWithOptions<GetOptions>
             }
             else
             {
-                output.WriteLine(JsonConvert.SerializeObject(value, JsonHelper.Settings));
+                output.WriteLine(JsonHelper.Serialize(value));
             }
         }
 

@@ -1,4 +1,3 @@
-using Newtonsoft.Json;
 using Valleysoft.DockerRegistryClient.Models.Manifests.Oci;
 
 namespace Valleysoft.Dredge.Commands.Referrer;
@@ -23,7 +22,7 @@ public class ListCommand : RegistryCommandBase<ListOptions>
                     Options.ArtifactType,
                     ct,
                     Options.Limit);
-            string output = JsonConvert.SerializeObject(index, JsonHelper.Settings);
+            string output = JsonHelper.Serialize(index);
 
             Output.WriteLine(output);
         });

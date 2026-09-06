@@ -1,9 +1,8 @@
-using Newtonsoft.Json;
-using Newtonsoft.Json.Converters;
+using System.Text.Json.Serialization;
 
 namespace Valleysoft.Dredge;
 
-[JsonConverter(typeof(StringEnumConverter))]
+[JsonConverter(typeof(JsonStringEnumConverter<ImageFileType>))]
 public enum ImageFileType
 {
     File,

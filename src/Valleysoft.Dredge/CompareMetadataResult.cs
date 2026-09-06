@@ -1,4 +1,4 @@
-using Newtonsoft.Json.Linq;
+using System.Text.Json.Nodes;
 
 namespace Valleysoft.Dredge;
 
@@ -37,8 +37,8 @@ public class MetadataComparison
     public MetadataComparison(
         string category,
         string path,
-        JToken? baseValue,
-        JToken? targetValue,
+        JsonNode? baseValue,
+        JsonNode? targetValue,
         CompareDiff diff)
     {
         Category = category;
@@ -50,7 +50,7 @@ public class MetadataComparison
 
     public string Category { get; }
     public string Path { get; }
-    public JToken? BaseValue { get; }
-    public JToken? TargetValue { get; }
+    public JsonNode? BaseValue { get; }
+    public JsonNode? TargetValue { get; }
     public CompareDiff Diff { get; }
 }

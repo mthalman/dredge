@@ -47,7 +47,6 @@ public class SettingsSourceGenerator : IIncrementalGenerator
             sourceBuilder.AppendLine("#nullable enable");
             sourceBuilder.AppendLine("using System;");
             sourceBuilder.AppendLine("using System.Collections.Generic;");
-            sourceBuilder.AppendLine("using Newtonsoft.Json;");
 
             sourceBuilder.AppendLine($"namespace {classSymbol.ContainingNamespace}");
             sourceBuilder.AppendLine("{");
@@ -96,7 +95,7 @@ public class SettingsSourceGenerator : IIncrementalGenerator
         {
             AttributeSyntax jsonPropertyAttribute = property.AttributeLists
                 .SelectMany(a => a.Attributes)
-                .FirstOrDefault(a => a.Name.ToString() == "JsonProperty");
+                .FirstOrDefault(a => a.Name.ToString() == "JsonPropertyName");
 
             if (jsonPropertyAttribute != null)
             {

@@ -1,6 +1,6 @@
 using System.CommandLine;
 using System.Diagnostics;
-using Newtonsoft.Json.Linq;
+using System.Text.Json.Nodes;
 using ClearCacheCommand = Valleysoft.Dredge.Commands.Settings.ClearCacheCommand;
 using SettingsGetCommand = Valleysoft.Dredge.Commands.Settings.GetCommand;
 using SettingsOpenCommand = Valleysoft.Dredge.Commands.Settings.OpenCommand;
@@ -28,10 +28,10 @@ internal sealed class SettingsCommandIntegrationScenarios
             Assert.Equal(0, setExitCode);
             Assert.Equal(0, getExitCode);
             Assert.Equal("arm64", output.ToString().Trim());
-            JObject persisted = JObject.Parse(await File.ReadAllTextAsync(
+            JsonObject persisted = JsonNode.Parse(await File.ReadAllTextAsync(
                 settingsPath,
-                TestContext.Current.CancellationToken));
-            Assert.Equal("arm64", (string?)persisted["platform"]?["arch"]);
+                TestContext.Current.CancellationToken))!.AsObject();
+            Assert.Equal("arm64", persisted["platform"]?["arch"]?.GetValue<string>());
         }
         finally
         {

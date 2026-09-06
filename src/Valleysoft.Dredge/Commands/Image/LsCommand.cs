@@ -1,4 +1,3 @@
-using Newtonsoft.Json;
 using Spectre.Console;
 using Spectre.Console.Rendering;
 using System.Globalization;
@@ -36,7 +35,7 @@ public class LsCommand : RegistryCommandBase<LsOptions>
             if (Options.OutputFormat == LsOutput.Json)
             {
                 ansiConsole.Profile.Out.Writer.WriteLine(
-                    JsonConvert.SerializeObject(entries, JsonHelper.Settings));
+                    JsonHelper.Serialize(entries));
             }
             else
             {

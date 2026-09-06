@@ -1,6 +1,6 @@
-using Newtonsoft.Json.Linq;
 using System.CommandLine;
 using System.Text;
+using System.Text.Json.Nodes;
 using Valleysoft.DockerRegistryClient;
 using DigestCommand = Valleysoft.Dredge.Commands.Manifest.DigestCommand;
 using GetCommand = Valleysoft.Dredge.Commands.Manifest.GetCommand;
@@ -45,9 +45,9 @@ internal sealed class RegistryIntegrationScenarios
         Assert.Equal(0, digestExitCode);
         Assert.Equal(seed.Manifest.Digest, digestOutput.ToString().Trim());
         Assert.Equal(0, getExitCode);
-        JObject manifestJson = JObject.Parse(manifestOutput.ToString());
-        Assert.Equal(2, manifestJson["schemaVersion"]);
-        Assert.Equal(seed.Config.Digest, (string?)manifestJson["config"]?["digest"]);
+        JsonObject manifestJson = JsonNode.Parse(manifestOutput.ToString())!.AsObject();
+        Assert.Equal(2, manifestJson["schemaVersion"]?.GetValue<int>());
+        Assert.Equal(seed.Config.Digest, manifestJson["config"]?["digest"]?.GetValue<string>());
     }
 
     public async Task ManifestCommand_WhenTagDoesNotExistReturnsFailure()
@@ -98,14 +98,21 @@ internal sealed class RegistryIntegrationScenarios
             fixture.Registry);
 
         Assert.Equal(0, tagExitCode);
-        Assert.Equal(["latest", "stable"], JArray.Parse(tagOutput.ToString()).Values<string>());
+        Assert.Equal(
+            ["latest", "stable"],
+            JsonNode.Parse(tagOutput.ToString())!.AsArray()
+                .Select(value => value!.GetValue<string>()));
         Assert.Equal(0, limitedTagExitCode);
         string? limitedTag = Assert.Single(
-            JArray.Parse(limitedTagOutput.ToString()).Values<string>());
+            JsonNode.Parse(limitedTagOutput.ToString())!.AsArray()
+                .Select(value => value!.GetValue<string>()));
         Assert.NotNull(limitedTag);
         Assert.Contains(limitedTag, new[] { "latest", "stable" });
         Assert.Equal(0, repoExitCode);
-        Assert.Contains(repository, JArray.Parse(repoOutput.ToString()).Values<string>());
+        Assert.Contains(
+            repository,
+            JsonNode.Parse(repoOutput.ToString())!.AsArray()
+                .Select(value => value!.GetValue<string>()));
     }
 
     public async Task ResolveCommand_SelectsPlatformFromLiveImageIndex()
@@ -246,22 +253,22 @@ internal sealed class RegistryIntegrationScenarios
             "json");
 
         Assert.Equal(0, listExitCode);
-        JObject list = JObject.Parse(listOutput.ToString());
+        JsonObject list = JsonNode.Parse(listOutput.ToString())!.AsObject();
         Assert.Contains(
-            list["manifests"]!,
+            list["manifests"]!.AsArray(),
             manifest =>
-                (string?)manifest["digest"] == digest &&
-                (string?)manifest["artifactType"] == ArtifactType);
+                manifest?["digest"]?.GetValue<string>() == digest &&
+                manifest["artifactType"]?.GetValue<string>() == ArtifactType);
         Assert.Equal(0, checkExitCode);
-        JObject check = JObject.Parse(checkOutput.ToString());
-        Assert.True((bool)check["succeeded"]!);
+        JsonObject check = JsonNode.Parse(checkOutput.ToString())!.AsObject();
+        Assert.True(check["succeeded"]!.GetValue<bool>());
         Assert.Equal(0, getExitCode);
         Assert.Equal(Payload, Encoding.UTF8.GetString(payloadOutput.ToArray()));
         Assert.Equal(0, inspectExitCode);
-        JObject inspection = JObject.Parse(inspectOutput.ToString());
-        Assert.Equal(digest, (string?)inspection["artifactDigest"]);
-        Assert.Equal("SPDX", (string?)inspection["payloads"]?[0]?["format"]);
-        Assert.Equal(2, (int?)inspection["payloads"]?[0]?["summary"]?["packageCount"]);
+        JsonObject inspection = JsonNode.Parse(inspectOutput.ToString())!.AsObject();
+        Assert.Equal(digest, inspection["artifactDigest"]?.GetValue<string>());
+        Assert.Equal("SPDX", inspection["payloads"]?[0]?["format"]?.GetValue<string>());
+        Assert.Equal(2, inspection["payloads"]?[0]?["summary"]?["packageCount"]?.GetValue<int>());
     }
 
     private static Task<int> InvokeAsync(Command command, params string[] args)
