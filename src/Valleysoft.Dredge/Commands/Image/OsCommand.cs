@@ -1,5 +1,4 @@
 ﻿using System.Formats.Tar;
-using Newtonsoft.Json;
 using System.IO.Compression;
 using System.Text.RegularExpressions;
 using Valleysoft.DockerRegistryClient;
@@ -60,7 +59,7 @@ public partial class OsCommand : RegistryCommandBase<OsOptions>
                 throw new Exception("Unable to derive OS information from the image.");
             }
 
-            string output = JsonConvert.SerializeObject(osInfo, JsonHelper.SettingsNoCamelCase);
+            string output = JsonHelper.Serialize(osInfo, JsonHelper.SettingsNoCamelCase);
             Output.WriteLine(output);
         });
     }

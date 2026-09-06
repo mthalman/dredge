@@ -1,6 +1,6 @@
 namespace Valleysoft.Dredge.Tests;
 
-using Newtonsoft.Json;
+using System.Text.Json;
 
 public class AppSettingsTests
 {
@@ -27,7 +27,7 @@ public class AppSettingsTests
             string persistedContent = await File.ReadAllTextAsync(
                 settingsPath, TestContext.Current.CancellationToken);
             AppSettings? persistedSettings =
-                JsonConvert.DeserializeObject<AppSettings>(persistedContent);
+                JsonSerializer.Deserialize<AppSettings>(persistedContent, JsonHelper.Settings);
             Assert.NotNull(persistedSettings);
             Assert.NotNull(persistedSettings.Platform);
         }
@@ -50,6 +50,94 @@ public class AppSettingsTests
 
         Assert.Equal("arm64", settings.GetProperty(new Queue<string>(["platform", "arch"])));
         Assert.Equal("compare.exe", settings.GetProperty(new Queue<string>(["fileCompareTool", "exePath"])));
+    }
+
+    [Fact]
+    public void Load_CoercesNumericSettingsToStrings()
+    {
+        string settingsPath = Path.GetTempFileName();
+        try
+        {
+            File.WriteAllText(settingsPath, """{"platform":{"os":5}}""");
+
+            AppSettings settings = AppSettings.Load(settingsPath);
+
+            Assert.Equal("5", settings.Platform.Os);
+        }
+        finally
+        {
+            File.Delete(settingsPath);
+        }
+    }
+
+    [Fact]
+    public void SettingsSerializationPreservesArchPropertyName()
+    {
+        AppSettings settings = CreateSettings();
+        settings.Platform.Architecture = "arm64";
+
+        string json = JsonHelper.Serialize(settings);
+
+        Assert.Contains("\"arch\": \"arm64\"", json);
+        Assert.DoesNotContain("\"architecture\"", json);
+    }
+
+    [Fact]
+    public void Load_MergesDuplicateSettingsObjects()
+    {
+        string settingsPath = Path.GetTempFileName();
+        try
+        {
+            File.WriteAllText(
+                settingsPath,
+                """{"platform":{"os":"linux"},"platform":{"arch":"arm64"}}""");
+
+            AppSettings settings = AppSettings.Load(settingsPath);
+
+            Assert.Equal("linux", settings.Platform.Os);
+            Assert.Equal("arm64", settings.Platform.Architecture);
+        }
+        finally
+        {
+            File.Delete(settingsPath);
+        }
+    }
+
+    [Fact]
+    public void Load_MergesDuplicateSettingsObjectsCaseInsensitively()
+    {
+        string settingsPath = Path.GetTempFileName();
+        try
+        {
+            File.WriteAllText(
+                settingsPath,
+                """{"platform":{"os":"linux"},"PLATFORM":{"arch":"arm64"}}""");
+
+            AppSettings settings = AppSettings.Load(settingsPath);
+
+            Assert.Equal("linux", settings.Platform.Os);
+            Assert.Equal("arm64", settings.Platform.Architecture);
+        }
+        finally
+        {
+            File.Delete(settingsPath);
+        }
+    }
+
+    [Fact]
+    public void Load_WhitespaceContentReturnsNull()
+    {
+        string settingsPath = Path.GetTempFileName();
+        try
+        {
+            File.WriteAllText(settingsPath, " ");
+
+            Assert.Null(AppSettings.Load(settingsPath));
+        }
+        finally
+        {
+            File.Delete(settingsPath);
+        }
     }
 
     [Theory]

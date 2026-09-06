@@ -1,6 +1,6 @@
 namespace Valleysoft.Dredge.Tests;
 
-using Newtonsoft.Json;
+using System.Text.Json;
 using Spectre.Console;
 using Spectre.Console.Rendering;
 using System.CommandLine;
@@ -785,7 +785,7 @@ public class CompareLayersCommandTests
 
         Assert.Equal(0, exitCode);
         CompareLayersResult? result =
-            JsonConvert.DeserializeObject<CompareLayersResult>(output.ToString());
+            JsonSerializer.Deserialize<CompareLayersResult>(output.ToString(), JsonHelper.Settings);
         Assert.NotNull(result);
         Assert.Equal(longHistory, result.LayerComparisons.First().Base!.History);
     }
@@ -917,7 +917,7 @@ public class CompareLayersCommandTests
         Assert.Equal(JsonSerializer.Serialize(expected), JsonSerializer.Serialize(actual));
 
     private static T GetJson<T>(IEnumerable<Segment> segments) =>
-        JsonConvert.DeserializeObject<T>(TestHelper.GetString(segments))!;
+        JsonSerializer.Deserialize<T>(TestHelper.GetString(segments), JsonHelper.Settings)!;
 
     private static void SetupDockerRegistryClient(
         Mock<IDockerRegistryClient> registryClientMock, ImageName imageName, Image imageConfig, ManifestLayer[] layers)

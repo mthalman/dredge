@@ -1,58 +1,58 @@
-﻿using Newtonsoft.Json;
+﻿using System.Text.Json.Serialization;
 
 namespace Valleysoft.Dredge;
 
 public record LinuxOsInfo
 {
-    [JsonProperty("PRETTY_NAME")]
+    [JsonPropertyName("PRETTY_NAME")]
     public string? PrettyName { get; private set; }
 
-    [JsonProperty("NAME")]
+    [JsonPropertyName("NAME")]
     public string? Name { get; private set; }
 
-    [JsonProperty("ID")]
+    [JsonPropertyName("ID")]
     public string? Id { get; private set; }
 
-    [JsonProperty("ID_LIKE")]
+    [JsonPropertyName("ID_LIKE")]
     public string[]? IdLike { get; private set; }
 
-    [JsonProperty("VERSION")]
+    [JsonPropertyName("VERSION")]
     public string? Version { get; private set; }
 
-    [JsonProperty("VERSION_ID")]
+    [JsonPropertyName("VERSION_ID")]
     public string? VersionId { get; private set; }
 
-    [JsonProperty("VERSION_CODENAME")]
+    [JsonPropertyName("VERSION_CODENAME")]
     public string? VersionCodeName { get; private set; }
 
-    [JsonProperty("BUILD_ID")]
+    [JsonPropertyName("BUILD_ID")]
     public string? BuildId { get; private set; }
 
-    [JsonProperty("IMAGE_ID")]
+    [JsonPropertyName("IMAGE_ID")]
     public string? ImageId { get; private set; }
 
-    [JsonProperty("IMAGE_VERSION")]
+    [JsonPropertyName("IMAGE_VERSION")]
     public string? ImageVersion { get; private set; }
 
-    [JsonProperty("VARIANT")]
+    [JsonPropertyName("VARIANT")]
     public string? Variant { get; private set; }
 
-    [JsonProperty("VARIANT_ID")]
+    [JsonPropertyName("VARIANT_ID")]
     public string? VariantId { get; private set; }
 
-    [JsonProperty("HOME_URL")]
+    [JsonPropertyName("HOME_URL")]
     public string? HomeUrl { get; private set; }
 
-    [JsonProperty("SUPPORT_URL")]
+    [JsonPropertyName("SUPPORT_URL")]
     public string? SupportUrl { get; private set; }
 
-    [JsonProperty("BUG_REPORT_URL")]
+    [JsonPropertyName("BUG_REPORT_URL")]
     public string? BugReportUrl { get; private set; }
 
-    [JsonProperty("PRIVACY_POLICY_URL")]
+    [JsonPropertyName("PRIVACY_POLICY_URL")]
     public string? PrivacyPolicyUrl { get; private set; }
 
-    [JsonProperty("CPE_NAME")]
+    [JsonPropertyName("CPE_NAME")]
     public string? CpeName { get; private set; }
 
     public static LinuxOsInfo Parse(string osInfoContent)

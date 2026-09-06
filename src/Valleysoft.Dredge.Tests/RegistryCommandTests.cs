@@ -1,6 +1,7 @@
 ﻿namespace Valleysoft.Dredge.Tests;
 
-using Newtonsoft.Json.Linq;
+using System.Text.Json;
+using System.Text.Json.Nodes;
 using System.Text;
 using Valleysoft.DockerRegistryClient;
 using Valleysoft.DockerRegistryClient.Models;
@@ -82,10 +83,10 @@ public class RegistryCommandTests
         };
 
         await command.RunAsync();
-        JObject json = JObject.Parse(output.ToString());
+        JsonObject json = JsonNode.Parse(output.ToString())!.AsObject();
 
-        Assert.Equal(2, json["schemaVersion"]);
-        Assert.Equal("application/test", json["mediaType"]);
+        Assert.Equal(2, json["schemaVersion"]!.GetValue<int>());
+        Assert.Equal("application/test", json["mediaType"]!.GetValue<string>());
     }
 
     [Fact]
@@ -123,10 +124,46 @@ public class RegistryCommandTests
         };
 
         await command.RunAsync();
-        JObject json = JObject.Parse(output.ToString());
+        JsonObject json = JsonNode.Parse(output.ToString())!.AsObject();
 
-        Assert.Equal("today", json["created"]);
-        Assert.Equal("A=B", json["config"]?["Env"]?[0]);
+        Assert.Equal("today", json["created"]!.GetValue<string>());
+        Assert.Equal("A=B", json["config"]!["Env"]![0]!.GetValue<string>());
+    }
+
+    [Fact]
+    public async Task InspectCommand_NormalizesJsonLikeNewtonsoft()
+    {
+        const string Timestamp = "2021-08-31T21:19:56.930000+02:00";
+        const string Content =
+            """{"timestamp":"2021-08-31T21:19:56.930000+02:00","exponent":1e10,"decimal":1.10,"negativeZero":-0,"dup":1,"dup":2}""";
+        Mock<IDockerRegistryClient> client = CreateClient();
+        client
+            .Setup(o => o.Manifests.GetAsync("repo", "tag", It.IsAny<CancellationToken>()))
+            .ReturnsAsync(CreateManifestInfo("sha256:manifest", "sha256:config"));
+        client
+            .Setup(o => o.Blobs.GetAsync("repo", "sha256:config", It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new MemoryStream(Encoding.UTF8.GetBytes(Content)));
+        using StringWriter output = new();
+        TestInspectCommand command = new(CreateFactory(client.Object), output)
+        {
+            Options = new InspectOptions { Image = $"{Registry}/repo:tag" }
+        };
+
+        await command.RunAsync();
+        string json = output.ToString();
+        DateTime expectedTimestamp = DateTime.Parse(
+            Timestamp,
+            System.Globalization.CultureInfo.InvariantCulture,
+            System.Globalization.DateTimeStyles.RoundtripKind);
+
+        Assert.Contains(
+            $"\"timestamp\": {JsonSerializer.Serialize(expectedTimestamp, JsonHelper.CompactSettings)}",
+            json);
+        Assert.Contains("\"exponent\": 10000000000.0", json);
+        Assert.Contains("\"decimal\": 1.1", json);
+        Assert.Contains("\"negativeZero\": 0", json);
+        Assert.Single(System.Text.RegularExpressions.Regex.Matches(json, "\"dup\":"));
+        Assert.Contains("\"dup\": 2", json);
     }
 
     [Fact]
@@ -151,7 +188,9 @@ public class RegistryCommandTests
 
         await command.RunAsync();
 
-        Assert.Equal(["alpha", "middle", "zebra"], JArray.Parse(output.ToString()).Values<string>());
+        Assert.Equal(
+            ["alpha", "middle", "zebra"],
+            JsonSerializer.Deserialize<string[]>(output.ToString())!);
     }
 
     [Fact]
@@ -171,7 +210,9 @@ public class RegistryCommandTests
 
         await command.RunAsync();
 
-        Assert.Equal(["alpha", "zebra"], JArray.Parse(output.ToString()).Values<string>());
+        Assert.Equal(
+            ["alpha", "zebra"],
+            JsonSerializer.Deserialize<string[]>(output.ToString())!);
         client.Verify(
             o => o.Catalog.GetNextAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()),
             Times.Never);
@@ -199,7 +240,9 @@ public class RegistryCommandTests
 
         await command.RunAsync();
 
-        Assert.Equal(["a", "m", "z"], JArray.Parse(output.ToString()).Values<string>());
+        Assert.Equal(
+            ["a", "m", "z"],
+            JsonSerializer.Deserialize<string[]>(output.ToString())!);
     }
 
     [Fact]
@@ -224,7 +267,9 @@ public class RegistryCommandTests
 
         await command.RunAsync();
 
-        Assert.Equal(["a", "y", "z"], JArray.Parse(output.ToString()).Values<string>());
+        Assert.Equal(
+            ["a", "y", "z"],
+            JsonSerializer.Deserialize<string[]>(output.ToString())!);
         client.Verify(
             o => o.Tags.GetNextAsync("next", It.IsAny<CancellationToken>()),
             Times.Once);
@@ -260,8 +305,8 @@ public class RegistryCommandTests
         };
 
         await command.RunAsync();
-        string[] digests = JObject.Parse(output.ToString())["manifests"]!
-            .Select(manifest => (string)manifest["digest"]!)
+        string[] digests = JsonNode.Parse(output.ToString())!["manifests"]!.AsArray()
+            .Select(manifest => manifest!["digest"]!.GetValue<string>())
             .ToArray();
 
         Assert.Equal(["sha256:first", "sha256:second"], digests);
@@ -294,12 +339,13 @@ public class RegistryCommandTests
         };
 
         await command.RunAsync();
-        JObject json = JObject.Parse(output.ToString());
+        JsonObject json = JsonNode.Parse(output.ToString())!.AsObject();
 
         Assert.Equal(
             ["sha256:first", "sha256:second"],
-            json["manifests"]!.Select(manifest => (string)manifest["digest"]!));
-        Assert.Equal("first-page", (string?)json["annotations"]?["source"]);
+            json["manifests"]!.AsArray().Select(
+                manifest => manifest!["digest"]!.GetValue<string>()));
+        Assert.Equal("first-page", json["annotations"]!["source"]!.GetValue<string>());
         client.Verify(
             o => o.Referrers.GetNextAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()),
             Times.Never);

@@ -1,4 +1,4 @@
-﻿using Newtonsoft.Json;
+﻿using System.Text.Json.Serialization;
 
 namespace Valleysoft.Dredge;
 
@@ -11,12 +11,13 @@ internal partial class AppSettings
 
     public const string FileCompareToolName = "fileCompareTool";
 
-    [JsonProperty(FileCompareToolName)]
+    [JsonPropertyName(FileCompareToolName)]
     public FileCompareToolSettings FileCompareTool { get; set; } = new();
 
-    [JsonProperty("platform")]
+    [JsonPropertyName("platform")]
     public PlatformSettings Platform { get; set; } = new();
 
+    [JsonConstructor]
     private AppSettings() {}
 
     public static AppSettings Load() => Load(SettingsPath);
@@ -28,7 +29,7 @@ internal partial class AppSettings
             if (!File.Exists(settingsPath))
             {
                 AppSettings settings = new();
-                string settingsStr = JsonConvert.SerializeObject(settings, JsonHelper.Settings);
+                string settingsStr = JsonHelper.Serialize(settings);
 
                 string? dirName = Path.GetDirectoryName(settingsPath);
                 if (!string.IsNullOrEmpty(dirName) && !Directory.Exists(dirName))
@@ -41,7 +42,13 @@ internal partial class AppSettings
             }
 
             string settingsContent = File.ReadAllText(settingsPath);
-            return JsonConvert.DeserializeObject<AppSettings>(settingsContent)!;
+            if (string.IsNullOrWhiteSpace(settingsContent))
+            {
+                return null!;
+            }
+
+            return JsonHelper.Deserialize<AppSettings>(
+                JsonHelper.MergeDuplicateObjects(settingsContent))!;
         }
     }
 
@@ -49,7 +56,7 @@ internal partial class AppSettings
     {
         lock (settingsFileLock)
         {
-            string settingsStr = JsonConvert.SerializeObject(this, JsonHelper.Settings);
+            string settingsStr = JsonHelper.Serialize(this);
             File.WriteAllText(SettingsPath, settingsStr);
         }
     }
@@ -57,21 +64,21 @@ internal partial class AppSettings
 
 internal partial class FileCompareToolSettings
 {
-    [JsonProperty("exePath")]
+    [JsonPropertyName("exePath")]
     public string ExePath { get; set; } = string.Empty;
 
-    [JsonProperty("args")]
+    [JsonPropertyName("args")]
     public string Args { get; set; } = string.Empty;
 }
 
 internal partial class PlatformSettings
 {
-    [JsonProperty("os")]
+    [JsonPropertyName("os")]
     public string Os { get; set; } = string.Empty;
 
-    [JsonProperty("osVersion")]
+    [JsonPropertyName("osVersion")]
     public string OsVersion { get; set; } = string.Empty;
 
-    [JsonProperty("arch")]
+    [JsonPropertyName("arch")]
     public string Architecture { get; set; } = string.Empty;
 }

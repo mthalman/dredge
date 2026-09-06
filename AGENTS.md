@@ -55,7 +55,7 @@ Settings classes (`AppSettings`, `FileCompareToolSettings`, `PlatformSettings`) 
 
 - C# 12, nullable reference types enabled, implicit usings enabled.
 - `IDE0290` (primary constructor suggestion) is suppressed — the codebase uses traditional constructors.
-- JSON serialization uses Newtonsoft.Json (not System.Text.Json). Shared settings are in `JsonHelper.Settings`.
+- JSON serialization uses System.Text.Json. Shared settings are in `JsonHelper.Settings`.
 - Console output uses `Spectre.Console` for rich rendering (tables, colors, markup).
 - `ImageName.Parse()` is the standard way to parse image reference strings (`image`, `image:tag`, `registry/image@digest`).
 - Test assertions compare rendered output against expected text files, using `TestHelper.Normalize()` to strip `\r` and trailing whitespace.

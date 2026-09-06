@@ -1,5 +1,4 @@
-﻿using Newtonsoft.Json;
-using Valleysoft.DockerRegistryClient;
+﻿using Valleysoft.DockerRegistryClient;
 using Valleysoft.DockerRegistryClient.Models;
 
 namespace Valleysoft.Dredge.Commands.Repo;
@@ -30,7 +29,7 @@ public class ListCommand : RegistryCommandBase<ListOptions>
 
             repoNames.Sort();
 
-            string output = JsonConvert.SerializeObject(repoNames, JsonHelper.Settings);
+            string output = JsonHelper.Serialize(repoNames);
 
             Output.WriteLine(output);
         });

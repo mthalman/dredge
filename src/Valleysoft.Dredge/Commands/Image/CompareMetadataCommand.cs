@@ -1,7 +1,7 @@
-using Newtonsoft.Json;
-using Newtonsoft.Json.Linq;
 using Spectre.Console;
 using Spectre.Console.Rendering;
+using System.Text.Json;
+using System.Text.Json.Nodes;
 using Valleysoft.DockerRegistryClient.Models.Manifests;
 using Valleysoft.DockerRegistryClient.Models.Manifests.Oci;
 
@@ -9,11 +9,6 @@ namespace Valleysoft.Dredge.Commands.Image;
 
 public class CompareMetadataCommand : RegistryCommandBase<CompareMetadataOptions>
 {
-    private static readonly JsonSerializerSettings imageConfigJsonSettings = new()
-    {
-        DateParseHandling = DateParseHandling.None
-    };
-
     private readonly IAnsiConsole ansiConsole;
     private readonly Func<PlatformSettings> platformSettingsProvider;
 
@@ -76,7 +71,7 @@ public class CompareMetadataCommand : RegistryCommandBase<CompareMetadataOptions
         GetOutput(await GetResultAsync(cancellationToken));
 
     private void WriteJson(CompareMetadataResult result) =>
-        ansiConsole.Profile.Out.Writer.WriteLine(JsonConvert.SerializeObject(result, JsonHelper.Settings));
+        ansiConsole.Profile.Out.Writer.WriteLine(JsonHelper.Serialize(result));
 
     private IRenderable GetOutput(CompareMetadataResult result)
     {
@@ -89,7 +84,7 @@ public class CompareMetadataCommand : RegistryCommandBase<CompareMetadataOptions
         {
             CompareOutput.SideBySide => GetSideBySideOutput(result, isColorDisabled),
             CompareOutput.Inline => GetInlineOutput(result, isColorDisabled),
-            CompareOutput.Json => new Text(JsonConvert.SerializeObject(result, JsonHelper.Settings)),
+            CompareOutput.Json => new Text(JsonHelper.Serialize(result)),
             _ => throw new NotSupportedException($"Unsupported metadata comparison output format '{Options.OutputFormat}'.")
         };
     }
@@ -162,11 +157,11 @@ public class CompareMetadataCommand : RegistryCommandBase<CompareMetadataOptions
         return new Rows(rows);
     }
 
-    private static Markup GetInlineMarkup(string prefix, string path, JToken? value, Color color) =>
+    private static Markup GetInlineMarkup(string prefix, string path, JsonNode? value, Color color) =>
         new(Markup.Escape($"{prefix}{path} = {FormatValue(value)}"), new Style(color));
 
     private static Markup GetValueMarkup(
-        JToken? value,
+        JsonNode? value,
         CompareDiff diff,
         bool isBase,
         bool isColorDisabled)
@@ -182,8 +177,8 @@ public class CompareMetadataCommand : RegistryCommandBase<CompareMetadataOptions
         return new Markup(Markup.Escape(FormatValue(value)), new Style(color));
     }
 
-    private static string FormatValue(JToken? value) =>
-        value is null ? string.Empty : value.ToString(Formatting.None);
+    private static string FormatValue(JsonNode? value) =>
+        value is null ? string.Empty : value.ToJsonString(JsonHelper.CompactSettings);
 
     private static string GetDiffDisplayName(CompareDiff diff) =>
         diff switch
@@ -217,8 +212,15 @@ public class CompareMetadataCommand : RegistryCommandBase<CompareMetadataOptions
         using Stream configBlob = await client.Blobs.GetAsync(imageName.Repo, configDigest, cancellationToken);
         using StreamReader configReader = new(configBlob);
         string configContent = await configReader.ReadToEndAsync(cancellationToken);
-        JObject imageConfig = JsonConvert.DeserializeObject<JObject>(configContent, imageConfigJsonSettings) ??
+        JsonObject imageConfig;
+        try
+        {
+            imageConfig = JsonHelper.ParseObject(configContent);
+        }
+        catch (JsonException)
+        {
             throw new JsonException($"Could not deserialize the image config of '{image}'.");
+        }
 
         MetadataDocument document = new();
         AddInitialManifest(document, initialManifest);
@@ -259,7 +261,7 @@ public class CompareMetadataCommand : RegistryCommandBase<CompareMetadataOptions
             for (int i = 0; i < references.Length; i++)
             {
                 string id = references.Length == 1 ? platformGroup.Key : $"{platformGroup.Key}#{i + 1}";
-                string path = $"available[{JsonConvert.ToString(id)}]";
+                string path = $"available[{JsonSerializer.Serialize(id, JsonHelper.Settings)}]";
                 AddDescriptor(document, "Platforms", path, references[i]);
                 AddPlatform(document, "Platforms", $"{path}.platform", references[i].Platform);
             }
@@ -346,133 +348,136 @@ public class CompareMetadataCommand : RegistryCommandBase<CompareMetadataOptions
                 .Where(value => !string.IsNullOrEmpty(value)));
     }
 
-    private static void AddImageConfig(MetadataDocument document, JObject image)
+    private static void AddImageConfig(MetadataDocument document, JsonObject image)
     {
-        foreach (JProperty property in image.Properties().OrderBy(property => property.Name, StringComparer.Ordinal))
+        foreach ((string name, JsonNode? value) in image.OrderBy(property => property.Key, StringComparer.Ordinal))
         {
-            switch (property.Name)
+            switch (name)
             {
                 case "config":
-                    AddExecutionConfig(document, property.Value);
+                    AddExecutionConfig(document, value);
                     break;
                 case "rootfs":
-                    AddRootFilesystem(document, property.Value);
+                    AddRootFilesystem(document, value);
                     break;
                 case "history":
-                    AddHistory(document, property.Value);
+                    AddHistory(document, value);
                     break;
                 case "os.features":
-                    document.AddTokenSet("Image", "osFeatures", property.Value);
+                    document.AddTokenSet("Image", "osFeatures", value);
                     break;
                 case "os.version":
-                    document.AddToken("Image", "osVersion", property.Value);
+                    document.AddToken("Image", "osVersion", value);
                     break;
                 default:
-                    document.AddToken("Image", LowerFirstCharacter(property.Name), property.Value);
+                    document.AddToken("Image", LowerFirstCharacter(name), value);
                     break;
             }
         }
     }
 
-    private static void AddRootFilesystem(MetadataDocument document, JToken rootFilesystem)
+    private static void AddRootFilesystem(MetadataDocument document, JsonNode? rootFilesystem)
     {
-        if (rootFilesystem is not JObject rootFilesystemObject)
+        if (rootFilesystem is not JsonObject rootFilesystemObject)
         {
             return;
         }
 
-        foreach (JProperty property in rootFilesystemObject.Properties()
-            .OrderBy(property => property.Name, StringComparer.Ordinal))
+        foreach ((string name, JsonNode? value) in rootFilesystemObject
+            .OrderBy(property => property.Key, StringComparer.Ordinal))
         {
-            string path = property.Name == "diff_ids" ? "diffIds" : LowerFirstCharacter(property.Name);
-            document.AddToken("RootFilesystem", path, property.Value);
+            string path = name == "diff_ids" ? "diffIds" : LowerFirstCharacter(name);
+            document.AddToken("RootFilesystem", path, value);
         }
     }
 
-    private static void AddHistory(MetadataDocument document, JToken history)
+    private static void AddHistory(MetadataDocument document, JsonNode? history)
     {
-        if (history is not JArray historyArray)
+        if (history is not JsonArray historyArray)
         {
             return;
         }
 
         for (int i = 0; i < historyArray.Count; i++)
         {
-            if (historyArray[i] is not JObject historyEntry)
+            if (historyArray[i] is not JsonObject historyEntry)
             {
                 document.AddToken("History", $"entries[{i}]", historyArray[i]);
                 continue;
             }
 
-            foreach (JProperty property in historyEntry.Properties()
-                .OrderBy(property => property.Name, StringComparer.Ordinal))
+            foreach ((string name, JsonNode? value) in historyEntry
+                .OrderBy(property => property.Key, StringComparer.Ordinal))
             {
-                string propertyName = property.Name switch
+                string propertyName = name switch
                 {
                     "created_by" => "createdBy",
                     "empty_layer" => "emptyLayer",
-                    _ => LowerFirstCharacter(property.Name)
+                    _ => LowerFirstCharacter(name)
                 };
-                document.AddToken("History", $"entries[{i}].{propertyName}", property.Value);
+                document.AddToken("History", $"entries[{i}].{propertyName}", value);
             }
         }
     }
 
-    private static void AddExecutionConfig(MetadataDocument document, JToken config)
+    private static void AddExecutionConfig(MetadataDocument document, JsonNode? config)
     {
-        if (config is not JObject configObject)
+        if (config is not JsonObject configObject)
         {
             return;
         }
 
-        foreach (JProperty property in configObject.Properties()
-            .OrderBy(property => property.Name, StringComparer.Ordinal))
+        foreach ((string name, JsonNode? value) in configObject
+            .OrderBy(property => property.Key, StringComparer.Ordinal))
         {
-            switch (property.Name)
+            switch (name)
             {
                 case "Env":
-                    AddEnvironment(document, property.Value);
+                    AddEnvironment(document, value);
                     break;
                 case "ExposedPorts":
-                    document.AddObjectKeys("Config", "exposedPorts", property.Value);
+                    document.AddObjectKeys("Config", "exposedPorts", value);
                     break;
                 case "Volumes":
-                    document.AddObjectKeys("Config", "volumes", property.Value);
+                    document.AddObjectKeys("Config", "volumes", value);
                     break;
                 default:
-                    string path = property.Name switch
+                    string path = name switch
                     {
                         "Cmd" => "command",
                         "WorkingDir" => "workingDirectory",
-                        _ => LowerFirstCharacter(property.Name)
+                        _ => LowerFirstCharacter(name)
                     };
-                    document.AddToken("Config", path, property.Value);
+                    document.AddToken("Config", path, value);
                     break;
             }
         }
     }
 
-    private static void AddEnvironment(MetadataDocument document, JToken environment)
+    private static void AddEnvironment(MetadataDocument document, JsonNode? environment)
     {
-        if (environment is not JArray environmentArray)
+        if (environment is not JsonArray environmentArray)
         {
             return;
         }
 
         // Environment order is not significant, but duplicate names remain ordered because the last assignment can affect runtime behavior.
         foreach (IGrouping<string, string> group in environmentArray
-            .Values<string>()
-            .Where(variable => variable is not null)
-            .Select(variable => ParseEnvironmentVariable(variable!))
+            .Select(GetStringValue)
+            .Where(value => value is not null)
+            .Cast<string>()
+            .Select(ParseEnvironmentVariable)
             .GroupBy(variable => variable.Name, variable => variable.Value)
             .OrderBy(group => group.Key, StringComparer.Ordinal))
         {
-            string path = $"environment[{JsonConvert.ToString(group.Key)}]";
+            string path = $"environment[{JsonSerializer.Serialize(group.Key, JsonHelper.Settings)}]";
             string[] values = [.. group];
             document.Add(
                 "Config",
                 path,
-                values.Length == 1 ? JValue.CreateString(values[0]) : JArray.FromObject(values));
+                values.Length == 1
+                    ? JsonValue.Create(values[0])
+                    : new JsonArray(values.Select(value => JsonValue.Create(value)).ToArray()));
         }
     }
 
@@ -525,9 +530,95 @@ public class CompareMetadataCommand : RegistryCommandBase<CompareMetadataOptions
             return CompareDiff.Removed;
         }
 
-        return JToken.DeepEquals(baseItem.Value, targetItem.Value)
+        return MetadataValuesEqual(baseItem.Value, targetItem.Value)
             ? CompareDiff.Equal
             : CompareDiff.NotEqual;
+    }
+
+    private static bool MetadataValuesEqual(JsonNode left, JsonNode right)
+    {
+        if (left.GetValueKind() == JsonValueKind.Number &&
+            right.GetValueKind() == JsonValueKind.Number)
+        {
+            string leftValue = left.ToJsonString(JsonHelper.CompactSettings);
+            string rightValue = right.ToJsonString(JsonHelper.CompactSettings);
+            bool leftIsFloat = leftValue.Contains('.') || leftValue.IndexOfAny(['e', 'E']) >= 0;
+            bool rightIsFloat = rightValue.Contains('.') || rightValue.IndexOfAny(['e', 'E']) >= 0;
+            return leftIsFloat == rightIsFloat &&
+                (!leftIsFloat ||
+                    ApproximatelyEqual(
+                        double.Parse(
+                            leftValue,
+                            System.Globalization.CultureInfo.InvariantCulture),
+                        double.Parse(
+                            rightValue,
+                            System.Globalization.CultureInfo.InvariantCulture))) &&
+                (leftIsFloat ||
+                    string.Equals(leftValue, rightValue, StringComparison.Ordinal));
+        }
+
+        return JsonNode.DeepEquals(left, right);
+    }
+
+    private static bool ApproximatelyEqual(double left, double right)
+    {
+        if (left.Equals(right))
+        {
+            return true;
+        }
+
+        double tolerance =
+            (Math.Abs(left) + Math.Abs(right) + 10.0) * 2.2204460492503131e-16;
+        double difference = left - right;
+        return -tolerance < difference && tolerance > difference;
+    }
+
+    private static string? GetStringValue(JsonNode? value)
+    {
+        if (value is null)
+        {
+            return null;
+        }
+
+        if (value is not JsonValue jsonValue)
+        {
+            throw new InvalidCastException($"Cannot cast {value.GetType().Name} to string.");
+        }
+
+        if (jsonValue.TryGetValue(out string? stringValue))
+        {
+            return stringValue;
+        }
+
+        if (jsonValue.TryGetValue(out bool boolValue))
+        {
+            return boolValue.ToString();
+        }
+
+        if (jsonValue.GetValueKind() == JsonValueKind.Number)
+        {
+            string rawValue = jsonValue.ToJsonString(JsonHelper.CompactSettings);
+            if (!rawValue.Contains('.') && rawValue.IndexOfAny(['e', 'E']) < 0)
+            {
+                return long.TryParse(
+                    rawValue,
+                    System.Globalization.NumberStyles.Integer,
+                    System.Globalization.CultureInfo.InvariantCulture,
+                    out long integer)
+                        ? integer.ToString(System.Globalization.CultureInfo.InvariantCulture)
+                        : throw new InvalidCastException("Object must implement IConvertible.");
+            }
+
+            return double.TryParse(
+                rawValue,
+                System.Globalization.NumberStyles.Float,
+                System.Globalization.CultureInfo.InvariantCulture,
+                out double number)
+                    ? number.ToString(System.Globalization.CultureInfo.InvariantCulture)
+                    : rawValue;
+        }
+
+        throw new InvalidCastException($"Cannot cast {jsonValue.GetValueKind()} to string.");
     }
 
     private sealed class MetadataDocument
@@ -542,27 +633,36 @@ public class CompareMetadataCommand : RegistryCommandBase<CompareMetadataOptions
                 return;
             }
 
-            JToken token = value as JToken ?? JToken.FromObject(value);
+            JsonNode token = value as JsonNode ??
+                JsonSerializer.SerializeToNode(value, value.GetType(), JsonHelper.Settings)!;
+            if (value is JsonNode && token.GetValueKind() == JsonValueKind.Number)
+            {
+                token = JsonNode.Parse(JsonHelper.NormalizeNewtonsoftNumber(
+                    token.ToJsonString(JsonHelper.CompactSettings)))!;
+            }
             // A null separator cannot collide with the JSON-escaped user keys embedded in paths.
             Items[$"{category}\0{path}"] = new MetadataItem(category, path, token);
         }
 
-        public void AddToken(string category, string path, JToken? value)
+        public void AddToken(string category, string path, JsonNode? value)
         {
-            if (value is null || value.Type is JTokenType.Null or JTokenType.Undefined)
+            if (value is null)
             {
                 return;
             }
 
-            if (value is JObject valueObject)
+            if (value is JsonObject valueObject)
             {
-                foreach (JProperty property in valueObject.Properties()
-                    .OrderBy(property => property.Name, StringComparer.Ordinal))
+                foreach ((string name, JsonNode? propertyValue) in valueObject
+                    .OrderBy(property => property.Key, StringComparer.Ordinal))
                 {
-                    AddToken(category, $"{path}[{JsonConvert.ToString(property.Name)}]", property.Value);
+                    AddToken(
+                        category,
+                        $"{path}[{JsonSerializer.Serialize(name, JsonHelper.Settings)}]",
+                        propertyValue);
                 }
             }
-            else if (value is JArray valueArray)
+            else if (value is JsonArray valueArray)
             {
                 for (int i = 0; i < valueArray.Count; i++)
                 {
@@ -575,24 +675,27 @@ public class CompareMetadataCommand : RegistryCommandBase<CompareMetadataOptions
             }
         }
 
-        public void AddTokenSet(string category, string path, JToken value)
+        public void AddTokenSet(string category, string path, JsonNode? value)
         {
-            if (value is not JArray valueArray)
+            if (value is not JsonArray valueArray)
             {
                 return;
             }
 
-            AddSet(category, path, valueArray.Values<string>().Where(item => item is not null).Cast<string>());
+            AddSet(
+                category,
+                path,
+                valueArray.Select(GetStringValue).Where(item => item is not null).Cast<string>());
         }
 
-        public void AddObjectKeys(string category, string path, JToken value)
+        public void AddObjectKeys(string category, string path, JsonNode? value)
         {
-            if (value is not JObject valueObject)
+            if (value is not JsonObject valueObject)
             {
                 return;
             }
 
-            AddKeys(category, path, valueObject.Properties().Select(property => property.Name));
+            AddKeys(category, path, valueObject.Select(property => property.Key));
         }
 
         public void AddDictionary(
@@ -607,7 +710,7 @@ public class CompareMetadataCommand : RegistryCommandBase<CompareMetadataOptions
 
             foreach ((string key, string value) in values.OrderBy(item => item.Key, StringComparer.Ordinal))
             {
-                Add(category, $"{path}[{JsonConvert.ToString(key)}]", value);
+                Add(category, $"{path}[{JsonSerializer.Serialize(key, JsonHelper.Settings)}]", value);
             }
         }
 
@@ -625,10 +728,10 @@ public class CompareMetadataCommand : RegistryCommandBase<CompareMetadataOptions
         {
             foreach (string value in values.OrderBy(value => value, StringComparer.Ordinal))
             {
-                Add(category, $"{path}[{JsonConvert.ToString(value)}]", true);
+                Add(category, $"{path}[{JsonSerializer.Serialize(value, JsonHelper.Settings)}]", true);
             }
         }
     }
 
-    private sealed record MetadataItem(string Category, string Path, JToken Value);
+    private sealed record MetadataItem(string Category, string Path, JsonNode Value);
 }

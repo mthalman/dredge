@@ -1,11 +1,11 @@
 namespace Valleysoft.Dredge.Tests;
 
-using Newtonsoft.Json;
-using Newtonsoft.Json.Linq;
 using Spectre.Console;
 using Spectre.Console.Rendering;
 using System.CommandLine;
 using System.Text;
+using System.Text.Json;
+using System.Text.Json.Nodes;
 using Valleysoft.DockerRegistryClient.Models.Images;
 using Valleysoft.DockerRegistryClient.Models.Manifests;
 using Valleysoft.DockerRegistryClient.Models.Manifests.Oci;
@@ -221,9 +221,132 @@ public class CompareMetadataCommandTests
             "Config",
             "labels[\"org.opencontainers.image.created\"]");
         Assert.Equal(CompareDiff.NotEqual, comparison.Diff);
-        Assert.Equal(JTokenType.String, comparison.BaseValue!.Type);
-        Assert.Equal(BaseTimestamp, comparison.BaseValue.Value<string>());
-        Assert.Equal(TargetTimestamp, comparison.TargetValue!.Value<string>());
+        Assert.IsAssignableFrom<JsonValue>(comparison.BaseValue);
+        Assert.Equal(BaseTimestamp, comparison.BaseValue!.GetValue<string>());
+        Assert.Equal(TargetTimestamp, comparison.TargetValue!.GetValue<string>());
+    }
+
+    [Fact]
+    public async Task DisplaysMetadataValuesAndPathsWithoutHtmlEscaping()
+    {
+        const string LabelName = "a&b";
+        const string LabelValue = "https://example.com?a=1&b=2";
+        ImageSetup setup = CreateSingleManifestSetup(CreateImageConfig(
+            labels: new Dictionary<string, string> { [LabelName] = LabelValue }));
+        CompareMetadataCommand command = CreateCommand(setup, setup, CompareOutput.Inline);
+
+        IRenderable output = await command.GetOutputAsync(TestContext.Current.CancellationToken);
+        string text = TestHelper.GetString(output.GetSegments(AnsiConsole.Console));
+
+        Assert.Contains($"Config.labels[\"{LabelName}\"] = \"{LabelValue}\"", text);
+    }
+
+    [Fact]
+    public async Task DisplaysDuplicateEnvironmentValuesOnOneLine()
+    {
+        ImageSetup setup = CreateSingleManifestSetup(CreateImageConfig(
+            environmentVariables: ["A=first", "A=second"]));
+        CompareMetadataCommand command = CreateCommand(setup, setup, CompareOutput.Inline);
+
+        IRenderable output = await command.GetOutputAsync(TestContext.Current.CancellationToken);
+        string text = TestHelper.GetString(output.GetSegments(AnsiConsole.Console));
+
+        Assert.Contains("Config.environment[\"A\"] = [\"first\",\"second\"]", text);
+    }
+
+    [Fact]
+    public async Task TreatsDifferentNumericRepresentationsAsChanged()
+    {
+        CompareMetadataCommand command = CreateCommand(
+            CreateSingleManifestSetup(CreateConfigWithLabelValue("1")),
+            CreateSingleManifestSetup(CreateConfigWithLabelValue("1.0")));
+
+        CompareMetadataResult result = await command.GetResultAsync(TestContext.Current.CancellationToken);
+
+        AssertComparison(result, "Config", "labels[\"number\"]", CompareDiff.NotEqual);
+    }
+
+    [Fact]
+    public async Task NormalizesEquivalentFloatingPointRepresentations()
+    {
+        CompareMetadataCommand command = CreateCommand(
+            CreateSingleManifestSetup(CreateConfigWithLabelValue("1.0")),
+            CreateSingleManifestSetup(CreateConfigWithLabelValue("1.00")));
+
+        CompareMetadataResult result = await command.GetResultAsync(TestContext.Current.CancellationToken);
+        MetadataComparison comparison = FindComparison(result, "Config", "labels[\"number\"]");
+
+        Assert.Equal(CompareDiff.Equal, comparison.Diff);
+        Assert.Equal("1.0", comparison.BaseValue!.ToJsonString(JsonHelper.CompactSettings));
+        Assert.Equal("1.0", comparison.TargetValue!.ToJsonString(JsonHelper.CompactSettings));
+    }
+
+    [Fact]
+    public async Task TreatsPositiveAndNegativeFloatingPointZeroAsEqual()
+    {
+        CompareMetadataCommand command = CreateCommand(
+            CreateSingleManifestSetup(CreateConfigWithLabelValue("-0.0")),
+            CreateSingleManifestSetup(CreateConfigWithLabelValue("0.0")));
+
+        CompareMetadataResult result = await command.GetResultAsync(TestContext.Current.CancellationToken);
+
+        AssertComparison(result, "Config", "labels[\"number\"]", CompareDiff.Equal);
+    }
+
+    [Theory]
+    [InlineData("1.0", "1.0000000000000002")]
+    [InlineData("0.0", "5e-324")]
+    [InlineData("100.0", "100.00000000000001")]
+    public async Task UsesNewtonsoftApproximateFloatingPointEquality(string baseValue, string targetValue)
+    {
+        CompareMetadataCommand command = CreateCommand(
+            CreateSingleManifestSetup(CreateConfigWithLabelValue(baseValue)),
+            CreateSingleManifestSetup(CreateConfigWithLabelValue(targetValue)));
+
+        CompareMetadataResult result = await command.GetResultAsync(TestContext.Current.CancellationToken);
+
+        AssertComparison(result, "Config", "labels[\"number\"]", CompareDiff.Equal);
+    }
+
+    [Fact]
+    public async Task DuplicateConfigurationPropertiesUseLastValue()
+    {
+        const string Config = """
+            {
+              "architecture": "amd64",
+              "os": "linux",
+              "config": { "User": "first", "User": "last" },
+              "rootfs": { "type": "layers", "diff_ids": [] }
+            }
+            """;
+        CompareMetadataCommand command = CreateCommand(
+            CreateSingleManifestSetup(Config),
+            CreateSingleManifestSetup(Config));
+
+        CompareMetadataResult result = await command.GetResultAsync(TestContext.Current.CancellationToken);
+        MetadataComparison comparison = FindComparison(result, "Config", "user");
+
+        Assert.Equal("last", comparison.BaseValue!.GetValue<string>());
+    }
+
+    [Fact]
+    public async Task CoercesBooleanEnvironmentValuesLikeNewtonsoft()
+    {
+        const string Config = """
+            {
+              "architecture": "amd64",
+              "os": "linux",
+              "config": { "Env": [true] },
+              "rootfs": { "type": "layers", "diff_ids": [] }
+            }
+            """;
+        CompareMetadataCommand command = CreateCommand(
+            CreateSingleManifestSetup(Config),
+            CreateSingleManifestSetup(Config));
+
+        CompareMetadataResult result = await command.GetResultAsync(TestContext.Current.CancellationToken);
+
+        AssertComparison(result, "Config", "environment[\"True\"]", CompareDiff.Equal);
     }
 
     [Fact]
@@ -350,11 +473,13 @@ public class CompareMetadataCommandTests
 
         Assert.Equal(0, exitCode);
         CompareMetadataResult? result =
-            JsonConvert.DeserializeObject<CompareMetadataResult>(output.ToString());
+            JsonSerializer.Deserialize<CompareMetadataResult>(output.ToString(), JsonHelper.Settings);
         Assert.NotNull(result);
         Assert.Contains(
             result.Comparisons,
-            comparison => comparison.BaseValue?.Value<string>() == longValue);
+            comparison => comparison.BaseValue is JsonValue value &&
+                value.TryGetValue(out string? actualValue) &&
+                actualValue == longValue);
     }
 
     [Fact]
@@ -603,6 +728,16 @@ public class CompareMetadataCommandTests
                 }
             ]
         };
+
+    private static string CreateConfigWithLabelValue(string value) =>
+        $$"""
+            {
+              "architecture": "amd64",
+              "os": "linux",
+              "config": { "Labels": { "number": {{value}} } },
+              "rootfs": { "type": "layers", "diff_ids": [] }
+            }
+            """;
 
     private sealed record ImageSetup(
         ManifestInfo InitialManifest,
