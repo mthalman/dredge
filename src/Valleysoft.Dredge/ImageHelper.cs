@@ -28,6 +28,10 @@ internal static class ImageHelper
         IImageManifest manifest =
             (await ManifestHelper.GetResolvedManifestAsync(client, imageName, options, cancellationToken)).Manifest;
 
+        string layersTempPath = Path.Combine(
+            (pathProvider ?? new DredgePathProvider()).TempPath,
+            "layers");
+
         int startIndex = 0;
         int layerCount = manifest.Layers.Length;
         if (layerIndex is not null)
@@ -57,9 +61,6 @@ internal static class ImageHelper
 
             string layerName = layer.Digest[(layer.Digest.IndexOf(':') + 1)..];
             ValidateLayerDigest(layerName);
-            string layersTempPath = Path.Combine(
-                (pathProvider ?? new DredgePathProvider()).TempPath,
-                "layers");
             string layerDir = GetContainedPath(layersTempPath, layerName);
             if (Directory.Exists(layerDir))
             {
