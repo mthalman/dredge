@@ -14,10 +14,7 @@ public class CheckOptions : OptionsBase
 
     public CheckOptions()
     {
-        imageArgument = Add(new Argument<string>("image")
-        {
-            Description = "Container image reference (<image>, <image>:<tag>, or <image>@<digest>)"
-        });
+        imageArgument = Add(ImageReferenceArgument.Create("image"));
         artifactTypeOption = Add(new Option<string[]>("--artifact-type")
         {
             Description = "Required artifact media type; may be specified multiple times",

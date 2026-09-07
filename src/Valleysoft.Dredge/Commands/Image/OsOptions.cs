@@ -10,7 +10,7 @@ public class OsOptions : PlatformOptionsBase
 
     public OsOptions()
     {
-        imageArg = Add(new Argument<string>("image") { Description = "Container image reference (<image>, <image>:<tag>, or <image>@<digest>)" });
+        imageArg = Add(ImageReferenceArgument.Create("image"));
     }
 
     protected override void GetValues()

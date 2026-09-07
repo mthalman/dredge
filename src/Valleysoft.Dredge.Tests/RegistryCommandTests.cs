@@ -1,5 +1,6 @@
 ﻿namespace Valleysoft.Dredge.Tests;
 
+using System.CommandLine;
 using System.Text.Json;
 using System.Text.Json.Nodes;
 using System.Text;
@@ -26,6 +27,35 @@ using OciManifestReference = Valleysoft.DockerRegistryClient.Models.Manifests.Oc
 public class RegistryCommandTests
 {
     private const string Registry = "registry.example";
+    private const string ImageDigest =
+        "sha256:0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef";
+
+    [Theory]
+    [InlineData("Invalid/Repo")]
+    [InlineData("[fe80::1%12]/repo")]
+    [InlineData("[::ffff:192.0.2.1]/repo")]
+    [InlineData("registry.example/team\n/app:v1")]
+    [InlineData("repo@sha256\n:a")]
+    [InlineData("repo@sha256:abcdef")]
+    [InlineData("repo@sha256:ABCDEF0123456789abcdef0123456789abcdef0123456789abcdef0123456789")]
+    [InlineData("repo@sha512:0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef")]
+    [InlineData("registry.example:+5/repo")]
+    [InlineData("registry.example: 5/repo")]
+    [InlineData("registry.example:5 /repo")]
+    public async Task DigestCommand_InvalidImage_DoesNotCreateRegistryClient(string image)
+    {
+        Mock<IDockerRegistryClientFactory> factory = new(MockBehavior.Strict);
+        DigestCommand command = new(factory.Object);
+
+        int exitCode = await command
+            .Parse([image])
+            .InvokeAsync(
+                new InvocationConfiguration(),
+                TestContext.Current.CancellationToken);
+
+        Assert.NotEqual(0, exitCode);
+        factory.VerifyNoOtherCalls();
+    }
 
     [Fact]
     public async Task DigestCommand_WritesManifestDigest()
@@ -285,7 +315,7 @@ public class RegistryCommandTests
         OciManifestReference second = new() { Digest = "sha256:second" };
         Mock<IDockerRegistryClient> client = CreateClient();
         client
-            .Setup(o => o.Referrers.GetAsync("repo", "sha256:image", "application/test", It.IsAny<CancellationToken>()))
+            .Setup(o => o.Referrers.GetAsync("repo", ImageDigest, "application/test", It.IsAny<CancellationToken>()))
             .ReturnsAsync(new Page<OciImageIndex>(
                 new OciImageIndex { Manifests = [first] },
                 "next"));
@@ -299,7 +329,7 @@ public class RegistryCommandTests
         {
             Options = new ReferrerListOptions
             {
-                Image = $"{Registry}/repo@sha256:image",
+                Image = $"{Registry}/repo@{ImageDigest}",
                 ArtifactType = "application/test"
             }
         };
@@ -320,7 +350,7 @@ public class RegistryCommandTests
         OciManifestReference second = new() { Digest = "sha256:second" };
         Mock<IDockerRegistryClient> client = CreateClient();
         client
-            .Setup(o => o.Referrers.GetAsync("repo", "sha256:image", null, It.IsAny<CancellationToken>()))
+            .Setup(o => o.Referrers.GetAsync("repo", ImageDigest, null, It.IsAny<CancellationToken>()))
             .ReturnsAsync(new Page<OciImageIndex>(
                 new OciImageIndex
                 {
@@ -333,7 +363,7 @@ public class RegistryCommandTests
         {
             Options = new ReferrerListOptions
             {
-                Image = $"{Registry}/repo@sha256:image",
+                Image = $"{Registry}/repo@{ImageDigest}",
                 Limit = 2
             }
         };

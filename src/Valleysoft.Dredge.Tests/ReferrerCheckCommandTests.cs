@@ -11,6 +11,8 @@ using OciManifestReference = Valleysoft.DockerRegistryClient.Models.Manifests.Oc
 public class ReferrerCheckCommandTests
 {
     private const string Registry = "registry.example";
+    private const string ImageDigest =
+        "sha256:0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef";
 
     [Fact]
     public async Task CheckCommand_ResolvesTagCombinesPagesAndReportsAllMatches()
@@ -28,9 +30,9 @@ public class ReferrerCheckCommandTests
         Mock<IDockerRegistryClient> client = CreateClient();
         client
             .Setup(o => o.Manifests.GetAsync("repo", "tag", It.IsAny<CancellationToken>()))
-            .ReturnsAsync(CreateManifestInfo("sha256:image"));
+            .ReturnsAsync(CreateManifestInfo(ImageDigest));
         client
-            .Setup(o => o.Referrers.GetAsync("repo", "sha256:image", null, It.IsAny<CancellationToken>()))
+            .Setup(o => o.Referrers.GetAsync("repo", ImageDigest, null, It.IsAny<CancellationToken>()))
             .ReturnsAsync(new Page<OciImageIndex>(
                 new OciImageIndex { Manifests = [sbom] },
                 "next"));
@@ -65,7 +67,7 @@ public class ReferrerCheckCommandTests
             """.ReplaceLineEndings(),
             output.ToString());
         client.Verify(
-            o => o.Referrers.GetAsync("repo", "sha256:image", null, It.IsAny<CancellationToken>()),
+            o => o.Referrers.GetAsync("repo", ImageDigest, null, It.IsAny<CancellationToken>()),
             Times.Once);
         client.Verify(
             o => o.Referrers.GetNextAsync("next", It.IsAny<CancellationToken>()),
@@ -77,7 +79,7 @@ public class ReferrerCheckCommandTests
     {
         Mock<IDockerRegistryClient> client = CreateClient();
         client
-            .Setup(o => o.Referrers.GetAsync("repo", "sha256:image", null, It.IsAny<CancellationToken>()))
+            .Setup(o => o.Referrers.GetAsync("repo", ImageDigest, null, It.IsAny<CancellationToken>()))
             .ReturnsAsync(new Page<OciImageIndex>(
                 new OciImageIndex
                 {
@@ -96,7 +98,7 @@ public class ReferrerCheckCommandTests
         {
             Options = new CheckOptions
             {
-                Image = $"{Registry}/repo@sha256:image",
+                Image = $"{Registry}/repo@{ImageDigest}",
                 ArtifactTypes =
                 [
                     "application/spdx+json",
@@ -129,7 +131,7 @@ public class ReferrerCheckCommandTests
     {
         Mock<IDockerRegistryClient> client = CreateClient();
         client
-            .Setup(o => o.Referrers.GetAsync("repo", "sha256:image", null, It.IsAny<CancellationToken>()))
+            .Setup(o => o.Referrers.GetAsync("repo", ImageDigest, null, It.IsAny<CancellationToken>()))
             .ReturnsAsync(new Page<OciImageIndex>(
                 new OciImageIndex
                 {
@@ -150,7 +152,7 @@ public class ReferrerCheckCommandTests
         {
             Options = new CheckOptions
             {
-                Image = $"{Registry}/repo@sha256:image",
+                Image = $"{Registry}/repo@{ImageDigest}",
                 ArtifactTypes = ["application/spdx+json"],
                 OutputFormat = CheckOutput.Json
             }
@@ -171,14 +173,14 @@ public class ReferrerCheckCommandTests
     {
         Mock<IDockerRegistryClient> client = CreateClient();
         client
-            .Setup(o => o.Referrers.GetAsync("repo", "sha256:image", null, It.IsAny<CancellationToken>()))
+            .Setup(o => o.Referrers.GetAsync("repo", ImageDigest, null, It.IsAny<CancellationToken>()))
             .ThrowsAsync(new InvalidOperationException("failure"));
         using StringWriter output = new();
         TestCheckCommand command = new(CreateFactory(client.Object), output)
         {
             Options = new CheckOptions
             {
-                Image = $"{Registry}/repo@sha256:image",
+                Image = $"{Registry}/repo@{ImageDigest}",
                 ArtifactTypes = ["application/spdx+json"]
             }
         };

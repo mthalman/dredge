@@ -12,10 +12,7 @@ public class CatOptions : PlatformOptionsBase
 
     public CatOptions()
     {
-        imageArgument = Add(new Argument<string>("image")
-        {
-            Description = "Container image reference (<image>, <image>:<tag>, or <image>@<digest>)"
-        });
+        imageArgument = Add(ImageReferenceArgument.Create("image"));
         pathArgument = Add(new Argument<string>("path")
         {
             Description = "Image file path to write to standard output"

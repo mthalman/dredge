@@ -22,10 +22,7 @@ public class LsOptions : PlatformOptionsBase
 
     public LsOptions()
     {
-        imageArgument = Add(new Argument<string>("image")
-        {
-            Description = "Container image reference (<image>, <image>:<tag>, or <image>@<digest>)"
-        });
+        imageArgument = Add(ImageReferenceArgument.Create("image"));
         pathArgument = Add(new Argument<string?>("path")
         {
             Description = "Image path to list",

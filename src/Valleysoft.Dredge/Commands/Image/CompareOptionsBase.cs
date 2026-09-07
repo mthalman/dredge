@@ -15,8 +15,8 @@ public class CompareOptionsBase : PlatformOptionsBase
 
     public CompareOptionsBase()
     {
-        baseImageArg = Add(new Argument<string>(BaseArg) { Description = "Base container image reference (<image>, <image>:<tag>, or <image>@<digest>)" });
-        targetImageArg = Add(new Argument<string>(TargetArg) { Description = "Target container image reference (<image>, <image>:<tag>, or <image>@<digest>)" });
+        baseImageArg = Add(ImageReferenceArgument.Create(BaseArg, "Base container image"));
+        targetImageArg = Add(ImageReferenceArgument.Create(TargetArg, "Target container image"));
     }
 
     protected override void GetValues()
