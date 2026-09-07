@@ -13,7 +13,8 @@ public class ReferrerArtifactCommandTests
 {
     private const string Registry = "registry.example";
     private const string Repository = "repo";
-    private const string SubjectDigest = "sha256:subject";
+    private const string SubjectDigest =
+        "sha256:0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef";
     private const string ArtifactDigest = "sha256:artifact";
 
     [Fact]

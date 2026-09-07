@@ -10,7 +10,7 @@ public class ListOptions : BoundedListOptionsBase
 
     public ListOptions()
     {
-        repositoryArg = Add(new Argument<string>("repository") { Description = "Container repository name" });
+        repositoryArg = Add(ImageReferenceArgument.CreateRepository());
     }
 
     protected override void GetValues()

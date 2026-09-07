@@ -12,7 +12,7 @@ public class ListOptions : BoundedListOptionsBase
 
     public ListOptions()
     {
-        imageArg = Add(new Argument<string>("image") { Description = "Container image reference (<image>, <image>:<tag>, or <image>@<digest>)" });
+        imageArg = Add(ImageReferenceArgument.Create("image"));
         artifactTypeArg = Add(new Option<string>("--artifact-type") { Description = "Artifact media type to filter by" });
     }
 

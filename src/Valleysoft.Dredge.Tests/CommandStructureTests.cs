@@ -332,6 +332,77 @@ public class CommandStructureTests
         Assert.Equal(3, referrer.Limit);
     }
 
+    [Fact]
+    public void ImageArguments_RejectInvalidReferencesWithAcceptedForms()
+    {
+        OptionsBase[] options =
+        [
+            new ImageInspectOptions(),
+            new OsOptions(),
+            new LsOptions(),
+            new CatOptions(),
+            new ExtractOptions(),
+            new CompareFilesOptions(),
+            new SaveLayersOptions(),
+            new DockerfileOptions(),
+            new ManifestGetOptions(),
+            new ManifestDigestOptions(),
+            new ManifestResolveOptions(),
+            new ReferrerListOptions(),
+            new CheckOptions(),
+            new ReferrerInspectOptions(),
+            new ReferrerGetOptions()
+        ];
+
+        foreach (OptionsBase imageOptions in options)
+        {
+            Command command = new("test");
+            imageOptions.SetCommandOptions(command);
+            string[] arguments = command.Arguments
+                .Select(argument => argument.Name switch
+                {
+                    "image" or "base" => "Invalid/Repo",
+                    "target" => "valid/target",
+                    "path" => "/path",
+                    "output-path" => "output",
+                    "artifact-digest" => "sha256:artifact",
+                    _ => throw new InvalidOperationException(
+                        $"Unexpected argument '{argument.Name}'.")
+                })
+                .Concat(imageOptions is CheckOptions
+                    ? ["--artifact-type", "application/test"]
+                    : [])
+                .ToArray();
+
+            ParseResult parseResult = command.Parse(arguments);
+
+            Assert.Contains(
+                parseResult.Errors,
+                error => error.Message.Contains("Invalid repository", StringComparison.Ordinal) &&
+                    error.Message.Contains(
+                        "Expected <image>, <image>:<tag>, or <image>@<digest>.",
+                        StringComparison.Ordinal));
+        }
+    }
+
+    [Theory]
+    [InlineData("repository:tag")]
+    [InlineData("repository@sha256:digest")]
+    public void TagListOptions_RejectTagAndDigest(string repository)
+    {
+        Command command = new("test");
+        new TagListOptions().SetCommandOptions(command);
+
+        ParseResult parseResult = command.Parse(repository);
+
+        ParseError error = Assert.Single(parseResult.Errors);
+        Assert.Contains("Invalid repository", error.Message, StringComparison.Ordinal);
+        Assert.Contains(
+            "Expected <repository> or <registry>/<repository>.",
+            error.Message,
+            StringComparison.Ordinal);
+    }
+
     [Theory]
     [InlineData("0")]
     [InlineData("-1")]
@@ -349,7 +420,10 @@ public class CommandStructureTests
             Command command = new("list");
             listOptions.SetCommandOptions(command);
 
-            ParseResult parseResult = command.Parse(["registry.example/repo:tag", "--limit", limit]);
+            string value = listOptions is TagListOptions
+                ? "registry.example/repo"
+                : "registry.example/repo:tag";
+            ParseResult parseResult = command.Parse([value, "--limit", limit]);
 
             Assert.Single(parseResult.Errors);
             Assert.Equal("Limit must be greater than zero.", parseResult.Errors[0].Message);

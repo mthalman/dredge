@@ -25,6 +25,21 @@ public sealed class CliProcessTests
         Assert.Contains("not-a-command", result.StandardError);
     }
 
+    [Fact]
+    public async Task InvalidImageReference_ReturnsComponentErrorAndAcceptedForms()
+    {
+        ProcessResult result = await InvokeDredgeProcessAsync(
+            "manifest",
+            "digest",
+            "Invalid/Repo");
+
+        Assert.NotEqual(0, result.ExitCode);
+        Assert.Contains("Invalid repository", result.StandardError);
+        Assert.Contains(
+            "Expected <image>, <image>:<tag>, or <image>@<digest>.",
+            result.StandardError);
+    }
+
     private static async Task<ProcessResult> InvokeDredgeProcessAsync(params string[] args)
     {
         ProcessStartInfo startInfo = new("dotnet")

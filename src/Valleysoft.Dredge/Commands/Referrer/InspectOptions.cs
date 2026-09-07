@@ -14,10 +14,7 @@ public class InspectOptions : OptionsBase
 
     public InspectOptions()
     {
-        imageArgument = Add(new Argument<string>("image")
-        {
-            Description = "Container image reference (<image>, <image>:<tag>, or <image>@<digest>)"
-        });
+        imageArgument = Add(ImageReferenceArgument.Create("image"));
         artifactDigestArgument = Add(new Argument<string>("artifact-digest")
         {
             Description = "Digest of the artifact manifest"
