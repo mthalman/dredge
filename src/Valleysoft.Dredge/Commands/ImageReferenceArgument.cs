@@ -18,7 +18,7 @@ internal static class ImageReferenceArgument
             if (!ImageName.TryParse(value, out _, out string? error))
             {
                 result.AddError(
-                    $"{error} Expected <image>, <image>:<tag>, or <image>@<digest>.");
+                    $"{error} Expected <{name}>, <{name}>:<tag>, or <{name}>@<digest>.");
             }
         });
         return argument;

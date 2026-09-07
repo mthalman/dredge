@@ -500,6 +500,9 @@ public class CommandStructureTests
         {
             Command command = new("test");
             imageOptions.SetCommandOptions(command);
+            string invalidArgumentName = imageOptions is CompareFilesOptions
+                ? CompareOptionsBase.BaseArg
+                : "image";
             string[] arguments = command.Arguments
                 .Select(argument => argument.Name switch
                 {
@@ -522,9 +525,31 @@ public class CommandStructureTests
                 parseResult.Errors,
                 error => error.Message.Contains("Invalid repository", StringComparison.Ordinal) &&
                     error.Message.Contains(
-                        "Expected <image>, <image>:<tag>, or <image>@<digest>.",
+                        $"Expected <{invalidArgumentName}>, <{invalidArgumentName}>:<tag>, " +
+                        $"or <{invalidArgumentName}>@<digest>.",
                         StringComparison.Ordinal));
         }
+    }
+
+    [Theory]
+    [InlineData("Invalid/Repo", "valid/target", "base")]
+    [InlineData("valid/base", "Invalid/Repo", "target")]
+    public void CompareImageArguments_UseArgumentNameInValidationError(
+        string baseImage,
+        string targetImage,
+        string invalidArgumentName)
+    {
+        Command command = new("test");
+        new CompareFilesOptions().SetCommandOptions(command);
+
+        ParseResult parseResult = command.Parse([baseImage, targetImage]);
+
+        ParseError error = Assert.Single(parseResult.Errors);
+        Assert.Contains(
+            $"Expected <{invalidArgumentName}>, <{invalidArgumentName}>:<tag>, " +
+                $"or <{invalidArgumentName}>@<digest>.",
+            error.Message,
+            StringComparison.Ordinal);
     }
 
     [Theory]
