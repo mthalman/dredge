@@ -21,4 +21,4 @@ RootCommand rootCmd = new("CLI for executing commands on a container registry's 
     new SettingsCommand(),
 };
 
-return rootCmd.Parse(args).Invoke();
+return CommandHelper.InvokeRootCommand(rootCmd.Parse(args));

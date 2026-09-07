@@ -23,7 +23,9 @@ public class SaveLayersOptions : PlatformOptionsBase
         imageArg = Add(ImageReferenceArgument.Create("image"));
         outputPathArg = Add(new Argument<string>("output-path") { Description = "Path to the output location" });
         noSquashOption = Add(new Option<bool>("--no-squash") { Description = "Do not squash the image layers" });
-        layerIndexOption = Add(new Option<int?>(LayerIndexOptionName) { Description = "Index of the image layer to target" });
+        layerIndexOption = Add(LayerIndexOption.Create(
+            LayerIndexOptionName,
+            "index of the image layer to target"));
         forceOption = Add(new Option<bool>("--force") { Description = "Allow existing output content to be overwritten or deleted" });
     }
 
