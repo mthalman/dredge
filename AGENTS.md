@@ -19,7 +19,7 @@ dotnet test --no-restore --filter "FullyQualifiedName~Valleysoft.Dredge.Tests.Co
 dotnet test --no-restore --filter "ClassName=Valleysoft.Dredge.Tests.CompareLayersCommandTests"
 ```
 
-The solution requires the .NET 10 SDK (see `global.json`). The main and test projects multi-target `net9.0` and `net10.0`.
+The solution requires the .NET 10 SDK (see `global.json`). The main and test projects target `net10.0`.
 
 ## Architecture
 
