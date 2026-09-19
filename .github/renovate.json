@@ -5,5 +5,12 @@
   ],
   "dependencyDashboard": false,
   "minimumReleaseAge": "10 days",
-  "mode": "full"
+  "mode": "full",
+  "packageRules": [
+    {
+      "matchManagers": ["github-actions"],
+      "matchPackageNames": ["mthalman/release-automation", "mthalman/release-automation/**"],
+      "groupName": "release-automation"
+    }
+  ]
 }
