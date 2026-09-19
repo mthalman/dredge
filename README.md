@@ -50,6 +50,9 @@ When following command examples, replace `dredge` with
 
 ### .NET global tool
 
+Install the [.NET 10 SDK](https://dotnet.microsoft.com/download/dotnet/10.0)
+before installing or updating the tool.
+
 ```console
 dotnet tool install -g Valleysoft.Dredge
 ```
