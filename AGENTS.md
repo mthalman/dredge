@@ -59,3 +59,33 @@ Settings classes (`AppSettings`, `FileCompareToolSettings`, `PlatformSettings`) 
 - Console output uses `Spectre.Console` for rich rendering (tables, colors, markup).
 - `ImageName.Parse()` is the standard way to parse image reference strings (`image`, `image:tag`, `registry/image@digest`).
 - Test assertions compare rendered output against expected text files, using `TestHelper.Normalize()` to strip `\r` and trailing whitespace.
+
+## Pull request release labels
+
+Follow the pinned [release-automation author guide](https://github.com/mthalman/release-automation/blob/90551757fe8b061d4dff1a4cab12f10e58f07201/docs/author-guide.md)
+and [local contributor guidance](CONTRIBUTING.md#label-pull-requests).
+
+- Before opening or updating a PR, resolve any caller `config-path` at the
+  trusted PR base, or at the actual default branch discovered through GitHub
+  metadata when preparing a PR. Merge overrides with toolkit defaults; proposed
+  PR configuration does not govern its own validation. The installed callers
+  currently use defaults without overrides.
+- Apply exactly one resolved version label: `semver:major`, `semver:minor`, or
+  `semver:patch` by default. Apply at most one resolved category label:
+  `enhancement`, `bug`, `documentation`, or `dependencies`.
+- Breaking changes require the resolved major label and a new completed
+  `+short-kebab-slug.breaking.md` fragment in the resolved fragment root
+  (`.changes` by default). Never combine breaking changes with the resolved
+  skip label (`skip-changelog` by default).
+- Use the skip label only for intentionally excluded non-breaking changes.
+  Unrelated labels such as `breaking-change` do not select a release bump.
+- Recheck labels when PR scope changes and remove conflicting configured labels.
+  If permissions or release impact are unclear, report that for maintainer review.
+
+MinVer derives build versions from Git tags prefixed with `v`; build checkouts
+must include full history and tags. The shared prepare/finalize actions validate
+the release tag and source; builds rely on MinVer for versioning.
+Docker receives `MinVerVersionOverride` because its build context has no Git
+metadata. See [Releasing Dredge](docs/releasing.md) before changing release
+workflows. Keep all four shared entrypoint pins and pinned documentation links
+synchronized when upgrading.

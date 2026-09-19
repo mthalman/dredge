@@ -5,6 +5,16 @@ on:
     branches: [ main, dev ]
   pull_request:
     branches: [ main, dev ]
+    types: [opened, reopened, synchronize, ready_for_review]
+  workflow_call:
+    inputs:
+      source-sha:
+        description: Validated release source commit
+        required: true
+        type: string
+
+permissions:
+  contents: read
 
 defaults:
   run:
@@ -16,6 +26,10 @@ jobs:
 
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          ref: ${{ inputs.source-sha || github.sha }}
+          fetch-depth: 0
+          persist-credentials: false
 
       - name: Setup .NET SDK
         uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6

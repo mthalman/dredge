@@ -1,0 +1,14 @@
+name: Release draft
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  release-draft:
+    uses: mthalman/release-automation/.github/workflows/release-draft.yml@90551757fe8b061d4dff1a4cab12f10e58f07201 # v1.0.1

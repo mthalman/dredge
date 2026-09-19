@@ -1,0 +1,12 @@
+name: Migration policy
+
+on:
+  pull_request_target:
+    types: [opened, reopened, synchronize, labeled, unlabeled, ready_for_review]
+
+permissions:
+  contents: read
+
+jobs:
+  migration-policy:
+    uses: mthalman/release-automation/.github/workflows/migration-policy.yml@90551757fe8b061d4dff1a4cab12f10e58f07201 # v1.0.1

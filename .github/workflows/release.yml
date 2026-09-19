@@ -1,25 +1,53 @@
 name: Release
 
 on:
-  workflow_dispatch:
-    inputs:
-      confirmVersionIsSet:
-        description: 'Confirm version is set'
-        type: boolean
+  push:
+    tags: ['v*']
 
-defaults:
-  run:
-    working-directory: src
+permissions:
+  contents: read
+
+concurrency:
+  group: release-drafter
+  cancel-in-progress: false
+  queue: max
 
 jobs:
 
-  init:
-    uses: ./.github/workflows/init.yml
+  prepare:
+    name: Validate prepared release
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    outputs:
+      context: ${{ steps.prepare.outputs.context }}
+      tag: ${{ steps.prepare.outputs.tag }}
+      version: ${{ steps.prepare.outputs.version }}
+      sha: ${{ steps.prepare.outputs.sha }}
+      already-published: ${{ steps.prepare.outputs.already-published }}
+    steps:
+      - name: Prepare release
+        id: prepare
+        uses: mthalman/release-automation/actions/prepare-release@90551757fe8b061d4dff1a4cab12f10e58f07201 # v1.0.1
+        with:
+          token: ${{ secrets.RELEASE_GITHUB_TOKEN || github.token }}
+
+  verify:
+    name: Verify release source
+    needs: prepare
+    if: needs.prepare.outputs.already-published != 'true'
+    uses: ./.github/workflows/ci.yml
+    with:
+      source-sha: ${{ needs.prepare.outputs.sha }}
 
   exe:
     name: Build executables
     runs-on: ubuntu-latest
-    needs: init
+    needs: [prepare, verify]
+    if: needs.prepare.outputs.already-published != 'true'
+    defaults:
+      run:
+        working-directory: src
 
     strategy:
       matrix:
@@ -35,6 +63,10 @@ jobs:
 
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          ref: ${{ needs.prepare.outputs.sha }}
+          fetch-depth: 0
+          persist-credentials: false
 
       - name: Setup .NET SDK
         uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6
@@ -45,63 +77,86 @@ jobs:
 
       - name: Publish
         working-directory: src/Valleysoft.Dredge
-        env:
-          PACKAGE_VERSION: ${{ needs.init.outputs.product-version }}
-        run: dotnet publish -f net10.0 -c Release -p:Version=$PACKAGE_VERSION --no-restore -o ${{ github.workspace }}/publish --runtime ${{ matrix.rid }} --no-self-contained
+        run: dotnet publish -f net10.0 -c Release --no-restore -o "$GITHUB_WORKSPACE/publish" --runtime ${{ matrix.rid }} --no-self-contained
 
       - name: Rename output
+        env:
+          RELEASE_VERSION: ${{ needs.prepare.outputs.version }}
+          RID: ${{ matrix.rid }}
         run: |
-          if [[ "${{ matrix.rid }}" == *"win"* ]]; then
+          if [[ "$RID" == win-* ]]; then
             dredgeExt=".exe"
           else
             dredgeExt=""
           fi
-          
-          exeName="dredge-${{ needs.init.outputs.product-version }}-${{ matrix.rid }}${dredgeExt}"
-          echo "EXE_NAME=${exeName}" >> $GITHUB_ENV
-          mv ${{ github.workspace }}/publish/dredge${dredgeExt} ${{ github.workspace }}/publish/${exeName}
+
+          exeName="dredge-${RELEASE_VERSION}-${RID}${dredgeExt}"
+          echo "EXE_NAME=${exeName}" >> "$GITHUB_ENV"
+          mv "$GITHUB_WORKSPACE/publish/dredge${dredgeExt}" "$GITHUB_WORKSPACE/publish/${exeName}"
       
       - name: Generate checksum
-        run: sha256sum ${EXE_NAME} >${EXE_NAME}.sha256sum
+        run: sha256sum "$EXE_NAME" >"${EXE_NAME}.sha256sum"
         working-directory: ${{ github.workspace }}/publish
 
       - name: Save build binaries
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
         with:
           name: dredge-binaries-${{ matrix.rid }}
-          path: ${{ github.workspace }}/publish
+          path: |
+            ${{ github.workspace }}/publish/${{ env.EXE_NAME }}
+            ${{ github.workspace }}/publish/${{ env.EXE_NAME }}.sha256sum
+          if-no-files-found: error
 
   save-exes:
     name: Save executables
-    needs: exe
+    needs: [prepare, exe]
+    if: needs.prepare.outputs.already-published != 'true'
     runs-on: ubuntu-latest
+    permissions:
+      contents: write
 
     steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
-
       - name: Download build binaries
         uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
         with:
+          pattern: dredge-binaries-*
+          merge-multiple: true
           path: ${{ github.workspace }}/publish
 
-      - name: Move all files
-        run: |
-          mv ${{ github.workspace }}/publish/dredge-binaries-*/* ${{ github.workspace }}/publish
-          rm -r ${{ github.workspace }}/publish/dredge-binaries-*
+      - name: Verify checksums
+        working-directory: ${{ github.workspace }}/publish
+        run: sha256sum --check *.sha256sum
 
       - name: Save build binaries
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
         with:
           name: dredge-binaries
           path: ${{ github.workspace }}/publish
+          if-no-files-found: error
+
+      - name: Upload executables to the prepared draft
+        working-directory: ${{ github.workspace }}/publish
+        env:
+          GH_TOKEN: ${{ secrets.RELEASE_GITHUB_TOKEN || github.token }}
+          GH_REPO: ${{ github.repository }}
+          RELEASE_TAG: ${{ needs.prepare.outputs.tag }}
+        run: gh release upload "$RELEASE_TAG" ./* --clobber
 
   nuget:
     name: Publish NuGet Package
     runs-on: ubuntu-latest
-    needs: [ init, save-exes ]
+    needs: [prepare, save-exes]
+    if: needs.prepare.outputs.already-published != 'true'
+    defaults:
+      run:
+        working-directory: src
 
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          ref: ${{ needs.prepare.outputs.sha }}
+          fetch-depth: 0
+          persist-credentials: false
 
       - name: Setup .NET SDK
         uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6
@@ -110,18 +165,36 @@ jobs:
         run: dotnet restore
 
       - name: Build
-        env:
-          PACKAGE_VERSION: ${{ needs.init.outputs.product-version }}
-        run: dotnet build -c Release -p:Version=$PACKAGE_VERSION --no-restore Valleysoft.Dredge
+        run: dotnet build -c Release --no-restore Valleysoft.Dredge
 
       - name: Pack
-        env:
-          PACKAGE_VERSION: ${{ needs.init.outputs.product-version }}
-        run: dotnet pack -c Release -p:Version=$PACKAGE_VERSION Valleysoft.Dredge -p:IsPack=true
+        run: dotnet pack -c Release Valleysoft.Dredge -p:IsPack=true
       
       - name: Publish Package
-        run: dotnet nuget push "Valleysoft.Dredge/bin/Release/*.nupkg" -k ${{secrets.NUGET_ORG_API_KEY}} -s https://nuget.org
+        env:
+          NUGET_API_KEY: ${{ secrets.NUGET_ORG_API_KEY }}
+        run: dotnet nuget push "Valleysoft.Dredge/bin/Release/*.nupkg" -k "$NUGET_API_KEY" -s https://nuget.org
 
   docker:
     uses: ./.github/workflows/docker-publish.yml
-    needs: [ nuget ]
+    needs: [prepare, nuget]
+    if: needs.prepare.outputs.already-published != 'true'
+    permissions:
+      contents: read
+      packages: write
+    with:
+      source-sha: ${{ needs.prepare.outputs.sha }}
+
+  finalize:
+    name: Publish GitHub Release
+    needs: [prepare, docker]
+    if: needs.prepare.outputs.already-published != 'true'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Finalize release
+        uses: mthalman/release-automation/actions/finalize-release@90551757fe8b061d4dff1a4cab12f10e58f07201 # v1.0.1
+        with:
+          token: ${{ secrets.RELEASE_GITHUB_TOKEN || github.token }}
+          context: ${{ needs.prepare.outputs.context }}

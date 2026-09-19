@@ -11,6 +11,7 @@
     <NoWarn>IDE0290</NoWarn>
     <EnforceCodeStyleInBuild>True</EnforceCodeStyleInBuild>
     <AnalysisLevel>latest</AnalysisLevel>
+    <MinVerTagPrefix>v</MinVerTagPrefix>
   </PropertyGroup>
 
   <PropertyGroup Condition=" '$(IsPack)' != 'true' ">
@@ -43,6 +44,7 @@
   </ItemGroup>
 
   <ItemGroup>
+    <PackageReference Include="MinVer" Version="8.0.0" PrivateAssets="all" />
     <PackageReference Include="Spectre.Console" Version="0.57.2" />
     <PackageReference Include="System.CommandLine" Version="2.0.11" />
     <PackageReference Include="System.Text.RegularExpressions" Version="4.3.1" />
