@@ -55,13 +55,11 @@ public class CompareLayersCommand : RegistryCommandBase<CompareLayersOptions>
 
     private IRenderable GetOutput(CompareLayersResult result)
     {
-        OutputFormatter formatter = OutputFormatter.Create(Options.OutputFormat);
         bool isColorDisabled =
             Options.IsColorDisabled ||
             !ansiConsole.Profile.Capabilities.Ansi ||
             ansiConsole.Profile.Capabilities.ColorSystem == ColorSystem.NoColors;
-        IRenderable output = formatter.GetOutput(result, Options, isColorDisabled);
-        return output;
+        return CompareLayersRenderer.GetOutput(Options, result, isColorDisabled, ansiConsole);
     }
 
     private async Task<CompareLayersResult> GetCompareLayersResult(CancellationToken cancellationToken)
@@ -166,7 +164,7 @@ public class CompareLayersCommand : RegistryCommandBase<CompareLayersOptions>
             CompareDiff.Added => Color.Green,
             CompareDiff.NotEqual => isBaseLayer ? Color.Red : Color.Green,
             CompareDiff.Equal => Color.Default,
-            _ => throw new NotImplementedException()
+            _ => throw new ArgumentOutOfRangeException(nameof(diff), diff, "Unsupported layer diff state.")
         };
 
     private static Markup GetLayerDataMarkup(string? layerData, CompareDiff diff, bool isBase, bool isColorDisabled,
@@ -209,7 +207,7 @@ public class CompareLayersCommand : RegistryCommandBase<CompareLayersOptions>
             CompareDiff.Equal => "  ",
             CompareDiff.NotEqual => isBase ? "- " : "+ ",
             CompareDiff.Removed => "- ",
-            _ => throw new NotImplementedException()
+            _ => throw new ArgumentOutOfRangeException(nameof(diff), diff, "Unsupported layer diff state.")
         };
 
     private async Task<IList<LayerInfo>> GetLayersAsync(string image, CancellationToken cancellationToken)
@@ -292,184 +290,165 @@ public class CompareLayersCommand : RegistryCommandBase<CompareLayersOptions>
         return string.Format("{0:n" + decimalPlaces + "} {1}", dValue, SizeSuffixes[i]);
     }
 
-    private abstract class OutputFormatter
+    internal static class CompareLayersRenderer
     {
-        public static OutputFormatter Create(CompareOutput outputFormat) =>
-            outputFormat switch
+        public static IRenderable GetOutput(
+            CompareLayersOptions options,
+            CompareLayersResult result,
+            bool isColorDisabled,
+            IAnsiConsole ansiConsole)
+        {
+            return options.OutputFormat switch
             {
-                CompareOutput.Inline => new InlineFormatter(),
-                CompareOutput.Json => new JsonFormatter(),
-                CompareOutput.SideBySide => new SideBySideFormatter(),
-                _ => throw new NotImplementedException()
+                CompareOutput.Inline => GetInlineOutput(result, options, isColorDisabled),
+                CompareOutput.Json => new Text(JsonHelper.Serialize(result)),
+                CompareOutput.SideBySide => GetSideBySideOutput(result, options, isColorDisabled),
+                _ => throw new NotSupportedException($"Unsupported layer comparison output format '{options.OutputFormat}'.")
             };
+        }
 
-        public abstract IRenderable GetOutput(
+        private static IRenderable GetSideBySideOutput(
             CompareLayersResult result,
             CompareLayersOptions options,
-            bool isColorDisabled);
-
-        private class SideBySideFormatter : OutputFormatter
+            bool isColorDisabled)
         {
-            public override IRenderable GetOutput(
-                CompareLayersResult result,
-                CompareLayersOptions options,
-                bool isColorDisabled)
+            Table table = new Table()
+                .AddColumn(options.BaseImage);
+
+            if (isColorDisabled)
             {
-                Table table = new Table()
-                    .AddColumn(options.BaseImage);
-
-                if (isColorDisabled)
-                {
-                    // Use a comparison column to indicate the diff result with text instead of color
-                    table.AddColumn(new TableColumn("Compare") { Alignment = Justify.Center });
-                }
-
-                table.AddColumn(options.TargetImage);
-
-                for (int i = 0; i < result.LayerComparisons.Count(); i++)
-                {
-                    AddTableRows(result, isColorDisabled, options.IncludeHistory, options.IncludeCompressedSize, table, i);
-                }
-
-                return table;
+                // Use a comparison column to indicate the diff result with text instead of color
+                table.AddColumn(new TableColumn("Compare") { Alignment = Justify.Center });
             }
 
-            private static void AddTableRows(CompareLayersResult result, bool isColorDisabled, bool includeHistory,
-                bool includeCompressedSize, Table table, int i)
+            table.AddColumn(options.TargetImage);
+
+            for (int i = 0; i < result.LayerComparisons.Count(); i++)
+            {
+                AddTableRows(result, isColorDisabled, options.IncludeHistory, options.IncludeCompressedSize, table, i);
+            }
+
+            return table;
+        }
+
+        private static void AddTableRows(CompareLayersResult result, bool isColorDisabled, bool includeHistory,
+            bool includeCompressedSize, Table table, int i)
+        {
+            LayerComparison layerComparison = result.LayerComparisons.ElementAt(i);
+            IEnumerable<IRenderable> digestRowCells =
+                GetDigestRowCells(isColorDisabled, includeHistory || includeCompressedSize, layerComparison);
+            table.AddRow(digestRowCells);
+
+            if (includeHistory)
+            {
+                List<IRenderable> historyRowCells = GetHistoryRowCells(isColorDisabled, layerComparison);
+                table.AddRow(historyRowCells);
+            }
+
+            if (includeCompressedSize)
+            {
+                List<IRenderable> compressedSizeRowCells = GetCompressedSizeRowCells(isColorDisabled, layerComparison);
+                table.AddRow(compressedSizeRowCells);
+            }
+
+            if ((includeHistory || includeCompressedSize) && i + 1 != result.LayerComparisons.Count())
+            {
+                table.AddEmptyRow();
+            }
+        }
+
+        private static List<IRenderable> GetHistoryRowCells(bool isColorDisabled, LayerComparison layerComparison) =>
+            GetLayerDataRowCells(isColorDisabled, layerComparison, layerInfo => layerInfo?.History);
+
+        private static List<IRenderable> GetCompressedSizeRowCells(bool isColorDisabled, LayerComparison layerComparison) =>
+            GetLayerDataRowCells(isColorDisabled, layerComparison, layerInfo => FormatCompressedSize(layerInfo?.CompressedSize));
+
+        private static List<IRenderable> GetLayerDataRowCells(bool isColorDisabled, LayerComparison layerComparison, Func<LayerInfo?, string?> getLayerData)
+        {
+            List<IRenderable> historyCells =
+            [
+                GetLayerDataMarkup(getLayerData(layerComparison.Base), layerComparison.LayerDiff, isBase: true, isColorDisabled, isInline: false)
+            ];
+
+            if (isColorDisabled)
+            {
+                historyCells.Add(new Markup(string.Empty));
+            }
+
+            historyCells.Add(GetLayerDataMarkup(getLayerData(layerComparison.Target), layerComparison.LayerDiff, isBase: false, isColorDisabled, isInline: false));
+            return historyCells;
+        }
+
+        private static List<IRenderable> GetDigestRowCells(bool isColorDisabled, bool includeSupplementalData, LayerComparison layerComparison)
+        {
+            List<IRenderable> shaCells =
+            [
+                GetDigestMarkup(
+                    layerComparison.Base, layerComparison.LayerDiff, isBase : true, isColorDisabled, includeSupplementalData, isInline: false)
+            ];
+            if (isColorDisabled)
+            {
+                shaCells.Add(new Markup(GetLayerDiffDisplayName(layerComparison.LayerDiff)));
+            }
+
+            shaCells.Add(
+                GetDigestMarkup(
+                    layerComparison.Target, layerComparison.LayerDiff, isBase: false, isColorDisabled, includeSupplementalData, isInline: false));
+            return shaCells;
+        }
+
+        private static string GetLayerDiffDisplayName(CompareDiff diff) =>
+            diff switch
+            {
+                CompareDiff.NotEqual => "Not Equal",
+                _ => diff.ToString(),
+            };
+
+        private static IRenderable GetInlineOutput(
+            CompareLayersResult result,
+            CompareLayersOptions options,
+            bool isColorDisabled)
+        {
+            List<IRenderable> rows = [];
+
+            for (int i = 0; i < result.LayerComparisons.Count(); i++)
             {
                 LayerComparison layerComparison = result.LayerComparisons.ElementAt(i);
-                IEnumerable<IRenderable> digestRowCells =
-                    GetDigestRowCells(isColorDisabled, includeHistory || includeCompressedSize, layerComparison);
-                table.AddRow(digestRowCells);
 
-                if (includeHistory)
+                if (layerComparison.Base is not null)
                 {
-                    List<IRenderable> historyRowCells = GetHistoryRowCells(isColorDisabled, layerComparison);
-                    table.AddRow(historyRowCells);
+                    AddInlineLayerInfo(
+                        rows, layerComparison.Base, layerComparison.LayerDiff, isBase: true, isColorDisabled, options.IncludeHistory,
+                        options.IncludeCompressedSize);
                 }
 
-                if (includeCompressedSize)
+                if (layerComparison.LayerDiff != CompareDiff.Equal && layerComparison.Target is not null)
                 {
-                    List<IRenderable> compressedSizeRowCells = GetCompressedSizeRowCells(isColorDisabled, layerComparison);
-                    table.AddRow(compressedSizeRowCells);
+                    AddInlineLayerInfo(
+                        rows, layerComparison.Target, layerComparison.LayerDiff, isBase: false, isColorDisabled, options.IncludeHistory,
+                        options.IncludeCompressedSize);
                 }
 
-                if ((includeHistory || includeCompressedSize) && i + 1 != result.LayerComparisons.Count())
+                if ((options.IncludeHistory || options.IncludeCompressedSize) && i + 1 != result.LayerComparisons.Count())
                 {
-                    table.AddEmptyRow();
+                    rows.Add(new Text(string.Empty));
                 }
             }
 
-            private static List<IRenderable> GetHistoryRowCells(bool isColorDisabled, LayerComparison layerComparison) =>
-                GetLayerDataRowCells(isColorDisabled, layerComparison, layerInfo => layerInfo?.History);
-
-            private static List<IRenderable> GetCompressedSizeRowCells(bool isColorDisabled, LayerComparison layerComparison) =>
-                GetLayerDataRowCells(isColorDisabled, layerComparison, layerInfo => FormatCompressedSize(layerInfo?.CompressedSize));
-
-            private static List<IRenderable> GetLayerDataRowCells(bool isColorDisabled, LayerComparison layerComparison, Func<LayerInfo?, string?> getLayerData)
-            {
-                List<IRenderable> historyCells =
-                [
-                    GetLayerDataMarkup(getLayerData(layerComparison.Base), layerComparison.LayerDiff, isBase: true, isColorDisabled, isInline: false)
-                ];
-
-                if (isColorDisabled)
-                {
-                    historyCells.Add(new Markup(string.Empty));
-                }
-
-                historyCells.Add(GetLayerDataMarkup(getLayerData(layerComparison.Target), layerComparison.LayerDiff, isBase: false, isColorDisabled, isInline: false));
-                return historyCells;
-            }
-
-            private static List<IRenderable> GetDigestRowCells(bool isColorDisabled, bool includeSupplementalData, LayerComparison layerComparison)
-            {
-                List<IRenderable> shaCells =
-                [
-                    GetDigestMarkup(
-                        layerComparison.Base, layerComparison.LayerDiff, isBase : true, isColorDisabled, includeSupplementalData, isInline: false)
-                ];
-                if (isColorDisabled)
-                {
-                    shaCells.Add(new Markup(GetLayerDiffDisplayName(layerComparison.LayerDiff)));
-                }
-
-                shaCells.Add(
-                    GetDigestMarkup(
-                        layerComparison.Target, layerComparison.LayerDiff, isBase: false, isColorDisabled, includeSupplementalData, isInline: false));
-                return shaCells;
-            }
-
-            private static string GetLayerDiffDisplayName(CompareDiff diff) =>
-                diff switch
-                {
-                    CompareDiff.NotEqual => "Not Equal",
-                    _ => diff.ToString(),
-                };
+            return new Rows(rows);
         }
 
-        private class InlineFormatter : OutputFormatter
+        private static void AddInlineLayerInfo(List<IRenderable> rows, LayerInfo layer, CompareDiff diff, bool isBase,
+            bool isColorDisabled, bool includeHistory, bool includeCompressedSize)
         {
-            public override IRenderable GetOutput(
-                CompareLayersResult result,
-                CompareLayersOptions options,
-                bool isColorDisabled)
+            rows.Add(GetDigestMarkup(layer, diff, isBase, isColorDisabled, includeHistory || includeCompressedSize, isInline: true));
+            if (includeHistory)
             {
-                List<IRenderable> rows = [];
-
-                for (int i = 0; i < result.LayerComparisons.Count(); i++)
-                {
-                    LayerComparison layerComparison = result.LayerComparisons.ElementAt(i);
-
-                    if (layerComparison.Base is not null)
-                    {
-                        AddInlineLayerInfo(
-                            rows, layerComparison.Base, layerComparison.LayerDiff, isBase: true, isColorDisabled, options.IncludeHistory,
-                            options.IncludeCompressedSize);
-                    }
-
-                    if (layerComparison.LayerDiff != CompareDiff.Equal && layerComparison.Target is not null)
-                    {
-                        AddInlineLayerInfo(
-                            rows, layerComparison.Target, layerComparison.LayerDiff, isBase: false, isColorDisabled, options.IncludeHistory,
-                            options.IncludeCompressedSize);
-                    }
-
-                    // Add an empty row if we're not on the last layer
-                    if ((options.IncludeHistory || options.IncludeCompressedSize) && i + 1 != result.LayerComparisons.Count())
-                    {
-                        rows.Add(new Text(string.Empty));
-                    }
-                }
-
-                return new Rows(rows);
+                rows.Add(GetLayerDataMarkup(layer.History, diff, isBase, isColorDisabled, isInline: true));
             }
-
-            private static void AddInlineLayerInfo(List<IRenderable> rows, LayerInfo layer, CompareDiff diff, bool isBase,
-                bool isColorDisabled, bool includeHistory, bool includeCompressedSize)
+            if (includeCompressedSize)
             {
-                rows.Add(GetDigestMarkup(layer, diff, isBase, isColorDisabled, includeHistory || includeCompressedSize, isInline: true));
-                if (includeHistory)
-                {
-                    rows.Add(GetLayerDataMarkup(layer.History, diff, isBase, isColorDisabled, isInline: true));
-                }
-                if (includeCompressedSize)
-                {
-                    rows.Add(GetLayerDataMarkup(FormatCompressedSize(layer.CompressedSize), diff, isBase, isColorDisabled, isInline: true));
-                }
-            }
-        }
-
-        private class JsonFormatter : OutputFormatter
-        {
-            public override IRenderable GetOutput(
-                CompareLayersResult result,
-                CompareLayersOptions options,
-                bool isColorDisabled)
-            {
-                string output = JsonHelper.Serialize(result);
-
-                return new Text(output);
+                rows.Add(GetLayerDataMarkup(FormatCompressedSize(layer.CompressedSize), diff, isBase, isColorDisabled, isInline: true));
             }
         }
     }

@@ -427,6 +427,19 @@ public class CompareMetadataCommandTests
     }
 
     [Fact]
+    public async Task RejectsUnsupportedOutputFormatExplicitly()
+    {
+        ImageSetup baseSetup = CreateSingleManifestSetup(CreateImageConfig(environmentVariables: ["A=1"]));
+        ImageSetup targetSetup = CreateSingleManifestSetup(CreateImageConfig(environmentVariables: ["A=2"]));
+        CompareMetadataCommand command = CreateCommand(baseSetup, targetSetup, output: (CompareOutput)999);
+
+        NotSupportedException ex = await Assert.ThrowsAsync<NotSupportedException>(
+            () => command.GetOutputAsync(TestContext.Current.CancellationToken));
+
+        Assert.Contains("Unsupported metadata comparison output format '999'", ex.Message);
+    }
+
+    [Fact]
     public async Task SideBySideUsesComparisonColumnWhenColorIsUnavailable()
     {
         ImageSetup setup = CreateSingleManifestSetup(CreateImageConfig());

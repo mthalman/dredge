@@ -71,124 +71,140 @@ public class CompareMetadataCommand : RegistryCommandBase<CompareMetadataOptions
         GetOutput(await GetResultAsync(cancellationToken));
 
     private void WriteJson(CompareMetadataResult result) =>
-        ansiConsole.Profile.Out.Writer.WriteLine(JsonHelper.Serialize(result));
+        CompareMetadataRenderer.WriteJson(ansiConsole, result);
 
-    private IRenderable GetOutput(CompareMetadataResult result)
+    private IRenderable GetOutput(CompareMetadataResult result) =>
+        CompareMetadataRenderer.GetOutput(Options, ansiConsole, result, isColorDisabled: false);
+
+    internal static class CompareMetadataRenderer
     {
-        bool isColorDisabled =
-            Options.IsColorDisabled ||
-            !ansiConsole.Profile.Capabilities.Ansi ||
-            ansiConsole.Profile.Capabilities.ColorSystem == ColorSystem.NoColors;
+        public static void WriteJson(IAnsiConsole ansiConsole, CompareMetadataResult result) =>
+            ansiConsole.Profile.Out.Writer.WriteLine(JsonHelper.Serialize(result));
 
-        return Options.OutputFormat switch
+        public static IRenderable GetOutput(
+            CompareMetadataOptions options,
+            IAnsiConsole ansiConsole,
+            CompareMetadataResult result,
+            bool isColorDisabled)
         {
-            CompareOutput.SideBySide => GetSideBySideOutput(result, isColorDisabled),
-            CompareOutput.Inline => GetInlineOutput(result, isColorDisabled),
-            CompareOutput.Json => new Text(JsonHelper.Serialize(result)),
-            _ => throw new NotSupportedException($"Unsupported metadata comparison output format '{Options.OutputFormat}'.")
-        };
-    }
+            bool effectiveColorDisabled = isColorDisabled ||
+                options.IsColorDisabled ||
+                !ansiConsole.Profile.Capabilities.Ansi ||
+                ansiConsole.Profile.Capabilities.ColorSystem == ColorSystem.NoColors;
 
-    private Table GetSideBySideOutput(CompareMetadataResult result, bool isColorDisabled)
-    {
-        Table table = new Table()
-            .AddColumn("Metadata")
-            .AddColumn(Options.BaseImage);
-
-        if (isColorDisabled)
-        {
-            table.AddColumn(new TableColumn("Compare") { Alignment = Justify.Center });
+            return options.OutputFormat switch
+            {
+                CompareOutput.SideBySide => GetSideBySideOutput(options, result, effectiveColorDisabled),
+                CompareOutput.Inline => GetInlineOutput(result, effectiveColorDisabled),
+                CompareOutput.Json => new Text(JsonHelper.Serialize(result)),
+                _ => throw new NotSupportedException($"Unsupported metadata comparison output format '{options.OutputFormat}'.")
+            };
         }
 
-        table.AddColumn(Options.TargetImage);
-
-        foreach (MetadataComparison comparison in result.Comparisons)
+        private static Table GetSideBySideOutput(
+            CompareMetadataOptions options,
+            CompareMetadataResult result,
+            bool isColorDisabled)
         {
-            List<IRenderable> cells =
-            [
-                new Markup(Markup.Escape($"{comparison.Category}.{comparison.Path}")),
-                GetValueMarkup(comparison.BaseValue, comparison.Diff, isBase: true, isColorDisabled)
-            ];
+            Table table = new Table()
+                .AddColumn("Metadata")
+                .AddColumn(options.BaseImage);
 
             if (isColorDisabled)
             {
-                cells.Add(new Markup(GetDiffDisplayName(comparison.Diff)));
+                table.AddColumn(new TableColumn("Compare") { Alignment = Justify.Center });
             }
 
-            cells.Add(GetValueMarkup(comparison.TargetValue, comparison.Diff, isBase: false, isColorDisabled));
-            table.AddRow(cells);
+            table.AddColumn(options.TargetImage);
+
+            foreach (MetadataComparison comparison in result.Comparisons)
+            {
+                List<IRenderable> cells =
+                [
+                    new Markup(Markup.Escape($"{comparison.Category}.{comparison.Path}")),
+                    GetValueMarkup(comparison.BaseValue, comparison.Diff, isBase: true, isColorDisabled)
+                ];
+
+                if (isColorDisabled)
+                {
+                    cells.Add(new Markup(GetDiffDisplayName(comparison.Diff)));
+                }
+
+                cells.Add(GetValueMarkup(comparison.TargetValue, comparison.Diff, isBase: false, isColorDisabled));
+                table.AddRow(cells);
+            }
+
+            return table;
         }
 
-        return table;
-    }
-
-    private static Rows GetInlineOutput(CompareMetadataResult result, bool isColorDisabled)
-    {
-        List<IRenderable> rows = [];
-
-        foreach (MetadataComparison comparison in result.Comparisons)
+        private static Rows GetInlineOutput(CompareMetadataResult result, bool isColorDisabled)
         {
-            string path = $"{comparison.Category}.{comparison.Path}";
-            if (comparison.Diff == CompareDiff.Equal)
+            List<IRenderable> rows = [];
+
+            foreach (MetadataComparison comparison in result.Comparisons)
             {
-                rows.Add(GetInlineMarkup("  ", path, comparison.BaseValue, Color.Default));
-                continue;
+                string path = $"{comparison.Category}.{comparison.Path}";
+                if (comparison.Diff == CompareDiff.Equal)
+                {
+                    rows.Add(GetInlineMarkup("  ", path, comparison.BaseValue, Color.Default));
+                    continue;
+                }
+
+                if (comparison.Diff is CompareDiff.NotEqual or CompareDiff.Removed)
+                {
+                    rows.Add(GetInlineMarkup(
+                        "- ",
+                        path,
+                        comparison.BaseValue,
+                        isColorDisabled ? Color.Default : Color.Red));
+                }
+
+                if (comparison.Diff is CompareDiff.NotEqual or CompareDiff.Added)
+                {
+                    rows.Add(GetInlineMarkup(
+                        "+ ",
+                        path,
+                        comparison.TargetValue,
+                        isColorDisabled ? Color.Default : Color.Green));
+                }
             }
 
-            if (comparison.Diff is CompareDiff.NotEqual or CompareDiff.Removed)
-            {
-                rows.Add(GetInlineMarkup(
-                    "- ",
-                    path,
-                    comparison.BaseValue,
-                    isColorDisabled ? Color.Default : Color.Red));
-            }
-
-            if (comparison.Diff is CompareDiff.NotEqual or CompareDiff.Added)
-            {
-                rows.Add(GetInlineMarkup(
-                    "+ ",
-                    path,
-                    comparison.TargetValue,
-                    isColorDisabled ? Color.Default : Color.Green));
-            }
+            return new Rows(rows);
         }
 
-        return new Rows(rows);
-    }
+        private static Markup GetInlineMarkup(string prefix, string path, JsonNode? value, Color color) =>
+            new(Markup.Escape($"{prefix}{path} = {FormatValue(value)}"), new Style(color));
 
-    private static Markup GetInlineMarkup(string prefix, string path, JsonNode? value, Color color) =>
-        new(Markup.Escape($"{prefix}{path} = {FormatValue(value)}"), new Style(color));
-
-    private static Markup GetValueMarkup(
-        JsonNode? value,
-        CompareDiff diff,
-        bool isBase,
-        bool isColorDisabled)
-    {
-        Color color = isColorDisabled ? Color.Default : diff switch
+        private static Markup GetValueMarkup(
+            JsonNode? value,
+            CompareDiff diff,
+            bool isBase,
+            bool isColorDisabled)
         {
-            CompareDiff.NotEqual => isBase ? Color.Red : Color.Green,
-            CompareDiff.Added => isBase ? Color.Default : Color.Green,
-            CompareDiff.Removed => isBase ? Color.Red : Color.Default,
-            _ => Color.Default
-        };
+            Color color = isColorDisabled ? Color.Default : diff switch
+            {
+                CompareDiff.NotEqual => isBase ? Color.Red : Color.Green,
+                CompareDiff.Added => isBase ? Color.Default : Color.Green,
+                CompareDiff.Removed => isBase ? Color.Red : Color.Default,
+                _ => Color.Default
+            };
 
-        return new Markup(Markup.Escape(FormatValue(value)), new Style(color));
+            return new Markup(Markup.Escape(FormatValue(value)), new Style(color));
+        }
+
+        private static string FormatValue(JsonNode? value) =>
+            value is null ? string.Empty : value.ToJsonString(JsonHelper.CompactSettings);
+
+        private static string GetDiffDisplayName(CompareDiff diff) =>
+            diff switch
+            {
+                CompareDiff.Equal => "Equal",
+                CompareDiff.NotEqual => "Changed",
+                CompareDiff.Added => "Added",
+                CompareDiff.Removed => "Removed",
+                _ => throw new ArgumentOutOfRangeException(nameof(diff), diff, "Unsupported metadata diff state.")
+            };
     }
-
-    private static string FormatValue(JsonNode? value) =>
-        value is null ? string.Empty : value.ToJsonString(JsonHelper.CompactSettings);
-
-    private static string GetDiffDisplayName(CompareDiff diff) =>
-        diff switch
-        {
-            CompareDiff.Equal => "Equal",
-            CompareDiff.NotEqual => "Changed",
-            CompareDiff.Added => "Added",
-            CompareDiff.Removed => "Removed",
-            _ => throw new NotSupportedException()
-        };
 
     private async Task<MetadataDocument> GetMetadataAsync(string image, CancellationToken cancellationToken)
     {
