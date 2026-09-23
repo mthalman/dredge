@@ -43,7 +43,7 @@ internal class DockerRegistryClientFactory : IDockerRegistryClientFactory
             string authRegistry = DockerHubHelper.GetAuthRegistry(registry);
             try
             {
-                creds = await CredsProvider.GetCredentialsAsync(authRegistry, cancellationToken);
+                creds = await GetCredentialsAsync(authRegistry, cancellationToken);
             }
             catch (Exception e) when (e is CredsNotFoundException || e is FileNotFoundException)
             {
@@ -63,6 +63,11 @@ internal class DockerRegistryClientFactory : IDockerRegistryClientFactory
 
         return new DockerRegistryClientWrapper(CreateClient(registry, clientCreds, cancellationToken));
     }
+
+    protected virtual Task<DockerCredentials> GetCredentialsAsync(
+        string registry,
+        CancellationToken cancellationToken) =>
+        CredsProvider.GetCredentialsAsync(registry, cancellationToken);
 
     private static RegistryClient CreateClient(
         string? registry,
