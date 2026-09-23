@@ -72,19 +72,7 @@ internal class DockerRegistryClientFactory : IDockerRegistryClientFactory
         cancellationToken.ThrowIfCancellationRequested();
 
         RegistryClient client = new(DockerHubHelper.GetApiRegistry(registry), clientCreds);
-        client.HttpClient.Timeout = GetOperationTimeout();
+        client.HttpClient.Timeout = Timeout.InfiniteTimeSpan;
         return client;
-    }
-
-    internal static TimeSpan GetOperationTimeout()
-    {
-        AppSettings settings = AppSettings.Load();
-        TimeSpan? timeout = settings.Operations.GetTimeout();
-        if (timeout is null)
-        {
-            return Timeout.InfiniteTimeSpan;
-        }
-
-        return timeout.Value > TimeSpan.Zero ? timeout.Value : Timeout.InfiniteTimeSpan;
     }
 }
