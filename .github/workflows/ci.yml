@@ -83,6 +83,7 @@ jobs:
 
   windows:
     name: Windows
+    needs: linux
     runs-on: windows-latest
 
     steps:
@@ -113,6 +114,7 @@ jobs:
 
   macos:
     name: macOS
+    needs: linux
     runs-on: macos-latest
 
     steps:
@@ -143,6 +145,7 @@ jobs:
 
   musl:
     name: Alpine (musl)
+    needs: linux
     runs-on: ubuntu-latest
     container: mcr.microsoft.com/dotnet/sdk:10.0-alpine
 
@@ -173,3 +176,23 @@ jobs:
         with:
           name: musl-test-results
           path: src/test-results/musl/*
+
+  ci-success:
+    name: CI success
+    needs: [linux, linux-integration, windows, macos, musl]
+    if: always()
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Require all jobs to succeed
+        working-directory: .
+        shell: bash
+        env:
+          JOB_RESULTS: ${{ join(needs.*.result, ' ') }}
+        run: |
+          for result in $JOB_RESULTS; do
+            if [ "$result" != "success" ]; then
+              echo "::error::A required CI job did not succeed: $result"
+              exit 1
+            fi
+          done
