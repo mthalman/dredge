@@ -21,7 +21,8 @@ defaults:
     working-directory: src
 
 jobs:
-  build:
+  linux:
+    name: Linux (glibc)
     runs-on: ubuntu-latest
 
     steps:
@@ -38,14 +39,137 @@ jobs:
         run: dotnet restore
 
       - name: Build
-        run: dotnet build -c Release --no-restore
-      
-      - name: Test
-        run: dotnet test --no-restore -v normal -c Release --results-directory test-results -- --report-xunit-trx
+        run: dotnet build -c Release --no-restore -warnaserror
+
+      - name: Test non-container coverage
+        run: dotnet test --no-restore -v normal -c Release --results-directory test-results/linux --filter "Category!=Integration" -- --report-xunit-trx
 
       - name: Upload Test Results
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
         if: always()
         with:
-          name: test-results
-          path: src/test-results/*
+          name: linux-test-results
+          path: src/test-results/linux/*
+
+  linux-integration:
+    name: Linux integration
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          ref: ${{ inputs.source-sha || github.sha }}
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Setup .NET SDK
+        uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6
+
+      - name: Install dependencies
+        run: dotnet restore
+
+      - name: Build
+        run: dotnet build -c Release --no-restore -warnaserror
+
+      - name: Test container-backed registry coverage
+        run: dotnet test --no-restore -v normal -c Release --results-directory test-results/integration --filter "Category=Integration" -- --report-xunit-trx
+
+      - name: Upload Test Results
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        if: always()
+        with:
+          name: integration-test-results
+          path: src/test-results/integration/*
+
+  windows:
+    name: Windows
+    runs-on: windows-latest
+
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          ref: ${{ inputs.source-sha || github.sha }}
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Setup .NET SDK
+        uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6
+
+      - name: Install dependencies
+        run: dotnet restore
+
+      - name: Build
+        run: dotnet build -c Release --no-restore -warnaserror
+
+      - name: Test non-container coverage
+        run: dotnet test --no-restore -v normal -c Release --results-directory test-results/windows --filter "Category!=Integration" -- --report-xunit-trx
+
+      - name: Upload Test Results
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        if: always()
+        with:
+          name: windows-test-results
+          path: src/test-results/windows/*
+
+  macos:
+    name: macOS
+    runs-on: macos-latest
+
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          ref: ${{ inputs.source-sha || github.sha }}
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Setup .NET SDK
+        uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6
+
+      - name: Install dependencies
+        run: dotnet restore
+
+      - name: Build
+        run: dotnet build -c Release --no-restore -warnaserror
+
+      - name: Test non-container coverage
+        run: dotnet test --no-restore -v normal -c Release --results-directory test-results/macos --filter "Category!=Integration" -- --report-xunit-trx
+
+      - name: Upload Test Results
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        if: always()
+        with:
+          name: macos-test-results
+          path: src/test-results/macos/*
+
+  musl:
+    name: Alpine (musl)
+    runs-on: ubuntu-latest
+    container: mcr.microsoft.com/dotnet/sdk:10.0-alpine
+
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          ref: ${{ inputs.source-sha || github.sha }}
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Install Git
+        run: |
+          apk add --no-cache git
+          git config --global --add safe.directory "$GITHUB_WORKSPACE"
+
+      - name: Install dependencies
+        run: dotnet restore
+
+      - name: Build
+        run: dotnet build -c Release --no-restore -warnaserror
+
+      - name: Test non-container coverage
+        run: dotnet test --no-restore -v normal -c Release --results-directory test-results/musl --filter "Category!=Integration" -- --report-xunit-trx
+
+      - name: Upload Test Results
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        if: always()
+        with:
+          name: musl-test-results
+          path: src/test-results/musl/*

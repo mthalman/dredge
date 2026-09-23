@@ -181,10 +181,12 @@ public partial class DockerfileCommand : RegistryCommandBase<DockerfileOptions>
                 // e.g. ADD file:c13b430c8699df107ffd9ea5230b92238bc037a8e1cbbe35d6ab664941d575da in /
                 // This trims out the first occurrence of it.
                 const string InMarker = " in ";
-                int inIndex = line.IndexOf(InMarker);
+                int inIndex = line.IndexOf(InMarker, StringComparison.Ordinal);
                 if (inIndex >= 0)
                 {
-                    line = $"{line[0..inIndex]}{line[(inIndex + InMarker.Length - 1)..]}";
+                    string linePrefix = line[..inIndex];
+                    string lineSuffix = line[(inIndex + InMarker.Length - 1)..];
+                    line = $"{linePrefix}{lineSuffix}";
                 }
             }
 
@@ -198,9 +200,12 @@ public partial class DockerfileCommand : RegistryCommandBase<DockerfileOptions>
                         .Replace("[", "[\"")
                         .Replace("]", "\"]");
                     int cmdIndex = line.IndexOf('[');
-                    string command = line[cmdIndex..]
-                        .Replace(" ", "\", \"");
-                    line = line[0..cmdIndex] + command;
+                    if (cmdIndex >= 0)
+                    {
+                        string command = line[cmdIndex..]
+                            .Replace(" ", "\", \"");
+                        line = line[0..cmdIndex] + command;
+                    }
                 }
             }
 
@@ -219,8 +224,11 @@ public partial class DockerfileCommand : RegistryCommandBase<DockerfileOptions>
                 DockerfileConstruct dockerfileConstruct = dockerfile.Items.First();
                 if (dockerfileConstruct is ShellInstruction shellInstruction)
                 {
-                    // Track the current SHELL. This is needed in order to trim it from subsequent instructions
-                    currentShell = string.Join(" ", ((ExecFormCommand)shellInstruction.Command).Values);
+                    // Track the current SHELL. This is needed in order to trim it from subsequent instructions.
+                    if (shellInstruction.Command is ExecFormCommand execFormCommand && execFormCommand.Values is not null && execFormCommand.Values.Count > 0)
+                    {
+                        currentShell = string.Join(" ", execFormCommand.Values);
+                    }
                 }
                 else if (dockerfileConstruct is EnvInstruction envInstruction)
                 {
