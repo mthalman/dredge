@@ -83,6 +83,7 @@ jobs:
 
   windows:
     name: Windows
+    needs: linux
     runs-on: windows-latest
 
     steps:
@@ -113,6 +114,7 @@ jobs:
 
   macos:
     name: macOS
+    needs: linux
     runs-on: macos-latest
 
     steps:
@@ -143,6 +145,7 @@ jobs:
 
   musl:
     name: Alpine (musl)
+    needs: linux
     runs-on: ubuntu-latest
     container: mcr.microsoft.com/dotnet/sdk:10.0-alpine
 
