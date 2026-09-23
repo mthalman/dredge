@@ -290,7 +290,7 @@ public class CompareLayersCommand : RegistryCommandBase<CompareLayersOptions>
         return string.Format("{0:n" + decimalPlaces + "} {1}", dValue, SizeSuffixes[i]);
     }
 
-    private static class CompareLayersRenderer
+    internal static class CompareLayersRenderer
     {
         public static IRenderable GetOutput(
             CompareLayersOptions options,
