@@ -21,7 +21,7 @@ Setting names use dot notation with `dredge settings get` and
 |---------|---------|---------|
 | `fileCompareTool.exePath` | Empty | Executable that `image compare files` starts |
 | `fileCompareTool.args` | Empty | Arguments passed to the comparison executable |
-| `operations.timeout` | `00:30:00` | Maximum duration of a registry operation |
+| `operations.timeout` | `00:30:00` | Maximum duration of a Dredge operation |
 | `platform.os` | Empty | Operating system used for platform resolution |
 | `platform.osVersion` | Empty | Operating system version used for platform resolution |
 | `platform.arch` | Empty | Architecture used for platform resolution |
