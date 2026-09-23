@@ -154,7 +154,9 @@ jobs:
           persist-credentials: false
 
       - name: Install Git
-        run: apk add --no-cache git
+        run: |
+          apk add --no-cache git
+          git config --global --add safe.directory "$GITHUB_WORKSPACE"
 
       - name: Install dependencies
         run: dotnet restore
