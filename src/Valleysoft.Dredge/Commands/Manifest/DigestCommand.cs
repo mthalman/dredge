@@ -1,4 +1,4 @@
-﻿using Valleysoft.DockerRegistryClient;
+using Valleysoft.DockerRegistryClient;
 
 namespace Valleysoft.Dredge.Commands.Manifest;
 
@@ -14,7 +14,7 @@ public class DigestCommand : RegistryCommandBase<DigestOptions>
         ImageName imageName = ImageName.Parse(Options.Image);
         return ExecuteCommandAsync(imageName.Registry, cancellationToken, async ct =>
         {
-            using IDockerRegistryClient client = await DockerRegistryClientFactory.GetClientAsync(imageName.Registry);
+            using IDockerRegistryClient client = await DockerRegistryClientFactory.GetClientAsync(imageName.Registry, cancellationToken);
 
             string digest = await client.Manifests.GetDigestAsync(
                 imageName.Repo, (imageName.Tag ?? imageName.Digest)!, ct);

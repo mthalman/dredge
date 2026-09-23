@@ -10,10 +10,15 @@ internal partial class AppSettings
     public static readonly string SettingsPath =
         Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "Valleysoft.Dredge", "settings.json");
 
+    public static readonly TimeSpan DefaultOperationTimeout = TimeSpan.FromMinutes(30);
+
     public const string FileCompareToolName = "fileCompareTool";
 
     [JsonPropertyName(FileCompareToolName)]
     public FileCompareToolSettings FileCompareTool { get; set; } = new();
+
+    [JsonPropertyName("operations")]
+    public OperationsSettings Operations { get; set; } = new();
 
     [JsonPropertyName("platform")]
     public PlatformSettings Platform { get; set; } = new();
@@ -72,6 +77,25 @@ internal partial class FileCompareToolSettings
 
     [JsonPropertyName("args")]
     public string Args { get; set; } = string.Empty;
+}
+
+internal partial class OperationsSettings
+{
+    [JsonPropertyName("timeout")]
+    public string? Timeout { get; set; } = AppSettings.DefaultOperationTimeout.ToString("c");
+
+    public TimeSpan? GetTimeout()
+    {
+        string? value = Timeout;
+        if (string.IsNullOrWhiteSpace(value) || value == "null")
+        {
+            return null;
+        }
+
+        return TimeSpan.TryParse(value, out TimeSpan parsed)
+            ? parsed
+            : throw new InvalidOperationException($"Invalid operations.timeout value '{value}'.");
+    }
 }
 
 internal partial class PlatformSettings

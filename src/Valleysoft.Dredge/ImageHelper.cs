@@ -1,4 +1,4 @@
-﻿using System.Formats.Tar;
+using System.Formats.Tar;
 using System.IO.Compression;
 using Valleysoft.DockerRegistryClient;
 using Valleysoft.DockerRegistryClient.Models;
@@ -27,7 +27,7 @@ internal static class ImageHelper
         Console.Error.WriteLine($"Getting layers for {image}");
 
         ImageName imageName = ImageName.Parse(image);
-        IDockerRegistryClient client = await dockerRegistryClientFactory.GetClientAsync(imageName.Registry);
+        IDockerRegistryClient client = await dockerRegistryClientFactory.GetClientAsync(imageName.Registry, cancellationToken);
         IImageManifest manifest =
             (await ManifestHelper.GetResolvedManifestAsync(client, imageName, options, cancellationToken)).Manifest;
 

@@ -209,7 +209,7 @@ public class CompareMetadataCommand : RegistryCommandBase<CompareMetadataOptions
     private async Task<MetadataDocument> GetMetadataAsync(string image, CancellationToken cancellationToken)
     {
         ImageName imageName = ImageName.Parse(image);
-        using IDockerRegistryClient client = await DockerRegistryClientFactory.GetClientAsync(imageName.Registry);
+        using IDockerRegistryClient client = await DockerRegistryClientFactory.GetClientAsync(imageName.Registry, cancellationToken);
         // Keep the original manifest because resolving an index discards the platform inventory that must also be compared.
         ManifestInfo initialManifest = await client.Manifests.GetAsync(
             imageName.Repo,

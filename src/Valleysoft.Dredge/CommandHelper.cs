@@ -35,19 +35,61 @@ internal static class CommandHelper
         TextWriter? errorWriter = null,
         Action<int>? exit = null)
     {
+        TimeSpan timeout = GetOperationTimeout();
+        using CancellationTokenSource? timeoutCancellationSource = timeout == Timeout.InfiniteTimeSpan || timeout <= TimeSpan.Zero
+            ? null
+            : CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+
+        if (timeoutCancellationSource is not null)
+        {
+            timeoutCancellationSource.CancelAfter(timeout);
+        }
+
+        CancellationToken operationCancellationToken = timeoutCancellationSource?.Token ?? cancellationToken;
+
         try
         {
-            await execute(cancellationToken);
+            await execute(operationCancellationToken);
         }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
         {
             throw;
+        }
+        catch (OperationCanceledException) when (
+            timeoutCancellationSource is not null &&
+            timeoutCancellationSource.IsCancellationRequested &&
+            !cancellationToken.IsCancellationRequested)
+        {
+            throw new TimeoutException($"The operation timed out after {GetOperationTimeoutDescription()}.");
         }
         catch (Exception e)
         {
             WriteError(e, registry, errorWriter);
             (exit ?? Environment.Exit)(1);
         }
+    }
+
+    private static TimeSpan GetOperationTimeout()
+    {
+        TimeSpan? timeout = AppSettings.Load().Operations.GetTimeout();
+        return timeout ?? Timeout.InfiniteTimeSpan;
+    }
+
+    private static string GetOperationTimeoutDescription()
+    {
+        TimeSpan timeout = GetOperationTimeout();
+        if (timeout == Timeout.InfiniteTimeSpan || timeout <= TimeSpan.Zero)
+        {
+            return "the configured timeout";
+        }
+
+        return timeout switch
+        {
+            { TotalDays: >= 1 } => $"{timeout.TotalDays:0} day(s)",
+            { TotalHours: >= 1 } => $"{timeout.TotalHours:0} hour(s)",
+            { TotalMinutes: >= 1 } => $"{timeout.TotalMinutes:0} minute(s)",
+            _ => $"{timeout.TotalSeconds:0} second(s)"
+        };
     }
 
     private static void WriteError(Exception e, string? registry, TextWriter? errorWriter)

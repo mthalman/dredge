@@ -14,7 +14,7 @@ public class ListCommand : RegistryCommandBase<ListOptions>
         ImageName imageName = ImageName.Parse(Options.Image);
         return ExecuteCommandAsync(imageName.Registry, cancellationToken, async ct =>
         {
-            using IDockerRegistryClient client = await DockerRegistryClientFactory.GetClientAsync(imageName.Registry);
+            using IDockerRegistryClient client = await DockerRegistryClientFactory.GetClientAsync(imageName.Registry, cancellationToken);
             OciImageIndex index =
                 await ReferrerHelper.GetReferrersAsync(
                     client,

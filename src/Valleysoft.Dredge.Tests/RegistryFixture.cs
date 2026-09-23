@@ -398,7 +398,7 @@ public class RegistryFixture : IAsyncLifetime
 
     private sealed class RegistryClientFactory(Uri baseUri) : IDockerRegistryClientFactory
     {
-        public Task<IDockerRegistryClient> GetClientAsync(string? registry)
+        public Task<IDockerRegistryClient> GetClientAsync(string? registry, CancellationToken cancellationToken = default)
         {
             Assert.Equal(baseUri.Authority, registry);
             IDockerRegistryClient client = new DockerRegistryClientWrapper(

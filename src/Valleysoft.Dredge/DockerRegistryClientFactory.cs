@@ -18,8 +18,10 @@ internal class DockerRegistryClientFactory : IDockerRegistryClientFactory
         this.environmentVariableProvider = environmentVariableProvider;
     }
 
-    public async Task<IDockerRegistryClient> GetClientAsync(string? registry)
+    public async Task<IDockerRegistryClient> GetClientAsync(string? registry, CancellationToken cancellationToken = default)
     {
+        cancellationToken.ThrowIfCancellationRequested();
+
         IRegistryClientCredentials? clientCreds;
 
         string? accessToken;
@@ -38,9 +40,10 @@ internal class DockerRegistryClientFactory : IDockerRegistryClientFactory
         else
         {
             DockerCredentials creds;
+            string authRegistry = DockerHubHelper.GetAuthRegistry(registry);
             try
             {
-                creds = await CredsProvider.GetCredentialsAsync(DockerHubHelper.GetAuthRegistry(registry));
+                creds = await CredsProvider.GetCredentialsAsync(authRegistry, cancellationToken);
             }
             catch (Exception e) when (e is CredsNotFoundException || e is FileNotFoundException)
             {
@@ -57,13 +60,30 @@ internal class DockerRegistryClientFactory : IDockerRegistryClientFactory
             }
         }
 
-        return new DockerRegistryClientWrapper(CreateClient(registry, clientCreds));
+        return new DockerRegistryClientWrapper(CreateClient(registry, clientCreds, cancellationToken));
     }
 
-    private static RegistryClient CreateClient(string? registry, IRegistryClientCredentials? clientCreds = null)
+    private static RegistryClient CreateClient(
+        string? registry,
+        IRegistryClientCredentials? clientCreds = null,
+        CancellationToken cancellationToken = default)
     {
+        cancellationToken.ThrowIfCancellationRequested();
+
         RegistryClient client = new(DockerHubHelper.GetApiRegistry(registry), clientCreds);
-        client.HttpClient.Timeout = new TimeSpan(0, 30, 0);
+        client.HttpClient.Timeout = GetOperationTimeout();
         return client;
+    }
+
+    internal static TimeSpan GetOperationTimeout()
+    {
+        AppSettings settings = AppSettings.Load();
+        TimeSpan? timeout = settings.Operations.GetTimeout();
+        if (timeout is null)
+        {
+            return Timeout.InfiniteTimeSpan;
+        }
+
+        return timeout.Value > TimeSpan.Zero ? timeout.Value : Timeout.InfiniteTimeSpan;
     }
 }

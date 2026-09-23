@@ -16,7 +16,7 @@ public class ExtractCommand : RegistryCommandBase<ExtractOptions>
         return ExecuteCommandAsync(imageName.Registry, cancellationToken, async ct =>
         {
             using IDockerRegistryClient client =
-                await DockerRegistryClientFactory.GetClientAsync(imageName.Registry);
+                await DockerRegistryClientFactory.GetClientAsync(imageName.Registry, cancellationToken);
             ImageFileSystem fileSystem =
                 await ImageFileSystem.CreateAsync(client, imageName, Options, ct);
             await fileSystem.ExtractAsync(Options.Path, Options.OutputPath, ct);
