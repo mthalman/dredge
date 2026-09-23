@@ -152,40 +152,35 @@ internal sealed class SettingsCommandIntegrationScenarios
     }
 }
 
-[Trait("Category", "Integration")]
-public sealed class SettingsRoundTripIntegrationTests
+public sealed class SettingsRoundTripTests
 {
     [Fact]
     public Task SetAndGetCommands_RoundTripIsolatedSettings() =>
         new SettingsCommandIntegrationScenarios().SetAndGetCommands_RoundTripIsolatedSettings();
 }
 
-[Trait("Category", "Integration")]
-public sealed class SettingsClearCacheIntegrationTests
+public sealed class SettingsClearCacheTests
 {
     [Fact]
     public Task ClearCacheCommand_DeletesIsolatedCache() =>
         new SettingsCommandIntegrationScenarios().ClearCacheCommand_DeletesIsolatedCache();
 }
 
-[Trait("Category", "Integration")]
-public sealed class SettingsClearCacheMissingIntegrationTests
+public sealed class SettingsClearCacheMissingTests
 {
     [Fact]
     public Task ClearCacheCommand_WhenCacheDoesNotExistReportsNoWork() =>
         new SettingsCommandIntegrationScenarios().ClearCacheCommand_WhenCacheDoesNotExistReportsNoWork();
 }
 
-[Trait("Category", "Integration")]
-public sealed class SettingsOpenIntegrationTests
+public sealed class SettingsOpenTests
 {
     [Fact]
     public Task OpenCommand_CreatesAndLaunchesIsolatedSettingsFile() =>
         new SettingsCommandIntegrationScenarios().OpenCommand_CreatesAndLaunchesIsolatedSettingsFile();
 }
 
-[Trait("Category", "Integration")]
-public sealed class SettingsOpenFallbackIntegrationTests
+public sealed class SettingsOpenFallbackTests
 {
     [Fact]
     public Task OpenCommand_WhenShellLaunchFailsWritesSettingsPath() =>
