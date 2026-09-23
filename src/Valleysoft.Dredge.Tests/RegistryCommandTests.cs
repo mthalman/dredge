@@ -1,4 +1,4 @@
-﻿namespace Valleysoft.Dredge.Tests;
+namespace Valleysoft.Dredge.Tests;
 
 using System.CommandLine;
 using System.Text.Json;
@@ -387,7 +387,7 @@ public class RegistryCommandTests
     private static IDockerRegistryClientFactory CreateFactory(IDockerRegistryClient client)
     {
         Mock<IDockerRegistryClientFactory> factory = new();
-        factory.Setup(o => o.GetClientAsync(It.IsAny<string?>())).ReturnsAsync(client);
+        factory.Setup(o => o.GetClientAsync(It.IsAny<string?>(), It.IsAny<CancellationToken>())).ReturnsAsync(client);
         return factory.Object;
     }
 

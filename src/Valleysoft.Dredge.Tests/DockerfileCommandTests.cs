@@ -1,4 +1,4 @@
-﻿namespace Valleysoft.Dredge.Tests;
+namespace Valleysoft.Dredge.Tests;
 
 using Spectre.Console;
 using System.Text;
@@ -64,7 +64,7 @@ public class DockerfileCommandTests
         Mock<IDockerRegistryClient> mcrClientMock = new();
 
         clientFactoryMock
-            .Setup(o => o.GetClientAsync(RegistryHelper.McrRegistry))
+            .Setup(o => o.GetClientAsync(RegistryHelper.McrRegistry, It.IsAny<CancellationToken>()))
             .ReturnsAsync(mcrClientMock.Object);
 
         ManifestLayer[] layers = [];
@@ -154,7 +154,7 @@ public class DockerfileCommandTests
             .ReturnsAsync(new MemoryStream(Encoding.UTF8.GetBytes(imageJson)));
 
         clientFactoryMock
-            .Setup(o => o.GetClientAsync(Registry))
+            .Setup(o => o.GetClientAsync(Registry, It.IsAny<CancellationToken>()))
             .ReturnsAsync(registryClientMock.Object);
 
         DockerfileCommand command = new(clientFactoryMock.Object)

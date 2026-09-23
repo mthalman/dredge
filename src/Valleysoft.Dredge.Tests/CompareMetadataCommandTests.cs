@@ -540,7 +540,7 @@ public class CompareMetadataCommandTests
 
         Mock<IDockerRegistryClientFactory> factory = new();
         factory
-            .Setup(clientFactory => clientFactory.GetClientAsync(Registry))
+            .Setup(clientFactory => clientFactory.GetClientAsync(Registry, It.IsAny<CancellationToken>()))
             .ReturnsAsync(client.Object);
         AppSettings settings = (AppSettings)Activator.CreateInstance(
             typeof(AppSettings),

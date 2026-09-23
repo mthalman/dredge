@@ -26,7 +26,7 @@ public class LsCommand : RegistryCommandBase<LsOptions>
         return ExecuteCommandAsync(imageName.Registry, cancellationToken, async ct =>
         {
             using IDockerRegistryClient client =
-                await DockerRegistryClientFactory.GetClientAsync(imageName.Registry, cancellationToken);
+                await DockerRegistryClientFactory.GetClientAsync(imageName.Registry, ct);
             ImageFileSystem fileSystem =
                 await ImageFileSystem.CreateAsync(client, imageName, Options, ct);
             IReadOnlyList<ImageFileSystemEntry> entries =

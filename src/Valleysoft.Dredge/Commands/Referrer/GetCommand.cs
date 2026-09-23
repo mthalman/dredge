@@ -23,7 +23,7 @@ public class GetCommand : RegistryCommandBase<GetOptions>
         return ExecuteCommandAsync(imageName.Registry, cancellationToken, async ct =>
         {
             using IDockerRegistryClient client =
-                await DockerRegistryClientFactory.GetClientAsync(imageName.Registry, cancellationToken);
+                await DockerRegistryClientFactory.GetClientAsync(imageName.Registry, ct);
             ResolvedArtifact artifact = await ArtifactHelper.ResolveAsync(
                 client,
                 imageName,

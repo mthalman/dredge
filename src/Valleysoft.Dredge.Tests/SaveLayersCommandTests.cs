@@ -39,7 +39,7 @@ public class SaveLayersCommandTests
             Assert.Contains("is not empty", error.ToString());
             Assert.Contains("--force", error.ToString());
             factory.Verify(
-                item => item.GetClientAsync(It.IsAny<string?>()),
+                item => item.GetClientAsync(It.IsAny<string?>(), It.IsAny<CancellationToken>()),
                 Times.Never);
         }
         finally
@@ -82,7 +82,7 @@ public class SaveLayersCommandTests
                 ("link.txt", "new"),
                 (".wh.delete.txt", string.Empty)));
         Mock<IDockerRegistryClientFactory> factory = new();
-        factory.Setup(item => item.GetClientAsync(null)).ReturnsAsync(client.Object);
+        factory.Setup(item => item.GetClientAsync(null, It.IsAny<CancellationToken>())).ReturnsAsync(client.Object);
         TestSaveLayersCommand command = new(factory.Object, TextWriter.Null)
         {
             Options = new SaveLayersOptions
@@ -138,7 +138,7 @@ public class SaveLayersCommandTests
             digest,
             () => CreateLayer(("existing.txt", "new")));
         Mock<IDockerRegistryClientFactory> factory = new();
-        factory.Setup(item => item.GetClientAsync(null)).ReturnsAsync(client.Object);
+        factory.Setup(item => item.GetClientAsync(null, It.IsAny<CancellationToken>())).ReturnsAsync(client.Object);
         TestSaveLayersCommand command = new(factory.Object, TextWriter.Null)
         {
             Options = new SaveLayersOptions
@@ -182,7 +182,7 @@ public class SaveLayersCommandTests
             digest,
             () => CreateSymbolicLinkLayer("link", "target.txt"));
         Mock<IDockerRegistryClientFactory> factory = new();
-        factory.Setup(item => item.GetClientAsync(null)).ReturnsAsync(client.Object);
+        factory.Setup(item => item.GetClientAsync(null, It.IsAny<CancellationToken>())).ReturnsAsync(client.Object);
         TestSaveLayersCommand command = new(factory.Object, TextWriter.Null)
         {
             Options = new SaveLayersOptions
@@ -239,7 +239,7 @@ public class SaveLayersCommandTests
             Assert.Equal(1, exception.ExitCode);
             Assert.Contains("is an existing file", error.ToString());
             factory.Verify(
-                item => item.GetClientAsync(It.IsAny<string?>()),
+                item => item.GetClientAsync(It.IsAny<string?>(), It.IsAny<CancellationToken>()),
                 Times.Never);
         }
         finally
@@ -284,7 +284,7 @@ public class SaveLayersCommandTests
                 sentinelPath,
                 TestContext.Current.CancellationToken));
             factory.Verify(
-                item => item.GetClientAsync(It.IsAny<string?>()),
+                item => item.GetClientAsync(It.IsAny<string?>(), It.IsAny<CancellationToken>()),
                 Times.Never);
         }
         finally

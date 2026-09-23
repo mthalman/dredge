@@ -42,7 +42,7 @@ public class OsCommandTests
         Mock<IDockerRegistryClientFactory> clientFactoryMock = new();
         Mock<IDockerRegistryClient> mcrClientMock = new();
         clientFactoryMock
-            .Setup(o => o.GetClientAsync(RegistryHelper.McrRegistry))
+            .Setup(o => o.GetClientAsync(RegistryHelper.McrRegistry, It.IsAny<CancellationToken>()))
             .ReturnsAsync(mcrClientMock.Object);
         mcrClientMock
             .Setup(o => o.Blobs.ExistsAsync(
@@ -103,7 +103,7 @@ public class OsCommandTests
         Mock<IDockerRegistryClientFactory> clientFactoryMock = new();
         Mock<IDockerRegistryClient> mcrClientMock = new();
         clientFactoryMock
-            .Setup(o => o.GetClientAsync(RegistryHelper.McrRegistry))
+            .Setup(o => o.GetClientAsync(RegistryHelper.McrRegistry, It.IsAny<CancellationToken>()))
             .ReturnsAsync(mcrClientMock.Object);
         mcrClientMock
             .Setup(o => o.Blobs.ExistsAsync(

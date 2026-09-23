@@ -14,7 +14,7 @@ public class DigestCommand : RegistryCommandBase<DigestOptions>
         ImageName imageName = ImageName.Parse(Options.Image);
         return ExecuteCommandAsync(imageName.Registry, cancellationToken, async ct =>
         {
-            using IDockerRegistryClient client = await DockerRegistryClientFactory.GetClientAsync(imageName.Registry, cancellationToken);
+            using IDockerRegistryClient client = await DockerRegistryClientFactory.GetClientAsync(imageName.Registry, ct);
 
             string digest = await client.Manifests.GetDigestAsync(
                 imageName.Repo, (imageName.Tag ?? imageName.Digest)!, ct);

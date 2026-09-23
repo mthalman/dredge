@@ -29,7 +29,7 @@ public partial class OsCommand : RegistryCommandBase<OsOptions>
         ImageName imageName = ImageName.Parse(Options.Image);
         return ExecuteCommandAsync(imageName.Registry, cancellationToken, async ct =>
         {
-            using IDockerRegistryClient client = await DockerRegistryClientFactory.GetClientAsync(imageName.Registry, cancellationToken);
+            using IDockerRegistryClient client = await DockerRegistryClientFactory.GetClientAsync(imageName.Registry, ct);
             IImageManifest manifest =
                 (await ManifestHelper.GetResolvedManifestAsync(client, imageName, Options, ct)).Manifest;
 

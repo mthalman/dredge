@@ -14,7 +14,7 @@ public class ListCommand : RegistryCommandBase<ListOptions>
     {
         return ExecuteCommandAsync(Options.Registry, cancellationToken, async ct =>
         {
-            using IDockerRegistryClient client = await DockerRegistryClientFactory.GetClientAsync(Options.Registry, cancellationToken);
+            using IDockerRegistryClient client = await DockerRegistryClientFactory.GetClientAsync(Options.Registry, ct);
 
             List<string> repoNames = [];
 

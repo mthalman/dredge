@@ -819,7 +819,7 @@ public class ReferrerArtifactCommandTests
     private static IDockerRegistryClientFactory CreateFactory(IDockerRegistryClient client)
     {
         Mock<IDockerRegistryClientFactory> factory = new();
-        factory.Setup(instance => instance.GetClientAsync(Registry)).ReturnsAsync(client);
+        factory.Setup(instance => instance.GetClientAsync(Registry, It.IsAny<CancellationToken>())).ReturnsAsync(client);
         return factory.Object;
     }
 
