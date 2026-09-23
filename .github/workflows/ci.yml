@@ -153,6 +153,9 @@ jobs:
           fetch-depth: 0
           persist-credentials: false
 
+      - name: Install Git
+        run: apk add --no-cache git
+
       - name: Install dependencies
         run: dotnet restore
 
