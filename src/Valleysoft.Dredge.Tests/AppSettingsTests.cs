@@ -164,6 +164,18 @@ public class AppSettingsTests
         }
     }
 
+    [Fact]
+    public void OperationsTimeout_WhenTooLargeThrows()
+    {
+        AppSettings settings = CreateSettings();
+        settings.Operations.Timeout = "25.00:00:00";
+
+        InvalidOperationException exception = Assert.Throws<InvalidOperationException>(
+            () => settings.Operations.GetTimeout());
+
+        Assert.Contains("maximum supported timeout", exception.Message);
+    }
+
     [Theory]
     [InlineData()]
     [InlineData("unknown")]

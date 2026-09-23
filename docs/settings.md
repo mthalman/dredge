@@ -32,7 +32,7 @@ platform options take precedence over the corresponding settings. See
 
 `operations.timeout` accepts a .NET `TimeSpan` value. Set it to an empty string
 or `null` to disable the timeout. Zero and negative values also disable the
-timeout.
+timeout. Positive values are limited to about 24.8 days by the runtime.
 
 ## Configure the file comparison tool
 
