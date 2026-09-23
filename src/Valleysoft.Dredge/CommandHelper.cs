@@ -1,4 +1,5 @@
 ﻿using System.CommandLine;
+using System.Globalization;
 using Valleysoft.DockerRegistryClient;
 using Valleysoft.DockerRegistryClient.Models;
 
@@ -33,9 +34,10 @@ internal static class CommandHelper
         CancellationToken cancellationToken,
         Func<CancellationToken, Task> execute,
         TextWriter? errorWriter = null,
-        Action<int>? exit = null)
+        Action<int>? exit = null,
+        TimeSpan? operationTimeout = null)
     {
-        TimeSpan timeout = GetOperationTimeout();
+        TimeSpan timeout = operationTimeout ?? GetOperationTimeout();
         using CancellationTokenSource? timeoutCancellationSource = timeout == Timeout.InfiniteTimeSpan || timeout <= TimeSpan.Zero
             ? null
             : CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
@@ -60,7 +62,7 @@ internal static class CommandHelper
             timeoutCancellationSource.IsCancellationRequested &&
             !cancellationToken.IsCancellationRequested)
         {
-            throw new TimeoutException($"The operation timed out after {GetOperationTimeoutDescription()}.");
+            throw new TimeoutException($"The operation timed out after {GetOperationTimeoutDescription(timeout)}.");
         }
         catch (Exception e)
         {
@@ -75,9 +77,8 @@ internal static class CommandHelper
         return timeout ?? Timeout.InfiniteTimeSpan;
     }
 
-    private static string GetOperationTimeoutDescription()
+    private static string GetOperationTimeoutDescription(TimeSpan timeout)
     {
-        TimeSpan timeout = GetOperationTimeout();
         if (timeout == Timeout.InfiniteTimeSpan || timeout <= TimeSpan.Zero)
         {
             return "the configured timeout";
@@ -85,10 +86,10 @@ internal static class CommandHelper
 
         return timeout switch
         {
-            { TotalDays: >= 1 } => $"{timeout.TotalDays:0} day(s)",
-            { TotalHours: >= 1 } => $"{timeout.TotalHours:0} hour(s)",
-            { TotalMinutes: >= 1 } => $"{timeout.TotalMinutes:0} minute(s)",
-            _ => $"{timeout.TotalSeconds:0} second(s)"
+            { TotalDays: >= 1 } => $"{timeout.TotalDays.ToString("0.###", CultureInfo.InvariantCulture)} day(s)",
+            { TotalHours: >= 1 } => $"{timeout.TotalHours.ToString("0.###", CultureInfo.InvariantCulture)} hour(s)",
+            { TotalMinutes: >= 1 } => $"{timeout.TotalMinutes.ToString("0.###", CultureInfo.InvariantCulture)} minute(s)",
+            _ => $"{timeout.TotalSeconds.ToString("0.###", CultureInfo.InvariantCulture)} second(s)"
         };
     }
 

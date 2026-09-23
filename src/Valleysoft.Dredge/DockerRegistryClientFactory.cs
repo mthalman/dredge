@@ -47,7 +47,8 @@ internal class DockerRegistryClientFactory : IDockerRegistryClientFactory
             }
             catch (Exception e) when (e is CredsNotFoundException || e is FileNotFoundException)
             {
-                return new DockerRegistryClientWrapper(CreateClient(DockerHubHelper.GetApiRegistry(registry)));
+                return new DockerRegistryClientWrapper(
+                    CreateClient(DockerHubHelper.GetApiRegistry(registry), cancellationToken: cancellationToken));
             }
 
             if (creds.IdentityToken is not null)
