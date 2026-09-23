@@ -10,10 +10,16 @@ internal partial class AppSettings
     public static readonly string SettingsPath =
         Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "Valleysoft.Dredge", "settings.json");
 
+    public static readonly TimeSpan DefaultOperationTimeout = TimeSpan.FromMinutes(30);
+    public static readonly TimeSpan MaximumOperationTimeout = TimeSpan.FromMilliseconds(int.MaxValue);
+
     public const string FileCompareToolName = "fileCompareTool";
 
     [JsonPropertyName(FileCompareToolName)]
     public FileCompareToolSettings FileCompareTool { get; set; } = new();
+
+    [JsonPropertyName("operations")]
+    public OperationsSettings Operations { get; set; } = new();
 
     [JsonPropertyName("platform")]
     public PlatformSettings Platform { get; set; } = new();
@@ -72,6 +78,34 @@ internal partial class FileCompareToolSettings
 
     [JsonPropertyName("args")]
     public string Args { get; set; } = string.Empty;
+}
+
+internal partial class OperationsSettings
+{
+    [JsonPropertyName("timeout")]
+    public string? Timeout { get; set; } = AppSettings.DefaultOperationTimeout.ToString("c");
+
+    public TimeSpan? GetTimeout()
+    {
+        string? value = Timeout;
+        if (string.IsNullOrWhiteSpace(value) || value == "null")
+        {
+            return null;
+        }
+
+        if (!TimeSpan.TryParse(value, out TimeSpan parsed))
+        {
+            throw new InvalidOperationException($"Invalid operations.timeout value '{value}'.");
+        }
+
+        if (parsed > AppSettings.MaximumOperationTimeout)
+        {
+            throw new InvalidOperationException(
+                $"The operations.timeout value '{value}' exceeds the maximum supported timeout of {AppSettings.MaximumOperationTimeout}.");
+        }
+
+        return parsed;
+    }
 }
 
 internal partial class PlatformSettings

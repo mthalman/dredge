@@ -21,6 +21,7 @@ Setting names use dot notation with `dredge settings get` and
 |---------|---------|---------|
 | `fileCompareTool.exePath` | Empty | Executable that `image compare files` starts |
 | `fileCompareTool.args` | Empty | Arguments passed to the comparison executable |
+| `operations.timeout` | `00:30:00` | Maximum duration of a Dredge operation |
 | `platform.os` | Empty | Operating system used for platform resolution |
 | `platform.osVersion` | Empty | Operating system version used for platform resolution |
 | `platform.arch` | Empty | Architecture used for platform resolution |
@@ -28,6 +29,10 @@ Setting names use dot notation with `dredge settings get` and
 An empty platform setting does not filter candidate manifests. Command-line
 platform options take precedence over the corresponding settings. See
 [Resolve a platform-specific image](platform-resolution.md).
+
+`operations.timeout` accepts a .NET `TimeSpan` value. Set it to an empty string
+or `null` to disable the timeout. Zero and negative values also disable the
+timeout. Positive values are limited to about 24.8 days by the runtime.
 
 ## Configure the file comparison tool
 
@@ -53,6 +58,9 @@ requires quoted paths.
   "fileCompareTool": {
     "exePath": "<string>",
     "args": "<string>"
+  },
+  "operations": {
+    "timeout": "00:30:00"
   },
   "platform": {
     "os": "<string>",

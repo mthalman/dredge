@@ -2,5 +2,5 @@
 
 public interface IDockerRegistryClientFactory
 {
-    Task<IDockerRegistryClient> GetClientAsync(string? registry);
+    Task<IDockerRegistryClient> GetClientAsync(string? registry, CancellationToken cancellationToken = default);
 }

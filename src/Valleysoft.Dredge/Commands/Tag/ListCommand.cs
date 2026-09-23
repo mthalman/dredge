@@ -1,4 +1,4 @@
-﻿using Valleysoft.DockerRegistryClient;
+using Valleysoft.DockerRegistryClient;
 using Valleysoft.DockerRegistryClient.Models;
 
 namespace Valleysoft.Dredge.Commands.Tag;
@@ -15,7 +15,7 @@ public class ListCommand : RegistryCommandBase<ListOptions>
         ImageName imageName = ImageName.Parse(Options.Repo);
         return ExecuteCommandAsync(imageName.Registry, cancellationToken, async ct =>
         {
-            using IDockerRegistryClient client = await DockerRegistryClientFactory.GetClientAsync(imageName.Registry);
+            using IDockerRegistryClient client = await DockerRegistryClientFactory.GetClientAsync(imageName.Registry, ct);
 
             List<string> tags = [];
 

@@ -737,7 +737,7 @@ public class ImageFileSystemTests
         byte[][] layers = [CreateLayer(Entry.File("file", "value"))];
         Mock<IDockerRegistryClient> client = CreateClient(layers);
         Mock<IDockerRegistryClientFactory> factory = new();
-        factory.Setup(item => item.GetClientAsync("registry.test")).ReturnsAsync(client.Object);
+        factory.Setup(item => item.GetClientAsync("registry.test", It.IsAny<CancellationToken>())).ReturnsAsync(client.Object);
         StringWriter writer = new();
         IAnsiConsole console = AnsiConsole.Create(new AnsiConsoleSettings
         {
@@ -774,7 +774,7 @@ public class ImageFileSystemTests
                 Entry.SymbolicLink("dir/link", "file"),
                 Entry.File("dir/second", "value"))]);
         Mock<IDockerRegistryClientFactory> factory = new();
-        factory.Setup(item => item.GetClientAsync("registry.test")).ReturnsAsync(client.Object);
+        factory.Setup(item => item.GetClientAsync("registry.test", It.IsAny<CancellationToken>())).ReturnsAsync(client.Object);
 
         string defaultOutput = await InvokeLsCommandAsync(factory.Object, "/dir");
         string longOutput = await InvokeLsCommandAsync(factory.Object, "/dir", "-l");
@@ -821,7 +821,7 @@ public class ImageFileSystemTests
         Mock<IDockerRegistryClient> client =
             CreateClient([CreateLayer(Entry.File("file", content))]);
         Mock<IDockerRegistryClientFactory> factory = new();
-        factory.Setup(item => item.GetClientAsync("registry.test")).ReturnsAsync(client.Object);
+        factory.Setup(item => item.GetClientAsync("registry.test", It.IsAny<CancellationToken>())).ReturnsAsync(client.Object);
         using MemoryStream output = new();
         CatCommand command = new TestCatCommand(factory.Object, output);
 

@@ -1,4 +1,4 @@
-﻿using System.Formats.Tar;
+using System.Formats.Tar;
 using System.IO.Compression;
 using System.Text.RegularExpressions;
 using Valleysoft.DockerRegistryClient;
@@ -29,7 +29,7 @@ public partial class OsCommand : RegistryCommandBase<OsOptions>
         ImageName imageName = ImageName.Parse(Options.Image);
         return ExecuteCommandAsync(imageName.Registry, cancellationToken, async ct =>
         {
-            using IDockerRegistryClient client = await DockerRegistryClientFactory.GetClientAsync(imageName.Registry);
+            using IDockerRegistryClient client = await DockerRegistryClientFactory.GetClientAsync(imageName.Registry, ct);
             IImageManifest manifest =
                 (await ManifestHelper.GetResolvedManifestAsync(client, imageName, Options, ct)).Manifest;
 
@@ -117,7 +117,7 @@ public partial class OsCommand : RegistryCommandBase<OsOptions>
         }
 
         using IDockerRegistryClient mcrClient =
-            await dockerRegistryClientFactory.GetClientAsync(RegistryHelper.McrRegistry);
+            await dockerRegistryClientFactory.GetClientAsync(RegistryHelper.McrRegistry, cancellationToken);
 
         foreach (WindowsImageDefinition definition in windowsImageDefinitions)
         {
@@ -186,7 +186,7 @@ public partial class OsCommand : RegistryCommandBase<OsOptions>
         CancellationToken cancellationToken = default)
     {
         using IDockerRegistryClient mcrClient =
-            await dockerRegistryClientFactory.GetClientAsync(RegistryHelper.McrRegistry);
+            await dockerRegistryClientFactory.GetClientAsync(RegistryHelper.McrRegistry, cancellationToken);
 
         foreach (WindowsImageDefinition definition in windowsImageDefinitions)
         {

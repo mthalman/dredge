@@ -18,8 +18,10 @@ internal class DockerRegistryClientFactory : IDockerRegistryClientFactory
         this.environmentVariableProvider = environmentVariableProvider;
     }
 
-    public async Task<IDockerRegistryClient> GetClientAsync(string? registry)
+    public async Task<IDockerRegistryClient> GetClientAsync(string? registry, CancellationToken cancellationToken = default)
     {
+        cancellationToken.ThrowIfCancellationRequested();
+
         IRegistryClientCredentials? clientCreds;
 
         string? accessToken;
@@ -38,13 +40,15 @@ internal class DockerRegistryClientFactory : IDockerRegistryClientFactory
         else
         {
             DockerCredentials creds;
+            string authRegistry = DockerHubHelper.GetAuthRegistry(registry);
             try
             {
-                creds = await CredsProvider.GetCredentialsAsync(DockerHubHelper.GetAuthRegistry(registry));
+                creds = await GetCredentialsAsync(authRegistry, cancellationToken);
             }
             catch (Exception e) when (e is CredsNotFoundException || e is FileNotFoundException)
             {
-                return new DockerRegistryClientWrapper(CreateClient(DockerHubHelper.GetApiRegistry(registry)));
+                return new DockerRegistryClientWrapper(
+                    CreateClient(DockerHubHelper.GetApiRegistry(registry), cancellationToken: cancellationToken));
             }
 
             if (creds.IdentityToken is not null)
@@ -57,13 +61,23 @@ internal class DockerRegistryClientFactory : IDockerRegistryClientFactory
             }
         }
 
-        return new DockerRegistryClientWrapper(CreateClient(registry, clientCreds));
+        return new DockerRegistryClientWrapper(CreateClient(registry, clientCreds, cancellationToken));
     }
 
-    private static RegistryClient CreateClient(string? registry, IRegistryClientCredentials? clientCreds = null)
+    protected virtual Task<DockerCredentials> GetCredentialsAsync(
+        string registry,
+        CancellationToken cancellationToken) =>
+        CredsProvider.GetCredentialsAsync(registry, cancellationToken);
+
+    private static RegistryClient CreateClient(
+        string? registry,
+        IRegistryClientCredentials? clientCreds = null,
+        CancellationToken cancellationToken = default)
     {
+        cancellationToken.ThrowIfCancellationRequested();
+
         RegistryClient client = new(DockerHubHelper.GetApiRegistry(registry), clientCreds);
-        client.HttpClient.Timeout = new TimeSpan(0, 30, 0);
+        client.HttpClient.Timeout = Timeout.InfiniteTimeSpan;
         return client;
     }
 }

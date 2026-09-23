@@ -1,4 +1,4 @@
-﻿namespace Valleysoft.Dredge.Tests;
+namespace Valleysoft.Dredge.Tests;
 
 using System.Formats.Tar;
 using System.IO.Compression;
@@ -54,7 +54,7 @@ public class ImageHelperTests
                 ("opaque/.wh..wh..opq", string.Empty),
                 ("nested/added.txt", "added")));
         Mock<IDockerRegistryClientFactory> factory = new();
-        factory.Setup(o => o.GetClientAsync(null)).ReturnsAsync(client.Object);
+        factory.Setup(o => o.GetClientAsync(null, It.IsAny<CancellationToken>())).ReturnsAsync(client.Object);
 
         try
         {
@@ -125,7 +125,7 @@ public class ImageHelperTests
                 return CreateLayer(("file.txt", "content"));
             });
         Mock<IDockerRegistryClientFactory> factory = new();
-        factory.Setup(o => o.GetClientAsync(null)).ReturnsAsync(client.Object);
+        factory.Setup(o => o.GetClientAsync(null, It.IsAny<CancellationToken>())).ReturnsAsync(client.Object);
         TestDredgePathProvider pathProvider = new(tempRoot);
 
         try
@@ -201,7 +201,7 @@ public class ImageHelperTests
             .Setup(o => o.Blobs.GetAsync("library/image", secondDigest, It.IsAny<CancellationToken>()))
             .ReturnsAsync(() => CreateLayer(("file.txt", "content")));
         Mock<IDockerRegistryClientFactory> factory = new();
-        factory.Setup(o => o.GetClientAsync(null)).ReturnsAsync(client.Object);
+        factory.Setup(o => o.GetClientAsync(null, It.IsAny<CancellationToken>())).ReturnsAsync(client.Object);
 
         try
         {
@@ -258,7 +258,7 @@ public class ImageHelperTests
                     ]
                 }));
         Mock<IDockerRegistryClientFactory> factory = new();
-        factory.Setup(o => o.GetClientAsync(null)).ReturnsAsync(client.Object);
+        factory.Setup(o => o.GetClientAsync(null, It.IsAny<CancellationToken>())).ReturnsAsync(client.Object);
 
         Exception exception = await Assert.ThrowsAsync<Exception>(
             () => ImageHelper.SaveImageLayersToDiskAsync(
@@ -290,7 +290,7 @@ public class ImageHelperTests
                 "sha256:manifest",
                 new DockerManifest { Layers = [] }));
         Mock<IDockerRegistryClientFactory> factory = new();
-        factory.Setup(o => o.GetClientAsync(null)).ReturnsAsync(client.Object);
+        factory.Setup(o => o.GetClientAsync(null, It.IsAny<CancellationToken>())).ReturnsAsync(client.Object);
 
         Exception exception = await Assert.ThrowsAsync<Exception>(
             () => ImageHelper.SaveImageLayersToDiskAsync(
@@ -319,7 +319,7 @@ public class ImageHelperTests
             Digest,
             () => CreateLayer(("file.txt", "content")));
         Mock<IDockerRegistryClientFactory> factory = new();
-        factory.Setup(o => o.GetClientAsync(null)).ReturnsAsync(client.Object);
+        factory.Setup(o => o.GetClientAsync(null, It.IsAny<CancellationToken>())).ReturnsAsync(client.Object);
 
         InvalidDataException exception = await Assert.ThrowsAsync<InvalidDataException>(
             () => ImageHelper.SaveImageLayersToDiskAsync(
@@ -358,7 +358,7 @@ public class ImageHelperTests
             .Setup(o => o.Blobs.GetAsync("library/image", digest, It.IsAny<CancellationToken>()))
             .ReturnsAsync(() => CreateLayer(($"../escaped-{id}.txt", "escaped")));
         Mock<IDockerRegistryClientFactory> factory = new();
-        factory.Setup(o => o.GetClientAsync(null)).ReturnsAsync(client.Object);
+        factory.Setup(o => o.GetClientAsync(null, It.IsAny<CancellationToken>())).ReturnsAsync(client.Object);
 
         try
         {
@@ -398,7 +398,7 @@ public class ImageHelperTests
             digest,
             () => CreateSymbolicLinkLayer("link", "../outside"));
         Mock<IDockerRegistryClientFactory> factory = new();
-        factory.Setup(o => o.GetClientAsync(null)).ReturnsAsync(client.Object);
+        factory.Setup(o => o.GetClientAsync(null, It.IsAny<CancellationToken>())).ReturnsAsync(client.Object);
 
         try
         {
@@ -432,7 +432,7 @@ public class ImageHelperTests
             digest,
             () => CreateSymlinkChainLayer(id));
         Mock<IDockerRegistryClientFactory> factory = new();
-        factory.Setup(o => o.GetClientAsync(null)).ReturnsAsync(client.Object);
+        factory.Setup(o => o.GetClientAsync(null, It.IsAny<CancellationToken>())).ReturnsAsync(client.Object);
 
         try
         {
@@ -473,7 +473,7 @@ public class ImageHelperTests
             digest,
             () => CreateLayer((whiteoutName, string.Empty)));
         Mock<IDockerRegistryClientFactory> factory = new();
-        factory.Setup(o => o.GetClientAsync(null)).ReturnsAsync(client.Object);
+        factory.Setup(o => o.GetClientAsync(null, It.IsAny<CancellationToken>())).ReturnsAsync(client.Object);
 
         try
         {

@@ -21,7 +21,7 @@ public class CatCommand : RegistryCommandBase<CatOptions>
         return ExecuteCommandAsync(imageName.Registry, cancellationToken, async ct =>
         {
             using IDockerRegistryClient client =
-                await DockerRegistryClientFactory.GetClientAsync(imageName.Registry);
+                await DockerRegistryClientFactory.GetClientAsync(imageName.Registry, ct);
             ImageFileSystem fileSystem =
                 await ImageFileSystem.CreateAsync(client, imageName, Options, ct);
             await fileSystem.CopyFileToAsync(Options.Path, standardOutput, ct);

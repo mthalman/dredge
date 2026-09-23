@@ -1,4 +1,4 @@
-﻿namespace Valleysoft.Dredge.Tests;
+namespace Valleysoft.Dredge.Tests;
 
 using Valleysoft.DockerRegistryClient.Models.Images;
 using Valleysoft.Dredge.Commands.Image;
@@ -23,7 +23,7 @@ public class WindowsOsInfoTests
             .ReturnsAsync((string repo, string _, CancellationToken _) => repo == matchingRepo);
         Mock<IDockerRegistryClientFactory> factory = new();
         factory
-            .Setup(o => o.GetClientAsync(RegistryHelper.McrRegistry))
+            .Setup(o => o.GetClientAsync(RegistryHelper.McrRegistry, It.IsAny<CancellationToken>()))
             .ReturnsAsync(client.Object);
 
         (WindowsOsInfo Info, string Repo)? result = await OsCommand.GetWindowsOsInfoAsync(
@@ -49,7 +49,7 @@ public class WindowsOsInfoTests
             .ReturnsAsync(false);
         Mock<IDockerRegistryClientFactory> factory = new();
         factory
-            .Setup(o => o.GetClientAsync(RegistryHelper.McrRegistry))
+            .Setup(o => o.GetClientAsync(RegistryHelper.McrRegistry, It.IsAny<CancellationToken>()))
             .ReturnsAsync(client.Object);
 
         (WindowsOsInfo Info, string Repo)? result = await OsCommand.GetWindowsOsInfoAsync(

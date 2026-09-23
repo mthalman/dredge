@@ -1,4 +1,5 @@
 ﻿using System.CommandLine;
+using System.Globalization;
 using Valleysoft.DockerRegistryClient;
 using Valleysoft.DockerRegistryClient.Models;
 
@@ -33,21 +34,63 @@ internal static class CommandHelper
         CancellationToken cancellationToken,
         Func<CancellationToken, Task> execute,
         TextWriter? errorWriter = null,
-        Action<int>? exit = null)
+        Action<int>? exit = null,
+        TimeSpan? operationTimeout = null)
     {
+        TimeSpan timeout = operationTimeout ?? GetOperationTimeout();
+        using CancellationTokenSource? timeoutCancellationSource = timeout == Timeout.InfiniteTimeSpan || timeout <= TimeSpan.Zero
+            ? null
+            : CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+
+        if (timeoutCancellationSource is not null)
+        {
+            timeoutCancellationSource.CancelAfter(timeout);
+        }
+
+        CancellationToken operationCancellationToken = timeoutCancellationSource?.Token ?? cancellationToken;
+
         try
         {
-            await execute(cancellationToken);
+            await execute(operationCancellationToken);
         }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
         {
             throw;
+        }
+        catch (OperationCanceledException) when (
+            timeoutCancellationSource is not null &&
+            timeoutCancellationSource.IsCancellationRequested &&
+            !cancellationToken.IsCancellationRequested)
+        {
+            throw new TimeoutException($"The operation timed out after {GetOperationTimeoutDescription(timeout)}.");
         }
         catch (Exception e)
         {
             WriteError(e, registry, errorWriter);
             (exit ?? Environment.Exit)(1);
         }
+    }
+
+    private static TimeSpan GetOperationTimeout()
+    {
+        TimeSpan? timeout = AppSettings.Load().Operations.GetTimeout();
+        return timeout ?? Timeout.InfiniteTimeSpan;
+    }
+
+    private static string GetOperationTimeoutDescription(TimeSpan timeout)
+    {
+        if (timeout == Timeout.InfiniteTimeSpan || timeout <= TimeSpan.Zero)
+        {
+            return "the configured timeout";
+        }
+
+        return timeout switch
+        {
+            { TotalDays: >= 1 } => $"{timeout.TotalDays.ToString("0.###", CultureInfo.InvariantCulture)} day(s)",
+            { TotalHours: >= 1 } => $"{timeout.TotalHours.ToString("0.###", CultureInfo.InvariantCulture)} hour(s)",
+            { TotalMinutes: >= 1 } => $"{timeout.TotalMinutes.ToString("0.###", CultureInfo.InvariantCulture)} minute(s)",
+            _ => $"{timeout.TotalSeconds.ToString("0.###", CultureInfo.InvariantCulture)} second(s)"
+        };
     }
 
     private static void WriteError(Exception e, string? registry, TextWriter? errorWriter)

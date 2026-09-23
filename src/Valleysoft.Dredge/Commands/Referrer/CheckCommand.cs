@@ -23,7 +23,7 @@ public class CheckCommand : RegistryCommandBase<CheckOptions>
         await ExecuteCommandAsync(imageName.Registry, cancellationToken, async ct =>
         {
             using IDockerRegistryClient client =
-                await DockerRegistryClientFactory.GetClientAsync(imageName.Registry);
+                await DockerRegistryClientFactory.GetClientAsync(imageName.Registry, ct);
             // Fetch all types once instead of traversing the registry for each requirement.
             OciImageIndex index =
                 await ReferrerHelper.GetReferrersAsync(client, imageName, artifactType: null, ct);

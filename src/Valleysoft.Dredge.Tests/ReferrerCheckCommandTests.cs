@@ -196,7 +196,7 @@ public class ReferrerCheckCommandTests
     private static IDockerRegistryClientFactory CreateFactory(IDockerRegistryClient client)
     {
         Mock<IDockerRegistryClientFactory> factory = new();
-        factory.Setup(o => o.GetClientAsync(It.IsAny<string?>())).ReturnsAsync(client);
+        factory.Setup(o => o.GetClientAsync(It.IsAny<string?>(), It.IsAny<CancellationToken>())).ReturnsAsync(client);
         return factory.Object;
     }
 

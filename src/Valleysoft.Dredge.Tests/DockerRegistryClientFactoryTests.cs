@@ -1,4 +1,6 @@
-﻿namespace Valleysoft.Dredge.Tests;
+﻿using Valleysoft.DockerCredsProvider;
+
+namespace Valleysoft.Dredge.Tests;
 
 public class DockerRegistryClientFactoryTests
 {
@@ -40,6 +42,52 @@ public class DockerRegistryClientFactoryTests
         Assert.Equal(
             ["DREDGE_TOKEN", "DREDGE_USERNAME", "DREDGE_PASSWORD"],
             environmentVariableProvider.RequestedVariables);
+    }
+
+    [Fact]
+    public async Task GetClientAsync_WhenCancellationIsRequestedDoesNotReadEnvironment()
+    {
+        DictionaryEnvironmentVariableProvider environmentVariableProvider = new(new Dictionary<string, string>());
+        DockerRegistryClientFactory factory = new(environmentVariableProvider);
+        using CancellationTokenSource cancellationTokenSource = new();
+        cancellationTokenSource.Cancel();
+
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(
+            () => factory.GetClientAsync("registry.example", cancellationTokenSource.Token));
+
+        Assert.Empty(environmentVariableProvider.RequestedVariables);
+    }
+
+    [Fact]
+    public async Task GetClientAsync_ForwardsCancellationTokenToCredentialLookup()
+    {
+        DictionaryEnvironmentVariableProvider environmentVariableProvider = new(new Dictionary<string, string>());
+        CancellationToken observedToken = default;
+        TestDockerRegistryClientFactory factory = new(
+            environmentVariableProvider,
+            (_, cancellationToken) =>
+            {
+                observedToken = cancellationToken;
+                throw new OperationCanceledException(cancellationToken);
+            });
+
+        using CancellationTokenSource cancellationTokenSource = new();
+
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(
+            () => factory.GetClientAsync("registry.example", cancellationTokenSource.Token));
+
+        Assert.Equal(cancellationTokenSource.Token, observedToken);
+    }
+
+    private sealed class TestDockerRegistryClientFactory(
+        IEnvironmentVariableProvider environmentVariableProvider,
+        Func<string, CancellationToken, Task<DockerCredentials>> getCredentials) :
+        DockerRegistryClientFactory(environmentVariableProvider)
+    {
+        protected override Task<DockerCredentials> GetCredentialsAsync(
+            string registry,
+            CancellationToken cancellationToken) =>
+            getCredentials(registry, cancellationToken);
     }
 
     private sealed class DictionaryEnvironmentVariableProvider : IEnvironmentVariableProvider

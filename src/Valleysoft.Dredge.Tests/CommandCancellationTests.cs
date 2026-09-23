@@ -91,6 +91,23 @@ public class CommandCancellationTests
     }
 
     [Fact]
+    public async Task OperationTimeoutProducesTimeoutDiagnostic()
+    {
+        using StringWriter error = new();
+
+        TimeoutException exception = await Assert.ThrowsAsync<TimeoutException>(() =>
+            CommandHelper.ExecuteCommandAsync(
+                registry: null,
+                CancellationToken.None,
+                ct => Task.Delay(Timeout.InfiniteTimeSpan, ct),
+                error,
+                operationTimeout: TimeSpan.FromMilliseconds(1)));
+
+        Assert.Equal("The operation timed out after 0.001 second(s).", exception.Message);
+        Assert.Empty(error.ToString());
+    }
+
+    [Fact]
     public async Task InvocationTokenIsPassedToCommand()
     {
         using CancellationTokenSource cancellationTokenSource = new();

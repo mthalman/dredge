@@ -1,4 +1,4 @@
-﻿using System.Text.Json;
+using System.Text.Json;
 using Spectre.Console;
 using Spectre.Console.Rendering;
 using Valleysoft.DockerRegistryClient;
@@ -213,7 +213,7 @@ public class CompareLayersCommand : RegistryCommandBase<CompareLayersOptions>
     private async Task<IList<LayerInfo>> GetLayersAsync(string image, CancellationToken cancellationToken)
     {
         ImageName imageName = ImageName.Parse(image);
-        using IDockerRegistryClient client = await DockerRegistryClientFactory.GetClientAsync(imageName.Registry);
+        using IDockerRegistryClient client = await DockerRegistryClientFactory.GetClientAsync(imageName.Registry, cancellationToken);
         IImageManifest manifest =
             (await ManifestHelper.GetResolvedManifestAsync(client, imageName, Options, cancellationToken)).Manifest;
 

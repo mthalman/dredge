@@ -1,4 +1,4 @@
-﻿using Valleysoft.DockerRegistryClient;
+using Valleysoft.DockerRegistryClient;
 using Valleysoft.DockerRegistryClient.Models;
 
 namespace Valleysoft.Dredge.Commands.Repo;
@@ -14,7 +14,7 @@ public class ListCommand : RegistryCommandBase<ListOptions>
     {
         return ExecuteCommandAsync(Options.Registry, cancellationToken, async ct =>
         {
-            using IDockerRegistryClient client = await DockerRegistryClientFactory.GetClientAsync(Options.Registry);
+            using IDockerRegistryClient client = await DockerRegistryClientFactory.GetClientAsync(Options.Registry, ct);
 
             List<string> repoNames = [];
 

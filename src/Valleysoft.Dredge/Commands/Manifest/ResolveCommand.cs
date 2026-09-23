@@ -1,4 +1,4 @@
-﻿using Valleysoft.DockerRegistryClient.Models.Manifests;
+using Valleysoft.DockerRegistryClient.Models.Manifests;
 
 namespace Valleysoft.Dredge.Commands.Manifest;
 
@@ -25,7 +25,7 @@ public class ResolveCommand : RegistryCommandBase<SetOptions>
         ImageName imageName = ImageName.Parse(Options.Image);
         return ExecuteCommandAsync(imageName.Registry, cancellationToken, async ct =>
         {
-            using IDockerRegistryClient client = await DockerRegistryClientFactory.GetClientAsync(imageName.Registry);
+            using IDockerRegistryClient client = await DockerRegistryClientFactory.GetClientAsync(imageName.Registry, ct);
             ManifestInfo manifestInfo =
                 (await ManifestHelper.GetResolvedManifestAsync(
                     client,

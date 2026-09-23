@@ -164,6 +164,55 @@ public class AppSettingsTests
         }
     }
 
+    [Fact]
+    public void OperationsTimeout_WhenTooLargeThrows()
+    {
+        AppSettings settings = CreateSettings();
+        settings.Operations.Timeout = "25.00:00:00";
+
+        InvalidOperationException exception = Assert.Throws<InvalidOperationException>(
+            () => settings.Operations.GetTimeout());
+
+        Assert.Contains("maximum supported timeout", exception.Message);
+    }
+
+    [Theory]
+    [InlineData(null, null)]
+    [InlineData("", null)]
+    [InlineData("0", "0")]
+    [InlineData("-00:01:00", "-60")]
+    public void OperationsTimeout_ParsesDisabledValues(string? value, string? expectedSeconds)
+    {
+        AppSettings settings = CreateSettings();
+        settings.Operations.Timeout = value;
+
+        TimeSpan? timeout = settings.Operations.GetTimeout();
+
+        Assert.Equal(
+            expectedSeconds is null ? null : TimeSpan.FromSeconds(double.Parse(expectedSeconds)),
+            timeout);
+    }
+
+    [Fact]
+    public void OperationsTimeout_DefaultsToThirtyMinutes()
+    {
+        AppSettings settings = CreateSettings();
+
+        Assert.Equal(AppSettings.DefaultOperationTimeout, settings.Operations.GetTimeout());
+    }
+
+    [Fact]
+    public void OperationsTimeout_WhenInvalidThrows()
+    {
+        AppSettings settings = CreateSettings();
+        settings.Operations.Timeout = "not-a-timespan";
+
+        InvalidOperationException exception = Assert.Throws<InvalidOperationException>(
+            () => settings.Operations.GetTimeout());
+
+        Assert.Contains("Invalid operations.timeout value", exception.Message);
+    }
+
     [Theory]
     [InlineData()]
     [InlineData("unknown")]

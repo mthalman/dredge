@@ -1,4 +1,4 @@
-﻿using Spectre.Console;
+using Spectre.Console;
 using System.Text;
 using System.Text.RegularExpressions;
 using Valleysoft.DockerfileModel;
@@ -48,7 +48,7 @@ public partial class DockerfileCommand : RegistryCommandBase<DockerfileOptions>
     public async Task<string> GetMarkupStringAsync(CancellationToken cancellationToken = default)
     {
         ImageName imageName = ImageName.Parse(Options.Image);
-        using IDockerRegistryClient client = await dockerRegistryClientFactory.GetClientAsync(imageName.Registry);
+        using IDockerRegistryClient client = await dockerRegistryClientFactory.GetClientAsync(imageName.Registry, cancellationToken);
         IImageManifest manifest =
             (await ManifestHelper.GetResolvedManifestAsync(client, imageName, Options, cancellationToken)).Manifest;
 
