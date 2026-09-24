@@ -50,6 +50,21 @@ public class SettingsShapesTests
             """);
 
     [Fact]
+    public void NestedSettingsInDerivedContainersCompile() =>
+        AssertValid("""
+            public class Base { }
+            public partial class Outer : Base
+            {
+                [Valleysoft.Dredge.GenerateSettings]
+                public partial class Options
+                {
+                    [System.Text.Json.Serialization.JsonPropertyName("value")]
+                    public string? Value { get; set; }
+                }
+            }
+            """);
+
+    [Fact]
     public void StaticContainersAndGenericNestedBranchesCompile() =>
         AssertValid("""
             public static partial class Outer
