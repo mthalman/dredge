@@ -40,12 +40,52 @@ public sealed class LayerStoreTests
         Assert.Empty(Directory.GetFiles(DataPath(cache), "*.tmp"));
     }
 
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task Processes_ClearPreservesReaderAndOperationLeases(bool cached)
+    {
+        await using LayerCacheTestContext cache = new();
+        byte[] bytes = CreateLayer();
+        string digest = LayerCacheTestContext.Digest(bytes);
+        Mock<IDockerRegistryClient> client = Client(bytes);
+        if (cached)
+        {
+            await using LayerStore seed = new(cache.Paths.CachePath);
+            using Stream seeded = await seed.OpenBlobAsync(client.Object, Image, digest, bytes.Length, Token);
+        }
+
+        using Stream reader = await cache.Store.OpenBlobAsync(client.Object, Image, digest, bytes.Length, Token);
+        await RunChildAsync(cache.Root, clear: true);
+        Assert.True(File.Exists(cache.Store.GetBlobPath(digest)));
+
+        reader.Dispose();
+        await RunChildAsync(cache.Root, clear: true);
+        Assert.True(File.Exists(cache.Store.GetBlobPath(digest)));
+
+        using Stream remainingReader = await cache.Store.OpenBlobAsync(client.Object, Image, digest, bytes.Length, Token);
+        await cache.Store.DisposeAsync();
+        await RunChildAsync(cache.Root, clear: true);
+        Assert.True(File.Exists(cache.Store.GetBlobPath(digest)));
+        Assert.Equal(bytes, LayerCacheTestContext.ReadBytes(remainingReader));
+
+        await RunChildAsync(cache.Root, clear: true);
+        Assert.False(File.Exists(cache.Store.GetBlobPath(digest)));
+        client.Verify(c => c.Blobs.GetAsync(Image.Repo, digest, It.IsAny<CancellationToken>()), Times.Once);
+    }
+
     [Fact]
     public async Task ProcessWorker()
     {
         string? root = Environment.GetEnvironmentVariable("DREDGE_TEST_CACHE_WORKER");
         if (root is null)
         {
+            return;
+        }
+        if (Environment.GetEnvironmentVariable("DREDGE_TEST_CLEAR_CACHE") == "1")
+        {
+            await using LayerStore clearingStore = new(Path.Combine(root, "cache"), maxBytes: 0);
+            await clearingStore.ClearAsync(Token);
             return;
         }
         byte[] bytes = await File.ReadAllBytesAsync(Path.Combine(root, "source"), Token);
@@ -68,7 +108,7 @@ public sealed class LayerStoreTests
         Assert.Equal(["complete"], Assert.IsType<string[]>(await store.ReadMetadataAsync<string[]>(digest, "view", Token)));
     }
 
-    private static async Task RunChildAsync(string root, bool abandon = false)
+    private static async Task RunChildAsync(string root, bool abandon = false, bool clear = false)
     {
         ProcessStartInfo start = new("dotnet")
         {
@@ -82,6 +122,7 @@ public sealed class LayerStoreTests
         start.ArgumentList.Add("-noLogo");
         start.Environment["DREDGE_TEST_CACHE_WORKER"] = root;
         start.Environment["DREDGE_TEST_ABANDON_WRITE"] = abandon ? "1" : "0";
+        start.Environment["DREDGE_TEST_CLEAR_CACHE"] = clear ? "1" : "0";
         using Process process = Process.Start(start)!;
         Task<string> output = process.StandardOutput.ReadToEndAsync(Token);
         Task<string> error = process.StandardError.ReadToEndAsync(Token);
