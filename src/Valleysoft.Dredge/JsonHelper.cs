@@ -29,7 +29,7 @@ internal static class JsonHelper
         WriteIndented = true,
         DictionaryKeyPolicy = camelCaseNamingPolicy,
         PropertyNamingPolicy = camelCaseNamingPolicy,
-        TypeInfoResolver = CreateTypeInfoResolver(),
+        TypeInfoResolver = CreateTypeInfoResolver(useCamelCase: true),
         Converters =
         {
             new NewtonsoftCompatibleStringConverter()
@@ -49,7 +49,7 @@ internal static class JsonHelper
         ReadCommentHandling = JsonCommentHandling.Skip,
         AllowTrailingCommas = true,
         WriteIndented = true,
-        TypeInfoResolver = CreateTypeInfoResolver(),
+        TypeInfoResolver = CreateTypeInfoResolver(useCamelCase: false),
     };
 
     [UnconditionalSuppressMessage(
@@ -80,13 +80,15 @@ internal static class JsonHelper
         "AOT",
         "IL3050",
         Justification = "The reflection resolver is used only when dynamic code is supported; AOT uses source-generated resolvers.")]
-    private static IJsonTypeInfoResolver CreateTypeInfoResolver() =>
+    private static IJsonTypeInfoResolver CreateTypeInfoResolver(bool useCamelCase) =>
         RuntimeFeature.IsDynamicCodeSupported
             ? JsonTypeInfoResolver.Combine(
-                DredgeJsonContext.Default,
+                useCamelCase ? DredgeJsonContext.Default : DredgeJsonNoNamingContext.Default,
                 DockerJsonContext.Default,
-                CreateReflectionResolver(camelCaseNamingPolicy))
-            : JsonTypeInfoResolver.Combine(DredgeJsonContext.Default, DockerJsonContext.Default);
+                CreateReflectionResolver(useCamelCase ? camelCaseNamingPolicy : null))
+            : useCamelCase
+                ? JsonTypeInfoResolver.Combine(DredgeJsonContext.Default, DockerJsonContext.Default)
+                : DredgeJsonNoNamingContext.Default;
 
     [UnconditionalSuppressMessage(
         "Trimming",
@@ -96,7 +98,7 @@ internal static class JsonHelper
         "AOT",
         "IL3050",
         Justification = "This resolver is used only when dynamic code is supported.")]
-    private static IJsonTypeInfoResolver CreateReflectionResolver(JsonNamingPolicy namingPolicy)
+    private static IJsonTypeInfoResolver CreateReflectionResolver(JsonNamingPolicy? namingPolicy)
     {
         DefaultJsonTypeInfoResolver resolver = new();
         resolver.Modifiers.Add(typeInfo =>
@@ -111,7 +113,7 @@ internal static class JsonHelper
                         member.DeclaringType?.Assembly == typeof(JsonHelper).Assembly
                             ? propertyName.Name
                             : member.Name;
-                    property.Name = namingPolicy.ConvertName(name);
+                    property.Name = namingPolicy?.ConvertName(name) ?? name;
                 }
             }
         });

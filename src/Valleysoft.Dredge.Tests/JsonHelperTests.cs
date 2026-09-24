@@ -12,6 +12,19 @@ public class JsonHelperTests
     }
 
     [Fact]
+    public void SerializeNoCamelCase_PreservesWindowsOsInfoPropertyNames()
+    {
+        string json = JsonHelper.Serialize(
+            new WindowsOsInfo(WindowsType.ServerCore, "10.0.20348.1366"),
+            JsonHelper.SettingsNoCamelCase);
+
+        Assert.Contains("\"Type\": \"Server Core\"", json);
+        Assert.Contains("\"Version\": \"10.0.20348.1366\"", json);
+        Assert.DoesNotContain("\"type\"", json);
+        Assert.DoesNotContain("\"version\"", json);
+    }
+
+    [Fact]
     public void Serialize_UsesClrPropertyNamesAndCamelCasesDictionaryKeys()
     {
         SerializerContract value = new()
