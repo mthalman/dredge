@@ -13,11 +13,16 @@ dotnet build -c Release --no-restore
 dotnet test --no-restore -v normal -c Release
 
 # Run a single test by fully qualified name
-dotnet test --no-restore --filter "FullyQualifiedName~Valleysoft.Dredge.Tests.CompareLayersCommandTests.Verify"
+dotnet test --project Valleysoft.Dredge.Tests/Valleysoft.Dredge.Tests.csproj --no-restore --filter "FullyQualifiedName~Valleysoft.Dredge.Tests.CompareLayersCommandTests.Verify"
 
 # Run a single test class
-dotnet test --no-restore --filter "ClassName=Valleysoft.Dredge.Tests.CompareLayersCommandTests"
+dotnet test --project Valleysoft.Dredge.Tests/Valleysoft.Dredge.Tests.csproj --no-restore --filter "ClassName=Valleysoft.Dredge.Tests.CompareLayersCommandTests"
+
+# Run the settings generator test suite
+dotnet test --project Valleysoft.Dredge.Analyzers.Tests/Valleysoft.Dredge.Analyzers.Tests.csproj -c Release --no-restore
 ```
+
+When filtering tests, select the test project explicitly. Under the .NET 10 test runner, an unrelated project with no matching tests causes the solution-level command to fail.
 
 The solution requires the .NET 10 SDK (see `global.json`). The main and test projects target `net10.0`.
 
@@ -27,7 +32,8 @@ The solution requires the .NET 10 SDK (see `global.json`). The main and test pro
 
 - **Valleysoft.Dredge** — The CLI application. Entry point is `Program.cs` which registers top-level commands (`image`, `manifest`, `referrer`, `repo`, `tag`, `settings`) using `System.CommandLine`.
 - **Valleysoft.Dredge.Tests** — xUnit v3 tests using Moq for mocking. Test data lives in `TestData/` subdirectories with JSON inputs and expected output text files.
-- **Valleysoft.Dredge.Analyzers** — A Roslyn incremental source generator that auto-generates `SetProperty`/`GetProperty` methods on any class whose name ends with `Settings`. It reads `[JsonProperty]` attributes to build a switch statement for property access by JSON path.
+- **Valleysoft.Dredge.Analyzers** — A Roslyn incremental source generator that auto-generates `SetProperty`/`GetProperty` methods on classes marked with `[GenerateSettings]`. It resolves `[JsonPropertyName]` attributes through symbols to build property accessors by JSON path.
+- **Valleysoft.Dredge.Analyzers.Tests** — Direct Roslyn generator-driver tests covering generated compilation, runtime accessors, diagnostics, and incremental caching.
 
 ### Command pattern
 
@@ -49,7 +55,15 @@ Registry access is abstracted through `IDockerRegistryClient` and `IDockerRegist
 
 ### Settings source generation
 
-Settings classes (`AppSettings`, `FileCompareToolSettings`, `PlatformSettings`) are declared as `partial` with `[JsonProperty]` attributes. The `SettingsSourceGenerator` in the Analyzers project auto-generates `SetProperty` and `GetProperty` methods based on these attributes. When adding new settings properties, just add a `[JsonProperty]` attribute and the generator handles the rest.
+Settings classes (`AppSettings`, `FileCompareToolSettings`, `OperationsSettings`, `PlatformSettings`) are declared as `partial` with `[GenerateSettings]`. The generator supplies this internal marker attribute; the application does not reference the analyzer assembly at runtime. Annotate each setting property with `[JsonPropertyName("pathSegment")]`.
+
+A leaf is a `string` or `string?` property with a getter and a non-init setter. A branch is a property whose type is another class marked with `[GenerateSettings]`. Branches require a getter but do not require a setter. Property accessors must be accessible from the generated partial class; private accessors on that class are permitted.
+
+If a generated accessor encounters a null branch during traversal, it throws `InvalidOperationException` rather than creating an object. JSON path segments must be nonempty, unique within the type, and contain no dots. Matching is case-sensitive.
+
+Generic classes and classes nested in partial containing classes are supported. Settings types cannot inherit from a class other than `object`. Static classes can contain settings types but cannot themselves be settings targets. Records, structs, interfaces, and file-local types are not supported as settings targets or containing types.
+
+Unsupported declarations produce compiler errors, and the generator emits no accessors for invalid settings types.
 
 ## Conventions
 
