@@ -77,6 +77,14 @@ internal static class JsonHelper
         JsonSerializer.Deserialize<T>(json, options ?? Settings);
 
     [UnconditionalSuppressMessage(
+        "Trimming",
+        "IL2026",
+        Justification = "DockerRegistryClient's generated metadata is combined here to resolve registry JSON; the package boundary is intentionally trim-aware but external to Dredge.")]
+    [UnconditionalSuppressMessage(
+        "Trimming",
+        "IL2104",
+        Justification = "DockerRegistryClient's generated metadata is combined here to resolve registry JSON; the package boundary is intentionally trim-aware but external to Dredge.")]
+    [UnconditionalSuppressMessage(
         "AOT",
         "IL3050",
         Justification = "The reflection resolver is used only when dynamic code is supported; AOT uses source-generated resolvers.")]

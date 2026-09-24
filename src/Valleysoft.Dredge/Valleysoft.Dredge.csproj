@@ -28,10 +28,6 @@
     <EnableTrimAnalyzer>true</EnableTrimAnalyzer>
     <EnableAotAnalyzer>true</EnableAotAnalyzer>
     <WarningsAsErrors>$(WarningsAsErrors);IL3050</WarningsAsErrors>
-    <!-- Dredge's AOT paths are source-generated. DockerRegistryClient 7.0.0 still
-         uses reflection-based JSON internally, so its third-party IL2026/IL2104
-         warnings are suppressed here because they cannot be annotated from Dredge. -->
-    <NoWarn>$(NoWarn);IL2026;IL2104</NoWarn>
   </PropertyGroup>
 
   <PropertyGroup>
