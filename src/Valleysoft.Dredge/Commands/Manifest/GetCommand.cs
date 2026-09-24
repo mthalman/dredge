@@ -19,6 +19,12 @@ public class GetCommand : RegistryCommandBase<GetOptions>
             ManifestInfo manifestInfo = await client.Manifests.GetAsync(
                 imageName.Repo, (imageName.Tag ?? imageName.Digest)!, ct);
 
+            if (manifestInfo.Manifest is RawManifest)
+            {
+                throw new NotSupportedException(
+                    $"The image name '{imageName}' has a media type of '{manifestInfo.MediaType}' which is not supported.");
+            }
+
             string output = JsonHelper.Serialize(manifestInfo.Manifest);
 
             Output.WriteLine(output);

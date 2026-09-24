@@ -44,6 +44,26 @@ public class CompareMetadataCommandTests
     }
 
     [Fact]
+    public async Task ComparesTypedManifestSchemaVersions()
+    {
+        ImageSetup baseSetup = CreateSingleManifestSetup(CreateImageConfig());
+        ImageSetup targetSetup = CreateSingleManifestSetup(CreateImageConfig());
+        ((OciImageManifest)baseSetup.InitialManifest.Manifest).SchemaVersion = 2;
+        ((OciImageManifest)targetSetup.InitialManifest.Manifest).SchemaVersion = 3;
+        CompareMetadataCommand command = CreateCommand(baseSetup, targetSetup);
+
+        CompareMetadataResult result = await command.GetResultAsync(TestContext.Current.CancellationToken);
+
+        foreach (string category in new[] { "Manifest", "ResolvedManifest" })
+        {
+            MetadataComparison comparison = FindComparison(result, category, "schemaVersion");
+            Assert.Equal(CompareDiff.NotEqual, comparison.Diff);
+            Assert.Equal(2, comparison.BaseValue!.GetValue<int>());
+            Assert.Equal(3, comparison.TargetValue!.GetValue<int>());
+        }
+    }
+
+    [Fact]
     public async Task ReportsAddedRemovedAndChangedMetadata()
     {
         ImageData baseConfig = CreateImageConfig(

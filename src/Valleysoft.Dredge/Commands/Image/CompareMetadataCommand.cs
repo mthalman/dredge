@@ -247,7 +247,7 @@ public class CompareMetadataCommand : RegistryCommandBase<CompareMetadataOptions
 
     private static void AddInitialManifest(MetadataDocument document, ManifestInfo manifestInfo)
     {
-        document.Add("Manifest", "schemaVersion", manifestInfo.Manifest.SchemaVersion);
+        document.Add("Manifest", "schemaVersion", GetSchemaVersion(manifestInfo.Manifest));
         document.Add("Manifest", "mediaType", manifestInfo.Manifest.MediaType);
         document.Add("Manifest", "contentType", manifestInfo.MediaType);
         document.Add("Manifest", "contentDigest", manifestInfo.DockerContentDigest);
@@ -286,7 +286,7 @@ public class CompareMetadataCommand : RegistryCommandBase<CompareMetadataOptions
 
     private static void AddResolvedManifest(MetadataDocument document, ResolvedManifest resolved)
     {
-        document.Add("ResolvedManifest", "schemaVersion", resolved.Manifest.SchemaVersion);
+        document.Add("ResolvedManifest", "schemaVersion", GetSchemaVersion(resolved.Manifest));
         document.Add("ResolvedManifest", "mediaType", resolved.Manifest.MediaType);
         document.Add("ResolvedManifest", "contentType", resolved.ManifestInfo.MediaType);
         document.Add("ResolvedManifest", "contentDigest", resolved.ManifestInfo.DockerContentDigest);
@@ -311,6 +311,12 @@ public class CompareMetadataCommand : RegistryCommandBase<CompareMetadataOptions
             AddDescriptor(document, "ResolvedManifest", $"layers[{i}]", resolved.Manifest.Layers[i]);
         }
     }
+
+    private static int GetSchemaVersion(IManifest manifest) =>
+        manifest is DockerRegistryClient.Models.Manifests.Manifest typedManifest
+            ? typedManifest.SchemaVersion
+            : throw new NotSupportedException(
+                $"The manifest media type '{manifest.MediaType}' does not have a supported schema version.");
 
     private static void AddDescriptor(
         MetadataDocument document,
