@@ -129,6 +129,7 @@ internal partial class PlatformSettings
     public string Architecture { get; set; } = string.Empty;
 }
 
+[GenerateSettings]
 internal partial class CacheSettings
 {
     public const long DefaultMaxBytes = 5L * 1024 * 1024 * 1024;
