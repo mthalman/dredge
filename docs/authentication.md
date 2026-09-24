@@ -56,8 +56,9 @@ as read commands. Successful authentication or pull access does not imply
 permission to delete. The registry must grant deletion access to the supplied
 credentials or token and must enable the requested deletion API.
 
-Manifest deletion also reads the target manifest. When deleting an artifact
-with a subject on a registry without native referrers support, maintaining the
+For an explicit digest with `--yes`, Dredge does not perform a separate
+manifest lookup before requesting deletion. When deleting an artifact with a
+subject on a registry without native referrers support, maintaining the
 referrers fallback index can require push permission. A failure during this
 maintenance is reported even if the manifest deletion has already succeeded.
 
