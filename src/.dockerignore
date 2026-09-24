@@ -7,6 +7,8 @@
 Dockerfile*
 **/*.trx
 **/*.md
+!Valleysoft.Dredge.Analyzers/AnalyzerReleases.Shipped.md
+!Valleysoft.Dredge.Analyzers/AnalyzerReleases.Unshipped.md
 **/*.ps1
 **/*.cmd
 **/*.sh
