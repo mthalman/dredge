@@ -31,7 +31,7 @@ internal partial class AppSettings
     public CacheSettings Cache { get; set; } = new();
 
     [JsonConstructor]
-    private AppSettings() {}
+    internal AppSettings() {}
 
     public static AppSettings Load() => Load(SettingsPath);
 
@@ -129,6 +129,7 @@ internal partial class PlatformSettings
     public string Architecture { get; set; } = string.Empty;
 }
 
+[GenerateSettings]
 internal partial class CacheSettings
 {
     public const long DefaultMaxBytes = 5L * 1024 * 1024 * 1024;

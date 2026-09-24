@@ -228,13 +228,15 @@ internal sealed class LayerStore : IAsyncDisposable
         try
         {
             byte[] bytes = await File.ReadAllBytesAsync(path, cancellationToken);
-            Envelope? envelope = JsonSerializer.Deserialize<Envelope>(bytes);
+            LayerCacheEnvelope? envelope = JsonSerializer.Deserialize(
+                bytes,
+                DredgeJsonContext.Default.LayerCacheEnvelope);
             if (envelope is null || envelope.Version != FormatVersion || envelope.Digest != digest ||
                 envelope.Payload is null || envelope.Checksum != Hash(Encoding.UTF8.GetBytes(envelope.Payload)))
             {
                 throw new InvalidDataException("Incompatible or damaged cache envelope.");
             }
-            T value = JsonSerializer.Deserialize<T>(envelope.Payload) ??
+            T value = JsonHelper.Deserialize<T>(envelope.Payload, JsonHelper.CompactSettings) ??
                 throw new InvalidDataException("The cached payload is empty.");
             File.SetLastWriteTimeUtc(path, DateTime.UtcNow);
             return value;
@@ -250,14 +252,16 @@ internal sealed class LayerStore : IAsyncDisposable
     public async Task WriteMetadataAsync<T>(
         string digest, string kind, T value, CancellationToken cancellationToken)
     {
-        string payload = JsonSerializer.Serialize(value);
-        Envelope envelope = new(FormatVersion, digest, Hash(Encoding.UTF8.GetBytes(payload)), payload);
+        string payload = JsonHelper.Serialize(value, JsonHelper.CompactSettings);
+        LayerCacheEnvelope envelope = new(
+            FormatVersion, digest, Hash(Encoding.UTF8.GetBytes(payload)), payload);
         string staging = Path.Combine(dataPath, $"{Guid.NewGuid():N}.tmp");
         try
         {
             await using (FileStream output = CacheFileSystem.CreateFile(staging))
             {
-                await JsonSerializer.SerializeAsync(output, envelope, cancellationToken: cancellationToken);
+                await JsonSerializer.SerializeAsync(
+                    output, envelope, DredgeJsonContext.Default.LayerCacheEnvelope, cancellationToken);
                 await output.FlushAsync(cancellationToken);
                 output.Flush(flushToDisk: true);
                 using FileStream gate = await LockAsync("maintenance", cancellationToken);
@@ -597,7 +601,7 @@ internal sealed class LayerStore : IAsyncDisposable
         await TrimAsync(CancellationToken.None);
     }
 
-    private sealed record Envelope(int Version, string Digest, string Checksum, string Payload);
 }
 
 internal sealed record StoredLayerIndex(string Digest, long BlobLength, LayerChanges Changes);
+internal sealed record LayerCacheEnvelope(int Version, string Digest, string Checksum, string Payload);

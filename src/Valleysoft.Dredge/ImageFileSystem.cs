@@ -979,9 +979,9 @@ internal sealed class ImageFileSystem : IAsyncDisposable
         layer.Index >= 0 && layer.Index < manifest.Layers.Length &&
         layer.Digest == manifest.Layers[layer.Index].Digest;
 
-    private sealed record StoredFileSystem(string[] Layers, StoredEntry[] Entries, StoredEntry[] DeletedEntries);
+    internal sealed record StoredFileSystem(string[] Layers, StoredEntry[] Entries, StoredEntry[] DeletedEntries);
 
-    private sealed record StoredEntry(
+    internal sealed record StoredEntry(
         ImageFileSystemEntry Value, int ContentLayerIndex, int ContentEntryIndex,
         string? ContentPath, string? ContentLinkTarget)
     {

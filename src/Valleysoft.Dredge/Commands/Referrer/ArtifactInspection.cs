@@ -1,5 +1,5 @@
 using System.Text.Json;
-using System.Text.Json.Serialization;
+using System.Text.Json.Nodes;
 using Valleysoft.DockerRegistryClient.Models.Manifests.Oci;
 
 namespace Valleysoft.Dredge.Commands.Referrer;
@@ -17,7 +17,7 @@ internal sealed record ArtifactPayloadInspection(
     string MediaType,
     long Size,
     string? Format,
-    object? Summary);
+    JsonNode? Summary);
 
 internal sealed record SpdxSummary(
     string? SpdxVersion,
@@ -129,7 +129,7 @@ internal static class ArtifactInspectionFactory
                 descriptor.MediaType,
                 descriptor.Size,
                 format,
-                summary));
+                summary is null ? null : JsonNode.Parse(JsonHelper.Serialize(summary))));
         }
 
         return new ArtifactInspection(
@@ -582,14 +582,4 @@ internal static class ArtifactInspectionFactory
         value = default;
         return false;
     }
-}
-
-internal static class ArtifactInspectionJson
-{
-    public static readonly JsonSerializerOptions Options = new()
-    {
-        DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull,
-        PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
-        WriteIndented = true
-    };
 }

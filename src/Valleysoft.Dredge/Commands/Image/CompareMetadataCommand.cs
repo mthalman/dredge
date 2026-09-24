@@ -277,7 +277,7 @@ public class CompareMetadataCommand : RegistryCommandBase<CompareMetadataOptions
             for (int i = 0; i < references.Length; i++)
             {
                 string id = references.Length == 1 ? platformGroup.Key : $"{platformGroup.Key}#{i + 1}";
-                string path = $"available[{JsonSerializer.Serialize(id, JsonHelper.Settings)}]";
+                string path = $"available[{JsonHelper.Serialize(id, JsonHelper.Settings)}]";
                 AddDescriptor(document, "Platforms", path, references[i]);
                 AddPlatform(document, "Platforms", $"{path}.platform", references[i].Platform);
             }
@@ -492,7 +492,7 @@ public class CompareMetadataCommand : RegistryCommandBase<CompareMetadataOptions
             .GroupBy(variable => variable.Name, variable => variable.Value)
             .OrderBy(group => group.Key, StringComparer.Ordinal))
         {
-            string path = $"environment[{JsonSerializer.Serialize(group.Key, JsonHelper.Settings)}]";
+            string path = $"environment[{JsonHelper.Serialize(group.Key, JsonHelper.Settings)}]";
             string[] values = [.. group];
             document.Add(
                 "Config",
@@ -655,11 +655,19 @@ public class CompareMetadataCommand : RegistryCommandBase<CompareMetadataOptions
                 return;
             }
 
-            JsonNode token = value as JsonNode ??
-                JsonSerializer.SerializeToNode(value, value.GetType(), JsonHelper.Settings)!;
+            JsonNode token = value as JsonNode ?? value switch
+            {
+                string text => JsonValue.Create(text)!,
+                bool boolean => JsonValue.Create(boolean)!,
+                int integer => JsonValue.Create(integer)!,
+                long longValue => JsonValue.Create(longValue)!,
+                double doubleValue => JsonValue.Create(doubleValue)!,
+                _ => throw new NotSupportedException(
+                    $"Metadata value type '{value.GetType().FullName}' is not supported.")
+            };
             if (value is JsonNode && token.GetValueKind() == JsonValueKind.Number)
             {
-                token = JsonNode.Parse(JsonHelper.NormalizeNewtonsoftNumber(
+                token = JsonNode.Parse(JsonHelper.NormalizeComparisonNumber(
                     token.ToJsonString(JsonHelper.CompactSettings)))!;
             }
             // A null separator cannot collide with the JSON-escaped user keys embedded in paths.
@@ -680,7 +688,7 @@ public class CompareMetadataCommand : RegistryCommandBase<CompareMetadataOptions
                 {
                     AddToken(
                         category,
-                        $"{path}[{JsonSerializer.Serialize(name, JsonHelper.Settings)}]",
+                        $"{path}[{JsonHelper.Serialize(name, JsonHelper.Settings)}]",
                         propertyValue);
                 }
             }
@@ -732,7 +740,7 @@ public class CompareMetadataCommand : RegistryCommandBase<CompareMetadataOptions
 
             foreach ((string key, string value) in values.OrderBy(item => item.Key, StringComparer.Ordinal))
             {
-                Add(category, $"{path}[{JsonSerializer.Serialize(key, JsonHelper.Settings)}]", value);
+                Add(category, $"{path}[{JsonHelper.Serialize(key, JsonHelper.Settings)}]", value);
             }
         }
 
@@ -750,7 +758,7 @@ public class CompareMetadataCommand : RegistryCommandBase<CompareMetadataOptions
         {
             foreach (string value in values.OrderBy(value => value, StringComparer.Ordinal))
             {
-                Add(category, $"{path}[{JsonSerializer.Serialize(value, JsonHelper.Settings)}]", true);
+                Add(category, $"{path}[{JsonHelper.Serialize(value, JsonHelper.Settings)}]", true);
             }
         }
     }
