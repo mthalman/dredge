@@ -120,6 +120,27 @@ public class RegistryCommandTests
     }
 
     [Fact]
+    public async Task GetCommand_RejectsRawManifestInsteadOfSerializingWrapper()
+    {
+        const string MediaType = "application/vnd.example.manifest";
+        RawManifest manifest = new(MediaType, Encoding.UTF8.GetBytes("""{"custom":"value"}"""));
+        Mock<IDockerRegistryClient> client = CreateClient();
+        client
+            .Setup(o => o.Manifests.GetAsync("repo", "tag", It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new ManifestInfo(MediaType, "sha256:digest", manifest));
+        using StringWriter output = new();
+        TestGetCommand command = new(CreateFactory(client.Object), output)
+        {
+            Options = new GetOptions { Image = $"{Registry}/repo:tag" }
+        };
+
+        CommandExitException exception = await Assert.ThrowsAsync<CommandExitException>(command.RunAsync);
+
+        Assert.Equal(1, exception.ExitCode);
+        Assert.Equal(string.Empty, output.ToString());
+    }
+
+    [Fact]
     public async Task ResolveCommand_WritesFullyQualifiedDigest()
     {
         Mock<IDockerRegistryClient> client = CreateClient();

@@ -49,7 +49,7 @@
     <PackageReference Include="System.CommandLine" Version="2.0.12" />
     <PackageReference Include="Valleysoft.DockerCredsProvider" Version="3.0.0" />
     <PackageReference Include="Valleysoft.DockerfileModel" Version="2.0.0" />
-    <PackageReference Include="Valleysoft.DockerRegistryClient" Version="6.2.0" />
+    <PackageReference Include="Valleysoft.DockerRegistryClient" Version="7.0.0" />
   </ItemGroup>
 
 </Project>
