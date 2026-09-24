@@ -4,6 +4,7 @@ using System.Net;
 using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
+using System.Text.Json.Serialization;
 using Valleysoft.DockerRegistryClient;
 
 namespace Valleysoft.Dredge;
@@ -228,9 +229,12 @@ internal sealed class LayerStore : IAsyncDisposable
         try
         {
             byte[] bytes = await File.ReadAllBytesAsync(path, cancellationToken);
-            LayerCacheEnvelope? envelope = JsonSerializer.Deserialize(
-                bytes,
-                DredgeJsonContext.Default.LayerCacheEnvelope);
+            LayerCacheEnvelope? envelope = JsonHelper.Deserialize<LayerCacheEnvelope>(
+                Encoding.UTF8.GetString(bytes),
+                new JsonSerializerOptions(JsonHelper.Settings)
+                {
+                    PropertyNameCaseInsensitive = true
+                });
             if (envelope is null || envelope.Version != FormatVersion || envelope.Digest != digest ||
                 envelope.Payload is null || envelope.Checksum != Hash(Encoding.UTF8.GetBytes(envelope.Payload)))
             {
@@ -604,4 +608,8 @@ internal sealed class LayerStore : IAsyncDisposable
 }
 
 internal sealed record StoredLayerIndex(string Digest, long BlobLength, LayerChanges Changes);
-internal sealed record LayerCacheEnvelope(int Version, string Digest, string Checksum, string Payload);
+internal sealed record LayerCacheEnvelope(
+    [property: JsonPropertyName("Version")] int Version,
+    [property: JsonPropertyName("Digest")] string Digest,
+    [property: JsonPropertyName("Checksum")] string Checksum,
+    [property: JsonPropertyName("Payload")] string Payload);
