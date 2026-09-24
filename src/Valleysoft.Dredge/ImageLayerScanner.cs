@@ -17,8 +17,10 @@ internal static class ImageLayerScanner
         List<string> whiteouts = [];
         List<string> opaqueDirectories = [];
 
-        using GZipStream gzip = new(blob, CompressionMode.Decompress, leaveOpen: true);
-        using TarReader tar = new(gzip, leaveOpen: true);
+        using CountingReadStream compressed = new(blob);
+        using GZipStream gzip = new(compressed, CompressionMode.Decompress, leaveOpen: true);
+        using CountingReadStream uncompressed = new(gzip);
+        using TarReader tar = new(uncompressed, leaveOpen: true);
         int entryIndex = 0;
         while (true)
         {
@@ -32,7 +34,17 @@ internal static class ImageLayerScanner
                 break;
             }
             int currentEntryIndex = entryIndex++;
+            long offset = uncompressed.BytesRead;
+            ImageFileType type = GetFileType(tarEntry);
+            string? contentHash = type == ImageFileType.File
+                ? await ImageTarReader.HashEntryAsync(tarEntry, layer, cancellationToken)
+                : null;
             await ImageTarReader.DrainEntryAsync(tarEntry, layer, cancellationToken);
+            if (type == ImageFileType.File && uncompressed.BytesRead - offset != tarEntry.Length)
+            {
+                throw new InvalidDataException(
+                    $"Layer {layer.Index} ('{layer.Digest}') contains truncated content for '{tarEntry.Name}'.");
+            }
 
             string path = ImagePath.NormalizeArchive(tarEntry.Name);
             if (path.Length == 0)
@@ -62,7 +74,6 @@ internal static class ImageLayerScanner
                 continue;
             }
 
-            ImageFileType type = GetFileType(tarEntry);
             string? linkTarget = type is ImageFileType.SymbolicLink or ImageFileType.HardLink
                 ? tarEntry.LinkName
                 : null;
@@ -93,7 +104,9 @@ internal static class ImageLayerScanner
                 tarEntry.ModificationTime.UtcDateTime,
                 linkTarget,
                 currentEntryIndex,
-                layer));
+                offset,
+                compressed.BytesRead,
+                contentHash));
         }
         return new(entries, whiteouts, opaqueDirectories);
     }
@@ -126,11 +139,14 @@ internal sealed record ScannedEntry(
     DateTime ModifiedTime,
     string? LinkTarget,
     int EntryIndex,
-    ImageLayerReference Layer)
+    long UncompressedOffset,
+    long CompressedHighWaterMark,
+    string? ContentHash)
 {
     public ImageFileSystemEntry ToEntry(
         ImageLayerReference introduced,
-        ImageLayerReference? modified) =>
+        ImageLayerReference? modified,
+        ImageLayerReference layer) =>
         new()
         {
             Path = Path,
@@ -143,7 +159,7 @@ internal sealed record ScannedEntry(
             LinkTarget = LinkTarget,
             IntroducedLayer = introduced,
             ModifiedLayer = modified,
-            ContentLayerIndex = Layer.Index,
+            ContentLayerIndex = layer.Index,
             ContentPath = Type == ImageFileType.File ? Path : null,
             ContentEntryIndex = EntryIndex
         };

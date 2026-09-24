@@ -71,9 +71,14 @@ public class AppSettingsTests
 
         settings.SetProperty(new Queue<string>(["platform", "arch"]), "arm64");
         settings.SetProperty(new Queue<string>(["fileCompareTool", "exePath"]), "compare.exe");
+        settings.SetProperty(new Queue<string>(["cache", "path"]), "private-cache");
+        settings.SetProperty(new Queue<string>(["cache", "maxBytes"]), "1024");
 
         Assert.Equal("arm64", settings.GetProperty(new Queue<string>(["platform", "arch"])));
         Assert.Equal("compare.exe", settings.GetProperty(new Queue<string>(["fileCompareTool", "exePath"])));
+        Assert.Equal("private-cache", settings.GetProperty(new Queue<string>(["cache", "path"])));
+        Assert.Equal("1024", settings.GetProperty(new Queue<string>(["cache", "maxBytes"])));
+        Assert.Equal(1024, settings.Cache.GetMaxBytes());
     }
 
     [Fact]

@@ -45,8 +45,20 @@ dredge settings set platform.os linux
 
 ## Clear cache
 
-Deletes the local cache of layer data stored in the temporary directory. This cache is created by commands like [`image compare files`](images.md#compare-files) and [`image save-layers`](images.md#save-layers).
+Deletes compressed layer blobs, filesystem indexes, and merged views from the
+configured [persistent layer cache](../settings.md#configure-the-layer-cache).
+It also removes the legacy extracted-layer cache and comparison-tool output
+under Dredge's temporary directory. It leaves settings and unrelated files
+untouched.
 
 ```console
 dredge settings clear-cache
 ```
+
+The command reports the bytes deleted. Active blobs and staging files are
+skipped with a diagnostic; run the command again after other Dredge operations
+finish to remove them. Coordination files and the cache directory remain.
+
+Close external comparison tools before cleanup. Dredge versions before 7.0
+do not participate in the new cache coordination; do not clear their temporary
+output while they are running.

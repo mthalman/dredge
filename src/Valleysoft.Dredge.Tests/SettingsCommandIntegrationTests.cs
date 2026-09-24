@@ -42,9 +42,9 @@ internal sealed class SettingsCommandIntegrationScenarios
     public async Task ClearCacheCommand_DeletesIsolatedCache()
     {
         string cachePath = GetTempPath();
-        Directory.CreateDirectory(Path.Combine(cachePath, "nested"));
+        Directory.CreateDirectory(Path.Combine(cachePath, "layers"));
         await File.WriteAllBytesAsync(
-            Path.Combine(cachePath, "nested", "cache.bin"),
+            Path.Combine(cachePath, "layers", "cache.bin"),
             [1, 2, 3, 4],
             TestContext.Current.CancellationToken);
         using StringWriter output = new();
@@ -56,8 +56,9 @@ internal sealed class SettingsCommandIntegrationScenarios
                 new TestProcessTerminator()));
 
         Assert.Equal(0, exitCode);
-        Assert.False(Directory.Exists(cachePath));
+        Assert.False(Directory.Exists(Path.Combine(cachePath, "layers")));
         Assert.Contains("4 bytes deleted", output.ToString());
+        Directory.Delete(cachePath);
     }
 
     public async Task ClearCacheCommand_WhenCacheDoesNotExistReportsNoWork()
@@ -74,7 +75,7 @@ internal sealed class SettingsCommandIntegrationScenarios
         Assert.Equal(0, exitCode);
         Assert.False(Directory.Exists(cachePath));
         Assert.Equal(
-            $"Nothing to do. Cache directory '{cachePath}' does not exist.{Environment.NewLine}",
+            $"Nothing to do. No cached data found in '{Path.Combine(cachePath, "cache")}'.{Environment.NewLine}",
             output.ToString());
     }
 

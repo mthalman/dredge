@@ -12,10 +12,122 @@ using Valleysoft.DockerRegistryClient.Models.Manifests.Docker;
 using Valleysoft.Dredge.Commands;
 using Valleysoft.Dredge.Commands.Image;
 
-public class ImageFileSystemTests
+public class ImageFileSystemTests : IAsyncDisposable
 {
+    private readonly LayerCacheTestContext cache = new();
+    public ValueTask DisposeAsync() => cache.DisposeAsync();
+
+    private Task<ImageFileSystem> CreateFileSystemAsync(
+        IDockerRegistryClient client, ImageName image, PlatformOptionsBase options, CancellationToken token) =>
+        ImageFileSystem.CreateAsync(client, image, options, token, cache.Store);
+
     private const string ConfigDigest = "sha256:config";
     private static readonly ImageName ImageName = ImageName.Parse("registry.test/repo:tag");
+
+    [Fact]
+    public async Task Cat_ColdNewestFileSkipsOlderLayersAndWarmViewReusesContent()
+    {
+        byte[][] layers =
+        [
+            CreateLayer(Entry.File("older", "old")),
+            CreateLayer(Entry.File("newest", "new"))
+        ];
+        Mock<IDockerRegistryClient> client = CreateClient(layers);
+        await using (ImageFileSystem selective = await ImageFileSystem.CreateAsync(
+            client.Object, ImageName, new PlatformOptionsBase(), TestContext.Current.CancellationToken,
+            cache.Store, "newest"))
+        {
+            using MemoryStream output = new();
+            await selective.CopyFileToAsync("newest", output, TestContext.Current.CancellationToken);
+            Assert.Equal("new", Encoding.UTF8.GetString(output.ToArray()));
+        }
+        client.Verify(c => c.Blobs.GetAsync(ImageName.Repo, LayerCacheTestContext.Digest(layers[0]),
+            It.IsAny<CancellationToken>()), Times.Never);
+        Assert.Empty(Directory.GetFiles(Path.Combine(cache.Paths.CachePath, "layer-store", "data"), "*.view"));
+
+        await using ImageFileSystem complete = await CreateFileSystemAsync(
+            client.Object, ImageName, new PlatformOptionsBase(), TestContext.Current.CancellationToken);
+        await cache.Store.DisposeAsync();
+        await using LayerStore warmStore = new(cache.Paths.CachePath);
+        await using ImageFileSystem warm = await ImageFileSystem.CreateAsync(
+            client.Object, ImageName, new PlatformOptionsBase(), TestContext.Current.CancellationToken, warmStore);
+        Assert.Equal(complete.List(null, true, true), warm.List(null, true, true));
+        using MemoryStream content = new();
+        await warm.CopyFileToAsync("newest", content, TestContext.Current.CancellationToken);
+        Assert.Equal("new", Encoding.UTF8.GetString(content.ToArray()));
+        foreach (byte[] layer in layers)
+        {
+            client.Verify(c => c.Blobs.GetAsync(ImageName.Repo, LayerCacheTestContext.Digest(layer),
+                It.IsAny<CancellationToken>()), Times.Once);
+        }
+    }
+
+    [Fact]
+    public async Task Cat_SelectiveResolutionMatchesFullHardLinkSnapshotsAndWhiteouts()
+    {
+        byte[][] layers =
+        [
+            CreateLayer(Entry.File("target", "original"), Entry.File("removed", "hidden")),
+            CreateLayer(Entry.HardLink("saved", "target"), Entry.SymbolicLink("alias", "saved")),
+            CreateLayer(Entry.File("target", "replacement"), Entry.File(".wh.removed", ""))
+        ];
+        Mock<IDockerRegistryClient> client = CreateClient(layers);
+        await using ImageFileSystem selective = await ImageFileSystem.CreateAsync(
+            client.Object, ImageName, new PlatformOptionsBase(), TestContext.Current.CancellationToken,
+            cache.Store, "alias");
+        using MemoryStream output = new();
+        await selective.CopyFileToAsync("alias", output, TestContext.Current.CancellationToken);
+        Assert.Equal("original", Encoding.UTF8.GetString(output.ToArray()));
+        await Assert.ThrowsAsync<FileNotFoundException>(() =>
+            selective.CopyFileToAsync("removed", Stream.Null, TestContext.Current.CancellationToken));
+    }
+
+    [Fact]
+    public async Task Index_SharedDigestUsesCurrentManifestLayerPosition()
+    {
+        byte[] shared = CreateLayer(Entry.File("shared", "value"));
+        Mock<IDockerRegistryClient> first = CreateClient([shared]);
+        await CreateFileSystemAsync(first.Object, ImageName, new PlatformOptionsBase(), TestContext.Current.CancellationToken);
+        Mock<IDockerRegistryClient> second = CreateClient([CreateLayer(Entry.File("other", "other")), shared]);
+        ImageFileSystem fileSystem = await CreateFileSystemAsync(
+            second.Object, ImageName, new PlatformOptionsBase(), TestContext.Current.CancellationToken);
+        Assert.Equal(1, Assert.Single(fileSystem.List("shared", false, false)).IntroducedLayer.Index);
+        second.Verify(c => c.Blobs.GetAsync(ImageName.Repo, LayerCacheTestContext.Digest(shared),
+            It.IsAny<CancellationToken>()), Times.Never);
+    }
+
+    [Fact]
+    public async Task View_CorruptionRebuildsFromIndexesAfterBlobEviction()
+    {
+        byte[] bytes = CreateLayer(Entry.File("file", "value"));
+        Mock<IDockerRegistryClient> client = CreateClient([bytes]);
+        ImageFileSystem original = await CreateFileSystemAsync(
+            client.Object, ImageName, new PlatformOptionsBase(), TestContext.Current.CancellationToken);
+        await cache.EvictBlobsAsync();
+        string view = Assert.Single(Directory.GetFiles(
+            Path.Combine(cache.Paths.CachePath, "layer-store", "data"), "*.view"));
+        await File.WriteAllTextAsync(view, "{", TestContext.Current.CancellationToken);
+        ImageFileSystem restored = await CreateFileSystemAsync(
+            client.Object, ImageName, new PlatformOptionsBase(), TestContext.Current.CancellationToken);
+        Assert.Equal(original.List(null, true, true), restored.List(null, true, true));
+        client.Verify(c => c.Blobs.GetAsync(ImageName.Repo, LayerCacheTestContext.Digest(bytes),
+            It.IsAny<CancellationToken>()), Times.Once);
+    }
+
+    [Fact]
+    public async Task Extract_ColdRegularFileSkipsUnrelatedLowerLayer()
+    {
+        byte[][] layers = [CreateLayer(Entry.File("old", "old")), CreateLayer(Entry.File("new", "new"))];
+        Mock<IDockerRegistryClient> client = CreateClient(layers);
+        ImageFileSystem fileSystem = await ImageFileSystem.CreateAsync(
+            client.Object, ImageName, new PlatformOptionsBase(), TestContext.Current.CancellationToken,
+            cache.Store, extractionPath: "new");
+        string output = Path.Combine(cache.Root, "extracted");
+        await fileSystem.ExtractAsync("new", output, TestContext.Current.CancellationToken);
+        Assert.Equal("new", await File.ReadAllTextAsync(output, TestContext.Current.CancellationToken));
+        client.Verify(c => c.Blobs.GetAsync(ImageName.Repo, LayerCacheTestContext.Digest(layers[0]),
+            It.IsAny<CancellationToken>()), Times.Never);
+    }
 
     [Fact]
     public async Task Index_AppliesLayersWhiteoutsAndProvenance()
@@ -37,7 +149,7 @@ public class ImageFileSystemTests
         ];
         using IDockerRegistryClient client = CreateClient(layers).Object;
 
-        ImageFileSystem fileSystem = await ImageFileSystem.CreateAsync(
+        ImageFileSystem fileSystem = await CreateFileSystemAsync(
             client,
             ImageName,
             new PlatformOptionsBase(),
@@ -90,7 +202,7 @@ public class ImageFileSystemTests
             CreateLayer(Entry.File("data/value", binary))
         ];
         using IDockerRegistryClient client = CreateClient(layers).Object;
-        ImageFileSystem fileSystem = await ImageFileSystem.CreateAsync(
+        ImageFileSystem fileSystem = await CreateFileSystemAsync(
             client,
             ImageName,
             new PlatformOptionsBase(),
@@ -129,7 +241,7 @@ public class ImageFileSystemTests
                 Entry.File("usr/bin/tool", "tool"),
                 Entry.SymbolicLink("bin", "/usr/bin"))
         ]).Object;
-        ImageFileSystem fileSystem = await ImageFileSystem.CreateAsync(
+        ImageFileSystem fileSystem = await CreateFileSystemAsync(
             client,
             ImageName,
             new PlatformOptionsBase(),
@@ -164,7 +276,7 @@ public class ImageFileSystemTests
                 Entry.SymbolicLink("bin", "/usr/bin")),
             CreateLayer(Entry.File("usr/bin/.wh.deleted", ""))
         ]).Object;
-        ImageFileSystem fileSystem = await ImageFileSystem.CreateAsync(
+        ImageFileSystem fileSystem = await CreateFileSystemAsync(
             client,
             ImageName,
             new PlatformOptionsBase(),
@@ -189,7 +301,7 @@ public class ImageFileSystemTests
                 Entry.File(Target, "x"),
                 Entry.SymbolicLink("link", Target))]).Object;
 
-        ImageFileSystem fileSystem = await ImageFileSystem.CreateAsync(
+        ImageFileSystem fileSystem = await CreateFileSystemAsync(
             client,
             ImageName,
             new PlatformOptionsBase(),
@@ -218,7 +330,7 @@ public class ImageFileSystemTests
                 Entry.SymbolicLink("b", "a"))
         ];
         using IDockerRegistryClient client = CreateClient(layers).Object;
-        ImageFileSystem fileSystem = await ImageFileSystem.CreateAsync(
+        ImageFileSystem fileSystem = await CreateFileSystemAsync(
             client,
             ImageName,
             new PlatformOptionsBase(),
@@ -239,7 +351,7 @@ public class ImageFileSystemTests
             [CreateLayer(
                 Entry.File("outside", "root"),
                 Entry.SymbolicLink("escape", "../../outside"))]).Object;
-        ImageFileSystem rootFileSystem = await ImageFileSystem.CreateAsync(
+        ImageFileSystem rootFileSystem = await CreateFileSystemAsync(
             rootClient,
             ImageName,
             new PlatformOptionsBase(),
@@ -262,7 +374,7 @@ public class ImageFileSystemTests
             CreateClient([CreateLayer(Entry.File(path, "unsafe"))]).Object;
 
         await Assert.ThrowsAsync<InvalidDataException>(
-            () => ImageFileSystem.CreateAsync(
+            () => CreateFileSystemAsync(
                 client,
                 ImageName,
                 new PlatformOptionsBase(),
@@ -287,13 +399,13 @@ public class ImageFileSystemTests
             CreateClient([Encoding.UTF8.GetBytes("not a gzip archive")]).Object;
 
         InvalidDataException exception = await Assert.ThrowsAsync<InvalidDataException>(
-            () => ImageFileSystem.CreateAsync(
+            () => CreateFileSystemAsync(
                 client,
                 ImageName,
                 new PlatformOptionsBase(),
                 TestContext.Current.CancellationToken));
 
-        Assert.Contains("Layer 0 ('sha256:layer-0')", exception.Message);
+        Assert.Contains("Layer 0 ('sha256:", exception.Message);
         Assert.NotNull(exception.InnerException);
     }
 
@@ -324,7 +436,7 @@ public class ImageFileSystemTests
                 Entry.File("tree/two", "two"))
         ];
         using IDockerRegistryClient client = CreateClient(layers).Object;
-        ImageFileSystem fileSystem = await ImageFileSystem.CreateAsync(
+        ImageFileSystem fileSystem = await CreateFileSystemAsync(
             client,
             ImageName,
             new PlatformOptionsBase(),
@@ -398,7 +510,7 @@ public class ImageFileSystemTests
                 Entry.HardLink("survivor", "original/file")),
             CreateLayer(Entry.File(".wh.original", ""))
         ]).Object;
-        ImageFileSystem fileSystem = await ImageFileSystem.CreateAsync(
+        ImageFileSystem fileSystem = await CreateFileSystemAsync(
             client,
             ImageName,
             new PlatformOptionsBase(),
@@ -435,7 +547,7 @@ public class ImageFileSystemTests
                 Entry.File("tree/file", "content"),
                 Entry.Other("tree/device"))
         ]).Object;
-        ImageFileSystem fileSystem = await ImageFileSystem.CreateAsync(
+        ImageFileSystem fileSystem = await CreateFileSystemAsync(
             client,
             ImageName,
             new PlatformOptionsBase(),
@@ -463,7 +575,7 @@ public class ImageFileSystemTests
             .ToArray();
         using IDockerRegistryClient client =
             CreateClient([CreateLayer(files)]).Object;
-        ImageFileSystem fileSystem = await ImageFileSystem.CreateAsync(
+        ImageFileSystem fileSystem = await CreateFileSystemAsync(
             client,
             ImageName,
             new PlatformOptionsBase(),
@@ -501,7 +613,7 @@ public class ImageFileSystemTests
         string output = Path.Combine(linkedParent, "file");
         using IDockerRegistryClient client =
             CreateClient([CreateLayer(Entry.File("file", "value"))]).Object;
-        ImageFileSystem fileSystem = await ImageFileSystem.CreateAsync(
+        ImageFileSystem fileSystem = await CreateFileSystemAsync(
             client,
             ImageName,
             new PlatformOptionsBase(),
@@ -544,7 +656,7 @@ public class ImageFileSystemTests
         client
             .Setup(item => item.Blobs.GetAsync(
                 ImageName.Repo,
-                "sha256:layer-1",
+                LayerCacheTestContext.Digest(layers[1]),
                 It.IsAny<CancellationToken>()))
             .ReturnsAsync(() =>
             {
@@ -555,11 +667,17 @@ public class ImageFileSystemTests
                 }
                 return new MemoryStream(layers[1]);
             });
-        ImageFileSystem fileSystem = await ImageFileSystem.CreateAsync(
+        ImageFileSystem fileSystem = await CreateFileSystemAsync(
             client.Object,
             ImageName,
             new PlatformOptionsBase(),
             TestContext.Current.CancellationToken);
+
+        await cache.EvictBlobsAsync();
+        fileSystem = await CreateFileSystemAsync(client.Object, ImageName, new PlatformOptionsBase(), TestContext.Current.CancellationToken);
+        client.Setup(item => item.Blobs.GetRangeAsync(
+            ImageName.Repo, LayerCacheTestContext.Digest(layers[1]), 0, It.IsAny<long?>(), It.IsAny<CancellationToken>()))
+            .ThrowsAsync(new IOException("Layer download failed."));
 
         IOException exception = await Assert.ThrowsAsync<IOException>(
             () => fileSystem.ExtractAsync(
@@ -584,7 +702,7 @@ public class ImageFileSystemTests
         client
             .Setup(item => item.Blobs.GetAsync(
                 ImageName.Repo,
-                "sha256:layer-0",
+                LayerCacheTestContext.Digest(layer),
                 It.IsAny<CancellationToken>()))
             .ReturnsAsync(() =>
             {
@@ -595,11 +713,17 @@ public class ImageFileSystemTests
                 }
                 return new MemoryStream(layer);
             });
-        ImageFileSystem fileSystem = await ImageFileSystem.CreateAsync(
+        ImageFileSystem fileSystem = await CreateFileSystemAsync(
             client.Object,
             ImageName,
             new PlatformOptionsBase(),
             TestContext.Current.CancellationToken);
+
+        await cache.EvictBlobsAsync();
+        fileSystem = await CreateFileSystemAsync(client.Object, ImageName, new PlatformOptionsBase(), TestContext.Current.CancellationToken);
+        client.Setup(item => item.Blobs.GetRangeAsync(
+            ImageName.Repo, LayerCacheTestContext.Digest(layer), 0, It.IsAny<long?>(), It.IsAny<CancellationToken>()))
+            .ThrowsAsync(new IOException("Layer download failed."));
 
         IOException exception = await Assert.ThrowsAsync<IOException>(
             () => fileSystem.ExtractAsync(
@@ -624,7 +748,7 @@ public class ImageFileSystemTests
         client
             .Setup(item => item.Blobs.GetAsync(
                 ImageName.Repo,
-                "sha256:layer-0",
+                LayerCacheTestContext.Digest(layer),
                 It.IsAny<CancellationToken>()))
             .ReturnsAsync(() =>
             {
@@ -635,11 +759,17 @@ public class ImageFileSystemTests
                 }
                 return new MemoryStream(layer);
             });
-        ImageFileSystem fileSystem = await ImageFileSystem.CreateAsync(
+        ImageFileSystem fileSystem = await CreateFileSystemAsync(
             client.Object,
             ImageName,
             new PlatformOptionsBase(),
             TestContext.Current.CancellationToken);
+
+        await cache.EvictBlobsAsync();
+        fileSystem = await CreateFileSystemAsync(client.Object, ImageName, new PlatformOptionsBase(), TestContext.Current.CancellationToken);
+        client.Setup(item => item.Blobs.GetRangeAsync(
+            ImageName.Repo, LayerCacheTestContext.Digest(layer), 0, It.IsAny<long?>(), It.IsAny<CancellationToken>()))
+            .ThrowsAsync(new IOException("Layer download failed."));
 
         IOException exception = await Assert.ThrowsAsync<IOException>(
             () => fileSystem.ExtractAsync(
@@ -659,7 +789,7 @@ public class ImageFileSystemTests
             $"dredge-filesystem-{Guid.NewGuid():N}");
         using IDockerRegistryClient client = CreateClient(
             [CreateLayer(Entry.Directory("tree/nested"))]).Object;
-        ImageFileSystem fileSystem = await ImageFileSystem.CreateAsync(
+        ImageFileSystem fileSystem = await CreateFileSystemAsync(
             client,
             ImageName,
             new PlatformOptionsBase(),
@@ -678,7 +808,7 @@ public class ImageFileSystemTests
     {
         using IDockerRegistryClient client =
             CreateClient([CreateLayer(Entry.File("file", "value"))]).Object;
-        ImageFileSystem fileSystem = await ImageFileSystem.CreateAsync(
+        ImageFileSystem fileSystem = await CreateFileSystemAsync(
             client,
             ImageName,
             new PlatformOptionsBase(),
@@ -715,7 +845,7 @@ public class ImageFileSystemTests
             $"dredge-filesystem-{Guid.NewGuid():N}");
         using IDockerRegistryClient client =
             CreateClient([CreateLayer(Entry.File(path, "value"))]).Object;
-        ImageFileSystem fileSystem = await ImageFileSystem.CreateAsync(
+        ImageFileSystem fileSystem = await CreateFileSystemAsync(
             client,
             ImageName,
             new PlatformOptionsBase(),
@@ -745,7 +875,7 @@ public class ImageFileSystemTests
             ColorSystem = ColorSystemSupport.NoColors,
             Out = new AnsiConsoleOutput(writer)
         });
-        LsCommand command = new TestLsCommand(factory.Object, console);
+        LsCommand command = new TestLsCommand(factory.Object, console, cache.Paths);
 
         int exitCode = await command
             .Parse([ImageName.ToString(), "--output", "json", "--os", "linux", "--arch", "amd64"])
@@ -801,7 +931,7 @@ public class ImageFileSystemTests
         Assert.Contains("link -> file", longOutput);
         Assert.DoesNotContain("i=", longOutput);
         Assert.Contains("i=", provenanceOutput);
-        Assert.Contains("0:layer-0", provenanceOutput);
+        Assert.Contains("i=0:", provenanceOutput);
         Assert.DoesNotContain("rwx", provenanceOutput);
         Assert.DoesNotContain("->", provenanceOutput);
         Assert.Contains("-rwxr-xr-x", combinedOutput);
@@ -823,7 +953,7 @@ public class ImageFileSystemTests
         Mock<IDockerRegistryClientFactory> factory = new();
         factory.Setup(item => item.GetClientAsync("registry.test", It.IsAny<CancellationToken>())).ReturnsAsync(client.Object);
         using MemoryStream output = new();
-        CatCommand command = new TestCatCommand(factory.Object, output);
+        CatCommand command = new TestCatCommand(factory.Object, output, cache.Paths);
 
         int exitCode = await command
             .Parse([ImageName.ToString(), "file"])
@@ -842,7 +972,7 @@ public class ImageFileSystemTests
             CreateClient([CreateLayer(Entry.File("file", "value"))], os: "windows");
 
         NotSupportedException exception = await Assert.ThrowsAsync<NotSupportedException>(
-            () => ImageFileSystem.CreateAsync(
+            () => CreateFileSystemAsync(
                 client.Object,
                 ImageName,
                 new PlatformOptionsBase(),
@@ -853,12 +983,12 @@ public class ImageFileSystemTests
         client.Verify(
             item => item.Blobs.GetAsync(
                 ImageName.Repo,
-                "sha256:layer-0",
+                It.Is<string>(digest => digest != ConfigDigest),
                 It.IsAny<CancellationToken>()),
             Times.Never);
     }
 
-    private static async Task<string> InvokeLsCommandAsync(
+    private async Task<string> InvokeLsCommandAsync(
         IDockerRegistryClientFactory factory,
         params string[] options)
     {
@@ -869,7 +999,7 @@ public class ImageFileSystemTests
             ColorSystem = ColorSystemSupport.NoColors,
             Out = new AnsiConsoleOutput(writer)
         });
-        TestLsCommand command = new(factory, console);
+        TestLsCommand command = new(factory, console, cache.Paths);
 
         int exitCode = await command
             .Parse([ImageName.ToString(), .. options])
@@ -885,8 +1015,9 @@ public class ImageFileSystemTests
     {
         public TestLsCommand(
             IDockerRegistryClientFactory dockerRegistryClientFactory,
-            IAnsiConsole console)
-            : base(dockerRegistryClientFactory, console)
+            IAnsiConsole console,
+            IDredgePathProvider paths)
+            : base(dockerRegistryClientFactory, console, paths)
         {
         }
 
@@ -900,8 +1031,9 @@ public class ImageFileSystemTests
     {
         public TestCatCommand(
             IDockerRegistryClientFactory dockerRegistryClientFactory,
-            Stream output)
-            : base(dockerRegistryClientFactory, output)
+            Stream output,
+            IDredgePathProvider paths)
+            : base(dockerRegistryClientFactory, output, paths)
         {
         }
 
@@ -920,7 +1052,7 @@ public class ImageFileSystemTests
         {
             Config = new ManifestConfig { Digest = ConfigDigest },
             Layers = layers
-                .Select((_, index) => new ManifestLayer { Digest = $"sha256:layer-{index}" })
+                .Select(layer => new ManifestLayer { Digest = LayerCacheTestContext.Digest(layer), Size = layer.Length })
                 .ToArray()
         };
         client
@@ -930,7 +1062,7 @@ public class ImageFileSystemTests
                 It.IsAny<CancellationToken>()))
             .ReturnsAsync(new ManifestInfo(
                 "application/vnd.oci.image.manifest.v1+json",
-                "sha256:manifest",
+                LayerCacheTestContext.Digest(Encoding.UTF8.GetBytes(JsonSerializer.Serialize(manifest))),
                 manifest));
         client
             .Setup(item => item.Blobs.GetAsync(
@@ -945,9 +1077,15 @@ public class ImageFileSystemTests
             client
                 .Setup(item => item.Blobs.GetAsync(
                     ImageName.Repo,
-                    $"sha256:layer-{captured}",
+                    LayerCacheTestContext.Digest(layers[captured]),
                     It.IsAny<CancellationToken>()))
                 .ReturnsAsync(() => new MemoryStream(layers[captured]));
+            client
+                .Setup(item => item.Blobs.GetRangeAsync(
+                    ImageName.Repo, LayerCacheTestContext.Digest(layers[captured]),
+                    0, It.IsAny<long?>(), It.IsAny<CancellationToken>()))
+                .ReturnsAsync(() => new Valleysoft.DockerRegistryClient.BlobDownloadResult(
+                    new MemoryStream(layers[captured]), false, null, null, layers[captured].Length));
         }
         return client;
     }

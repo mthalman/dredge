@@ -210,6 +210,15 @@ The `ls`, `cat`, and `extract` commands support gzip-compressed Linux tar
 layers. They reject Windows image layers with an explicit unsupported-platform
 error.
 
+### Shared layer cache
+
+`ls`, `cat`, `extract`, `save-layers`, `compare files`, and Linux `os` share a
+persistent cache to reduce repeated layer downloads. Registry access is still
+required, even when image layers are cached.
+
+See [Configure the layer cache](../settings.md#configure-the-layer-cache) for
+cache locations, storage limits, and cleanup.
+
 ## Compare metadata
 
 Compares image configuration, manifest descriptors, and platform metadata

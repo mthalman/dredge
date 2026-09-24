@@ -45,9 +45,10 @@ internal sealed class TestAppSettingsStore(
     public AppSettings Load() => settings;
 }
 
-internal sealed class TestDredgePathProvider(string tempPath) : IDredgePathProvider
+internal sealed class TestDredgePathProvider(string tempPath, string? cachePath = null) : IDredgePathProvider
 {
     public string TempPath { get; } = tempPath;
+    public string CachePath => cachePath ?? Path.Combine(TempPath, "cache");
 }
 
 internal sealed class TestProcessLauncher : IProcessLauncher

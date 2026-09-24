@@ -1,5 +1,3 @@
-using System.Formats.Tar;
-using System.IO.Compression;
 using Valleysoft.DockerRegistryClient;
 using Valleysoft.DockerRegistryClient.Models.Images;
 using Valleysoft.DockerRegistryClient.Models.Manifests;
@@ -7,13 +5,16 @@ using Valleysoft.Dredge.Commands;
 
 namespace Valleysoft.Dredge;
 
-internal sealed class ImageFileSystem
+internal sealed class ImageFileSystem : IAsyncDisposable
 {
     private const int MaximumLinkHops = 40;
 
     private readonly IDockerRegistryClient client;
     private readonly ImageName imageName;
     private readonly IImageManifest manifest;
+    private readonly LayerStore store;
+    private readonly bool ownsStore;
+    private readonly Dictionary<int, StoredLayerIndex> indexes = [];
     private readonly Dictionary<string, ImageFileSystemEntry> entries =
         new(StringComparer.Ordinal);
     private readonly Dictionary<string, ImageFileSystemEntry> deletedEntries =
@@ -22,18 +23,25 @@ internal sealed class ImageFileSystem
     private ImageFileSystem(
         IDockerRegistryClient client,
         ImageName imageName,
-        IImageManifest manifest)
+        IImageManifest manifest,
+        LayerStore store,
+        bool ownsStore)
     {
         this.client = client;
         this.imageName = imageName;
         this.manifest = manifest;
+        this.store = store;
+        this.ownsStore = ownsStore;
     }
 
     public static async Task<ImageFileSystem> CreateAsync(
         IDockerRegistryClient client,
         ImageName imageName,
         PlatformOptionsBase options,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        LayerStore? store = null,
+        string? contentPath = null,
+        string? extractionPath = null)
     {
         ResolvedManifest resolved =
             await ManifestHelper.GetResolvedManifestAsync(client, imageName, options, cancellationToken);
@@ -51,9 +59,29 @@ internal sealed class ImageFileSystem
                 "Image filesystem commands support Linux image layers only; Windows image layers are not supported.");
         }
 
-        ImageFileSystem fileSystem = new(client, imageName, manifest);
-        await fileSystem.BuildIndexAsync(cancellationToken);
-        return fileSystem;
+        ImageFileSystem fileSystem = new(client, imageName, manifest, store ?? LayerStore.Create(), store is null);
+        try
+        {
+            string digest = resolved.ManifestInfo.DockerContentDigest;
+            StoredFileSystem? cached = await fileSystem.store.ReadMetadataAsync<StoredFileSystem>(
+                digest, "view", cancellationToken);
+            if (cached is not null && fileSystem.TryRestore(cached))
+            {
+                return fileSystem;
+            }
+            bool complete = await fileSystem.BuildIndexAsync(
+                contentPath ?? extractionPath, extractionPath is not null, cancellationToken);
+            if (complete)
+            {
+                await fileSystem.store.WriteMetadataAsync(digest, "view", fileSystem.Snapshot(), cancellationToken);
+            }
+            return fileSystem;
+        }
+        catch
+        {
+            await fileSystem.DisposeAsync();
+            throw;
+        }
     }
 
     public IReadOnlyList<ImageFileSystemEntry> List(
@@ -434,26 +462,55 @@ internal sealed class ImageFileSystem
         }
     }
 
-    private async Task BuildIndexAsync(CancellationToken cancellationToken)
+    private async Task<bool> BuildIndexAsync(string? contentPath, bool extracting, CancellationToken cancellationToken)
     {
-        for (int layerIndex = 0; layerIndex < manifest.Layers.Length; layerIndex++)
+        if (!string.IsNullOrEmpty(ImagePath.NormalizeRequested(contentPath)))
         {
-            cancellationToken.ThrowIfCancellationRequested();
-            IDescriptor layer = manifest.Layers[layerIndex];
-            string digest = layer.Digest ??
-                throw new InvalidDataException(
-                    $"Layer digest not set for image '{imageName}'.");
-            ImageLayerReference layerReference = new(layerIndex, digest);
-            using Stream blob = await client.Blobs.GetAsync(
-                imageName.Repo,
-                digest,
-                cancellationToken);
-            LayerChanges changes = await ImageLayerScanner.ScanAsync(
-                blob,
-                layerReference,
-                cancellationToken);
-            ApplyLayer(changes, layerReference, cancellationToken);
+            for (int firstLayer = manifest.Layers.Length - 1; firstLayer >= 0; firstLayer--)
+            {
+                await GetIndexAsync(firstLayer, cancellationToken);
+                entries.Clear();
+                deletedEntries.Clear();
+                try
+                {
+                    for (int i = firstLayer; i < manifest.Layers.Length; i++)
+                    {
+                        ApplyLayer(indexes[i].Changes, new(i, indexes[i].Digest), cancellationToken);
+                    }
+                    if (!extracting || GetExtractionSource(contentPath!).Type == ImageFileType.File)
+                    {
+                        _ = ResolveContentEntry(contentPath!);
+                        return firstLayer == 0;
+                    }
+                }
+                catch (Exception exception) when (firstLayer > 0 &&
+                    exception is FileNotFoundException or InvalidDataException)
+                {
+                    // A suffix cannot resolve hard-link snapshots or parent links supplied by older layers.
+                }
+            }
+            return true;
         }
+        for (int i = 0; i < manifest.Layers.Length; i++)
+        {
+            StoredLayerIndex index = await GetIndexAsync(i, cancellationToken);
+            ApplyLayer(index.Changes, new(i, index.Digest), cancellationToken);
+        }
+        return true;
+    }
+
+    private async Task<StoredLayerIndex> GetIndexAsync(int layerIndex, CancellationToken cancellationToken)
+    {
+        if (!indexes.TryGetValue(layerIndex, out StoredLayerIndex? index))
+        {
+            IDescriptor descriptor = manifest.Layers[layerIndex];
+            string digest = descriptor.Digest ??
+                throw new InvalidDataException($"Layer digest not set for image '{imageName}'.");
+            index = await store.GetIndexAsync(client, imageName, new(layerIndex, digest),
+                descriptor.Size, cancellationToken);
+            indexes.Add(layerIndex, index);
+        }
+        return index;
     }
 
     private void ApplyLayer(
@@ -495,7 +552,7 @@ internal sealed class ImageFileSystem
                 previous is not null && previous.IntroducedLayer.Index != layer.Index
                     ? layer
                     : previous?.ModifiedLayer;
-            ImageFileSystemEntry current = scanned.ToEntry(introduced, modified);
+            ImageFileSystemEntry current = scanned.ToEntry(introduced, modified, layer);
             if (current.Type == ImageFileType.HardLink)
             {
                 string targetPath = GetHardLinkTargetPath(current);
@@ -757,9 +814,6 @@ internal sealed class ImageFileSystem
             requestList.GroupBy(request => request.Entry.ContentLayerIndex))
         {
             cancellationToken.ThrowIfCancellationRequested();
-            IDescriptor layer = manifest.Layers[group.Key];
-            string digest = layer.Digest ??
-                throw new InvalidDataException($"Layer {group.Key} has no digest.");
             Dictionary<(string Path, int EntryIndex), Queue<Stream>> destinations = group
                 .GroupBy(request => (
                     Path: request.Entry.ContentPath ?? request.Entry.Path,
@@ -768,46 +822,23 @@ internal sealed class ImageFileSystem
                     item => item.Key,
                     item => new Queue<Stream>(item.Select(request => request.Destination)));
 
-            using Stream blob = await client.Blobs.GetAsync(
-                imageName.Repo,
-                digest,
-                cancellationToken);
-            using GZipStream gzip = new(blob, CompressionMode.Decompress, leaveOpen: true);
-            using TarReader tar = new(gzip, leaveOpen: true);
-            int entryIndex = 0;
-            while (destinations.Count > 0)
+            StoredLayerIndex index = await GetIndexAsync(group.Key, cancellationToken);
+            using Stream blob = await store.OpenIndexedBlobAsync(
+                client, imageName, index, destinations.Keys.Select(key => key.EntryIndex), cancellationToken);
+            using LayerContentReader reader = new(blob);
+            foreach (ScannedEntry entry in index.Changes.Entries)
             {
                 cancellationToken.ThrowIfCancellationRequested();
-                TarEntry? tarEntry = await ImageTarReader.GetNextEntryAsync(
-                    tar,
-                    new(group.Key, digest),
-                    cancellationToken);
-                if (tarEntry is null)
-                {
-                    break;
-                }
-
-                int currentEntryIndex = entryIndex++;
-                string path = ImagePath.NormalizeArchive(tarEntry.Name);
                 if (!destinations.Remove(
-                    (path, currentEntryIndex),
+                    (entry.Path, entry.EntryIndex),
                     out Queue<Stream>? outputs))
                 {
-                    await ImageTarReader.DrainEntryAsync(
-                        tarEntry,
-                        new(group.Key, digest),
-                        cancellationToken);
                     continue;
                 }
 
-                using MemoryStream? buffer = outputs.Count > 1 ? new MemoryStream() : null;
+                using FileStream? buffer = outputs.Count > 1 ? store.CreateScratchFile() : null;
                 Stream first = buffer ?? outputs.Dequeue();
-                await ImageTarReader.CopyEntryAsync(
-                    tarEntry,
-                    first,
-                    new(group.Key, digest),
-                    path,
-                    cancellationToken);
+                await reader.CopyToAsync(entry, first, cancellationToken);
                 if (buffer is not null)
                 {
                     foreach (Stream output in outputs)
@@ -834,9 +865,6 @@ internal sealed class ImageFileSystem
             requests.GroupBy(request => request.Entry.ContentLayerIndex))
         {
             cancellationToken.ThrowIfCancellationRequested();
-            IDescriptor layer = manifest.Layers[group.Key];
-            string digest = layer.Digest ??
-                throw new InvalidDataException($"Layer {group.Key} has no digest.");
             Dictionary<(string Path, int EntryIndex), Queue<string>> destinations = group
                 .GroupBy(request => (
                     Path: request.Entry.ContentPath ?? request.Entry.Path,
@@ -845,35 +873,17 @@ internal sealed class ImageFileSystem
                     item => item.Key,
                     item => new Queue<string>(item.Select(request => request.Destination)));
 
-            using Stream blob = await client.Blobs.GetAsync(
-                imageName.Repo,
-                digest,
-                cancellationToken);
-            using GZipStream gzip = new(blob, CompressionMode.Decompress, leaveOpen: true);
-            using TarReader tar = new(gzip, leaveOpen: true);
-            int entryIndex = 0;
-            while (destinations.Count > 0)
+            StoredLayerIndex index = await GetIndexAsync(group.Key, cancellationToken);
+            using Stream blob = await store.OpenIndexedBlobAsync(
+                client, imageName, index, destinations.Keys.Select(key => key.EntryIndex), cancellationToken);
+            using LayerContentReader reader = new(blob);
+            foreach (ScannedEntry entry in index.Changes.Entries)
             {
                 cancellationToken.ThrowIfCancellationRequested();
-                TarEntry? tarEntry = await ImageTarReader.GetNextEntryAsync(
-                    tar,
-                    new(group.Key, digest),
-                    cancellationToken);
-                if (tarEntry is null)
-                {
-                    break;
-                }
-
-                int currentEntryIndex = entryIndex++;
-                string path = ImagePath.NormalizeArchive(tarEntry.Name);
                 if (!destinations.Remove(
-                    (path, currentEntryIndex),
+                    (entry.Path, entry.EntryIndex),
                     out Queue<string>? outputs))
                 {
-                    await ImageTarReader.DrainEntryAsync(
-                        tarEntry,
-                        new(group.Key, digest),
-                        cancellationToken);
                     continue;
                 }
 
@@ -887,12 +897,7 @@ internal sealed class ImageFileSystem
                     bufferSize: 81920,
                     FileOptions.Asynchronous))
                 {
-                    await ImageTarReader.CopyEntryAsync(
-                        tarEntry,
-                        destination,
-                        new(group.Key, digest),
-                        path,
-                        cancellationToken);
+                    await reader.CopyToAsync(entry, destination, cancellationToken);
                 }
 
                 foreach (string output in outputs)
@@ -909,6 +914,79 @@ internal sealed class ImageFileSystem
                     $"Could not locate effective content for '/{destinations.Keys.First().Path}' in layer {group.Key}.");
             }
         }
+    }
+
+    public ValueTask DisposeAsync() => ownsStore ? store.DisposeAsync() : ValueTask.CompletedTask;
+
+    private StoredFileSystem Snapshot() => new(
+        manifest.Layers.Select(layer => layer.Digest!).ToArray(),
+        entries.Values.Select(StoredEntry.FromEntry).ToArray(),
+        deletedEntries.Values.Select(StoredEntry.FromEntry).ToArray());
+
+    private bool TryRestore(StoredFileSystem cached)
+    {
+        try
+        {
+            if (cached.Layers is null || cached.Entries is null || cached.DeletedEntries is null ||
+                !cached.Layers.SequenceEqual(manifest.Layers.Select(layer => layer.Digest)))
+            {
+                throw new InvalidDataException("The cached view has different layer identities.");
+            }
+            RestoreEntries(cached.Entries, entries);
+            RestoreEntries(cached.DeletedEntries, deletedEntries);
+            return true;
+        }
+        catch (InvalidDataException exception)
+        {
+            Console.Error.WriteLine($"Rebuilding invalid filesystem view: {exception.Message}");
+            entries.Clear();
+            deletedEntries.Clear();
+            return false;
+        }
+    }
+
+    private void RestoreEntries(StoredEntry[] cached, Dictionary<string, ImageFileSystemEntry> destination)
+    {
+        foreach (StoredEntry stored in cached)
+        {
+            ImageFileSystemEntry? value = stored?.Value;
+            if (value is null || string.IsNullOrEmpty(value.Path) ||
+                ImagePath.NormalizeArchive(value.Path) != value.Path ||
+                !Enum.IsDefined(value.Type) || value.Size < 0 ||
+                stored!.ContentLayerIndex < 0 || stored.ContentLayerIndex >= manifest.Layers.Length ||
+                stored.ContentEntryIndex < 0 ||
+                value.IntroducedLayer is null || !ValidReference(value.IntroducedLayer) ||
+                (value.ModifiedLayer is not null && !ValidReference(value.ModifiedLayer)) ||
+                (value.DeletedLayer is not null && !ValidReference(value.DeletedLayer)) ||
+                (stored.ContentPath is not null && ImagePath.NormalizeArchive(stored.ContentPath) != stored.ContentPath))
+            {
+                throw new InvalidDataException("The cached view contains invalid entry coordinates.");
+            }
+            if (!destination.TryAdd(value.Path, value with
+            {
+                ContentLayerIndex = stored.ContentLayerIndex,
+                ContentEntryIndex = stored.ContentEntryIndex,
+                ContentPath = stored.ContentPath,
+                ContentLinkTarget = stored.ContentLinkTarget
+            }))
+            {
+                throw new InvalidDataException("The cached view contains duplicate paths.");
+            }
+        }
+    }
+
+    private bool ValidReference(ImageLayerReference layer) =>
+        layer.Index >= 0 && layer.Index < manifest.Layers.Length &&
+        layer.Digest == manifest.Layers[layer.Index].Digest;
+
+    private sealed record StoredFileSystem(string[] Layers, StoredEntry[] Entries, StoredEntry[] DeletedEntries);
+
+    private sealed record StoredEntry(
+        ImageFileSystemEntry Value, int ContentLayerIndex, int ContentEntryIndex,
+        string? ContentPath, string? ContentLinkTarget)
+    {
+        public static StoredEntry FromEntry(ImageFileSystemEntry value) =>
+            new(value, value.ContentLayerIndex, value.ContentEntryIndex, value.ContentPath, value.ContentLinkTarget);
     }
 
     private static void ValidateNewDestination(string outputPath)

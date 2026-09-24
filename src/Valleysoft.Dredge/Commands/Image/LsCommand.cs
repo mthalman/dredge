@@ -8,16 +8,24 @@ public class LsCommand : RegistryCommandBase<LsOptions>
 {
     private const int DisplayDigestLength = 12;
     private readonly IAnsiConsole ansiConsole;
+    private readonly IDredgePathProvider paths;
 
     public LsCommand(
         IDockerRegistryClientFactory dockerRegistryClientFactory,
         IAnsiConsole? ansiConsole = null)
+        : this(dockerRegistryClientFactory, ansiConsole, new DredgePathProvider())
+    {
+    }
+
+    internal LsCommand(IDockerRegistryClientFactory dockerRegistryClientFactory,
+        IAnsiConsole? ansiConsole, IDredgePathProvider paths)
         : base(
             "ls",
             "Lists files in an image filesystem with layer provenance",
             dockerRegistryClientFactory)
     {
         this.ansiConsole = ansiConsole ?? AnsiConsole.Console;
+        this.paths = paths;
     }
 
     protected override Task ExecuteAsync(CancellationToken cancellationToken)
@@ -27,8 +35,9 @@ public class LsCommand : RegistryCommandBase<LsOptions>
         {
             using IDockerRegistryClient client =
                 await DockerRegistryClientFactory.GetClientAsync(imageName.Registry, ct);
-            ImageFileSystem fileSystem =
-                await ImageFileSystem.CreateAsync(client, imageName, Options, ct);
+            await using LayerStore store = LayerStore.Create(paths);
+            await using ImageFileSystem fileSystem =
+                await ImageFileSystem.CreateAsync(client, imageName, Options, ct, store);
             IReadOnlyList<ImageFileSystemEntry> entries =
                 fileSystem.List(Options.Path, Options.Recursive, Options.ShowDeleted);
 

@@ -1,9 +1,27 @@
 using System.Formats.Tar;
+using System.IO.Compression;
+using System.Security.Cryptography;
 
 namespace Valleysoft.Dredge;
 
 internal static class ImageTarReader
 {
+    public static LayerArchive Open(Stream blob) => new(blob);
+
+    public static async Task<string> HashEntryAsync(
+        TarEntry entry, ImageLayerReference layer, CancellationToken cancellationToken)
+    {
+        try
+        {
+            return Convert.ToHexStringLower(await SHA256.HashDataAsync(
+                entry.DataStream ?? Stream.Null, cancellationToken));
+        }
+        catch (Exception exception) when (exception is InvalidDataException or NotSupportedException)
+        {
+            throw CreateInvalidLayerException(layer, exception);
+        }
+    }
+
     public static async ValueTask<TarEntry?> GetNextEntryAsync(
         TarReader reader,
         ImageLayerReference layer,
@@ -71,4 +89,22 @@ internal static class ImageTarReader
         new(
             $"Layer {layer.Index} ('{layer.Digest}') is not a supported gzip-compressed Linux tar layer.",
             innerException);
+
+    internal sealed class LayerArchive : IDisposable
+    {
+        private readonly GZipStream gzip;
+        public TarReader Reader { get; }
+
+        public LayerArchive(Stream blob)
+        {
+            gzip = new(blob, CompressionMode.Decompress, leaveOpen: true);
+            Reader = new(gzip, leaveOpen: true);
+        }
+
+        public void Dispose()
+        {
+            Reader.Dispose();
+            gzip.Dispose();
+        }
+    }
 }

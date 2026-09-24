@@ -7,16 +7,110 @@ using Valleysoft.DockerRegistryClient.Models.Manifests;
 using Valleysoft.DockerRegistryClient.Models.Manifests.Docker;
 using Valleysoft.Dredge.Commands;
 
-public class ImageHelperTests
+public class ImageHelperTests : IAsyncDisposable
 {
+    private readonly LayerCacheTestContext cache = new();
+    public ValueTask DisposeAsync() => cache.DisposeAsync();
+
+    private Task SaveAsync(
+        IDockerRegistryClientFactory factory, string image, string destPath, int? layerIndex,
+        string layerIndexOptionName, bool noSquash, PlatformOptionsBase options,
+        CancellationToken cancellationToken = default, IDredgePathProvider? pathProvider = null) =>
+        ImageHelper.SaveImageLayersToDiskAsync(factory, image, destPath, layerIndex,
+            layerIndexOptionName, noSquash, options, cancellationToken, pathProvider ?? cache.Paths);
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task SaveImageLayersToDiskAsync_SharedTempCannotSubstituteExtractionScratch(bool noSquash)
+    {
+        byte[] bytes = LayerCacheTestContext.ReadBytes(CreateLayer(("verified.txt", "verified")));
+        string digest = LayerCacheTestContext.Digest(bytes);
+        string sharedTemp = Path.Combine(cache.Root, "shared-temp");
+        Directory.CreateDirectory(sharedTemp);
+        if (!OperatingSystem.IsWindows())
+        {
+            File.SetUnixFileMode(sharedTemp,
+                UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.UserExecute |
+                UnixFileMode.GroupRead | UnixFileMode.GroupWrite | UnixFileMode.GroupExecute |
+                UnixFileMode.OtherRead | UnixFileMode.OtherWrite | UnixFileMode.OtherExecute);
+        }
+        TestDredgePathProvider paths = new(sharedTemp, cache.Paths.CachePath);
+        string dataPath = Path.Combine(cache.Paths.CachePath, "layer-store", "data");
+        List<string> exposedScratch = [];
+        string[] privateScratch = [];
+        Mock<IDockerRegistryClient> client = CreateSingleLayerClient(digest, () => new MemoryStream(bytes));
+        client.Setup(item => item.Blobs.GetAsync("library/image", digest, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(() =>
+            {
+                foreach (string directory in Directory.GetDirectories(sharedTemp, "layer-*"))
+                {
+                    exposedScratch.Add(directory);
+                    Directory.Move(directory, $"{directory}.original");
+                    Directory.CreateDirectory(directory);
+                    File.WriteAllText(Path.Combine(directory, "injected.txt"), "untrusted");
+                }
+                privateScratch = Directory.GetDirectories(dataPath, "*.scratch.dir");
+                return new MemoryStream(bytes);
+            });
+        Mock<IDockerRegistryClientFactory> factory = new();
+        factory.Setup(item => item.GetClientAsync(null, It.IsAny<CancellationToken>())).ReturnsAsync(client.Object);
+        string output = Path.Combine(cache.Root, "output");
+
+        await SaveAsync(factory.Object, "image", output, null, "--layer-index", noSquash,
+            new PlatformOptionsBase(), TestContext.Current.CancellationToken, paths);
+
+        string extracted = noSquash ? Path.Combine(output, $"layer0-{digest["sha256:".Length..]}") : output;
+        Assert.Equal("verified", await File.ReadAllTextAsync(
+            Path.Combine(extracted, "verified.txt"), TestContext.Current.CancellationToken));
+        Assert.False(File.Exists(Path.Combine(extracted, "injected.txt")));
+        Assert.Empty(exposedScratch);
+        Assert.Single(privateScratch);
+        Assert.False(Directory.Exists(privateScratch[0]));
+        Assert.Empty(Directory.GetFiles(dataPath, "*.scratch"));
+        Assert.Empty(Directory.EnumerateFileSystemEntries(sharedTemp));
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task SaveImageLayersToDiskAsync_FailedDownloadRemovesPrivateScratch(bool canceled)
+    {
+        byte[] bytes = LayerCacheTestContext.ReadBytes(CreateLayer(("file", "content")));
+        string digest = LayerCacheTestContext.Digest(bytes);
+        Mock<IDockerRegistryClient> client = CreateSingleLayerClient(digest, () => new MemoryStream(bytes));
+        Exception failure = canceled
+            ? new OperationCanceledException()
+            : new IOException("Download failed.");
+        client.Setup(item => item.Blobs.GetAsync("library/image", digest, It.IsAny<CancellationToken>()))
+            .ThrowsAsync(failure);
+        Mock<IDockerRegistryClientFactory> factory = new();
+        factory.Setup(item => item.GetClientAsync(null, It.IsAny<CancellationToken>())).ReturnsAsync(client.Object);
+
+        Exception? actual = await Record.ExceptionAsync(() =>
+            SaveAsync(factory.Object, "image", Path.Combine(cache.Root, "output"), null,
+                "--layer-index", false, new PlatformOptionsBase(), TestContext.Current.CancellationToken));
+
+        Assert.Same(failure, actual);
+        Assert.Empty(Directory.EnumerateFileSystemEntries(
+            Path.Combine(cache.Paths.CachePath, "layer-store", "data")));
+    }
+
     [Fact]
     public async Task SaveImageLayersToDiskAsync_AppliesLayersAndWhiteouts()
     {
         string id = Guid.NewGuid().ToString("N");
-        string firstDigest = $"sha256:{id}-first";
-        string secondDigest = $"sha256:{id}-second";
+        byte[] first = LayerCacheTestContext.ReadBytes(CreateLayer(
+            ("keep.txt", "old"), ("delete.txt", "delete"), ("colon:name.txt", "delete"),
+            ("nested/delete.txt", "nested delete"), ("removed/child.txt", "removed"), ("opaque/old.txt", "old")));
+        byte[] second = LayerCacheTestContext.ReadBytes(CreateLayer(
+            ("keep.txt", "new"), (".wh.delete.txt", string.Empty), (".wh.colon:name.txt", string.Empty),
+            ("nested/.wh.delete.txt", string.Empty), (".wh.removed", string.Empty),
+            ("opaque/!new.txt", "new"), ("opaque/.wh..wh..opq", string.Empty), ("nested/added.txt", "added")));
+        string firstDigest = LayerCacheTestContext.Digest(first);
+        string secondDigest = LayerCacheTestContext.Digest(second);
         string output = Path.Combine(Path.GetTempPath(), $"dredge-output-{id}");
-        string layerCache = Path.Combine(DredgeState.DredgeTempPath, "layers");
+        string layerCache = Path.Combine(cache.Paths.TempPath, "layers");
         string firstCache = Path.Combine(layerCache, $"{id}-first");
         string secondCache = Path.Combine(layerCache, $"{id}-second");
         Mock<IDockerRegistryClient> client = new() { DefaultValue = DefaultValue.Mock };
@@ -29,36 +123,22 @@ public class ImageHelperTests
                 {
                     Layers =
                     [
-                        new ManifestLayer { Digest = firstDigest },
-                        new ManifestLayer { Digest = secondDigest }
+                        new ManifestLayer { Digest = firstDigest, Size = first.Length },
+                        new ManifestLayer { Digest = secondDigest, Size = second.Length }
                     ]
                 }));
         client
             .Setup(o => o.Blobs.GetAsync("library/image", firstDigest, It.IsAny<CancellationToken>()))
-            .ReturnsAsync(() => CreateLayer(
-                ("keep.txt", "old"),
-                ("delete.txt", "delete"),
-                ("colon:name.txt", "delete"),
-                ("nested/delete.txt", "nested delete"),
-                ("removed/child.txt", "removed"),
-                ("opaque/old.txt", "old")));
+            .ReturnsAsync(() => new MemoryStream(first));
         client
             .Setup(o => o.Blobs.GetAsync("library/image", secondDigest, It.IsAny<CancellationToken>()))
-            .ReturnsAsync(() => CreateLayer(
-                ("keep.txt", "new"),
-                (".wh.delete.txt", string.Empty),
-                (".wh.colon:name.txt", string.Empty),
-                ("nested/.wh.delete.txt", string.Empty),
-                (".wh.removed", string.Empty),
-                ("opaque/!new.txt", "new"),
-                ("opaque/.wh..wh..opq", string.Empty),
-                ("nested/added.txt", "added")));
+            .ReturnsAsync(() => new MemoryStream(second));
         Mock<IDockerRegistryClientFactory> factory = new();
         factory.Setup(o => o.GetClientAsync(null, It.IsAny<CancellationToken>())).ReturnsAsync(client.Object);
 
         try
         {
-            await ImageHelper.SaveImageLayersToDiskAsync(
+            await SaveAsync(
                 factory.Object,
                 "image",
                 output,
@@ -98,17 +178,15 @@ public class ImageHelperTests
     public async Task SaveImageLayersToDiskAsync_ConcurrentCallsPublishSameLayerAtomically()
     {
         string id = Guid.NewGuid().ToString("N");
-        string digest = $"sha256:{id}";
+        byte[] bytes = LayerCacheTestContext.ReadBytes(CreateLayer(("file.txt", "content")));
+        string digest = LayerCacheTestContext.Digest(bytes);
         string tempRoot = Path.Combine(Path.GetTempPath(), $"dredge-concurrent-cache-{id}");
         string firstOutput = Path.Combine(tempRoot, "first-output");
         string secondOutput = Path.Combine(tempRoot, "second-output");
-        string layersPath = Path.Combine(tempRoot, "layers");
-        TaskCompletionSource bothDownloadsStarted = new(
-            TaskCreationOptions.RunContinuationsAsynchronously);
         int downloadCount = 0;
         Mock<IDockerRegistryClient> client = CreateSingleLayerClient(
             digest,
-            () => CreateLayer(("file.txt", "content")));
+            () => new MemoryStream(bytes));
         client
             .Setup(o => o.Blobs.GetAsync(
                 "library/image",
@@ -116,13 +194,9 @@ public class ImageHelperTests
                 It.IsAny<CancellationToken>()))
             .Returns(async () =>
             {
-                if (Interlocked.Increment(ref downloadCount) == 2)
-                {
-                    bothDownloadsStarted.SetResult();
-                }
-                await bothDownloadsStarted.Task.WaitAsync(
-                    TestContext.Current.CancellationToken);
-                return CreateLayer(("file.txt", "content"));
+                Interlocked.Increment(ref downloadCount);
+                await Task.Delay(100, TestContext.Current.CancellationToken);
+                return new MemoryStream(bytes);
             });
         Mock<IDockerRegistryClientFactory> factory = new();
         factory.Setup(o => o.GetClientAsync(null, It.IsAny<CancellationToken>())).ReturnsAsync(client.Object);
@@ -130,7 +204,7 @@ public class ImageHelperTests
 
         try
         {
-            Task first = ImageHelper.SaveImageLayersToDiskAsync(
+            Task first = SaveAsync(
                 factory.Object,
                 "image",
                 firstOutput,
@@ -140,7 +214,7 @@ public class ImageHelperTests
                 new PlatformOptionsBase(),
                 TestContext.Current.CancellationToken,
                 pathProvider);
-            Task second = ImageHelper.SaveImageLayersToDiskAsync(
+            Task second = SaveAsync(
                 factory.Object,
                 "image",
                 secondOutput,
@@ -153,7 +227,6 @@ public class ImageHelperTests
 
             await Task.WhenAll(first, second);
 
-            Assert.Equal(2, downloadCount);
             Assert.Equal(
                 "content",
                 await File.ReadAllTextAsync(
@@ -164,8 +237,9 @@ public class ImageHelperTests
                 await File.ReadAllTextAsync(
                     Path.Combine(secondOutput, "file.txt"),
                     TestContext.Current.CancellationToken));
-            Assert.True(Directory.Exists(Path.Combine(layersPath, id)));
-            Assert.Empty(Directory.EnumerateDirectories(layersPath, "*.tmp"));
+            Assert.Equal(1, downloadCount);
+            Assert.Single(Directory.GetFiles(
+                Path.Combine(pathProvider.CachePath, "layer-store", "data"), "*.blob"));
         }
         finally
         {
@@ -181,7 +255,8 @@ public class ImageHelperTests
     {
         string id = Guid.NewGuid().ToString("N");
         string firstDigest = $"sha256:{id}-one";
-        string secondDigest = $"sha256:{id}-two";
+        byte[] bytes = LayerCacheTestContext.ReadBytes(CreateLayer(("file.txt", "content")));
+        string secondDigest = LayerCacheTestContext.Digest(bytes);
         string tempRoot = Path.Combine(Path.GetTempPath(), $"dredge-layer-boundary-{id}");
         Mock<IDockerRegistryClient> client = new() { DefaultValue = DefaultValue.Mock };
         client
@@ -194,18 +269,18 @@ public class ImageHelperTests
                     Layers =
                     [
                         new ManifestLayer { Digest = firstDigest },
-                        new ManifestLayer { Digest = secondDigest }
+                        new ManifestLayer { Digest = secondDigest, Size = bytes.Length }
                     ]
                 }));
         client
             .Setup(o => o.Blobs.GetAsync("library/image", secondDigest, It.IsAny<CancellationToken>()))
-            .ReturnsAsync(() => CreateLayer(("file.txt", "content")));
+            .ReturnsAsync(() => new MemoryStream(bytes));
         Mock<IDockerRegistryClientFactory> factory = new();
         factory.Setup(o => o.GetClientAsync(null, It.IsAny<CancellationToken>())).ReturnsAsync(client.Object);
 
         try
         {
-            await ImageHelper.SaveImageLayersToDiskAsync(
+            await SaveAsync(
                 factory.Object,
                 "image",
                 Path.Combine(tempRoot, "output"),
@@ -261,7 +336,7 @@ public class ImageHelperTests
         factory.Setup(o => o.GetClientAsync(null, It.IsAny<CancellationToken>())).ReturnsAsync(client.Object);
 
         Exception exception = await Assert.ThrowsAsync<Exception>(
-            () => ImageHelper.SaveImageLayersToDiskAsync(
+            () => SaveAsync(
                 factory.Object,
                 "image",
                 "output",
@@ -293,7 +368,7 @@ public class ImageHelperTests
         factory.Setup(o => o.GetClientAsync(null, It.IsAny<CancellationToken>())).ReturnsAsync(client.Object);
 
         Exception exception = await Assert.ThrowsAsync<Exception>(
-            () => ImageHelper.SaveImageLayersToDiskAsync(
+            () => SaveAsync(
                 factory.Object,
                 "image",
                 "output",
@@ -322,7 +397,7 @@ public class ImageHelperTests
         factory.Setup(o => o.GetClientAsync(null, It.IsAny<CancellationToken>())).ReturnsAsync(client.Object);
 
         InvalidDataException exception = await Assert.ThrowsAsync<InvalidDataException>(
-            () => ImageHelper.SaveImageLayersToDiskAsync(
+            () => SaveAsync(
                 factory.Object,
                 "image",
                 "output",
@@ -341,9 +416,10 @@ public class ImageHelperTests
     public async Task SaveImageLayersToDiskAsync_WhenEntryEscapesLayerDirectory_Throws()
     {
         string id = Guid.NewGuid().ToString("N");
-        string digest = $"sha256:{id}";
-        string escapedPath = Path.Combine(DredgeState.DredgeTempPath, "layers", $"escaped-{id}.txt");
-        string layerCache = Path.Combine(DredgeState.DredgeTempPath, "layers", id);
+        byte[] bytes = LayerCacheTestContext.ReadBytes(CreateLayer(($"../escaped-{id}.txt", "escaped")));
+        string digest = LayerCacheTestContext.Digest(bytes);
+        string escapedPath = Path.Combine(cache.Paths.TempPath, "layers", $"escaped-{id}.txt");
+        string layerCache = Path.Combine(cache.Paths.TempPath, "layers", id);
         Mock<IDockerRegistryClient> client = new() { DefaultValue = DefaultValue.Mock };
         client
             .Setup(o => o.Manifests.GetAsync("library/image", "latest", It.IsAny<CancellationToken>()))
@@ -352,18 +428,18 @@ public class ImageHelperTests
                 "sha256:manifest",
                 new DockerManifest
                 {
-                    Layers = [new ManifestLayer { Digest = digest }]
+                    Layers = [new ManifestLayer { Digest = digest, Size = bytes.Length }]
                 }));
         client
             .Setup(o => o.Blobs.GetAsync("library/image", digest, It.IsAny<CancellationToken>()))
-            .ReturnsAsync(() => CreateLayer(($"../escaped-{id}.txt", "escaped")));
+            .ReturnsAsync(() => new MemoryStream(bytes));
         Mock<IDockerRegistryClientFactory> factory = new();
         factory.Setup(o => o.GetClientAsync(null, It.IsAny<CancellationToken>())).ReturnsAsync(client.Object);
 
         try
         {
             InvalidDataException exception = await Assert.ThrowsAsync<InvalidDataException>(
-                () => ImageHelper.SaveImageLayersToDiskAsync(
+                () => SaveAsync(
                     factory.Object,
                     "image",
                     Path.Combine(Path.GetTempPath(), $"dredge-output-{id}"),
@@ -393,7 +469,7 @@ public class ImageHelperTests
     {
         string id = Guid.NewGuid().ToString("N");
         string digest = $"sha256:{id}";
-        string layerCache = Path.Combine(DredgeState.DredgeTempPath, "layers", id);
+        string layerCache = Path.Combine(cache.Paths.TempPath, "layers", id);
         Mock<IDockerRegistryClient> client = CreateSingleLayerClient(
             digest,
             () => CreateSymbolicLinkLayer("link", "../outside"));
@@ -403,7 +479,7 @@ public class ImageHelperTests
         try
         {
             await Assert.ThrowsAsync<InvalidDataException>(
-                () => ImageHelper.SaveImageLayersToDiskAsync(
+                () => SaveAsync(
                     factory.Object,
                     "image",
                     Path.Combine(Path.GetTempPath(), $"dredge-output-{id}"),
@@ -426,8 +502,8 @@ public class ImageHelperTests
     {
         string id = Guid.NewGuid().ToString("N");
         string digest = $"sha256:{id}";
-        string layerCache = Path.Combine(DredgeState.DredgeTempPath, "layers", id);
-        string escapedPath = Path.Combine(DredgeState.DredgeTempPath, "layers", $"escaped-{id}.txt");
+        string layerCache = Path.Combine(cache.Paths.TempPath, "layers", id);
+        string escapedPath = Path.Combine(cache.Paths.TempPath, "layers", $"escaped-{id}.txt");
         Mock<IDockerRegistryClient> client = CreateSingleLayerClient(
             digest,
             () => CreateSymlinkChainLayer(id));
@@ -437,7 +513,7 @@ public class ImageHelperTests
         try
         {
             await Assert.ThrowsAsync<InvalidDataException>(
-                () => ImageHelper.SaveImageLayersToDiskAsync(
+                () => SaveAsync(
                     factory.Object,
                     "image",
                     Path.Combine(Path.GetTempPath(), $"dredge-output-{id}"),
@@ -468,7 +544,7 @@ public class ImageHelperTests
     {
         string id = Guid.NewGuid().ToString("N");
         string digest = $"sha256:{id}";
-        string layerCache = Path.Combine(DredgeState.DredgeTempPath, "layers", id);
+        string layerCache = Path.Combine(cache.Paths.TempPath, "layers", id);
         Mock<IDockerRegistryClient> client = CreateSingleLayerClient(
             digest,
             () => CreateLayer((whiteoutName, string.Empty)));
@@ -478,7 +554,7 @@ public class ImageHelperTests
         try
         {
             InvalidDataException exception = await Assert.ThrowsAsync<InvalidDataException>(
-                () => ImageHelper.SaveImageLayersToDiskAsync(
+                () => SaveAsync(
                     factory.Object,
                     "image",
                     Path.Combine(Path.GetTempPath(), $"dredge-output-{id}"),
@@ -502,6 +578,11 @@ public class ImageHelperTests
         string digest,
         Func<Stream> createLayer)
     {
+        byte[] bytes = LayerCacheTestContext.ReadBytes(createLayer());
+        if (digest != "sha256:C:escape")
+        {
+            digest = LayerCacheTestContext.Digest(bytes);
+        }
         Mock<IDockerRegistryClient> client = new() { DefaultValue = DefaultValue.Mock };
         client
             .Setup(o => o.Manifests.GetAsync("library/image", "latest", It.IsAny<CancellationToken>()))
@@ -510,11 +591,11 @@ public class ImageHelperTests
                 "sha256:manifest",
                 new DockerManifest
                 {
-                    Layers = [new ManifestLayer { Digest = digest }]
+                    Layers = [new ManifestLayer { Digest = digest, Size = bytes.Length }]
                 }));
         client
             .Setup(o => o.Blobs.GetAsync("library/image", digest, It.IsAny<CancellationToken>()))
-            .ReturnsAsync(createLayer);
+            .ReturnsAsync(() => new MemoryStream(bytes));
         return client;
     }
 

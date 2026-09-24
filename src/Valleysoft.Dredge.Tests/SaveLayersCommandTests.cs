@@ -7,8 +7,10 @@ using Valleysoft.DockerRegistryClient.Models.Manifests;
 using Valleysoft.DockerRegistryClient.Models.Manifests.Docker;
 using Valleysoft.Dredge.Commands.Image;
 
-public class SaveLayersCommandTests
+public class SaveLayersCommandTests : IAsyncDisposable
 {
+    private readonly LayerCacheTestContext cache = new();
+    public ValueTask DisposeAsync() => cache.DisposeAsync();
     [Fact]
     public async Task ExecuteAsync_WhenOutputDirectoryIsNotEmpty_RejectsBeforeRegistryAccess()
     {
@@ -18,7 +20,7 @@ public class SaveLayersCommandTests
         await File.WriteAllTextAsync(existingPath, "existing", TestContext.Current.CancellationToken);
         Mock<IDockerRegistryClientFactory> factory = new();
         using StringWriter error = new();
-        TestSaveLayersCommand command = new(factory.Object, error)
+        TestSaveLayersCommand command = new(factory.Object, error, cache.Paths)
         {
             Options = new SaveLayersOptions
             {
@@ -54,7 +56,7 @@ public class SaveLayersCommandTests
         string id = Guid.NewGuid().ToString("N");
         string digest = $"sha256:{id}";
         string outputPath = CreateOutputPath();
-        string layerCachePath = Path.Combine(DredgeState.DredgeTempPath, "layers", id);
+        string layerCachePath = Path.Combine(cache.Paths.TempPath, "layers", id);
         Directory.CreateDirectory(outputPath);
         string overwritePath = Path.Combine(outputPath, "overwrite.txt");
         Directory.CreateDirectory(overwritePath);
@@ -83,7 +85,7 @@ public class SaveLayersCommandTests
                 (".wh.delete.txt", string.Empty)));
         Mock<IDockerRegistryClientFactory> factory = new();
         factory.Setup(item => item.GetClientAsync(null, It.IsAny<CancellationToken>())).ReturnsAsync(client.Object);
-        TestSaveLayersCommand command = new(factory.Object, TextWriter.Null)
+        TestSaveLayersCommand command = new(factory.Object, TextWriter.Null, cache.Paths)
         {
             Options = new SaveLayersOptions
             {
@@ -124,11 +126,12 @@ public class SaveLayersCommandTests
     [Fact]
     public async Task ExecuteAsync_WithForceAndNoSquash_ReplacesExistingLayerDirectory()
     {
-        string id = Guid.NewGuid().ToString("N");
-        string digest = $"sha256:{id}";
+        byte[] layer = LayerCacheTestContext.ReadBytes(CreateLayer(("existing.txt", "new")));
+        string digest = LayerCacheTestContext.Digest(layer);
+        string id = digest["sha256:".Length..];
         string outputPath = CreateOutputPath();
         string layerOutputPath = Path.Combine(outputPath, $"layer0-{id}");
-        string layerCachePath = Path.Combine(DredgeState.DredgeTempPath, "layers", id);
+        string layerCachePath = Path.Combine(cache.Paths.TempPath, "layers", id);
         Directory.CreateDirectory(layerOutputPath);
         await File.WriteAllTextAsync(
             Path.Combine(layerOutputPath, "existing.txt"),
@@ -136,10 +139,10 @@ public class SaveLayersCommandTests
             TestContext.Current.CancellationToken);
         Mock<IDockerRegistryClient> client = CreateClient(
             digest,
-            () => CreateLayer(("existing.txt", "new")));
+            () => new MemoryStream(layer));
         Mock<IDockerRegistryClientFactory> factory = new();
         factory.Setup(item => item.GetClientAsync(null, It.IsAny<CancellationToken>())).ReturnsAsync(client.Object);
-        TestSaveLayersCommand command = new(factory.Object, TextWriter.Null)
+        TestSaveLayersCommand command = new(factory.Object, TextWriter.Null, cache.Paths)
         {
             Options = new SaveLayersOptions
             {
@@ -174,7 +177,7 @@ public class SaveLayersCommandTests
         string id = Guid.NewGuid().ToString("N");
         string digest = $"sha256:{id}";
         string outputPath = CreateOutputPath();
-        string layerCachePath = Path.Combine(DredgeState.DredgeTempPath, "layers", id);
+        string layerCachePath = Path.Combine(cache.Paths.TempPath, "layers", id);
         string linkPath = Path.Combine(outputPath, "link");
         Directory.CreateDirectory(outputPath);
         Directory.CreateSymbolicLink(linkPath, Path.Combine(outputPath, "missing"));
@@ -183,7 +186,7 @@ public class SaveLayersCommandTests
             () => CreateSymbolicLinkLayer("link", "target.txt"));
         Mock<IDockerRegistryClientFactory> factory = new();
         factory.Setup(item => item.GetClientAsync(null, It.IsAny<CancellationToken>())).ReturnsAsync(client.Object);
-        TestSaveLayersCommand command = new(factory.Object, TextWriter.Null)
+        TestSaveLayersCommand command = new(factory.Object, TextWriter.Null, cache.Paths)
         {
             Options = new SaveLayersOptions
             {
@@ -221,7 +224,7 @@ public class SaveLayersCommandTests
             TestContext.Current.CancellationToken);
         Mock<IDockerRegistryClientFactory> factory = new();
         using StringWriter error = new();
-        TestSaveLayersCommand command = new(factory.Object, error)
+        TestSaveLayersCommand command = new(factory.Object, error, cache.Paths)
         {
             Options = new SaveLayersOptions
             {
@@ -263,7 +266,7 @@ public class SaveLayersCommandTests
         Directory.CreateSymbolicLink(linkPath, actualPath);
         Mock<IDockerRegistryClientFactory> factory = new();
         using StringWriter error = new();
-        TestSaveLayersCommand command = new(factory.Object, error)
+        TestSaveLayersCommand command = new(factory.Object, error, cache.Paths)
         {
             Options = new SaveLayersOptions
             {
@@ -321,6 +324,8 @@ public class SaveLayersCommandTests
         string digest,
         Func<Stream> createLayer)
     {
+        byte[] bytes = LayerCacheTestContext.ReadBytes(createLayer());
+        digest = LayerCacheTestContext.Digest(bytes);
         Mock<IDockerRegistryClient> client = new() { DefaultValue = DefaultValue.Mock };
         client
             .Setup(item => item.Manifests.GetAsync(
@@ -333,14 +338,14 @@ public class SaveLayersCommandTests
                 new DockerManifest
                 {
                     Config = new ManifestConfig { Digest = "sha256:config" },
-                    Layers = [new ManifestLayer { Digest = digest }]
+                    Layers = [new ManifestLayer { Digest = digest, Size = bytes.Length }]
                 }));
         client
             .Setup(item => item.Blobs.GetAsync(
                 "library/image",
                 digest,
                 It.IsAny<CancellationToken>()))
-            .ReturnsAsync(createLayer);
+            .ReturnsAsync(() => new MemoryStream(bytes));
         return client;
     }
 
@@ -384,8 +389,9 @@ public class SaveLayersCommandTests
 
         public TestSaveLayersCommand(
             IDockerRegistryClientFactory dockerRegistryClientFactory,
-            TextWriter error)
-            : base(dockerRegistryClientFactory)
+            TextWriter error,
+            IDredgePathProvider paths)
+            : base(dockerRegistryClientFactory, paths)
         {
             this.error = error;
         }
