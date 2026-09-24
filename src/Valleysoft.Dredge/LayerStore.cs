@@ -509,8 +509,16 @@ internal sealed class LayerStore : IAsyncDisposable
         return Path.Combine(dataPath, $"{GetKey(digest)}.{kind}");
     }
 
-    private static bool IsSharingViolation(IOException exception) =>
-        (exception.HResult & 0xffff) is 11 or 32 or 33;
+    private static bool IsSharingViolation(IOException exception)
+    {
+        int error = exception.HResult & 0xffff;
+        if (OperatingSystem.IsWindows())
+        {
+            return error is 32 or 33;
+        }
+        // Unix FileStream exposes native EWOULDBLOCK: 35 on macOS, 11 on Linux.
+        return error == (OperatingSystem.IsMacOS() ? 35 : 11);
+    }
 
     private static FileStream OpenRead(string path) =>
         new(path, FileMode.Open, FileAccess.Read, FileShare.Read, 81920, FileOptions.Asynchronous);

@@ -358,6 +358,20 @@ public sealed class LayerStoreTests
     }
 
     [Fact]
+    public async Task Clear_WaitsForMaintenanceLockRelease()
+    {
+        await using LayerCacheTestContext cache = new();
+        string lockPath = Path.Combine(cache.Paths.CachePath, "layer-store", "locks", "maintenance.lock");
+        Task<long> clear;
+        using (FileStream gate = new(lockPath, FileMode.OpenOrCreate, FileAccess.ReadWrite, FileShare.None))
+        {
+            clear = cache.Store.ClearAsync(Token);
+            Assert.False(clear.IsCompleted);
+        }
+        Assert.Equal(0, await clear.WaitAsync(TimeSpan.FromSeconds(10), Token));
+    }
+
+    [Fact]
     public async Task Clear_PreservesLeasedBlobsAndUnrelatedFiles()
     {
         await using LayerCacheTestContext cache = new();
