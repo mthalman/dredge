@@ -81,6 +81,31 @@ public class AppSettingsTests
         Assert.Equal(1024, settings.Cache.GetMaxBytes());
     }
 
+    [Theory]
+    [InlineData("fileCompareTool", "exePath", "compare.exe")]
+    [InlineData("fileCompareTool", "args", "--diff")]
+    [InlineData("operations", "timeout", "00:05:00")]
+    [InlineData("platform", "os", "linux")]
+    [InlineData("platform", "osVersion", "1.0")]
+    [InlineData("platform", "arch", "arm64")]
+    public void GeneratedPropertyAccessors_RoundTripEverySetting(string group, string name, string value)
+    {
+        AppSettings settings = CreateSettings();
+
+        settings.SetProperty(new Queue<string>([group, name]), value);
+
+        Assert.Equal(value, settings.GetProperty(new Queue<string>([group, name])));
+    }
+
+    [Fact]
+    public void GeneratedPropertyAccessors_ReadNullTimeout()
+    {
+        AppSettings settings = CreateSettings();
+        settings.Operations.Timeout = null;
+
+        Assert.Null(settings.GetProperty(new Queue<string>(["operations", "timeout"])));
+    }
+
     [Fact]
     public void Load_CoercesNumericSettingsToStrings()
     {
@@ -221,6 +246,9 @@ public class AppSettingsTests
     [Theory]
     [InlineData()]
     [InlineData("unknown")]
+    [InlineData("platform")]
+    [InlineData("operations")]
+    [InlineData("fileCompareTool")]
     [InlineData("platform", "unknown")]
     [InlineData("platform", "arch", "extra")]
     public void GeneratedPropertyAccessors_WhenPathIsInvalid_Throw(params string[] path)

@@ -4,6 +4,7 @@ using IOPath = System.IO.Path;
 
 namespace Valleysoft.Dredge;
 
+[GenerateSettings]
 internal partial class AppSettings
 {
     private static readonly object settingsFileLock = new();
@@ -76,6 +77,7 @@ internal partial class AppSettings
     }
 }
 
+[GenerateSettings]
 internal partial class FileCompareToolSettings
 {
     [JsonPropertyName("exePath")]
@@ -85,6 +87,7 @@ internal partial class FileCompareToolSettings
     public string Args { get; set; } = string.Empty;
 }
 
+[GenerateSettings]
 internal partial class OperationsSettings
 {
     [JsonPropertyName("timeout")]
@@ -113,6 +116,7 @@ internal partial class OperationsSettings
     }
 }
 
+[GenerateSettings]
 internal partial class PlatformSettings
 {
     [JsonPropertyName("os")]
