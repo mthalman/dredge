@@ -2,6 +2,7 @@ using System.Formats.Tar;
 using System.Diagnostics;
 using System.IO.Compression;
 using System.Net;
+using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json.Nodes;
 using Valleysoft.DockerRegistryClient;
@@ -410,6 +411,57 @@ public sealed class LayerStoreTests
             Assert.False(clear.IsCompleted);
         }
         Assert.Equal(0, await clear.WaitAsync(TimeSpan.FromSeconds(10), Token));
+    }
+
+    [Theory]
+    [InlineData(false, false)]
+    [InlineData(false, true)]
+    [InlineData(true, false)]
+    [InlineData(true, true)]
+    public async Task Lock_RejectsSymbolicLinkWithoutTouchingTarget(bool maintenance, bool dangling)
+    {
+        await using LayerCacheTestContext cache = new();
+        byte[] bytes = CreateLayer();
+        string digest = LayerCacheTestContext.Digest(bytes);
+        string key = digest.Replace(':', '-');
+        string name = maintenance ? "maintenance" :
+            Convert.ToHexStringLower(SHA256.HashData(Encoding.UTF8.GetBytes(key)))[..2];
+        string lockPath = Path.Combine(cache.Paths.CachePath, "layer-store", "locks", $"{name}.lock");
+        string target = Path.Combine(cache.Root, "outside-lock");
+        if (!dangling)
+        {
+            await File.WriteAllTextAsync(target, "unchanged", Token);
+        }
+        File.CreateSymbolicLink(lockPath, target);
+        try
+        {
+            Assert.True(File.Exists(lockPath));
+            Assert.True(File.GetAttributes(lockPath).HasFlag(FileAttributes.ReparsePoint));
+            using CancellationTokenSource timeout = CancellationTokenSource.CreateLinkedTokenSource(Token);
+            timeout.CancelAfter(TimeSpan.FromSeconds(10));
+            IOException exception = await Assert.ThrowsAsync<IOException>(async () =>
+            {
+                if (maintenance)
+                {
+                    await cache.Store.ClearAsync(timeout.Token);
+                }
+                else
+                {
+                    using Stream blob = await cache.Store.OpenBlobAsync(
+                        Client(bytes).Object, Image, digest, bytes.Length, timeout.Token);
+                }
+            });
+            Assert.Contains("cannot be a symbolic link or reparse point", exception.Message);
+            Assert.Equal(!dangling, File.Exists(target));
+            if (!dangling)
+            {
+                Assert.Equal("unchanged", await File.ReadAllTextAsync(target, Token));
+            }
+        }
+        finally
+        {
+            File.Delete(lockPath);
+        }
     }
 
     [Fact]
