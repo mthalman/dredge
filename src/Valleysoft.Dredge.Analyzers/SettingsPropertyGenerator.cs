@@ -173,7 +173,7 @@ public class SettingsSourceGenerator : IIncrementalGenerator
                 ?? property.Locations.FirstOrDefault();
             if (attributes.Length != 1 || attributes[0].ConstructorArguments.Length != 1 ||
                 attributes[0].ConstructorArguments[0].Value is not string jsonName ||
-                string.IsNullOrEmpty(jsonName) || jsonName.Contains('.'))
+                string.IsNullOrEmpty(jsonName) || jsonName.IndexOf('.') >= 0)
             {
                 diagnostics.Add(Diagnostic.Create(SettingsDiagnostics.InvalidAttribute, location,
                     property.Name, "use one JsonPropertyName with a nonempty constant string containing no dots"));
