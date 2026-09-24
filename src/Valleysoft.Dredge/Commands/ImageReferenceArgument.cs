@@ -41,4 +41,31 @@ internal static class ImageReferenceArgument
         });
         return argument;
     }
+
+    public static Argument<string> CreateForDeletion(bool tagOnly)
+    {
+        string syntax = tagOnly ? "<image>:<tag>" : "<image>:<tag> or <image>@<digest>";
+        Argument<string> argument = new("image")
+        {
+            Description = $"Explicit reference to delete ({syntax})"
+        };
+        argument.Validators.Add(result =>
+        {
+            string? value = result.GetValueOrDefault<string>();
+            if (!ImageName.TryParse(value, out ImageName? image, out string? error))
+            {
+                result.AddError($"{error} Expected {syntax}.");
+            }
+            else if (tagOnly && image.Digest is not null)
+            {
+                result.AddError("Tag deletion requires an explicit tag, not a digest. Expected <image>:<tag>.");
+            }
+            else if (image.Digest is null &&
+                !value![(value.LastIndexOf('/') + 1)..].Contains(':'))
+            {
+                result.AddError($"Deletion requires an explicit tag or digest; 'latest' is not implied. Expected {syntax}.");
+            }
+        });
+        return argument;
+    }
 }

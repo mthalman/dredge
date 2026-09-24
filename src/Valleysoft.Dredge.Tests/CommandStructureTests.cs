@@ -33,13 +33,13 @@ public class CommandStructureTests
             ["compare", "ls", "cat", "extract", "inspect", "os", "save-layers", "dockerfile"],
             new ImageCommand(factory.Object).Subcommands.Select(command => command.Name));
         Assert.Equal(
-            ["get", "digest", "resolve"],
+            ["get", "digest", "resolve", "delete"],
             new ManifestCommand(factory.Object).Subcommands.Select(command => command.Name));
         Assert.Equal(
             ["list", "check", "inspect", "get"],
             new ReferrerCommand(factory.Object).Subcommands.Select(command => command.Name));
         Assert.Equal(["list"], new RepoCommand(factory.Object).Subcommands.Select(command => command.Name));
-        Assert.Equal(["list"], new TagCommand(factory.Object).Subcommands.Select(command => command.Name));
+        Assert.Equal(["list", "delete"], new TagCommand(factory.Object).Subcommands.Select(command => command.Name));
         Assert.Equal(
             ["open", "get", "set", "clear-cache"],
             new SettingsCommand().Subcommands.Select(command => command.Name));

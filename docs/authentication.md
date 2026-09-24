@@ -48,3 +48,24 @@ dredge manifest get myregistry.azurecr.io/myimage:latest
 
 Dredge reads the credential store configured by Docker. You do not need to
 keep Docker running.
+
+## Deletion permissions
+
+`tag delete` and `manifest delete` use the same credential sources and priority
+as read commands. Successful authentication or pull access does not imply
+permission to delete. The registry must grant deletion access to the supplied
+credentials or token and must enable the requested deletion API.
+
+For an explicit digest with `--yes`, Dredge does not perform a separate
+manifest lookup before requesting deletion. When deleting an artifact with a
+subject on a registry without native referrers support, maintaining the
+referrers fallback index can require push permission. A failure during this
+maintenance is reported even if the manifest deletion has already succeeded.
+
+Tag deletion is optional in the OCI Distribution specification. A registry
+can support manifest deletion while rejecting tag deletion. Dredge reports
+these failures and does not substitute the more destructive operation.
+
+See [`tag delete`](commands/tags.md#delete) and
+[`manifest delete`](commands/manifests.md#delete) for confirmation behavior
+and the effects of each operation.

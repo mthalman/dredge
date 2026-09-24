@@ -8,5 +8,6 @@ public class TagCommand : Command
         : base("tag", "Commands related to container image tags")
     {
         Subcommands.Add(new ListCommand(dockerRegistryClientFactory));
+        Subcommands.Add(new DeleteCommand(dockerRegistryClientFactory));
     }
 }

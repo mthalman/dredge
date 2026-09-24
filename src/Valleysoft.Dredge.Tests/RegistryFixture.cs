@@ -68,9 +68,13 @@ public class RegistryFixture : IAsyncLifetime
     }
 
     private static Task<RegistryInstance> StartRegistryContainerAsync(string configPath) =>
+        StartDistributionContainerAsync(deleteEnabled: true);
+
+    internal static Task<RegistryInstance> StartDistributionContainerAsync(bool deleteEnabled) =>
         StartContainerAsync(
             new ContainerBuilder("registry:3.1.1")
                 .WithPortBinding(RegistryPort, true)
+                .WithEnvironment("REGISTRY_STORAGE_DELETE_ENABLED", deleteEnabled ? "true" : "false")
                 .WithWaitStrategy(
                     Wait.ForUnixContainer().UntilHttpRequestIsSucceeded(
                         request => request.ForPort(RegistryPort).ForPath("/v2/")))
@@ -131,10 +135,12 @@ public class RegistryFixture : IAsyncLifetime
     public string GetRepositoryName(string testName) =>
         $"integration/{testName.ToLowerInvariant().Replace('_', '-')}-{Guid.NewGuid():N}";
 
+    protected virtual HttpClient CreateSeedClient() => new() { BaseAddress = BaseUri };
+
     public async Task<BlobSeed> UploadBlobAsync(string repository, byte[] content)
     {
         string digest = GetDigest(content);
-        using HttpClient client = new() { BaseAddress = BaseUri };
+        using HttpClient client = CreateSeedClient();
         using ByteArrayContent requestContent = new(content);
         requestContent.Headers.ContentType = new("application/octet-stream");
         using HttpResponseMessage response = await client.PostAsync(
@@ -374,7 +380,7 @@ public class RegistryFixture : IAsyncLifetime
         object manifest)
     {
         string json = JsonSerializer.Serialize(manifest);
-        using HttpClient client = new() { BaseAddress = BaseUri };
+        using HttpClient client = CreateSeedClient();
         using HttpRequestMessage request = new(
             HttpMethod.Put,
             $"v2/{repository}/manifests/{reference}")
@@ -426,6 +432,14 @@ public sealed class AuthenticatedRegistryFixture : RegistryFixture
     {
     }
 
+    protected override HttpClient CreateSeedClient()
+    {
+        HttpClient client = base.CreateSeedClient();
+        client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue(
+            "Basic", Convert.ToBase64String(Encoding.UTF8.GetBytes($"{Username}:{Password}")));
+        return client;
+    }
+
     private static async Task<RegistryInstance> StartAuthenticatedRegistryAsync(string configPath)
     {
         string authDirectory = Path.GetDirectoryName(configPath)!;
@@ -436,6 +450,7 @@ public sealed class AuthenticatedRegistryFixture : RegistryFixture
 
         IContainer container = new ContainerBuilder("registry:3.1.1")
             .WithPortBinding(RegistryPort, true)
+            .WithEnvironment("REGISTRY_STORAGE_DELETE_ENABLED", "true")
             .WithResourceMapping(htpasswdPath, "/auth/htpasswd")
             .WithEnvironment("REGISTRY_AUTH", "htpasswd")
             .WithEnvironment("REGISTRY_AUTH_HTPASSWD_REALM", "Dredge Test Registry")

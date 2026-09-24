@@ -54,12 +54,51 @@ public sealed class CliProcessTests
         Assert.DoesNotContain(" at Valleysoft.Dredge", result.StandardError);
     }
 
+    [Theory]
+    [InlineData("tag")]
+    [InlineData("manifest")]
+    public async Task Delete_WithRedirectedInputRequiresYes(string command)
+    {
+        ProcessResult result = await InvokeDredgeProcessAsync(command, "delete", "registry.invalid/repo:tag");
+
+        Assert.Equal(1, result.ExitCode);
+        Assert.Contains("--yes", result.StandardError);
+        Assert.Contains("redirected", result.StandardError);
+        Assert.Empty(result.StandardOutput);
+        Assert.DoesNotContain("Unhandled exception", result.StandardError);
+    }
+
+    [Theory]
+    [InlineData("tag")]
+    [InlineData("manifest")]
+    public async Task Delete_RejectsImplicitLatest(string command)
+    {
+        ProcessResult result = await InvokeDredgeProcessAsync(command, "delete", "registry.invalid/repo", "--yes");
+
+        Assert.NotEqual(0, result.ExitCode);
+        Assert.Contains("'latest' is not implied", result.StandardError);
+    }
+
+    [Theory]
+    [InlineData("tag")]
+    [InlineData("manifest")]
+    public async Task Delete_HelpDescribesConfirmation(string command)
+    {
+        ProcessResult result = await InvokeDredgeProcessAsync(command, "delete", "--help");
+
+        Assert.Equal(0, result.ExitCode);
+        Assert.Contains("--yes", result.StandardOutput);
+        Assert.Contains("redirected", result.StandardOutput);
+        Assert.Contains("Explicit reference", result.StandardOutput);
+    }
+
     private static async Task<ProcessResult> InvokeDredgeProcessAsync(params string[] args)
     {
         ProcessStartInfo startInfo = new("dotnet")
         {
             RedirectStandardError = true,
             RedirectStandardOutput = true,
+            RedirectStandardInput = true,
             UseShellExecute = false
         };
         startInfo.ArgumentList.Add(GetDredgeAssemblyPath());
@@ -69,6 +108,7 @@ public sealed class CliProcessTests
         }
 
         using Process process = Process.Start(startInfo)!;
+        process.StandardInput.Close();
         Task<string> standardOutput = process.StandardOutput.ReadToEndAsync(
             TestContext.Current.CancellationToken);
         Task<string> standardError = process.StandardError.ReadToEndAsync(

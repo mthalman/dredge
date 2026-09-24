@@ -2,15 +2,16 @@
 
 # Dredge
 
-Dredge is a .NET command-line tool for querying container registry HTTP APIs
+Dredge is a .NET command-line tool for interacting with container registry HTTP APIs
 defined by the [OCI Distribution Specification](https://github.com/opencontainers/distribution-spec).
-Dredge does not modify registry content.
 
 ## Features
 
 - Query raw JSON data for [manifests](docs/commands/manifests.md),
   [tags](docs/commands/tags.md), [repositories](docs/commands/repositories.md),
   and [referrers](docs/commands/referrers.md).
+- Delete [tags](docs/commands/tags.md#delete) or
+  [manifests](docs/commands/manifests.md#delete) from registries that support deletion.
 - Inspect and retrieve OCI artifacts or check for required artifact types in CI.
 - Inspect an image's [configuration](docs/commands/images.md#inspect) and
   [operating system information](docs/commands/images.md#os).
@@ -59,7 +60,7 @@ dotnet tool install -g Valleysoft.Dredge
 
 ## Query a registry
 
-Run a read-only command against a public image:
+Query the manifest digest of a public image:
 
 ```console
 dredge manifest digest alpine:latest
