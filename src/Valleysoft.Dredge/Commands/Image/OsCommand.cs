@@ -1,5 +1,4 @@
 using System.Formats.Tar;
-using System.IO.Compression;
 using System.Text.RegularExpressions;
 using Valleysoft.DockerRegistryClient;
 using Valleysoft.DockerRegistryClient.Models.Manifests;
@@ -18,10 +17,18 @@ public partial class OsCommand : RegistryCommandBase<OsOptions>
     ];
 
     private static readonly Regex osReleaseRegex = OsReleaseRegex();
+    private readonly IDredgePathProvider paths;
 
     public OsCommand(IDockerRegistryClientFactory dockerRegistryClientFactory, TextWriter? output = null)
+        : this(dockerRegistryClientFactory, output, new DredgePathProvider())
+    {
+    }
+
+    internal OsCommand(IDockerRegistryClientFactory dockerRegistryClientFactory, TextWriter? output,
+        IDredgePathProvider paths)
         : base("os", "Gets OS info about the container image", dockerRegistryClientFactory, output)
     {
+        this.paths = paths;
     }
 
     protected override Task ExecuteAsync(CancellationToken cancellationToken)
@@ -51,7 +58,8 @@ public partial class OsCommand : RegistryCommandBase<OsOptions>
                     throw new Exception($"No digest was found for the base layer of '{Options.Image}'.");
                 }
 
-                osInfo = await GetLinuxOsInfoAsync(client, imageName, baseLayer.Digest, ct);
+                await using LayerStore store = LayerStore.Create(paths);
+                osInfo = await GetLinuxOsInfoAsync(client, imageName, baseLayer.Digest, baseLayer.Size, store, ct);
             }
 
             if (osInfo is null)
@@ -68,13 +76,14 @@ public partial class OsCommand : RegistryCommandBase<OsOptions>
         IDockerRegistryClient client,
         ImageName imageName,
         string baseLayerDigest,
+        long? size,
+        LayerStore store,
         CancellationToken cancellationToken)
     {
         using Stream blobStream =
-            await client.Blobs.GetAsync(imageName.Repo, baseLayerDigest, cancellationToken);
-        using GZipStream gZipStream = new(blobStream, CompressionMode.Decompress);
-
-        using TarReader tarReader = new(gZipStream, leaveOpen: true);
+            await store.OpenBlobAsync(client, imageName, baseLayerDigest, size, cancellationToken);
+        using ImageTarReader.LayerArchive archive = ImageTarReader.Open(blobStream);
+        TarReader tarReader = archive.Reader;
         TarEntry? entry = null;
         do
         {

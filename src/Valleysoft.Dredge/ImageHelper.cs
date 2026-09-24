@@ -1,5 +1,4 @@
 using System.Formats.Tar;
-using System.IO.Compression;
 using Valleysoft.DockerRegistryClient;
 using Valleysoft.DockerRegistryClient.Models;
 using Valleysoft.DockerRegistryClient.Models.Manifests;
@@ -31,9 +30,8 @@ internal static class ImageHelper
         IImageManifest manifest =
             (await ManifestHelper.GetResolvedManifestAsync(client, imageName, options, cancellationToken)).Manifest;
 
-        string layersTempPath = Path.Combine(
-            (pathProvider ?? new DredgePathProvider()).TempPath,
-            "layers");
+        pathProvider ??= new DredgePathProvider();
+        await using LayerStore store = LayerStore.Create(pathProvider);
 
         int startIndex = 0;
         int layerCount = manifest.Layers.Length;
@@ -67,94 +65,46 @@ internal static class ImageHelper
 
             string layerName = layer.Digest[(layer.Digest.IndexOf(':') + 1)..];
             ValidateLayerDigest(layerName);
-            string layerDir = GetContainedPath(layersTempPath, layerName);
-            if (Directory.Exists(layerDir))
-            {
-                Console.Error.WriteLine($"\tUsing cached layer on disk...");
-            }
-            else
-            {
-                Console.Error.WriteLine($"\tDownloading layer...");
-                using Stream layerStream =
-                    await client.Blobs.GetAsync(imageName.Repo, layer.Digest, cancellationToken);
-
-                await ExtractLayerToCacheAsync(layerStream, layerDir, cancellationToken);
-            }
-
-            if (noSquash)
-            {
-                string layerOutputPath = GetContainedPath(
-                    destPath,
-                    $"layer{i}-{layerName}",
-                    allowFinalLink: overwriteExisting);
-                if (overwriteExisting)
-                {
-                    DeleteDestinationEntry(layerOutputPath);
-                }
-
-                await FileHelper.CopyDirectoryAsync(
-                    layerDir, layerOutputPath, cancellationToken);
-            }
-            else
-            {
-                await ApplyLayerAsync(
-                    layerDir,
-                    destPath,
-                    overwriteExisting,
-                    cancellationToken);
-            }
-        }
-    }
-
-    private static async Task ExtractLayerToCacheAsync(
-        Stream layerStream,
-        string layerDir,
-        CancellationToken cancellationToken)
-    {
-        string tempLayerDir = $"{layerDir}.{Guid.NewGuid():N}.tmp";
-        bool cachePublished = false;
-        bool operationCompleted = false;
-
-        try
-        {
-            await ExtractLayerAsync(layerStream, tempLayerDir, cancellationToken);
-            cancellationToken.ThrowIfCancellationRequested();
-
+            string layerDir = await store.CreateScratchDirectoryAsync(cancellationToken);
+            bool completed = false;
             try
             {
-                Directory.Move(tempLayerDir, layerDir);
-                cachePublished = true;
-            }
-            catch (IOException) when (Directory.Exists(layerDir))
-            {
-                // Another process published the same layer while this one was extracting it.
-            }
+                using Stream layerStream =
+                    await store.OpenBlobAsync(client, imageName, layer.Digest, layer.Size, cancellationToken);
+                await ExtractLayerAsync(layerStream, layerDir, cancellationToken);
 
-            operationCompleted = true;
-        }
-        finally
-        {
-            if (!cachePublished && Directory.Exists(tempLayerDir))
+                if (noSquash)
+                {
+                    string layerOutputPath = GetContainedPath(
+                        destPath,
+                        $"layer{i}-{layerName}",
+                        allowFinalLink: overwriteExisting);
+                    if (overwriteExisting)
+                    {
+                        DeleteDestinationEntry(layerOutputPath);
+                    }
+                    await FileHelper.CopyDirectoryAsync(layerDir, layerOutputPath, cancellationToken);
+                }
+                else
+                {
+                    await ApplyLayerAsync(layerDir, destPath, overwriteExisting, cancellationToken);
+                }
+                completed = true;
+            }
+            finally
             {
                 try
                 {
-                    Directory.Delete(tempLayerDir, recursive: true);
+                    Directory.Delete(layerDir, recursive: true);
                 }
-                catch (IOException e) when (!operationCompleted)
+                catch (Exception exception) when (!completed &&
+                    exception is IOException or UnauthorizedAccessException)
                 {
-                    ReportCleanupFailure(tempLayerDir, e);
-                }
-                catch (UnauthorizedAccessException e) when (!operationCompleted)
-                {
-                    ReportCleanupFailure(tempLayerDir, e);
+                    Console.Error.WriteLine($"Failed to delete layer scratch directory '{layerDir}': {exception.Message}");
                 }
             }
         }
     }
-
-    private static void ReportCleanupFailure(string tempLayerDir, Exception exception) =>
-        Console.Error.WriteLine(
-            $"Failed to delete incomplete layer cache directory '{tempLayerDir}': {exception.Message}");
 
     private static async Task ExtractLayerAsync(
         Stream layerStream,
@@ -166,9 +116,8 @@ internal static class ImageHelper
         Directory.CreateDirectory(layerDir);
         List<(string Path, string Target)> hardLinks = [];
 
-        using GZipStream gZipStream = new(layerStream, CompressionMode.Decompress);
-
-        using TarReader tarReader = new(gZipStream, leaveOpen: true);
+        using ImageTarReader.LayerArchive archive = ImageTarReader.Open(layerStream);
+        TarReader tarReader = archive.Reader;
 
         while (true)
         {

@@ -28,13 +28,13 @@ internal sealed class ImageCommandIntegrationScenarios
         {
             using MemoryStream catOutput = new();
             int catExitCode = await InvokeAsync(
-                new CatCommand(factory, catOutput),
+                new CatCommand(factory, catOutput, pathProvider),
                 imageName,
                 "app/value");
 
             StringWriter listOutput = new();
             int listExitCode = await InvokeAsync(
-                new LsCommand(factory, CreateConsole(listOutput)),
+                new LsCommand(factory, CreateConsole(listOutput), pathProvider),
                 imageName,
                 "--recursive",
                 "--show-deleted",
@@ -47,7 +47,7 @@ internal sealed class ImageCommandIntegrationScenarios
             string separateLayersPath = Path.Combine(tempRoot, "separate-layers");
             string selectedSeparateLayerPath = Path.Combine(tempRoot, "selected-separate-layer");
             int extractExitCode = await InvokeAsync(
-                new ExtractCommand(factory),
+                new ExtractCommand(factory, pathProvider),
                 imageName,
                 "app",
                 extractPath);
@@ -169,8 +169,9 @@ internal sealed class ImageCommandIntegrationScenarios
             imageName);
 
         using StringWriter osOutput = new();
+        await using LayerCacheTestContext cache = new();
         int osExitCode = await InvokeAsync(
-            new OsCommand(factory, osOutput),
+            new OsCommand(factory, osOutput, cache.Paths),
             imageName);
 
         using StringWriter dockerfileOutput = new();

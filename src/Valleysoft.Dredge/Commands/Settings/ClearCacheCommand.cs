@@ -27,43 +27,61 @@ public class ClearCacheCommand : Command
 
     private Task ExecuteAsync(CancellationToken cancellationToken)
     {
-        return CommandHelper.ExecuteCommandAsync(null, cancellationToken, ct =>
+        return CommandHelper.ExecuteCommandAsync(null, cancellationToken, async ct =>
         {
             ct.ThrowIfCancellationRequested();
-            string cachePath = pathProvider.TempPath;
-            DirectoryInfo dredgeTempDir = new(cachePath);
-
-            if (dredgeTempDir.Exists)
+            bool found = false;
+            string cachePath = pathProvider.CachePath;
+            if (Directory.Exists(Path.Combine(cachePath, "layer-store")))
             {
-                long dirSize = DirSize(dredgeTempDir, ct);
-                ct.ThrowIfCancellationRequested();
-                dredgeTempDir.Delete(recursive: true);
-
-                output.WriteLine($"{dirSize:n0} bytes deleted from '{cachePath}'");
+                await using LayerStore store = new(cachePath);
+                long removed = await store.ClearAsync(ct);
+                output.WriteLine($"{removed:n0} bytes deleted from '{cachePath}'");
+                found = true;
             }
-            else
+            foreach (string legacyName in new[] { "layers", "compare" })
             {
-                output.WriteLine($"Nothing to do. Cache directory '{cachePath}' does not exist.");
+                string legacyPath = Path.Combine(pathProvider.TempPath, legacyName);
+                if (Directory.Exists(legacyPath))
+                {
+                    CacheFileSystem.ValidateNotLink(pathProvider.TempPath);
+                    long removed = DeleteLegacyDirectory(new DirectoryInfo(legacyPath), ct);
+                    output.WriteLine($"{removed:n0} bytes deleted from '{legacyPath}'");
+                    found = true;
+                }
             }
-
-            return Task.CompletedTask;
+            if (!found)
+            {
+                output.WriteLine($"Nothing to do. No cached data found in '{cachePath}'.");
+            }
         }, exit: processTerminator.Exit);
     }
 
-    private static long DirSize(DirectoryInfo dir, CancellationToken cancellationToken)
+    private static long DeleteLegacyDirectory(DirectoryInfo dir, CancellationToken cancellationToken)
     {
+        cancellationToken.ThrowIfCancellationRequested();
+        if (dir.Attributes.HasFlag(FileAttributes.ReparsePoint))
+        {
+            dir.Delete();
+            return 0;
+        }
         long size = 0;
         foreach (FileInfo file in dir.EnumerateFiles())
         {
             cancellationToken.ThrowIfCancellationRequested();
-            size += file.Length;
+            if (!file.Attributes.HasFlag(FileAttributes.ReparsePoint))
+            {
+                size += file.Length;
+            }
+            file.Delete();
         }
 
         foreach (DirectoryInfo subDir in dir.EnumerateDirectories())
         {
-            size += DirSize(subDir, cancellationToken);
+            size += DeleteLegacyDirectory(subDir, cancellationToken);
         }
-
+        cancellationToken.ThrowIfCancellationRequested();
+        dir.Delete();
         return size;
     }
 }

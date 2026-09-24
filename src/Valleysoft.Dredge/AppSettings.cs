@@ -1,4 +1,6 @@
-﻿using System.Text.Json.Serialization;
+﻿using System.Globalization;
+using System.Text.Json.Serialization;
+using IOPath = System.IO.Path;
 
 namespace Valleysoft.Dredge;
 
@@ -23,6 +25,9 @@ internal partial class AppSettings
 
     [JsonPropertyName("platform")]
     public PlatformSettings Platform { get; set; } = new();
+
+    [JsonPropertyName("cache")]
+    public CacheSettings Cache { get; set; } = new();
 
     [JsonConstructor]
     private AppSettings() {}
@@ -118,4 +123,53 @@ internal partial class PlatformSettings
 
     [JsonPropertyName("arch")]
     public string Architecture { get; set; } = string.Empty;
+}
+
+internal partial class CacheSettings
+{
+    public const long DefaultMaxBytes = 5L * 1024 * 1024 * 1024;
+
+    [JsonPropertyName("path")]
+    public string Path { get; set; } = string.Empty;
+
+    [JsonPropertyName("maxBytes")]
+    public string MaxBytes { get; set; } = DefaultMaxBytes.ToString(CultureInfo.InvariantCulture);
+
+    public long GetMaxBytes() =>
+        long.TryParse(MaxBytes, NumberStyles.None,
+            CultureInfo.InvariantCulture, out long value)
+            ? value
+            : throw new InvalidOperationException(
+                $"Invalid cache.maxBytes value '{MaxBytes}'; expected a nonnegative integer.");
+
+    public string GetPath()
+    {
+        string? configured = Environment.GetEnvironmentVariable("DREDGE_CACHE_DIR");
+        if (string.IsNullOrWhiteSpace(configured))
+        {
+            configured = Path;
+        }
+        if (!string.IsNullOrWhiteSpace(configured))
+        {
+            return IOPath.GetFullPath(configured);
+        }
+
+        string home = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
+        if (OperatingSystem.IsWindows())
+        {
+            return IOPath.Combine(
+                Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
+                "Valleysoft.Dredge", "cache");
+        }
+        if (OperatingSystem.IsMacOS())
+        {
+            return IOPath.Combine(home, "Library", "Caches", "Valleysoft.Dredge");
+        }
+        string? xdg = Environment.GetEnvironmentVariable("XDG_CACHE_HOME");
+        return IOPath.Combine(
+            string.IsNullOrEmpty(xdg) || !IOPath.IsPathFullyQualified(xdg)
+                ? IOPath.Combine(home, ".cache")
+                : xdg,
+            "Valleysoft.Dredge");
+    }
 }
