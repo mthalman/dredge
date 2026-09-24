@@ -1,6 +1,6 @@
 # Dredge
 
-Dredge is a .NET CLI tool for executing read-only commands against container registry HTTP APIs (OCI Distribution Spec). It's published as both a standalone executable and a .NET global tool (`Valleysoft.Dredge`).
+Dredge is a .NET CLI tool for inspecting container registry HTTP APIs (OCI Distribution Spec) and deleting tags or manifests. Deletion commands prompt by default and require `--yes` when stdin is redirected. It's published as both a standalone executable and a .NET global tool (`Valleysoft.Dredge`).
 
 ## Build and Test
 

@@ -9,5 +9,6 @@ public class ManifestCommand : Command
         Subcommands.Add(new GetCommand(dockerRegistryClientFactory));
         Subcommands.Add(new DigestCommand(dockerRegistryClientFactory));
         Subcommands.Add(new ResolveCommand(dockerRegistryClientFactory));
+        Subcommands.Add(new DeleteCommand(dockerRegistryClientFactory));
     }
 }
