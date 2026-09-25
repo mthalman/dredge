@@ -34,6 +34,22 @@ public class JsonHelperTests
     }
 
     [Fact]
+    public void SerializeNoCamelCase_PreservesLinuxOsInfoPropertyNames()
+    {
+        string json = JsonHelper.Serialize(
+            LinuxOsInfo.Parse("""
+                NAME="Ubuntu"
+                ID=ubuntu
+                """),
+            JsonHelper.SettingsNoCamelCase);
+
+        Assert.Contains("\"NAME\": \"Ubuntu\"", json);
+        Assert.Contains("\"ID\": \"ubuntu\"", json);
+        Assert.DoesNotContain("\"name\"", json);
+        Assert.DoesNotContain("\"id\"", json);
+    }
+
+    [Fact]
     public void Serialize_UsesClrPropertyNamesAndCamelCasesDictionaryKeys()
     {
         SerializerContract value = new()
