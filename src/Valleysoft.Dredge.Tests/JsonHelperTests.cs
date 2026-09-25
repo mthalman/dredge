@@ -12,6 +12,15 @@ public class JsonHelperTests
     }
 
     [Fact]
+    public void Serialize_ListOfStringsHasGeneratedMetadata()
+    {
+        Assert.NotNull(DredgeJsonContext.Default.GetTypeInfo(typeof(List<string>)));
+        Assert.Contains(
+            "\"alpha\"",
+            JsonHelper.Serialize(new List<string> { "alpha" }));
+    }
+
+    [Fact]
     public void SerializeNoCamelCase_PreservesWindowsOsInfoPropertyNames()
     {
         string json = JsonHelper.Serialize(

@@ -16,6 +16,7 @@ namespace Valleysoft.Dredge;
 [JsonSerializable(typeof(LinuxOsInfo))]
 [JsonSerializable(typeof(WindowsOsInfo))]
 [JsonSerializable(typeof(string[]))]
+[JsonSerializable(typeof(List<string>))]
 [JsonSerializable(typeof(CheckResult))]
 [JsonSerializable(typeof(ArtifactInspection))]
 [JsonSerializable(typeof(SpdxSummary))]
