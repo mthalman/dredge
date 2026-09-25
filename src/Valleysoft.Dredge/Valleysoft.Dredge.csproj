@@ -27,7 +27,8 @@
   <PropertyGroup Condition=" '$(PublishAot)' == 'true' ">
     <EnableTrimAnalyzer>true</EnableTrimAnalyzer>
     <EnableAotAnalyzer>true</EnableAotAnalyzer>
-    <WarningsAsErrors>$(WarningsAsErrors);IL3050</WarningsAsErrors>
+    <WarningsAsErrors>$(WarningsAsErrors);IL2026;IL2104;IL3050</WarningsAsErrors>
+    <TrimmerSingleWarn>false</TrimmerSingleWarn>
   </PropertyGroup>
 
   <PropertyGroup>
@@ -52,6 +53,10 @@
 
   <ItemGroup>
     <InternalsVisibleTo Include="Valleysoft.Dredge.Tests" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <_ILLinkSuppressions Include="DockerRegistryClient.TrimmerSuppressions.xml" />
   </ItemGroup>
 
   <ItemGroup>

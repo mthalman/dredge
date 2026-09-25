@@ -1,0 +1,46 @@
+<linker>
+  <assembly fullname="Valleysoft.DockerRegistryClient, Version=7.0.0.0, Culture=neutral, PublicKeyToken=null">
+    <attribute fullname="System.Diagnostics.CodeAnalysis.UnconditionalSuppressMessageAttribute">
+      <argument>ILLink</argument>
+      <argument>IL2026</argument>
+      <property name="Scope">member</property>
+      <property name="Target">M:Valleysoft.DockerRegistryClient.BlobOperationsExtensions.&lt;GetImageAsync&gt;d__0.MoveNext</property>
+      <property name="Justification">DockerRegistryClient 7.0.0 uses reflection-based JSON internally at this registry API boundary.</property>
+    </attribute>
+    <attribute fullname="System.Diagnostics.CodeAnalysis.UnconditionalSuppressMessageAttribute">
+      <argument>ILLink</argument>
+      <argument>IL2026</argument>
+      <property name="Scope">member</property>
+      <property name="Target">M:Valleysoft.DockerRegistryClient.OAuthDelegatingHandler.&lt;GetOAuthTokenAsync&gt;d__7.MoveNext</property>
+      <property name="Justification">DockerRegistryClient 7.0.0 uses reflection-based JSON internally at this registry API boundary.</property>
+    </attribute>
+    <attribute fullname="System.Diagnostics.CodeAnalysis.UnconditionalSuppressMessageAttribute">
+      <argument>ILLink</argument>
+      <argument>IL2026</argument>
+      <property name="Scope">member</property>
+      <property name="Target">M:Valleysoft.DockerRegistryClient.ManifestOperations.&lt;UpdateReferrersFallbackAsync&gt;d__21.MoveNext</property>
+      <property name="Justification">DockerRegistryClient 7.0.0 uses reflection-based JSON internally at this registry API boundary.</property>
+    </attribute>
+    <attribute fullname="System.Diagnostics.CodeAnalysis.UnconditionalSuppressMessageAttribute">
+      <argument>ILLink</argument>
+      <argument>IL2026</argument>
+      <property name="Scope">member</property>
+      <property name="Target">M:Valleysoft.DockerRegistryClient.ManifestOperations.Deserialize``1(System.Byte[])</property>
+      <property name="Justification">DockerRegistryClient 7.0.0 uses reflection-based JSON internally at this registry API boundary.</property>
+    </attribute>
+    <attribute fullname="System.Diagnostics.CodeAnalysis.UnconditionalSuppressMessageAttribute">
+      <argument>ILLink</argument>
+      <argument>IL2026</argument>
+      <property name="Scope">member</property>
+      <property name="Target">M:Valleysoft.DockerRegistryClient.RegistryClient.GetResult``1(System.Net.Http.HttpResponseMessage,System.String)</property>
+      <property name="Justification">DockerRegistryClient 7.0.0 uses reflection-based JSON internally at this registry API boundary.</property>
+    </attribute>
+    <attribute fullname="System.Diagnostics.CodeAnalysis.UnconditionalSuppressMessageAttribute">
+      <argument>ILLink</argument>
+      <argument>IL2026</argument>
+      <property name="Scope">member</property>
+      <property name="Target">M:Valleysoft.DockerRegistryClient.RegistryClient.ParseErrorResult(System.Net.Http.HttpResponseMessage,System.String)</property>
+      <property name="Justification">DockerRegistryClient 7.0.0 uses reflection-based JSON internally at this registry API boundary.</property>
+    </attribute>
+  </assembly>
+</linker>
