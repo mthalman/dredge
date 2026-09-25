@@ -7,8 +7,6 @@ namespace Valleysoft.Dredge;
 
 internal sealed class ImageFileSystem : IAsyncDisposable
 {
-    private const int MaximumLinkHops = 40;
-
     private readonly IDockerRegistryClient client;
     private readonly ImageName imageName;
     private readonly IImageManifest manifest;
@@ -212,12 +210,6 @@ internal sealed class ImageFileSystem : IAsyncDisposable
 
     private async Task<StoredLayerIndex> GetIndexAsync(int layerIndex, CancellationToken cancellationToken) =>
         await builder.GetIndexAsync(layerIndex, cancellationToken);
-
-    private void ApplyLayer(
-        LayerChanges changes,
-        ImageLayerReference layer,
-        CancellationToken cancellationToken) =>
-        builder.ApplyLayer(changes, layer, cancellationToken);
 
     private ImageFileSystemEntry ResolveContentEntry(string requestedPath) =>
         pathResolver.ResolveContentEntry(requestedPath, entries);
