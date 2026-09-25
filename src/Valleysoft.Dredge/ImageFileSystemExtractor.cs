@@ -123,6 +123,119 @@ internal static class ImageFileSystemExtractor
         }
     }
 
+    public static void CreateExtractionRoot(ExtractionPlan plan, ExtractionState state)
+    {
+        if (plan.ExtractingRoot || plan.Source!.Type == ImageFileType.Directory)
+        {
+            Directory.CreateDirectory(plan.OutputPath);
+            state.OutputCreated = true;
+        }
+    }
+
+    public static void CreateExtractionSubdirectories(
+        ExtractionPlan plan,
+        CancellationToken cancellationToken)
+    {
+        foreach (ImageFileSystemEntry directory in plan.Entries
+            .Where(entry => entry.Type == ImageFileType.Directory))
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            Directory.CreateDirectory(plan.Destinations[directory.Path]);
+        }
+    }
+
+    public static void CreatePreservedHardLinks(
+        ExtractionPlan plan,
+        ExtractionState state,
+        CancellationToken cancellationToken)
+    {
+        List<ImageFileSystemEntry> pending = plan.Entries
+            .Where(entry =>
+                entry.Type == ImageFileType.HardLink &&
+                plan.PreservableHardLinks.Contains(entry.Path))
+            .ToList();
+        // Multiple passes allow hard-link chains whose immediate target has not been
+        // materialized yet, without replacing them with independent file copies.
+        while (pending.Count > 0)
+        {
+            int createdCount = 0;
+            for (int index = pending.Count - 1; index >= 0; index--)
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+                ImageFileSystemEntry hardLink = pending[index];
+                string target = plan.HardLinkTargets[hardLink.Path];
+                if (!File.Exists(plan.Destinations[target]))
+                {
+                    continue;
+                }
+                FileHelper.CreateHardLink(
+                    plan.Destinations[hardLink.Path],
+                    plan.Destinations[target]);
+                state.OutputCreated = true;
+                pending.RemoveAt(index);
+                createdCount++;
+            }
+            if (createdCount == 0)
+            {
+                throw new InvalidDataException(
+                    $"Unable to create hard link '/{pending[0].Path}'.");
+            }
+        }
+    }
+
+    public static void CreateSymbolicLinks(
+        ExtractionPlan plan,
+        ExtractionState state,
+        CancellationToken cancellationToken)
+    {
+        foreach (ImageFileSystemEntry symbolicLink in plan.Entries
+            .Where(entry => entry.Type == ImageFileType.SymbolicLink))
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            string target = symbolicLink.LinkTarget ??
+                throw new InvalidDataException(
+                    $"Symbolic link '/{symbolicLink.Path}' has no target.");
+            FileHelper.CreateSymbolicLink(
+                plan.Destinations[symbolicLink.Path],
+                target,
+                plan.SymbolicLinkDirectoryTargets[symbolicLink.Path]);
+            state.OutputCreated = true;
+        }
+    }
+
+    public static void CreateSymbolicHardLinks(
+        ExtractionPlan plan,
+        ExtractionState state,
+        CancellationToken cancellationToken)
+    {
+        foreach (ImageFileSystemEntry hardLink in plan.Entries
+            .Where(entry =>
+                entry.Type == ImageFileType.HardLink &&
+                entry.ContentLinkTarget is not null))
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            FileHelper.CreateSymbolicLink(
+                plan.Destinations[hardLink.Path],
+                hardLink.ContentLinkTarget!,
+                plan.SymbolicLinkDirectoryTargets[hardLink.Path]);
+            state.OutputCreated = true;
+        }
+    }
+
+    public static void ApplyExtractionMetadata(ExtractionPlan plan)
+    {
+        foreach (ImageFileSystemEntry entry in plan.Entries
+            .Where(entry =>
+                entry.Type is ImageFileType.File or ImageFileType.Directory ||
+                (entry.Type == ImageFileType.HardLink &&
+                    !plan.PreservableHardLinks.Contains(entry.Path) &&
+                    entry.ContentLinkTarget is null))
+            .OrderByDescending(entry => entry.Path.Count(c => c == '/')))
+        {
+            ApplyMetadata(plan.Destinations[entry.Path], entry);
+        }
+    }
+
     public static void ValidateNewDestination(string outputPath)
     {
         if (PathExists(outputPath))

@@ -40,6 +40,8 @@ internal sealed class ExtractionPlanner
             destinations,
             hardLinkTargets,
             entries);
+        IReadOnlyDictionary<string, bool> symbolicLinkDirectoryTargets =
+            GetSymbolicLinkDirectoryTargets(selected);
         return new(
             source,
             extractingRoot,
@@ -48,7 +50,8 @@ internal sealed class ExtractionPlanner
             selected,
             destinations,
             hardLinkTargets,
-            preservableHardLinks);
+            preservableHardLinks,
+            symbolicLinkDirectoryTargets);
     }
 
     public static List<ImageFileSystemEntry> SelectExtractionEntries(
@@ -128,14 +131,29 @@ internal sealed class ExtractionPlanner
             .Select(entry => entry.Path)
             .ToHashSet(StringComparer.Ordinal);
 
-    public static void CreateExtractionSubdirectories(ExtractionPlan plan, CancellationToken cancellationToken)
+    public IReadOnlyDictionary<string, bool> GetSymbolicLinkDirectoryTargets(
+        IEnumerable<ImageFileSystemEntry> selected)
     {
-        foreach (ImageFileSystemEntry directory in plan.Entries
-            .Where(entry => entry.Type == ImageFileType.Directory))
-        {
-            cancellationToken.ThrowIfCancellationRequested();
-            Directory.CreateDirectory(plan.Destinations[directory.Path]);
-        }
+        Dictionary<string, ImageFileSystemEntry> index = entries.ToDictionary(
+            pair => pair.Key,
+            pair => pair.Value,
+            StringComparer.Ordinal);
+        return selected
+            .Where(entry =>
+                entry.Type == ImageFileType.SymbolicLink ||
+                (entry.Type == ImageFileType.HardLink &&
+                    entry.ContentLinkTarget is not null))
+            .ToDictionary(
+                entry => entry.Path,
+                entry =>
+                {
+                    string? targetPath = entry.Type == ImageFileType.SymbolicLink
+                        ? entry.Path
+                        : resolver.TryGetHardLinkTargetPath(entry, index);
+                    return targetPath is not null &&
+                        resolver.TryResolvePath(targetPath, index)?.Type == ImageFileType.Directory;
+                },
+                StringComparer.Ordinal);
     }
 
     public static List<(ImageFileSystemEntry Entry, string Destination)> GetContentExtractionRequests(ExtractionPlan plan) =>
@@ -157,4 +175,5 @@ internal sealed record ExtractionPlan(
     IReadOnlyList<ImageFileSystemEntry> Entries,
     IReadOnlyDictionary<string, string> Destinations,
     IReadOnlyDictionary<string, string> HardLinkTargets,
-    IReadOnlySet<string> PreservableHardLinks);
+    IReadOnlySet<string> PreservableHardLinks,
+    IReadOnlyDictionary<string, bool> SymbolicLinkDirectoryTargets);
