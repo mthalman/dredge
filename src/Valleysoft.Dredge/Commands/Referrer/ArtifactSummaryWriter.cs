@@ -1,3 +1,7 @@
+using System.Text.Json;
+using System.Text.Json.Nodes;
+using System.Text.Json.Serialization.Metadata;
+
 namespace Valleysoft.Dredge.Commands.Referrer;
 
 internal static class ArtifactSummaryWriter
@@ -37,16 +41,16 @@ internal static class ArtifactSummaryWriter
             if (payload.Format is not null)
             {
                 writer.WriteLine($"      Format: {payload.Format}");
-                WriteFormatSummary(writer, payload.Summary);
+                WriteFormatSummary(writer, payload.Format, payload.Summary);
             }
         }
     }
 
-    private static void WriteFormatSummary(TextWriter writer, object? summary)
+    private static void WriteFormatSummary(TextWriter writer, string format, JsonNode? summary)
     {
-        switch (summary)
+        switch (format)
         {
-            case SpdxSummary spdx:
+            case "SPDX" when Deserialize(summary, DredgeJsonContext.Default.SpdxSummary) is { } spdx:
                 WriteValue(writer, "SPDX version", spdx.SpdxVersion);
                 WriteValue(writer, "Document name", spdx.Name);
                 WriteValue(writer, "Document namespace", spdx.DocumentNamespace);
@@ -61,7 +65,7 @@ internal static class ArtifactSummaryWriter
                 writer.WriteLine($"      Relationships: {spdx.RelationshipCount}");
                 break;
 
-            case CycloneDxSummary cycloneDx:
+            case "CycloneDX" when Deserialize(summary, DredgeJsonContext.Default.CycloneDxSummary) is { } cycloneDx:
                 WriteValue(writer, "Spec version", cycloneDx.SpecVersion);
                 WriteValue(writer, "Serial number", cycloneDx.SerialNumber);
                 if (cycloneDx.Version is not null)
@@ -86,11 +90,11 @@ internal static class ArtifactSummaryWriter
                 writer.WriteLine($"      Vulnerabilities: {cycloneDx.VulnerabilityCount}");
                 break;
 
-            case InTotoSummary inToto:
+            case "in-toto" when Deserialize(summary, DredgeJsonContext.Default.InTotoSummary) is { } inToto:
                 WriteInTotoSummary(writer, inToto);
                 break;
 
-            case DsseSummary dsse:
+            case "DSSE" when Deserialize(summary, DredgeJsonContext.Default.DsseSummary) is { } dsse:
                 WriteValue(writer, "Payload type", dsse.PayloadType);
                 writer.WriteLine($"      Signatures: {dsse.SignatureCount}");
                 if (dsse.Statement is not null)
@@ -99,10 +103,17 @@ internal static class ArtifactSummaryWriter
                 }
                 break;
 
-            case NotarySignatureSummary notary:
+            case "Notary signature" when Deserialize(summary, DredgeJsonContext.Default.NotarySignatureSummary) is { } notary:
                 WriteValue(writer, "Envelope format", notary.EnvelopeFormat);
                 break;
         }
+    }
+
+    private static T? Deserialize<T>(JsonNode? summary, JsonTypeInfo<T> typeInfo)
+    {
+        return summary is null
+            ? default
+            : JsonSerializer.Deserialize(summary.ToJsonString(), typeInfo);
     }
 
     private static void WriteInTotoSummary(TextWriter writer, InTotoSummary inToto)

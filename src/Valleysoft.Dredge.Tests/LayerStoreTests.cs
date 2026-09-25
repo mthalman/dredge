@@ -4,6 +4,7 @@ using System.IO.Compression;
 using System.Net;
 using System.Security.Cryptography;
 using System.Text;
+using System.Text.Json;
 using System.Text.Json.Nodes;
 using Valleysoft.DockerRegistryClient;
 
@@ -13,6 +14,23 @@ public sealed class LayerStoreTests
 {
     private static readonly ImageName Image = ImageName.Parse("registry.test/repo:tag");
     private static CancellationToken Token => TestContext.Current.CancellationToken;
+
+    [Fact]
+    public void MetadataEnvelope_PreservesLegacyNamesAndReadsCamelCase()
+    {
+        LayerCacheEnvelope envelope = new(1, "sha256:abc", "checksum", "{}");
+        string json = JsonHelper.Serialize(envelope, JsonHelper.CompactSettings);
+        Assert.Contains("\"Version\":1", json);
+        Assert.DoesNotContain("\"version\":", json);
+        Assert.Equal(1, JsonHelper.Deserialize<LayerCacheEnvelope>(json, new JsonSerializerOptions(JsonHelper.Settings)
+        {
+            PropertyNameCaseInsensitive = true
+        })!.Version);
+        Assert.Equal(1, JsonHelper.Deserialize<LayerCacheEnvelope>("{\"version\":1,\"digest\":\"sha256:abc\",\"checksum\":\"checksum\",\"payload\":\"{}\"}", new JsonSerializerOptions(JsonHelper.Settings)
+        {
+            PropertyNameCaseInsensitive = true
+        })!.Version);
+    }
 
     [Fact]
     public async Task Processes_ShareOneDownloadAndPersistMetadata()

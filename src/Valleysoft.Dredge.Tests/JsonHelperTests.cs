@@ -12,6 +12,44 @@ public class JsonHelperTests
     }
 
     [Fact]
+    public void Serialize_ListOfStringsHasGeneratedMetadata()
+    {
+        Assert.NotNull(DredgeJsonContext.Default.GetTypeInfo(typeof(List<string>)));
+        Assert.Contains(
+            "\"alpha\"",
+            JsonHelper.Serialize(new List<string> { "alpha" }));
+    }
+
+    [Fact]
+    public void SerializeNoCamelCase_PreservesWindowsOsInfoPropertyNames()
+    {
+        string json = JsonHelper.Serialize(
+            new WindowsOsInfo(WindowsType.ServerCore, "10.0.20348.1366"),
+            JsonHelper.SettingsNoCamelCase);
+
+        Assert.Contains("\"Type\": \"Server Core\"", json);
+        Assert.Contains("\"Version\": \"10.0.20348.1366\"", json);
+        Assert.DoesNotContain("\"type\"", json);
+        Assert.DoesNotContain("\"version\"", json);
+    }
+
+    [Fact]
+    public void SerializeNoCamelCase_PreservesLinuxOsInfoPropertyNames()
+    {
+        string json = JsonHelper.Serialize(
+            LinuxOsInfo.Parse("""
+                NAME="Ubuntu"
+                ID=ubuntu
+                """),
+            JsonHelper.SettingsNoCamelCase);
+
+        Assert.Contains("\"NAME\": \"Ubuntu\"", json);
+        Assert.Contains("\"ID\": \"ubuntu\"", json);
+        Assert.DoesNotContain("\"name\"", json);
+        Assert.DoesNotContain("\"id\"", json);
+    }
+
+    [Fact]
     public void Serialize_UsesClrPropertyNamesAndCamelCasesDictionaryKeys()
     {
         SerializerContract value = new()
@@ -69,6 +107,19 @@ public class JsonHelperTests
 
         Assert.Equal("5", value.OsVersion);
         Assert.Equal("true", value.Values["enabled"]);
+    }
+
+    [Fact]
+    public void DeserializeAppSettings_CoercesPersistedScalarValuesToStrings()
+    {
+        const string Json = """{"cache":{"maxBytes":1024},"operations":{"timeout":true}}""";
+
+        AppSettings value = JsonSerializer.Deserialize(
+            Json,
+            DredgeJsonContext.Default.AppSettings)!;
+
+        Assert.Equal("1024", value.Cache.MaxBytes);
+        Assert.Equal("true", value.Operations.Timeout);
     }
 
     [Fact]

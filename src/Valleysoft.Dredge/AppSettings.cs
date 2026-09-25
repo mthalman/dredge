@@ -31,7 +31,7 @@ internal partial class AppSettings
     public CacheSettings Cache { get; set; } = new();
 
     [JsonConstructor]
-    private AppSettings() {}
+    internal AppSettings() {}
 
     public static AppSettings Load() => Load(SettingsPath);
 

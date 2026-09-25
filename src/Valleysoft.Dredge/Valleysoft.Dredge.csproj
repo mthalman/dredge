@@ -12,11 +12,23 @@
     <EnforceCodeStyleInBuild>True</EnforceCodeStyleInBuild>
     <AnalysisLevel>latest</AnalysisLevel>
     <MinVerTagPrefix>v</MinVerTagPrefix>
+    <IsAotCompatible>true</IsAotCompatible>
   </PropertyGroup>
 
   <PropertyGroup Condition=" '$(IsPack)' != 'true' ">
     <PublishSingleFile>true</PublishSingleFile>
     <DebugType>embedded</DebugType>
+  </PropertyGroup>
+
+  <PropertyGroup Condition=" '$(IsPack)' == 'true' ">
+    <PublishAot>false</PublishAot>
+  </PropertyGroup>
+
+  <PropertyGroup Condition=" '$(PublishAot)' == 'true' ">
+    <EnableTrimAnalyzer>true</EnableTrimAnalyzer>
+    <EnableAotAnalyzer>true</EnableAotAnalyzer>
+    <WarningsAsErrors>$(WarningsAsErrors);IL2026;IL2104;IL3050</WarningsAsErrors>
+    <TrimmerSingleWarn>false</TrimmerSingleWarn>
   </PropertyGroup>
 
   <PropertyGroup>
@@ -41,6 +53,10 @@
 
   <ItemGroup>
     <InternalsVisibleTo Include="Valleysoft.Dredge.Tests" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <_ILLinkSuppressions Include="DockerRegistryClient.TrimmerSuppressions.xml" />
   </ItemGroup>
 
   <ItemGroup>

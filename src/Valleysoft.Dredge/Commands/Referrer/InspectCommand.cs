@@ -32,7 +32,9 @@ public class InspectCommand : RegistryCommandBase<InspectOptions>
 
             if (Options.OutputFormat == ArtifactInspectOutput.Json)
             {
-                string json = JsonSerializer.Serialize(inspection, ArtifactInspectionJson.Options);
+                string json = JsonSerializer.Serialize(
+                    inspection,
+                    DredgeJsonContext.Default.ArtifactInspection);
                 Output.WriteLine(json);
             }
             else

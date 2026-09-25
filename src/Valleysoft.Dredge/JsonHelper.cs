@@ -1,7 +1,9 @@
 ﻿using System.Buffers;
 using System.Globalization;
 using System.Numerics;
+using System.Diagnostics.CodeAnalysis;
 using System.Reflection;
+using System.Runtime.CompilerServices;
 using System.Text;
 using System.Text.Encodings.Web;
 using System.Text.Json;
@@ -27,7 +29,7 @@ internal static class JsonHelper
         WriteIndented = true,
         DictionaryKeyPolicy = camelCaseNamingPolicy,
         PropertyNamingPolicy = camelCaseNamingPolicy,
-        TypeInfoResolver = CreateTypeInfoResolver(camelCaseNamingPolicy),
+        TypeInfoResolver = CreateTypeInfoResolver(useCamelCase: true),
         Converters =
         {
             new NewtonsoftCompatibleStringConverter()
@@ -47,16 +49,84 @@ internal static class JsonHelper
         ReadCommentHandling = JsonCommentHandling.Skip,
         AllowTrailingCommas = true,
         WriteIndented = true,
-        TypeInfoResolver = CreateTypeInfoResolver(namingPolicy: null),
+        TypeInfoResolver = CreateTypeInfoResolver(useCamelCase: false),
     };
 
+    [UnconditionalSuppressMessage(
+        "Trimming",
+        "IL2026",
+        Justification = "All application JSON types are registered in DredgeJsonContext.")]
+    [UnconditionalSuppressMessage(
+        "AOT",
+        "IL3050",
+        Justification = "All application JSON types are registered in DredgeJsonContext.")]
     public static string Serialize(object? value, JsonSerializerOptions? options = null) =>
         value is null
             ? JsonSerializer.Serialize(value, options ?? Settings)
             : JsonSerializer.Serialize(value, value.GetType(), options ?? Settings);
 
+    [UnconditionalSuppressMessage(
+        "Trimming",
+        "IL2026",
+        Justification = "All application JSON types are registered in DredgeJsonContext.")]
+    [UnconditionalSuppressMessage(
+        "AOT",
+        "IL3050",
+        Justification = "All application JSON types are registered in DredgeJsonContext.")]
     public static T? Deserialize<T>(string json, JsonSerializerOptions? options = null) =>
         JsonSerializer.Deserialize<T>(json, options ?? Settings);
+
+    [UnconditionalSuppressMessage(
+        "Trimming",
+        "IL2026",
+        Justification = "DockerRegistryClient's generated metadata is combined here to resolve registry JSON; the package boundary is intentionally trim-aware but external to Dredge.")]
+    [UnconditionalSuppressMessage(
+        "Trimming",
+        "IL2104",
+        Justification = "DockerRegistryClient's generated metadata is combined here to resolve registry JSON; the package boundary is intentionally trim-aware but external to Dredge.")]
+    [UnconditionalSuppressMessage(
+        "AOT",
+        "IL3050",
+        Justification = "The reflection resolver is used only when dynamic code is supported; AOT uses source-generated resolvers.")]
+    private static IJsonTypeInfoResolver CreateTypeInfoResolver(bool useCamelCase) =>
+        RuntimeFeature.IsDynamicCodeSupported
+            ? JsonTypeInfoResolver.Combine(
+                useCamelCase ? DredgeJsonContext.Default : DredgeJsonNoNamingContext.Default,
+                DockerJsonContext.Default,
+                CreateReflectionResolver(useCamelCase ? camelCaseNamingPolicy : null))
+            : useCamelCase
+                ? JsonTypeInfoResolver.Combine(DredgeJsonContext.Default, DockerJsonContext.Default)
+                : DredgeJsonNoNamingContext.Default;
+
+    [UnconditionalSuppressMessage(
+        "Trimming",
+        "IL2026",
+        Justification = "This resolver is used only when dynamic code is supported.")]
+    [UnconditionalSuppressMessage(
+        "AOT",
+        "IL3050",
+        Justification = "This resolver is used only when dynamic code is supported.")]
+    private static IJsonTypeInfoResolver CreateReflectionResolver(JsonNamingPolicy? namingPolicy)
+    {
+        DefaultJsonTypeInfoResolver resolver = new();
+        resolver.Modifiers.Add(typeInfo =>
+        {
+            foreach (JsonPropertyInfo property in typeInfo.Properties)
+            {
+                if (property.AttributeProvider is MemberInfo member)
+                {
+                    JsonPropertyNameAttribute? propertyName =
+                        member.GetCustomAttribute<JsonPropertyNameAttribute>();
+                    string name = propertyName is not null &&
+                        member.DeclaringType?.Assembly == typeof(JsonHelper).Assembly
+                            ? propertyName.Name
+                            : member.Name;
+                    property.Name = namingPolicy?.ConvertName(name) ?? name;
+                }
+            }
+        });
+        return resolver;
+    }
 
     public static string? FormatJson(string json)
     {
@@ -102,7 +172,15 @@ internal static class JsonHelper
         return CreateMergedNode(document.RootElement)?.ToJsonString(CompactSettings) ?? "null";
     }
 
-    public static string NormalizeNewtonsoftNumber(string rawValue)
+    [UnconditionalSuppressMessage(
+        "Trimming",
+        "IL2026",
+        Justification = "Only primitive values are serialized here.")]
+    [UnconditionalSuppressMessage(
+        "AOT",
+        "IL3050",
+        Justification = "Only primitive values are serialized here.")]
+    public static string NormalizeComparisonNumber(string rawValue)
     {
         if (!rawValue.Contains('.') &&
             rawValue.IndexOfAny(['e', 'E']) < 0)
@@ -125,28 +203,14 @@ internal static class JsonHelper
             : $"{formatted}.0";
     }
 
-    private static IJsonTypeInfoResolver CreateTypeInfoResolver(JsonNamingPolicy? namingPolicy)
-    {
-        DefaultJsonTypeInfoResolver resolver = new();
-        resolver.Modifiers.Add(typeInfo =>
-        {
-            foreach (JsonPropertyInfo property in typeInfo.Properties)
-            {
-                if (property.AttributeProvider is MemberInfo member)
-                {
-                    JsonPropertyNameAttribute? propertyName =
-                        member.GetCustomAttribute<JsonPropertyNameAttribute>();
-                    string name = propertyName is not null &&
-                        member.DeclaringType?.Assembly == typeof(JsonHelper).Assembly
-                            ? propertyName.Name
-                            : member.Name;
-                    property.Name = namingPolicy?.ConvertName(name) ?? name;
-                }
-            }
-        });
-        return resolver;
-    }
-
+    [UnconditionalSuppressMessage(
+        "Trimming",
+        "IL2026",
+        Justification = "Only strings and dates are serialized here.")]
+    [UnconditionalSuppressMessage(
+        "AOT",
+        "IL3050",
+        Justification = "Only strings and dates are serialized here.")]
     private static void WriteJsonValue(JsonElement value, StringBuilder output, int depth)
     {
         switch (value.ValueKind)
@@ -201,7 +265,7 @@ internal static class JsonHelper
                 }
                 break;
             case JsonValueKind.Number:
-                output.Append(NormalizeNewtonsoftNumber(value.GetRawText()));
+                output.Append(NormalizeComparisonNumber(value.GetRawText()));
                 break;
             case JsonValueKind.True:
                 output.Append("true");
@@ -506,7 +570,7 @@ internal static class JsonHelper
         return parsed;
     }
 
-    private sealed class NewtonsoftCompatibleStringConverter : JsonConverter<string>
+    internal sealed class NewtonsoftCompatibleStringConverter : JsonConverter<string>
     {
         public override string? Read(
             ref Utf8JsonReader reader,
