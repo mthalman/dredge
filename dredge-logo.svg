@@ -2,12 +2,11 @@
   <title id="title">Dredge</title>
   <defs>
     <clipPath id="disc">
-      <circle cx="128" cy="128" r="112"/>
+      <circle cx="128" cy="128" r="120"/>
     </clipPath>
   </defs>
 
-  <circle cx="128" cy="128" r="128" fill="#2F5878"/>
-  <circle cx="128" cy="128" r="112" fill="#FFFFFF"/>
+  <circle cx="128" cy="128" r="120" fill="#FFFFFF"/>
 
   <g stroke="#2F5878" stroke-width="10" stroke-linejoin="round" stroke-linecap="round">
     <path d="M156 152 L190 70 V152" fill="none"/>
@@ -25,4 +24,7 @@
     <path d="M-48 196 q10 -8 20 0 t20 0 t20 0 t20 0 t20 0 t20 0 t20 0 t20 0 t20 0 t20 0 t20 0 t20 0 t20 0 t20 0 t20 0 t20 0 V260 H-48 Z" fill="#81C2D6"/>
     <path d="M-48 212 q10 -8 20 0 t20 0 t20 0 t20 0 t20 0 t20 0 t20 0 t20 0 t20 0 t20 0 t20 0 t20 0 t20 0 t20 0 t20 0 t20 0 V260 H-48 Z" fill="#2F5878"/>
   </g>
+
+  <!-- Drawn last so the ring hides the anti-aliased clip edges beneath it. -->
+  <circle cx="128" cy="128" r="120" fill="none" stroke="#2F5878" stroke-width="16"/>
 </svg>
