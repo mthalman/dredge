@@ -4,14 +4,14 @@ internal sealed class ImagePathResolver
 {
     private const int MaximumLinkHops = 40;
 
-    private readonly Dictionary<string, ImageFileSystemEntry> entries;
+    private readonly IReadOnlyDictionary<string, ImageFileSystemEntry> entries;
 
-    public ImagePathResolver(Dictionary<string, ImageFileSystemEntry> entries)
+    public ImagePathResolver(IReadOnlyDictionary<string, ImageFileSystemEntry> entries)
     {
         this.entries = entries;
     }
 
-    public ImageFileSystemEntry ResolveContentEntry(string requestedPath, Dictionary<string, ImageFileSystemEntry> entries)
+    public ImageFileSystemEntry ResolveContentEntry(string requestedPath, IReadOnlyDictionary<string, ImageFileSystemEntry> entries)
     {
         string path = ImagePath.NormalizeRequested(requestedPath);
         if (path.Length == 0)
@@ -49,7 +49,7 @@ internal sealed class ImagePathResolver
         return entry;
     }
 
-    public ImageFileSystemEntry ResolvePath(string requestedPath, Dictionary<string, ImageFileSystemEntry> entries)
+    public ImageFileSystemEntry ResolvePath(string requestedPath, IReadOnlyDictionary<string, ImageFileSystemEntry> entries)
     {
         string current = ImagePath.NormalizeRequested(requestedPath);
         for (int hop = 0; hop < MaximumLinkHops; hop++)
@@ -97,7 +97,7 @@ internal sealed class ImagePathResolver
             $"Link resolution for '/{requestedPath}' exceeded {MaximumLinkHops} hops.");
     }
 
-    public string ResolveParentComponents(string path, Dictionary<string, ImageFileSystemEntry> entries)
+    public string ResolveParentComponents(string path, IReadOnlyDictionary<string, ImageFileSystemEntry> entries)
     {
         string parentPath = ImagePath.GetDirectoryName(path);
         if (parentPath.Length == 0)
@@ -114,7 +114,7 @@ internal sealed class ImagePathResolver
         return $"{parent.Path}/{ImagePath.GetFileName(path)}";
     }
 
-    public ImageFileSystemEntry? TryResolvePath(string requestedPath, Dictionary<string, ImageFileSystemEntry> entries)
+    public ImageFileSystemEntry? TryResolvePath(string requestedPath, IReadOnlyDictionary<string, ImageFileSystemEntry> entries)
     {
         try
         {
@@ -130,7 +130,7 @@ internal sealed class ImagePathResolver
         }
     }
 
-    public string GetHardLinkTargetPath(ImageFileSystemEntry entry, Dictionary<string, ImageFileSystemEntry> entries)
+    public string GetHardLinkTargetPath(ImageFileSystemEntry entry, IReadOnlyDictionary<string, ImageFileSystemEntry> entries)
     {
         string target = entry.LinkTarget ??
             throw new InvalidDataException($"Hard link '/{entry.Path}' has no target.");
@@ -154,7 +154,7 @@ internal sealed class ImagePathResolver
         return $"{parent.Path}/{ImagePath.GetFileName(targetPath)}";
     }
 
-    public string? TryGetHardLinkTargetPath(ImageFileSystemEntry entry, Dictionary<string, ImageFileSystemEntry> entries)
+    public string? TryGetHardLinkTargetPath(ImageFileSystemEntry entry, IReadOnlyDictionary<string, ImageFileSystemEntry> entries)
     {
         try
         {
@@ -170,7 +170,7 @@ internal sealed class ImagePathResolver
         }
     }
 
-    public ImageFileSystemEntry GetExtractionSource(string sourcePath, Dictionary<string, ImageFileSystemEntry> entries)
+    public ImageFileSystemEntry GetExtractionSource(string sourcePath, IReadOnlyDictionary<string, ImageFileSystemEntry> entries)
     {
         string lookupPath = ResolveParentComponents(sourcePath, entries);
         if (!entries.TryGetValue(lookupPath, out ImageFileSystemEntry? source))

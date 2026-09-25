@@ -105,7 +105,7 @@ internal sealed class ExtractionPlanner
     public Dictionary<string, string> GetExtractionHardLinkTargets(IEnumerable<ImageFileSystemEntry> selected) =>
         selected
             .Where(entry => entry.Type == ImageFileType.HardLink)
-            .Select(entry => (Entry: entry, Target: resolver.TryGetHardLinkTargetPath(entry, entries.ToDictionary(kvp => kvp.Key, kvp => kvp.Value))))
+            .Select(entry => (Entry: entry, Target: resolver.TryGetHardLinkTargetPath(entry, entries)))
             .Where(item => item.Target is not null)
             .ToDictionary(
                 item => item.Entry.Path,
@@ -134,10 +134,6 @@ internal sealed class ExtractionPlanner
     public IReadOnlyDictionary<string, bool> GetSymbolicLinkDirectoryTargets(
         IEnumerable<ImageFileSystemEntry> selected)
     {
-        Dictionary<string, ImageFileSystemEntry> index = entries.ToDictionary(
-            pair => pair.Key,
-            pair => pair.Value,
-            StringComparer.Ordinal);
         return selected
             .Where(entry =>
                 entry.Type == ImageFileType.SymbolicLink ||
@@ -149,9 +145,9 @@ internal sealed class ExtractionPlanner
                 {
                     string? targetPath = entry.Type == ImageFileType.SymbolicLink
                         ? entry.Path
-                        : resolver.TryGetHardLinkTargetPath(entry, index);
+                        : resolver.TryGetHardLinkTargetPath(entry, entries);
                     return targetPath is not null &&
-                        resolver.TryResolvePath(targetPath, index)?.Type == ImageFileType.Directory;
+                        resolver.TryResolvePath(targetPath, entries)?.Type == ImageFileType.Directory;
                 },
                 StringComparer.Ordinal);
     }
