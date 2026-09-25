@@ -19,6 +19,9 @@ internal sealed class ImageFileSystem : IAsyncDisposable
         new(StringComparer.Ordinal);
     private readonly Dictionary<string, ImageFileSystemEntry> deletedEntries =
         new(StringComparer.Ordinal);
+    private readonly ImageFileSystemBuilder builder;
+    private readonly ImagePathResolver pathResolver;
+    private readonly ExtractionPlanner extractionPlanner;
 
     private ImageFileSystem(
         IDockerRegistryClient client,
@@ -32,6 +35,9 @@ internal sealed class ImageFileSystem : IAsyncDisposable
         this.manifest = manifest;
         this.store = store;
         this.ownsStore = ownsStore;
+        this.builder = new(client, imageName, manifest, store, indexes, entries, deletedEntries);
+        this.pathResolver = new(entries);
+        this.extractionPlanner = new(pathResolver, entries);
     }
 
     public static async Task<ImageFileSystem> CreateAsync(
@@ -154,7 +160,7 @@ internal sealed class ImageFileSystem : IAsyncDisposable
         CancellationToken cancellationToken)
     {
         ExtractionPlan plan = CreateExtractionPlan(requestedPath, outputPath);
-        ExtractionState state = new();
+        ImageFileSystemExtractor.ExtractionState state = new();
         try
         {
             if (plan.ExtractingRoot || plan.Source!.Type == ImageFileType.Directory)
@@ -162,9 +168,9 @@ internal sealed class ImageFileSystem : IAsyncDisposable
                 Directory.CreateDirectory(plan.OutputPath);
                 state.OutputCreated = true;
             }
-            CreateExtractionSubdirectories(plan, cancellationToken);
+            ExtractionPlanner.CreateExtractionSubdirectories(plan, cancellationToken);
             List<(ImageFileSystemEntry Entry, string Destination)> content =
-                GetContentExtractionRequests(plan);
+                ExtractionPlanner.GetContentExtractionRequests(plan);
             // A failed or canceled copy may leave a partial file that must be rolled back.
             state.OutputCreated |= content.Count > 0;
             await ExtractContentEntriesAsync(content, cancellationToken);
@@ -175,7 +181,7 @@ internal sealed class ImageFileSystem : IAsyncDisposable
         }
         catch (Exception exception)
         {
-            CleanupFailedExtraction(plan, state.OutputCreated, exception);
+            ImageFileSystemExtractor.CleanupFailedExtraction(plan, state.OutputCreated, exception);
             throw;
         }
     }
@@ -186,156 +192,60 @@ internal sealed class ImageFileSystem : IAsyncDisposable
         bool extractingRoot = sourcePath.Length == 0;
         ImageFileSystemEntry? source = extractingRoot
             ? null
-            : GetExtractionSource(sourcePath);
-        if (source is not null)
-        {
-            sourcePath = source.Path;
-        }
-
-        string fullOutputPath = Path.GetFullPath(outputPath);
-        ValidateNewDestination(fullOutputPath);
-        string? missingParentRoot = GetMissingParentRoot(fullOutputPath);
-        List<ImageFileSystemEntry> selected =
-            SelectExtractionEntries(sourcePath, source, extractingRoot);
-        ValidateExtractionEntries(selected);
-        Dictionary<string, string> destinations = CreateExtractionDestinations(
-            selected,
-            sourcePath,
-            fullOutputPath,
-            extractingRoot);
-        Dictionary<string, string> hardLinkTargets = GetExtractionHardLinkTargets(selected);
-        HashSet<string> preservableHardLinks = GetPreservableHardLinks(
-            selected,
-            destinations,
-            hardLinkTargets);
-        return new(
-            source,
+            : pathResolver.GetExtractionSource(sourcePath, entries);
+        return extractionPlanner.CreatePlan(
+            requestedPath,
+            outputPath,
             extractingRoot,
-            fullOutputPath,
-            missingParentRoot,
-            selected,
-            destinations,
-            hardLinkTargets,
-            preservableHardLinks);
+            source,
+            entries);
     }
 
-    private ImageFileSystemEntry GetExtractionSource(string sourcePath)
-    {
-        string lookupPath = ResolveParentComponents(sourcePath);
-        if (!entries.TryGetValue(lookupPath, out ImageFileSystemEntry? source))
-        {
-            throw new FileNotFoundException(
-                $"Path '/{sourcePath}' does not exist in the image.");
-        }
-        if (source.Type == ImageFileType.Other)
-        {
-            throw new NotSupportedException(
-                $"Path '/{source.Path}' has unsupported file type '{source.Type}'.");
-        }
-        return source;
-    }
+    private ImageFileSystemEntry GetExtractionSource(string sourcePath) =>
+        pathResolver.GetExtractionSource(sourcePath, entries);
 
     private List<ImageFileSystemEntry> SelectExtractionEntries(
         string sourcePath,
         ImageFileSystemEntry? source,
         bool extractingRoot) =>
-        extractingRoot
-            ? OrderExtractionEntries(entries.Values)
-            : source!.Type == ImageFileType.Directory
-                ? OrderExtractionEntries(entries.Values.Where(entry =>
-                    entry.Path == sourcePath ||
-                    entry.Path.StartsWith($"{sourcePath}/", StringComparison.Ordinal)))
-                : [source];
+        ExtractionPlanner.SelectExtractionEntries(sourcePath, source, extractingRoot, entries);
 
     private static List<ImageFileSystemEntry> OrderExtractionEntries(
         IEnumerable<ImageFileSystemEntry> selected) =>
-        selected
-            .OrderBy(entry => entry.Path.Count(c => c == '/'))
-            .ThenBy(entry => entry.Path, StringComparer.Ordinal)
-            .ToList();
+        ExtractionPlanner.OrderExtractionEntries(selected);
 
-    private static void ValidateExtractionEntries(IEnumerable<ImageFileSystemEntry> selected)
-    {
-        ImageFileSystemEntry? unsupported = selected.FirstOrDefault(
-            entry => entry.Type == ImageFileType.Other);
-        if (unsupported is not null)
-        {
-            throw new NotSupportedException(
-                $"Path '/{unsupported.Path}' has unsupported file type '{unsupported.Type}'.");
-        }
-    }
+    private static void ValidateExtractionEntries(IEnumerable<ImageFileSystemEntry> selected) =>
+        ExtractionPlanner.ValidateExtractionEntries(selected);
 
     private static Dictionary<string, string> CreateExtractionDestinations(
         IEnumerable<ImageFileSystemEntry> selected,
         string sourcePath,
         string outputPath,
         bool extractingRoot) =>
-        selected.ToDictionary(
-            entry => entry.Path,
-            entry => !extractingRoot && entry.Path == sourcePath
-                ? outputPath
-                : GetContainedDestination(
-                    outputPath,
-                    extractingRoot
-                        ? entry.Path
-                        : entry.Path[(sourcePath.Length + 1)..]),
-            StringComparer.Ordinal);
+        ExtractionPlanner.CreateExtractionDestinations(selected, sourcePath, outputPath, extractingRoot);
 
     private Dictionary<string, string> GetExtractionHardLinkTargets(
         IEnumerable<ImageFileSystemEntry> selected) =>
-        selected
-            .Where(entry => entry.Type == ImageFileType.HardLink)
-            .Select(entry => (Entry: entry, Target: TryGetHardLinkTargetPath(entry)))
-            .Where(item => item.Target is not null)
-            .ToDictionary(
-                item => item.Entry.Path,
-                item => item.Target!,
-                StringComparer.Ordinal);
+        extractionPlanner.GetExtractionHardLinkTargets(selected);
 
     private HashSet<string> GetPreservableHardLinks(
         IEnumerable<ImageFileSystemEntry> selected,
         IReadOnlyDictionary<string, string> destinations,
         IReadOnlyDictionary<string, string> hardLinkTargets) =>
-        selected
-            .Where(entry =>
-                entry.Type == ImageFileType.HardLink &&
-                entry.ContentLinkTarget is null)
-            .Where(entry =>
-                hardLinkTargets.TryGetValue(entry.Path, out string? targetPath) &&
-                destinations.ContainsKey(targetPath) &&
-                entries.TryGetValue(targetPath, out ImageFileSystemEntry? target) &&
-                target.ContentLayerIndex == entry.ContentLayerIndex &&
-                target.ContentPath == entry.ContentPath &&
-                target.ContentEntryIndex == entry.ContentEntryIndex)
-            .Select(entry => entry.Path)
-            .ToHashSet(StringComparer.Ordinal);
+        ExtractionPlanner.GetPreservableHardLinks(selected, destinations, hardLinkTargets, entries);
 
     private static void CreateExtractionSubdirectories(
         ExtractionPlan plan,
-        CancellationToken cancellationToken)
-    {
-        foreach (ImageFileSystemEntry directory in plan.Entries
-            .Where(entry => entry.Type == ImageFileType.Directory))
-        {
-            cancellationToken.ThrowIfCancellationRequested();
-            Directory.CreateDirectory(plan.Destinations[directory.Path]);
-        }
-    }
+        CancellationToken cancellationToken) =>
+        ExtractionPlanner.CreateExtractionSubdirectories(plan, cancellationToken);
 
     private static List<(ImageFileSystemEntry Entry, string Destination)>
         GetContentExtractionRequests(ExtractionPlan plan) =>
-        plan.Entries
-            .Where(entry =>
-                entry.Type == ImageFileType.File ||
-                (entry.Type == ImageFileType.HardLink &&
-                    !plan.PreservableHardLinks.Contains(entry.Path) &&
-                    entry.ContentLinkTarget is null))
-            .Select(entry => (entry, plan.Destinations[entry.Path]))
-            .ToList();
+        ExtractionPlanner.GetContentExtractionRequests(plan);
 
     private static void CreatePreservedHardLinks(
         ExtractionPlan plan,
-        ExtractionState state,
+        ImageFileSystemExtractor.ExtractionState state,
         CancellationToken cancellationToken)
     {
         List<ImageFileSystemEntry> pending = plan.Entries
@@ -374,7 +284,7 @@ internal sealed class ImageFileSystem : IAsyncDisposable
 
     private void CreateSymbolicLinks(
         ExtractionPlan plan,
-        ExtractionState state,
+        ImageFileSystemExtractor.ExtractionState state,
         CancellationToken cancellationToken)
     {
         foreach (ImageFileSystemEntry symbolicLink in plan.Entries
@@ -396,7 +306,7 @@ internal sealed class ImageFileSystem : IAsyncDisposable
 
     private void CreateSymbolicHardLinks(
         ExtractionPlan plan,
-        ExtractionState state,
+        ImageFileSystemExtractor.ExtractionState state,
         CancellationToken cancellationToken)
     {
         foreach (ImageFileSystemEntry hardLink in plan.Entries
@@ -462,348 +372,35 @@ internal sealed class ImageFileSystem : IAsyncDisposable
         }
     }
 
-    private async Task<bool> BuildIndexAsync(string? contentPath, bool extracting, CancellationToken cancellationToken)
-    {
-        if (!string.IsNullOrEmpty(ImagePath.NormalizeRequested(contentPath)))
-        {
-            for (int firstLayer = manifest.Layers.Length - 1; firstLayer >= 0; firstLayer--)
-            {
-                await GetIndexAsync(firstLayer, cancellationToken);
-                entries.Clear();
-                deletedEntries.Clear();
-                try
-                {
-                    for (int i = firstLayer; i < manifest.Layers.Length; i++)
-                    {
-                        ApplyLayer(indexes[i].Changes, new(i, indexes[i].Digest), cancellationToken);
-                    }
-                    if (!extracting || GetExtractionSource(contentPath!).Type == ImageFileType.File)
-                    {
-                        _ = ResolveContentEntry(contentPath!);
-                        return firstLayer == 0;
-                    }
-                }
-                catch (Exception exception) when (firstLayer > 0 &&
-                    exception is FileNotFoundException or InvalidDataException)
-                {
-                    // A suffix cannot resolve hard-link snapshots or parent links supplied by older layers.
-                }
-            }
-            return true;
-        }
-        for (int i = 0; i < manifest.Layers.Length; i++)
-        {
-            StoredLayerIndex index = await GetIndexAsync(i, cancellationToken);
-            ApplyLayer(index.Changes, new(i, index.Digest), cancellationToken);
-        }
-        return true;
-    }
+    private async Task<bool> BuildIndexAsync(string? contentPath, bool extracting, CancellationToken cancellationToken) =>
+        await builder.BuildAsync(contentPath, extracting, cancellationToken);
 
-    private async Task<StoredLayerIndex> GetIndexAsync(int layerIndex, CancellationToken cancellationToken)
-    {
-        if (!indexes.TryGetValue(layerIndex, out StoredLayerIndex? index))
-        {
-            IDescriptor descriptor = manifest.Layers[layerIndex];
-            string digest = descriptor.Digest ??
-                throw new InvalidDataException($"Layer digest not set for image '{imageName}'.");
-            index = await store.GetIndexAsync(client, imageName, new(layerIndex, digest),
-                descriptor.Size, cancellationToken);
-            indexes.Add(layerIndex, index);
-        }
-        return index;
-    }
+    private async Task<StoredLayerIndex> GetIndexAsync(int layerIndex, CancellationToken cancellationToken) =>
+        await builder.GetIndexAsync(layerIndex, cancellationToken);
 
     private void ApplyLayer(
         LayerChanges changes,
         ImageLayerReference layer,
-        CancellationToken cancellationToken)
-    {
-        // OCI whiteouts affect only lower layers, and opaque markers take effect before
-        // same-layer additions regardless of their position in the tar stream.
-        foreach (string directory in changes.OpaqueDirectories)
-        {
-            cancellationToken.ThrowIfCancellationRequested();
-            RemovePath(directory, includePath: false, layer);
-        }
+        CancellationToken cancellationToken) =>
+        builder.ApplyLayer(changes, layer, cancellationToken);
 
-        foreach (string path in changes.Whiteouts)
-        {
-            cancellationToken.ThrowIfCancellationRequested();
-            RemovePath(path, includePath: true, layer);
-        }
+    private ImageFileSystemEntry ResolveContentEntry(string requestedPath) =>
+        pathResolver.ResolveContentEntry(requestedPath, entries);
 
-        foreach (ScannedEntry scanned in changes.Entries)
-        {
-            cancellationToken.ThrowIfCancellationRequested();
-            EnsureParentDirectories(scanned.Path, layer);
+    private ImageFileSystemEntry ResolvePath(string requestedPath) =>
+        pathResolver.ResolvePath(requestedPath, entries);
 
-            if (entries.TryGetValue(scanned.Path, out ImageFileSystemEntry? previous) &&
-                previous.Type == ImageFileType.Directory &&
-                scanned.Type != ImageFileType.Directory)
-            {
-                RemovePath(scanned.Path, includePath: false, layer);
-            }
+    private string ResolveParentComponents(string path) =>
+        pathResolver.ResolveParentComponents(path);
 
-            ImageLayerReference introduced =
-                entries.TryGetValue(scanned.Path, out previous)
-                    ? previous.IntroducedLayer
-                    : layer;
-            ImageLayerReference? modified =
-                previous is not null && previous.IntroducedLayer.Index != layer.Index
-                    ? layer
-                    : previous?.ModifiedLayer;
-            ImageFileSystemEntry current = scanned.ToEntry(introduced, modified, layer);
-            if (current.Type == ImageFileType.HardLink)
-            {
-                string targetPath = GetHardLinkTargetPath(current);
-                if (!entries.TryGetValue(targetPath, out ImageFileSystemEntry? target) ||
-                    target.Type == ImageFileType.Directory)
-                {
-                    throw new InvalidDataException(
-                        $"Hard link '/{current.Path}' targets missing or invalid path '/{targetPath}'.");
-                }
-                current = current with
-                {
-                    Size = target.Size,
-                    ContentLayerIndex = target.ContentLayerIndex,
-                    ContentPath = target.ContentPath,
-                    ContentEntryIndex = target.ContentEntryIndex,
-                    ContentLinkTarget = target.Type == ImageFileType.SymbolicLink
-                        ? target.LinkTarget
-                        : target.ContentLinkTarget
-                };
-            }
-            entries[scanned.Path] = current;
-            deletedEntries.Remove(scanned.Path);
-        }
-    }
+    private ImageFileSystemEntry? TryResolvePath(string requestedPath) =>
+        pathResolver.TryResolvePath(requestedPath, entries);
 
-    private void EnsureParentDirectories(string path, ImageLayerReference layer)
-    {
-        string parent = ImagePath.GetDirectoryName(path);
-        if (parent.Length == 0)
-        {
-            return;
-        }
+    private string GetHardLinkTargetPath(ImageFileSystemEntry entry) =>
+        pathResolver.GetHardLinkTargetPath(entry, entries);
 
-        EnsureParentDirectories(parent, layer);
-        if (!entries.TryGetValue(parent, out ImageFileSystemEntry? entry) ||
-            entry.Type != ImageFileType.Directory)
-        {
-            entries[parent] = new ImageFileSystemEntry
-            {
-                Path = parent,
-                Type = ImageFileType.Directory,
-                Mode = 0x1ED,
-                IntroducedLayer = layer,
-                ContentLayerIndex = layer.Index
-            };
-            deletedEntries.Remove(parent);
-        }
-    }
-
-    private void RemovePath(
-        string path,
-        bool includePath,
-        ImageLayerReference layer)
-    {
-        string prefix = $"{path}/";
-        string[] affected = entries.Keys
-            .Where(candidate =>
-                (includePath && candidate == path) ||
-                candidate.StartsWith(prefix, StringComparison.Ordinal))
-            .ToArray();
-        foreach (string candidate in affected)
-        {
-            ImageFileSystemEntry removed = entries[candidate] with
-            {
-                DeletedLayer = layer
-            };
-            entries.Remove(candidate);
-            deletedEntries[candidate] = removed;
-        }
-
-        if (includePath && affected.Length == 0)
-        {
-            if (deletedEntries.TryGetValue(path, out ImageFileSystemEntry? alreadyDeleted))
-            {
-                deletedEntries[path] = alreadyDeleted with { DeletedLayer = layer };
-            }
-            else
-            {
-                deletedEntries[path] = new ImageFileSystemEntry
-                {
-                    Path = path,
-                    Type = ImageFileType.Other,
-                    IntroducedLayer = layer,
-                    DeletedLayer = layer,
-                    ContentLayerIndex = layer.Index
-                };
-            }
-        }
-    }
-
-    private ImageFileSystemEntry ResolveContentEntry(string requestedPath)
-    {
-        string path = ImagePath.NormalizeRequested(requestedPath);
-        if (path.Length == 0)
-        {
-            throw new InvalidDataException("The image root is a directory.");
-        }
-
-        ImageFileSystemEntry entry = ResolvePath(path);
-        if (entry.Type == ImageFileType.Directory)
-        {
-            throw new InvalidDataException($"Path '/{path}' is a directory.");
-        }
-        if (entry.Type == ImageFileType.HardLink &&
-            entry.ContentLinkTarget is string linkTarget)
-        {
-            string basePath = ImagePath.IsAbsolute(linkTarget)
-                ? string.Empty
-                : ImagePath.GetDirectoryName(entry.Path);
-            string targetPath = ImagePath.ResolveLinkTarget(
-                basePath,
-                linkTarget,
-                string.Empty,
-                entry.Path);
-            entry = ResolvePath(targetPath);
-        }
-        if (entry.Type == ImageFileType.HardLink)
-        {
-            return entry with { Type = ImageFileType.File };
-        }
-        if (entry.Type != ImageFileType.File)
-        {
-            throw new NotSupportedException(
-                $"Path '/{path}' has unsupported file type '{entry.Type}'.");
-        }
-        return entry;
-    }
-
-    private ImageFileSystemEntry ResolvePath(string requestedPath)
-    {
-        string current = ImagePath.NormalizeRequested(requestedPath);
-        for (int hop = 0; hop < MaximumLinkHops; hop++)
-        {
-            string[] segments = current.Split('/', StringSplitOptions.RemoveEmptyEntries);
-            bool followedLink = false;
-            for (int i = 0; i < segments.Length; i++)
-            {
-                string candidate = string.Join('/', segments.Take(i + 1));
-                if (!entries.TryGetValue(candidate, out ImageFileSystemEntry? entry))
-                {
-                    throw new FileNotFoundException(
-                        $"Path '/{requestedPath}' resolves to missing path '/{candidate}'.");
-                }
-
-                if (entry.Type != ImageFileType.SymbolicLink)
-                {
-                    continue;
-                }
-
-                string target = entry.LinkTarget ??
-                    throw new InvalidDataException(
-                        $"Link '/{candidate}' has no target.");
-                string basePath = entry.Type == ImageFileType.SymbolicLink &&
-                    !ImagePath.IsAbsolute(target)
-                        ? ImagePath.GetDirectoryName(candidate)
-                        : string.Empty;
-                string remainder = string.Join('/', segments.Skip(i + 1));
-                current = ImagePath.ResolveLinkTarget(basePath, target, remainder, candidate);
-                followedLink = true;
-                break;
-            }
-
-            if (!followedLink)
-            {
-                if (!entries.TryGetValue(current, out ImageFileSystemEntry? result))
-                {
-                    throw new FileNotFoundException(
-                        $"Path '/{requestedPath}' does not exist in the image.");
-                }
-                return result;
-            }
-        }
-
-        throw new InvalidDataException(
-            $"Link resolution for '/{requestedPath}' exceeded {MaximumLinkHops} hops.");
-    }
-
-    private string ResolveParentComponents(string path)
-    {
-        string parentPath = ImagePath.GetDirectoryName(path);
-        if (parentPath.Length == 0)
-        {
-            return path;
-        }
-
-        ImageFileSystemEntry parent = ResolvePath(parentPath);
-        if (parent.Type != ImageFileType.Directory)
-        {
-            throw new InvalidDataException(
-                $"Path '/{path}' has a non-directory parent '/{parent.Path}'.");
-        }
-        return $"{parent.Path}/{ImagePath.GetFileName(path)}";
-    }
-
-    private ImageFileSystemEntry? TryResolvePath(string requestedPath)
-    {
-        // Extraction must preserve dangling links; resolution here is only a best-effort
-        // probe for choosing the host symlink type.
-        try
-        {
-            return ResolvePath(requestedPath);
-        }
-        catch (FileNotFoundException)
-        {
-            return null;
-        }
-        catch (InvalidDataException)
-        {
-            return null;
-        }
-    }
-
-    private string GetHardLinkTargetPath(ImageFileSystemEntry entry)
-    {
-        string target = entry.LinkTarget ??
-            throw new InvalidDataException($"Hard link '/{entry.Path}' has no target.");
-        string targetPath = ImagePath.ResolveLinkTarget(
-            string.Empty,
-            target,
-            string.Empty,
-            entry.Path);
-        string parentPath = ImagePath.GetDirectoryName(targetPath);
-        if (parentPath.Length == 0)
-        {
-            return targetPath;
-        }
-
-        ImageFileSystemEntry parent = ResolvePath(parentPath);
-        if (parent.Type != ImageFileType.Directory)
-        {
-            throw new InvalidDataException(
-                $"Hard link '/{entry.Path}' targets path '/{targetPath}' with a non-directory parent.");
-        }
-        return $"{parent.Path}/{ImagePath.GetFileName(targetPath)}";
-    }
-
-    private string? TryGetHardLinkTargetPath(ImageFileSystemEntry entry)
-    {
-        try
-        {
-            return GetHardLinkTargetPath(entry);
-        }
-        catch (FileNotFoundException)
-        {
-            return null;
-        }
-        catch (InvalidDataException)
-        {
-            return null;
-        }
-    }
+    private string? TryGetHardLinkTargetPath(ImageFileSystemEntry entry) =>
+        pathResolver.TryGetHardLinkTargetPath(entry, entries);
 
     private async Task CopyContentEntriesAsync(
         IEnumerable<(ImageFileSystemEntry Entry, Stream Destination)> requests,
@@ -1105,21 +702,6 @@ internal sealed class ImageFileSystem : IAsyncDisposable
         {
             File.Delete(path);
         }
-    }
-
-    private sealed record ExtractionPlan(
-        ImageFileSystemEntry? Source,
-        bool ExtractingRoot,
-        string OutputPath,
-        string? MissingParentRoot,
-        IReadOnlyList<ImageFileSystemEntry> Entries,
-        IReadOnlyDictionary<string, string> Destinations,
-        IReadOnlyDictionary<string, string> HardLinkTargets,
-        IReadOnlySet<string> PreservableHardLinks);
-
-    private sealed class ExtractionState
-    {
-        public bool OutputCreated { get; set; }
     }
 
 }
