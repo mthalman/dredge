@@ -110,6 +110,19 @@ public class JsonHelperTests
     }
 
     [Fact]
+    public void DeserializeAppSettings_CoercesPersistedScalarValuesToStrings()
+    {
+        const string Json = """{"cache":{"maxBytes":1024},"operations":{"timeout":true}}""";
+
+        AppSettings value = JsonSerializer.Deserialize(
+            Json,
+            DredgeJsonContext.Default.AppSettings)!;
+
+        Assert.Equal("1024", value.Cache.MaxBytes);
+        Assert.Equal("true", value.Operations.Timeout);
+    }
+
+    [Fact]
     public void FormatJson_IndentsNumericArrays()
     {
         string json = JsonHelper.FormatJson("[1,2,3]")!;

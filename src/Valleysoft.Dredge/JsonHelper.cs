@@ -570,7 +570,7 @@ internal static class JsonHelper
         return parsed;
     }
 
-    private sealed class NewtonsoftCompatibleStringConverter : JsonConverter<string>
+    internal sealed class NewtonsoftCompatibleStringConverter : JsonConverter<string>
     {
         public override string? Read(
             ref Utf8JsonReader reader,

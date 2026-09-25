@@ -8,7 +8,8 @@ namespace Valleysoft.Dredge;
 [JsonSourceGenerationOptions(
     DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull,
     PropertyNamingPolicy = JsonKnownNamingPolicy.CamelCase,
-    WriteIndented = true)]
+    WriteIndented = true,
+    Converters = new[] { typeof(JsonHelper.NewtonsoftCompatibleStringConverter) })]
 [JsonSerializable(typeof(AppSettings))]
 [JsonSerializable(typeof(CompareLayersResult))]
 [JsonSerializable(typeof(CompareMetadataResult))]
