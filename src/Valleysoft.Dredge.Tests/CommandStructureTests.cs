@@ -30,7 +30,7 @@ public class CommandStructureTests
         Mock<IDockerRegistryClientFactory> factory = new();
 
         Assert.Equal(
-            ["compare", "ls", "cat", "extract", "inspect", "os", "save-layers", "dockerfile"],
+            ["compare", "ls", "cat", "extract", "inspect", "os", "save-layers", "dockerfile", "explore"],
             new ImageCommand(factory.Object).Subcommands.Select(command => command.Name));
         Assert.Equal(
             ["get", "digest", "resolve", "delete"],

@@ -25,6 +25,58 @@ public class ImageFileSystemTests : IAsyncDisposable
     private static readonly ImageName ImageName = ImageName.Parse("registry.test/repo:tag");
 
     [Fact]
+    public async Task Analyze_UsesCachedLayerIndexesForHiddenBytes()
+    {
+        byte[][] layers =
+        [
+            CreateLayer(Entry.File("same", "original"), Entry.File("removed", "old")),
+            CreateLayer(Entry.File("same", "new"), Entry.File(".wh.removed", ""))
+        ];
+        Mock<IDockerRegistryClient> client = CreateClient(layers);
+        await using ImageFileSystem fileSystem = await CreateFileSystemAsync(
+            client.Object, ImageName, new PlatformOptionsBase(),
+            TestContext.Current.CancellationToken);
+
+        ImageAnalysisResult result = fileSystem.Analyze();
+
+        Assert.Equal("original".Length + "old".Length + "new".Length, result.FileBytes);
+        Assert.Equal("original".Length + "old".Length, result.HiddenBytes);
+        Assert.Equal(result.HiddenBytes, result.Layers[0].HiddenBytes);
+    }
+
+    [Fact]
+    public async Task ExplorerIndex_ReportsEveryLayerAndReusesWarmMetadata()
+    {
+        byte[][] layers =
+        [
+            CreateLayer(Entry.File("before", "old")),
+            CreateLayer(Entry.File("after", "new"))
+        ];
+        Mock<IDockerRegistryClient> client = CreateClient(layers);
+        await using (ImageFileSystem initial = await CreateFileSystemAsync(
+            client.Object, ImageName, new PlatformOptionsBase(), TestContext.Current.CancellationToken))
+        {
+            Assert.Equal(2, initial.Analyze().Layers.Count);
+        }
+
+        List<ImageIndexProgress> updates = [];
+        await using ImageFileSystem warm = await ImageFileSystem.CreateAsync(
+            client.Object, ImageName, new PlatformOptionsBase(), TestContext.Current.CancellationToken,
+            cache.Store, progress: new InlineProgress<ImageIndexProgress>(updates.Add),
+            requireLayerIndexes: true);
+
+        Assert.Equal([0, 1], updates.Where(update => update.Indexed)
+            .Select(update => update.LayerIndex).ToArray());
+        Assert.All(updates, update => Assert.Equal(2, update.LayerCount));
+        Assert.Equal(2, warm.Analyze().Layers.Count);
+        foreach (byte[] layer in layers)
+        {
+            client.Verify(c => c.Blobs.GetAsync(ImageName.Repo, LayerCacheTestContext.Digest(layer),
+                It.IsAny<CancellationToken>()), Times.Once);
+        }
+    }
+
+    [Fact]
     public async Task Cat_ColdNewestFileSkipsOlderLayersAndWarmViewReusesContent()
     {
         byte[][] layers =
@@ -317,6 +369,31 @@ public class ImageFileSystemTests : IAsyncDisposable
             Target,
             Assert.Single(fileSystem.List("link", recursive: false, showDeleted: false))
                 .LinkTarget);
+    }
+
+    [Fact]
+    public async Task InstalledPackages_UnresolvableLinksAreSkippedInsteadOfFailing()
+    {
+        byte[][] layers =
+        [
+            CreateLayer(
+                Entry.File("app/node_modules/good/package.json", """{"name":"good","version":"1.0.0"}"""),
+                Entry.SymbolicLink("app/node_modules/dangling/package.json", "missing.json"),
+                Entry.SymbolicLink("var/lib/dpkg/status", "/nowhere"),
+                Entry.SymbolicLink("lib/apk/db/installed", "installed"))
+        ];
+        using IDockerRegistryClient client = CreateClient(layers).Object;
+        ImageFileSystem fileSystem = await CreateFileSystemAsync(
+            client, ImageName, new PlatformOptionsBase(), TestContext.Current.CancellationToken);
+
+        InstalledPackageMetadata metadata = await InstalledPackageReader.ReadAsync(
+            fileSystem, TestContext.Current.CancellationToken);
+
+        Assert.Equal(["good"], metadata.Ecosystems[InstalledPackageEcosystem.Npm].Packages.Keys);
+        Assert.Equal(InstalledPackageMetadataAvailability.Unavailable,
+            metadata.Ecosystems[InstalledPackageEcosystem.Dpkg].Availability);
+        Assert.Equal(InstalledPackageMetadataAvailability.Unavailable,
+            metadata.Ecosystems[InstalledPackageEcosystem.Apk].Availability);
     }
 
     [Fact]

@@ -6,6 +6,7 @@ All image commands support [platform resolution](../platform-resolution.md) via 
 |-------------|-------------|
 | [`inspect`](#inspect) | Inspect an image configuration |
 | [`os`](#os) | Show OS information |
+| [`explore`](#explore) | Interactively explore image layers, files, and insights |
 | [`ls`](#ls) | List image filesystem entries and layer provenance |
 | [`cat`](#cat) | Write an image file to standard output |
 | [`extract`](#extract) | Extract an image file or directory |
@@ -84,6 +85,88 @@ dredge image os mcr.microsoft.com/windows/nanoserver:ltsc2022-amd64
   "Version": "10.0.20348.1249"
 }
 ```
+
+## Explore
+
+Opens a full-screen, interactive explorer for a Linux image. Browse its
+layers, see which files each layer adds, changes, or deletes, find wasted
+space, and compare with another tag.
+
+```console
+dredge image explore <image> [--layer <n>] [--compare <image-or-tag>] [--base-image <image>] [--no-mouse] [--os <os>] [--arch <arch>] [--os-version <version>]
+```
+
+- `--layer <n>` opens with layer `n` selected. Layer numbers are zero-based,
+  the same as `image ls --provenance`.
+- `--compare <image-or-tag>` opens compare mode with `<image>` as the baseline.
+  A bare tag, such as `--compare 2.0`, resolves in the same repository. Both
+  images resolve to the same platform.
+- `--base-image <image>` names the base image, which the explorer otherwise
+  reads from the `org.opencontainers.image.base.name` annotation. If both are
+  present, they must identify the same image. Without either, the explorer
+  treats every layer as your own.
+- `--no-mouse` leaves the mouse to the terminal, so you can select text without
+  a modifier key.
+
+The explorer opens as soon as the manifest and configuration load. Layers are
+indexed in the background, and the selected layer is indexed first. A layer
+that fails to download shows an error in place, and `r` retries it. Indexed
+layers use the [shared layer cache](#shared-layer-cache).
+
+The screen has four parts:
+
+- **Strata bar.** The top of the screen shows each layer's size, with the base
+  image's layers separated from your own.
+- **Layers pane.** Lists layers with their size and the instruction that
+  created them.
+- **Files pane.** Shows the files changed by the selected layer. Press `a` to
+  show the whole filesystem instead.
+- **Details pane.** Describes the selected layer or file. Press `Enter` to
+  inspect a file, and `o` to open a text file in `$PAGER`.
+
+Press `i` for **insights**: an efficiency score and findings such as files
+replaced by a later layer, deleted files that still take space, and large
+changes to base image files. Select a finding to open its files.
+
+Press `/` to **search** paths across every layer. Press `c` to **compare**
+with another tag. Compare mode lists added, changed, and removed packages and
+files. Press `Enter` on a changed text file to see a diff, and `s` to swap the
+two sides.
+
+Press `x` to extract the selected file or directory, and `y` to show the
+equivalent `dredge image` command. Press `p` to choose another Linux platform,
+including an architecture variant such as `arm/v7`, of a multi-platform image.
+Compare mode opens the other tag on the same platform. Press `?` for all keys,
+and `q` to quit.
+
+| Key | Action |
+|-----|--------|
+| `↑` `↓` `PgUp` `PgDn` `Home` `End` | Move |
+| `Tab` | Switch pane |
+| `[` `]` | Previous or next layer; in compare, previous or next difference |
+| `a` | Toggle the whole filesystem |
+| `b` | Select the first layer after the base image |
+| `←` `→` `Space` | Fold or unfold directories |
+| `+` `~` `=` `-` | Show or hide added, modified, identical, or deleted files; `Esc` clears the filters |
+| `w` | Show only paths with findings |
+| `Enter` | Inspect a file, open a finding, or diff a compared file |
+| `i` `/` `?` | Insights, search, or keys |
+| `Alt+L` `Alt+D` `Alt+C` | In search: this layer only, include deleted paths, exact case |
+| `c` `s` | Compare with a tag; swap compared sides |
+| `p` `r` | Choose platform; retry a failed layer |
+| `x` `y` `o` | Extract; show the dredge command; open in `$PAGER` |
+| `Esc` `q` | Back; quit |
+
+With the mouse enabled, click a row, chip, or footer hint to use it, and
+double-click a row to open it. The wheel scrolls the pane under the pointer.
+
+You can remap the single-character keys, and change the theme, mouse, and
+clipboard behavior, through the
+[`explore` settings](../settings.md#configure-the-explorer).
+
+The explorer needs an interactive terminal of at least 80 × 24. If standard
+input or output is redirected, it exits with code 1; use `image ls` or the
+`image compare` commands for text output. Windows images are not supported.
 
 ## Ls
 
@@ -212,7 +295,7 @@ error.
 
 ### Shared layer cache
 
-`ls`, `cat`, `extract`, `save-layers`, `compare files`, and Linux `os` share a
+`explore`, `ls`, `cat`, `extract`, `save-layers`, `compare files`, and Linux `os` share a
 persistent cache to reduce repeated layer downloads. Registry access is still
 required, even when image layers are cached.
 

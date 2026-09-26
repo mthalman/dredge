@@ -16,6 +16,31 @@ public sealed class LayerStoreTests
     private static CancellationToken Token => TestContext.Current.CancellationToken;
 
     [Fact]
+    public async Task GetIndex_ReportsDownloadedAndCachedBytes()
+    {
+        await using LayerCacheTestContext cache = new();
+        byte[] bytes = CreateLayer();
+        string digest = LayerCacheTestContext.Digest(bytes);
+        Mock<IDockerRegistryClient> client = Client(bytes);
+        List<long> downloaded = [];
+        StoredLayerIndex first = await cache.Store.GetIndexAsync(
+            client.Object, Image, new(0, digest), bytes.Length, Token,
+            new RecordingProgress(downloaded));
+
+        Assert.Equal(bytes.Length, downloaded[^1]);
+        Assert.All(downloaded, value => Assert.InRange(value, 1, bytes.Length));
+        List<long> cached = [];
+        StoredLayerIndex second = await cache.Store.GetIndexAsync(
+            client.Object, Image, new(0, digest), bytes.Length, Token,
+            new RecordingProgress(cached));
+
+        Assert.Equal(first.Digest, second.Digest);
+        Assert.Equal(first.BlobLength, second.BlobLength);
+        Assert.Equal([bytes.Length], cached);
+        client.Verify(c => c.Blobs.GetAsync(Image.Repo, digest, It.IsAny<CancellationToken>()), Times.Once);
+    }
+
+    [Fact]
     public void MetadataEnvelope_PreservesLegacyNamesAndReadsCamelCase()
     {
         LayerCacheEnvelope envelope = new(1, "sha256:abc", "checksum", "{}");
@@ -626,6 +651,11 @@ public sealed class LayerStoreTests
             LayerCacheTestContext.Digest(bytes), It.IsAny<CancellationToken>()))
             .ReturnsAsync(() => new MemoryStream(bytes));
         return client;
+    }
+
+    private sealed class RecordingProgress(List<long> values) : IProgress<long>
+    {
+        public void Report(long value) => values.Add(value);
     }
 
     private sealed class CancelingStream(byte[] bytes) : MemoryStream(bytes)

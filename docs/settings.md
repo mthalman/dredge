@@ -27,6 +27,10 @@ Setting names use dot notation with `dredge settings get` and
 | `platform.arch` | Empty | Architecture used for platform resolution |
 | `cache.path` | Empty | Persistent layer cache location; empty uses the platform default |
 | `cache.maxBytes` | `5368709120` | Maximum retained cache bytes (5 GiB); `0` disables retention |
+| `explore.theme` | `dark` | Explorer color theme: `dark` or `light` |
+| `explore.mouse` | `true` | Whether the explorer uses the mouse: `true` or `false` |
+| `explore.clipboard` | `off` | Explorer copy target: `off` or `osc52` |
+| `explore.keys.<action>` | Empty | Replacement key for an explorer action; empty uses the default |
 
 An empty platform setting does not filter candidate manifests. Command-line
 platform options take precedence over the corresponding settings. See
@@ -102,6 +106,39 @@ dredge settings set fileCompareTool.args "{0} {1}"
 Quote the placeholders in `fileCompareTool.args` if the comparison program
 requires quoted paths.
 
+## Configure the explorer
+
+The [`image explore`](commands/images.md#explore) command reads the `explore`
+settings each time it starts.
+
+Set `explore.theme` to `light` for light terminal backgrounds. When the
+`NO_COLOR` environment variable is set, the explorer uses a monochrome theme.
+
+Set `explore.mouse` to `false` to leave the mouse to the terminal, which is the
+same as passing `--no-mouse`.
+
+By default, `y` shows the equivalent `dredge` command so you can select and copy
+it. Set `explore.clipboard` to `osc52` to also send the command to the
+clipboard through the OSC 52 terminal escape sequence. Your terminal must
+support and allow OSC 52; remote sessions can then copy to the local
+clipboard.
+
+Each single-character explorer key can be replaced with any printable ASCII
+character. Two actions cannot share a key. The actions are `quit`, `help`,
+`insights`, `search`, `wholeFilesystem`, `firstUserLayer`, `compare`,
+`findingsOnly`, `previousLayer`, `nextLayer`, `toggleAdded`,
+`toggleModified`, `toggleIdentical`, `toggleDeleted`, `platform`, `extract`,
+`copyCommand`, `pager`, `swapSides`, and `retry`. For example, to quit with
+`Q` and use `q` to toggle the whole filesystem:
+
+```console
+dredge settings set explore.keys.quit Q
+dredge settings set explore.keys.wholeFilesystem q
+```
+
+Arrow keys, `Tab`, `Enter`, `Space`, `Esc`, and the `Alt` search shortcuts
+cannot be remapped.
+
 ## Settings file schema
 
 ```json
@@ -121,6 +158,14 @@ requires quoted paths.
   "cache": {
     "path": "<string>",
     "maxBytes": "5368709120"
+  },
+  "explore": {
+    "theme": "dark",
+    "mouse": "true",
+    "clipboard": "off",
+    "keys": {
+      "quit": "<string>"
+    }
   }
 }
 ```

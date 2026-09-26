@@ -45,15 +45,20 @@ internal sealed class ImageFileSystem : IAsyncDisposable
         CancellationToken cancellationToken,
         LayerStore? store = null,
         string? contentPath = null,
-        string? extractionPath = null)
+        string? extractionPath = null,
+        IProgress<ImageIndexProgress>? progress = null,
+        ResolvedManifest? resolvedManifest = null,
+        Image? imageConfig = null,
+        bool requireLayerIndexes = false,
+        IReadOnlyDictionary<int, StoredLayerIndex>? layerIndexes = null)
     {
         ResolvedManifest resolved =
-            await ManifestHelper.GetResolvedManifestAsync(client, imageName, options, cancellationToken);
+            resolvedManifest ?? await ManifestHelper.GetResolvedManifestAsync(client, imageName, options, cancellationToken);
         IImageManifest manifest = resolved.Manifest;
         string configDigest = manifest.Config?.Digest ??
             throw new NotSupportedException(
                 $"Could not resolve the image config digest of '{imageName}'.");
-        Image config = await client.Blobs.GetImageAsync(
+        Image config = imageConfig ?? await client.Blobs.GetImageAsync(
             imageName.Repo,
             configDigest,
             cancellationToken);
@@ -66,15 +71,27 @@ internal sealed class ImageFileSystem : IAsyncDisposable
         ImageFileSystem fileSystem = new(client, imageName, manifest, store ?? LayerStore.Create(), store is null);
         try
         {
+            if (layerIndexes is not null)
+            {
+                // Indexes the explorer already read while loading; reuse them instead of reading layers again.
+                foreach ((int layer, StoredLayerIndex index) in layerIndexes)
+                {
+                    if (layer < 0 || layer >= manifest.Layers.Length || manifest.Layers[layer].Digest != index.Digest)
+                    {
+                        throw new InvalidOperationException($"Layer index {layer} does not match the image manifest.");
+                    }
+                    fileSystem.indexes[layer] = index;
+                }
+            }
             string digest = resolved.ManifestInfo.DockerContentDigest;
             StoredFileSystem? cached = await fileSystem.store.ReadMetadataAsync<StoredFileSystem>(
                 digest, "view", cancellationToken);
-            if (cached is not null && fileSystem.TryRestore(cached))
+            if (!requireLayerIndexes && progress is null && cached is not null && fileSystem.TryRestore(cached))
             {
                 return fileSystem;
             }
             bool complete = await fileSystem.BuildIndexAsync(
-                contentPath ?? extractionPath, extractionPath is not null, cancellationToken);
+                contentPath ?? extractionPath, extractionPath is not null, cancellationToken, progress);
             if (complete)
             {
                 await fileSystem.store.WriteMetadataAsync(digest, "view", fileSystem.Snapshot(), cancellationToken);
@@ -103,6 +120,7 @@ internal sealed class ImageFileSystem : IAsyncDisposable
             {
                 deletedEntries.TryGetValue(lookupPath, out selected);
             }
+
             if (selected is null)
             {
                 throw new FileNotFoundException($"Path '/{path}' does not exist in the image.");
@@ -139,6 +157,17 @@ internal sealed class ImageFileSystem : IAsyncDisposable
                 : entry with { Path = $"{path}/{entry.Path[prefix.Length..]}" })
             .OrderBy(entry => entry.Path, StringComparer.Ordinal)
             .ToArray();
+    }
+
+    internal ImageAnalysisResult Analyze()
+    {
+        if (indexes.Count != manifest.Layers.Length)
+        {
+            throw new InvalidOperationException(
+                "The complete image must be indexed before analyzing its layers.");
+        }
+        return ImageAnalysis.Analyze(Enumerable.Range(0, manifest.Layers.Length)
+            .Select(index => indexes[index].Changes).ToArray());
     }
 
     public async Task CopyFileToAsync(
@@ -205,8 +234,9 @@ internal sealed class ImageFileSystem : IAsyncDisposable
             entries);
     }
 
-    private async Task<bool> BuildIndexAsync(string? contentPath, bool extracting, CancellationToken cancellationToken) =>
-        await builder.BuildAsync(contentPath, extracting, cancellationToken);
+    private async Task<bool> BuildIndexAsync(string? contentPath, bool extracting,
+        CancellationToken cancellationToken, IProgress<ImageIndexProgress>? progress) =>
+        await builder.BuildAsync(contentPath, extracting, cancellationToken, progress);
 
     private async Task<StoredLayerIndex> GetIndexAsync(int layerIndex, CancellationToken cancellationToken) =>
         await builder.GetIndexAsync(layerIndex, cancellationToken);

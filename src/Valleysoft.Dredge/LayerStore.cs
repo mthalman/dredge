@@ -40,28 +40,30 @@ internal sealed class LayerStore : IAsyncDisposable
 
     public async Task<Stream> OpenBlobAsync(
         IDockerRegistryClient client, ImageName image, string digest, long? expectedSize,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken, IProgress<long>? progress = null)
     {
         string key = GetKey(digest);
         using FileStream layerLock = await LockAsync(key, cancellationToken);
         Stream? cached = await OpenCachedBlobAsync(digest, expectedSize, cancellationToken);
         if (cached is not null)
         {
+            progress?.Report(cached.Length);
             return cached;
         }
 
         using Stream source = await client.Blobs.GetAsync(image.Repo, digest, cancellationToken);
-        return await PublishBlobAsync(source, digest, expectedSize, cancellationToken);
+        return await PublishBlobAsync(source, digest, expectedSize, cancellationToken, progress);
     }
 
     public async Task<StoredLayerIndex> GetIndexAsync(
         IDockerRegistryClient client, ImageName image, ImageLayerReference layer, long? expectedSize,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken, IProgress<long>? progress = null)
     {
         StoredLayerIndex? index = await ReadMetadataAsync<StoredLayerIndex>(
             layer.Digest, "index", cancellationToken);
         if (IsValid(index, layer.Digest, expectedSize))
         {
+            progress?.Report(index!.BlobLength);
             return index!;
         }
         if (index is not null)
@@ -70,7 +72,7 @@ internal sealed class LayerStore : IAsyncDisposable
         }
 
         using Stream blob = await OpenBlobAsync(
-            client, image, layer.Digest, expectedSize, cancellationToken);
+            client, image, layer.Digest, expectedSize, cancellationToken, progress);
         using FileStream indexLock = await LockAsync($"index:{layer.Digest}", cancellationToken);
         index = await ReadMetadataAsync<StoredLayerIndex>(layer.Digest, "index", cancellationToken);
         if (IsValid(index, layer.Digest, expectedSize))
@@ -327,13 +329,29 @@ internal sealed class LayerStore : IAsyncDisposable
     }
 
     private async Task<Stream> PublishBlobAsync(
-        Stream source, string digest, long? expectedSize, CancellationToken cancellationToken)
+        Stream source, string digest, long? expectedSize, CancellationToken cancellationToken,
+        IProgress<long>? progress = null)
     {
         string staging = Path.Combine(dataPath, $"{Guid.NewGuid():N}.tmp");
         try
         {
             await using FileStream output = CacheFileSystem.CreateFile(staging);
-            await source.CopyToAsync(output, cancellationToken);
+            if (progress is null)
+            {
+                await source.CopyToAsync(output, cancellationToken);
+            }
+            else
+            {
+                byte[] buffer = new byte[81_920];
+                long downloaded = 0;
+                int count;
+                while ((count = await source.ReadAsync(buffer, cancellationToken)) != 0)
+                {
+                    await output.WriteAsync(buffer.AsMemory(0, count), cancellationToken);
+                    downloaded += count;
+                    progress.Report(downloaded);
+                }
+            }
             output.Position = 0;
             if ((expectedSize.HasValue && output.Length != expectedSize) ||
                 !await VerifyDigestAsync(output, digest, cancellationToken))

@@ -1,0 +1,437 @@
+using System.Text;
+using System.Text.Json;
+
+namespace Valleysoft.Dredge;
+
+internal enum InstalledPackageEcosystem
+{
+    Npm,
+    Dpkg,
+    Apk,
+    Pip
+}
+
+internal enum InstalledPackageMetadataAvailability
+{
+    Unavailable,
+    Available
+}
+
+internal sealed record InstalledPackage(string Name, string Version);
+
+internal sealed record InstalledPackageEcosystemMetadata(
+    InstalledPackageMetadataAvailability Availability,
+    IReadOnlyDictionary<string, IReadOnlyList<string>> Packages);
+
+internal sealed record InstalledPackageMetadata(
+    IReadOnlyDictionary<InstalledPackageEcosystem, InstalledPackageEcosystemMetadata> Ecosystems);
+
+internal static class InstalledPackageReader
+{
+    internal const long MaxPackageManifestBytes = 1024 * 1024;
+    internal const long MaxDatabaseManifestBytes = 64 * 1024 * 1024;
+
+    private const string DpkgStatusPath = "var/lib/dpkg/status";
+    private const string ApkInstalledPath = "lib/apk/db/installed";
+    private static readonly UTF8Encoding StrictUtf8 = new(false, true);
+
+    internal static async Task<InstalledPackageMetadata> ReadAsync(
+        ImageFileSystem fileSystem,
+        CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(fileSystem);
+        cancellationToken.ThrowIfCancellationRequested();
+
+        IReadOnlyList<ImageFileSystemEntry> entries = fileSystem.List(null, true, false);
+        ImageFileSystemEntry[] npmManifests = entries
+            .Where(entry => IsReadableFile(entry) && IsNpmPackageManifestPath(entry.Path))
+            .ToArray();
+        ImageFileSystemEntry[] pipManifests = entries
+            .Where(entry => IsReadableFile(entry) && IsPipMetadataPath(entry.Path))
+            .ToArray();
+        ImageFileSystemEntry? dpkgStatus = entries.SingleOrDefault(
+            entry => IsReadableFile(entry) && entry.Path == DpkgStatusPath);
+        ImageFileSystemEntry? apkInstalled = entries.SingleOrDefault(
+            entry => IsReadableFile(entry) && entry.Path == ApkInstalledPath);
+
+        // Package metadata is advisory: a malformed per-package manifest is skipped,
+        // and an unreadable database marks only its ecosystem unavailable.
+        List<InstalledPackage> npmPackages = [];
+        foreach (ImageFileSystemEntry manifest in npmManifests)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            string? content = await TryReadAsync(() => ReadManifestAsync(
+                fileSystem, manifest, MaxPackageManifestBytes, cancellationToken));
+            if (content is not null && TryParse(() => ParseNpmPackageJson(content, manifest.Path)) is { } package)
+            {
+                npmPackages.Add(package);
+            }
+        }
+
+        List<InstalledPackage> pipPackages = [];
+        foreach (ImageFileSystemEntry manifest in pipManifests)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            string? content = await TryReadAsync(() => ReadManifestAsync(
+                fileSystem, manifest, MaxPackageManifestBytes, cancellationToken));
+            if (content is not null && TryParse(() => ParsePipMetadata(content, manifest.Path)) is { } package)
+            {
+                pipPackages.Add(package);
+            }
+        }
+
+        IReadOnlyList<InstalledPackage>? dpkgPackages = dpkgStatus is null
+            ? null
+            : await ReadDatabaseAsync(fileSystem, dpkgStatus, ParseDpkgStatus, cancellationToken);
+        IReadOnlyList<InstalledPackage>? apkPackages = apkInstalled is null
+            ? null
+            : await ReadDatabaseAsync(fileSystem, apkInstalled, ParseApkInstalled, cancellationToken);
+
+        Dictionary<InstalledPackageEcosystem, InstalledPackageEcosystemMetadata> ecosystems = new()
+        {
+            [InstalledPackageEcosystem.Npm] = CreateMetadata(npmPackages.Count > 0, npmPackages),
+            [InstalledPackageEcosystem.Dpkg] = CreateMetadata(dpkgPackages is not null, dpkgPackages ?? []),
+            [InstalledPackageEcosystem.Apk] = CreateMetadata(apkPackages is not null, apkPackages ?? []),
+            [InstalledPackageEcosystem.Pip] = CreateMetadata(pipPackages.Count > 0, pipPackages)
+        };
+
+        return new InstalledPackageMetadata(ecosystems);
+    }
+
+    private static async Task<IReadOnlyList<InstalledPackage>?> ReadDatabaseAsync(
+        ImageFileSystem fileSystem, ImageFileSystemEntry entry,
+        Func<string, IReadOnlyList<InstalledPackage>> parse, CancellationToken cancellationToken)
+    {
+        string? content = await TryReadAsync(() => ReadManifestAsync(
+            fileSystem, entry, MaxDatabaseManifestBytes, cancellationToken));
+        return content is null ? null : TryParse(() => parse(content));
+    }
+
+    private static async Task<string?> TryReadAsync(Func<Task<string>> read)
+    {
+        try
+        {
+            return await read();
+        }
+        // Package metadata is advisory: a dangling or special symlink, an oversized
+        // file, or an unreadable entry must not fail the whole session.
+        catch (Exception exception) when (exception is not OperationCanceledException)
+        {
+            return null;
+        }
+    }
+
+    private static T? TryParse<T>(Func<T> parse) where T : class
+    {
+        try
+        {
+            return parse();
+        }
+        catch (InvalidDataException)
+        {
+            return null;
+        }
+    }
+
+    internal static bool IsNpmPackageManifestPath(string path)
+    {
+        string[] segments = path.Split('/', StringSplitOptions.RemoveEmptyEntries);
+        int nodeModulesIndex = Array.LastIndexOf(segments, "node_modules");
+        if (nodeModulesIndex < 0)
+        {
+            return false;
+        }
+
+        int remaining = segments.Length - nodeModulesIndex - 1;
+        return remaining == 2 && segments[^1] == "package.json" ||
+            remaining == 3 && segments[nodeModulesIndex + 1].StartsWith('@') &&
+            segments[^1] == "package.json";
+    }
+
+    internal static bool IsPipMetadataPath(string path)
+    {
+        string[] segments = path.Split('/', StringSplitOptions.RemoveEmptyEntries);
+        return segments.Length >= 2 &&
+            segments[^1] == "METADATA" &&
+            segments[^2].EndsWith(".dist-info", StringComparison.OrdinalIgnoreCase);
+    }
+
+    internal static InstalledPackage ParseNpmPackageJson(string content, string sourcePath)
+    {
+        try
+        {
+            using JsonDocument document = JsonDocument.Parse(content.TrimStart('\uFEFF'));
+            if (document.RootElement.ValueKind != JsonValueKind.Object)
+            {
+                throw new InvalidDataException($"npm metadata '{sourcePath}' must contain a JSON object.");
+            }
+
+            string name = GetRequiredJsonString(document.RootElement, "name", sourcePath, "npm");
+            string version = GetRequiredJsonString(document.RootElement, "version", sourcePath, "npm");
+            return new InstalledPackage(name, version);
+        }
+        catch (JsonException exception)
+        {
+            throw new InvalidDataException($"npm metadata '{sourcePath}' is not valid JSON.", exception);
+        }
+    }
+
+    internal static IReadOnlyList<InstalledPackage> ParseDpkgStatus(string content)
+    {
+        List<InstalledPackage> packages = [];
+        foreach (Dictionary<string, string> paragraph in ParseParagraphs(content, "dpkg status"))
+        {
+            if (!paragraph.TryGetValue("Status", out string? status) ||
+                !string.Equals(status, "install ok installed", StringComparison.Ordinal))
+            {
+                continue;
+            }
+
+            packages.Add(new InstalledPackage(
+                GetRequiredField(paragraph, "Package", "installed dpkg paragraph"),
+                GetRequiredField(paragraph, "Version", "installed dpkg paragraph")));
+        }
+
+        return packages;
+    }
+
+    // apk keys are single case-sensitive letters (T is the description, t the build
+    // time), and file keys such as F, R, and Z repeat within a package.
+    internal static IReadOnlyList<InstalledPackage> ParseApkInstalled(string content)
+    {
+        List<InstalledPackage> packages = [];
+        string? name = null;
+        string? version = null;
+        bool any = false;
+        int lineNumber = 0;
+
+        void Flush()
+        {
+            if (any)
+            {
+                packages.Add(new InstalledPackage(
+                    string.IsNullOrWhiteSpace(name)
+                        ? throw new InvalidDataException("apk installed paragraph is missing a nonempty 'P' field.")
+                        : name,
+                    string.IsNullOrWhiteSpace(version)
+                        ? throw new InvalidDataException("apk installed paragraph is missing a nonempty 'V' field.")
+                        : version));
+            }
+            name = version = null;
+            any = false;
+        }
+
+        foreach (string rawLine in content.Split('\n'))
+        {
+            lineNumber++;
+            string line = rawLine.TrimEnd('\r');
+            if (line.Length == 0)
+            {
+                Flush();
+                continue;
+            }
+            if (line.Length < 2 || line[1] != ':' || char.IsWhiteSpace(line[0]))
+            {
+                throw new InvalidDataException($"apk installed database has an invalid field at line {lineNumber}.");
+            }
+            any = true;
+            switch (line[0])
+            {
+                case 'P':
+                    name ??= line[2..].Trim();
+                    break;
+                case 'V':
+                    version ??= line[2..].Trim();
+                    break;
+            }
+        }
+        Flush();
+        return packages;
+    }
+
+    internal static InstalledPackage ParsePipMetadata(string content, string sourcePath)
+    {
+        Dictionary<string, string> metadata = ParseParagraphs(content, $"pip metadata '{sourcePath}'")
+            .FirstOrDefault() ??
+            throw new InvalidDataException($"pip metadata '{sourcePath}' is empty.");
+        return new InstalledPackage(
+            GetRequiredField(metadata, "Name", $"pip metadata '{sourcePath}'"),
+            GetRequiredField(metadata, "Version", $"pip metadata '{sourcePath}'"));
+    }
+
+    internal static void ValidateManifestSize(string path, long size, long maximumBytes)
+    {
+        if (size < 0 || size > maximumBytes)
+        {
+            throw new InvalidDataException(
+                $"Installed-package metadata '{path}' has size {size} bytes; " +
+                $"the supported maximum is {maximumBytes} bytes.");
+        }
+    }
+
+    private static bool IsReadableFile(ImageFileSystemEntry entry) =>
+        entry.Type is ImageFileType.File or ImageFileType.HardLink or ImageFileType.SymbolicLink;
+
+    private static async Task<string> ReadManifestAsync(
+        ImageFileSystem fileSystem,
+        ImageFileSystemEntry entry,
+        long maximumBytes,
+        CancellationToken cancellationToken)
+    {
+        ValidateManifestSize(entry.Path, entry.Size, maximumBytes);
+        using BoundedMemoryStream content = new(maximumBytes);
+        await fileSystem.CopyFileToAsync(entry.Path, content, cancellationToken);
+        try
+        {
+            return StrictUtf8
+                .GetString(content.GetBuffer(), 0, checked((int)content.Length))
+                .TrimStart('\uFEFF');
+        }
+        catch (DecoderFallbackException exception)
+        {
+            throw new InvalidDataException(
+                $"Installed-package metadata '{entry.Path}' is not valid UTF-8.", exception);
+        }
+    }
+
+    internal static InstalledPackageEcosystemMetadata CreateMetadata(
+        bool available,
+        IEnumerable<InstalledPackage> packages)
+    {
+        Dictionary<string, IReadOnlyList<string>> byName = packages
+            .GroupBy(package => package.Name, StringComparer.Ordinal)
+            .OrderBy(group => group.Key, StringComparer.Ordinal)
+            .ToDictionary(
+                group => group.Key,
+                group => (IReadOnlyList<string>)group
+                    .Select(package => package.Version)
+                    .Distinct(StringComparer.Ordinal)
+                    .OrderBy(version => version, StringComparer.Ordinal)
+                    .ToArray(),
+                StringComparer.Ordinal);
+
+        return new InstalledPackageEcosystemMetadata(
+            available
+                ? InstalledPackageMetadataAvailability.Available
+                : InstalledPackageMetadataAvailability.Unavailable,
+            byName);
+    }
+
+    private static string GetRequiredJsonString(
+        JsonElement element,
+        string propertyName,
+        string sourcePath,
+        string ecosystem)
+    {
+        if (!element.TryGetProperty(propertyName, out JsonElement property) ||
+            property.ValueKind != JsonValueKind.String ||
+            string.IsNullOrWhiteSpace(property.GetString()))
+        {
+            throw new InvalidDataException(
+                $"{ecosystem} metadata '{sourcePath}' is missing a nonempty '{propertyName}' string.");
+        }
+
+        return property.GetString()!;
+    }
+
+    private static string GetRequiredField(
+        IReadOnlyDictionary<string, string> fields,
+        string fieldName,
+        string source)
+    {
+        if (!fields.TryGetValue(fieldName, out string? value) || string.IsNullOrWhiteSpace(value))
+        {
+            throw new InvalidDataException($"{source} is missing a nonempty '{fieldName}' field.");
+        }
+
+        return value;
+    }
+
+    private static IEnumerable<Dictionary<string, string>> ParseParagraphs(
+        string content,
+        string source)
+    {
+        Dictionary<string, string> fields = new(StringComparer.OrdinalIgnoreCase);
+        string? previousField = null;
+        int lineNumber = 0;
+        foreach (string rawLine in content.Split('\n'))
+        {
+            lineNumber++;
+            string line = rawLine.TrimEnd('\r');
+            if (line.Length == 0)
+            {
+                if (fields.Count > 0)
+                {
+                    yield return fields;
+                    fields = new(StringComparer.OrdinalIgnoreCase);
+                    previousField = null;
+                }
+                continue;
+            }
+
+            if (char.IsWhiteSpace(line[0]))
+            {
+                if (previousField is null)
+                {
+                    throw new InvalidDataException(
+                        $"{source} has a continuation without a field at line {lineNumber}.");
+                }
+
+                fields[previousField] = $"{fields[previousField]}\n{line[1..]}";
+                continue;
+            }
+
+            int separator = line.IndexOf(':');
+            if (separator <= 0)
+            {
+                throw new InvalidDataException($"{source} has an invalid field at line {lineNumber}.");
+            }
+
+            string name = line[..separator];
+            string value = line[(separator + 1)..].Trim();
+            if (!fields.TryAdd(name, value))
+            {
+                throw new InvalidDataException(
+                    $"{source} has a duplicate '{name}' field at line {lineNumber}.");
+            }
+            previousField = name;
+        }
+
+        if (fields.Count > 0)
+        {
+            yield return fields;
+        }
+    }
+
+    private sealed class BoundedMemoryStream(long maximumBytes) : MemoryStream
+    {
+        public override void Write(byte[] buffer, int offset, int count)
+        {
+            EnsureCapacity(count);
+            base.Write(buffer, offset, count);
+        }
+
+        public override void Write(ReadOnlySpan<byte> buffer)
+        {
+            EnsureCapacity(buffer.Length);
+            base.Write(buffer);
+        }
+
+        public override ValueTask WriteAsync(
+            ReadOnlyMemory<byte> buffer,
+            CancellationToken cancellationToken = default)
+        {
+            EnsureCapacity(buffer.Length);
+            return base.WriteAsync(buffer, cancellationToken);
+        }
+
+        private void EnsureCapacity(int additionalBytes)
+        {
+            if (Length > maximumBytes - additionalBytes)
+            {
+                throw new InvalidDataException(
+                    $"Installed-package metadata content exceeds the supported maximum of {maximumBytes} bytes.");
+            }
+        }
+    }
+}
