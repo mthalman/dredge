@@ -384,13 +384,15 @@ internal sealed class ExplorerHost : IExplorerHost, IAsyncDisposable
     private readonly ExplorerLayerIndexer indexer;
     private readonly ExplorerOptions options;
     private readonly SemaphoreSlim compareGate = new(1, 1);
+    private readonly string viewerRoot;
     private readonly Dictionary<string, ExplorerSession> targets = new(StringComparer.Ordinal);
     private readonly List<IDockerRegistryClient> ownedClients = [];
     private IReadOnlyList<string>? tags;
 
     public ExplorerHost(
         IDockerRegistryClient client, IDockerRegistryClientFactory factory, ExplorerSource source,
-        LayerStore store, ExplorerImage img, ExplorerLayerIndexer indexer, ExplorerOptions options)
+        LayerStore store, ExplorerImage img, ExplorerLayerIndexer indexer, ExplorerOptions options,
+        string? viewerRoot = null)
     {
         this.client = client;
         this.factory = factory;
@@ -399,6 +401,7 @@ internal sealed class ExplorerHost : IExplorerHost, IAsyncDisposable
         this.img = img;
         this.indexer = indexer;
         this.options = options;
+        this.viewerRoot = viewerRoot ?? Path.GetTempPath();
     }
 
     public ExplorerSession? Session { get; set; }
@@ -695,12 +698,12 @@ internal sealed class ExplorerHost : IExplorerHost, IAsyncDisposable
 
     public async Task<string> PrepareForViewerAsync(string path, CancellationToken cancellationToken)
     {
-        string directory = Path.Combine(Path.GetTempPath(), "dredge-" + Guid.NewGuid().ToString("N")[..12]);
-        Directory.CreateDirectory(directory);
+        string directory = Path.Combine(viewerRoot, "dredge-" + Guid.NewGuid().ToString("N"));
+        CacheFileSystem.CreateDirectory(directory);
         string file = Path.Combine(directory, StagedFileName(path));
         try
         {
-            await using FileStream stream = File.Create(file);
+            await using FileStream stream = CacheFileSystem.CreateFile(file);
             await Loaded.Files.CopyFileToAsync(path, stream, cancellationToken);
         }
         catch

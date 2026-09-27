@@ -22,6 +22,36 @@ public sealed class ExplorerDefenseHostTests : IAsyncDisposable
     private static CancellationToken Token => TestContext.Current.CancellationToken;
 
     [Fact]
+    public async Task ViewerStagingUsesPrivateDirectoryAndPreservesContent()
+    {
+        TestImage image = await CreateAsync(Blob(("private.txt", "private image bytes")));
+        string file = await Host(image).PrepareForViewerAsync("private.txt", Token);
+        string directory = Path.GetDirectoryName(file)!;
+        try
+        {
+            CacheFileSystem.CreateDirectory(directory);
+            Assert.Equal("private image bytes", await System.IO.File.ReadAllTextAsync(file, Token));
+            Assert.Throws<IOException>(() => CacheFileSystem.CreateFile(file));
+            if (!OperatingSystem.IsWindows())
+            {
+                Assert.Equal(UnixFileMode.UserRead | UnixFileMode.UserWrite, System.IO.File.GetUnixFileMode(file));
+            }
+        }
+        finally
+        {
+            Directory.Delete(directory, recursive: true);
+        }
+    }
+
+    [Fact]
+    public async Task FailedViewerStagingRemovesItsPrivateDirectory()
+    {
+        TestImage image = await CreateAsync();
+        await Assert.ThrowsAsync<FileNotFoundException>(() => Host(image).PrepareForViewerAsync("missing", Token));
+        Assert.Empty(Directory.GetDirectories(cachePath, "dredge-*"));
+    }
+
+    [Fact]
     public async Task PreviewRetainsTruncationAlongsideFinalVersionProvenance()
     {
         TestImage image = await CreateAsync(Blob(("file", "old")),
@@ -243,7 +273,7 @@ public sealed class ExplorerDefenseHostTests : IAsyncDisposable
         ExplorerHost host = new(image.Client.Object, factory ?? Mock.Of<IDockerRegistryClientFactory>(),
             image.Source, image.Store, ExplorerImage.FromSource(image.Source),
             new ExplorerLayerIndexer(0, (_, _, _) => throw new InvalidOperationException()),
-            new ExplorerOptions(null, null, false, ClipboardMode.Off, KeyMap.Default, "", ""));
+            new ExplorerOptions(null, null, false, ClipboardMode.Off, KeyMap.Default, "", ""), cachePath);
         host.Session = image.Session;
         hosts.Add(host);
         return host;
