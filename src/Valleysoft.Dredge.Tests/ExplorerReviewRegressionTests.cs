@@ -72,7 +72,7 @@ public sealed class ExplorerReviewRegressionTests
         Assert.Equal(expected, ShellCommand.Quote(value, powerShell));
 
     [Fact]
-    public async Task CopiedCommandRoundTripsThroughTheSupportedShell()
+    public async Task CopiedCommandRoundTripsThroughShellStringParsing()
     {
         const string path = "app/a 'file' \"$HOME\"; & `text`.txt";
         ExplorerPresenter presenter = new(ExplorerSamples.Image(), 150, 42);
