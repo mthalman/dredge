@@ -8,6 +8,23 @@ namespace Valleysoft.Dredge.Tests;
 public sealed class ExplorerReviewRegressionTests
 {
     [Theory]
+    [InlineData("2.0", "registry.test/shop/storefront:2.0")]
+    [InlineData("other.test/team/app:2", "other.test/team/app:2")]
+    [InlineData("other.test:5000/team/app@sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "other.test:5000/team/app@sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa")]
+    public void CopiedComparisonUsesResolvedReferencesOnBothSides(string input, string target)
+    {
+        using ExplorerUiHarness ui = ExplorerWindowTests.Open(out FakeExplorerHost host, clipboard: true);
+        ui.Window.StartCompare(input);
+        ui.Until(() => ui.State.Compare is not null, "comparison");
+        ui.Press(new Key('y'));
+        Assert.Equal($"dredge image compare files {ExplorerSamples.Reference} {target}", host.Clipboard[0]);
+        ui.Window.Apply(new SwapSides());
+        ui.Press(new Key('y'));
+        Assert.Equal($"dredge image compare files {target} {ExplorerSamples.Reference}", host.Clipboard[1]);
+    }
+
+    [Theory]
     [InlineData("\u754c\u754cTAIL")]
     [InlineData("e\u0301TAIL")]
     [InlineData("\U0001F469\u200d\U0001F4BBTAIL")]

@@ -82,17 +82,17 @@ internal static class ExplorerSamples
     }
 
     // The same base, with a rebuilt application layer.
-    public static ExplorerSession Target() =>
+    public static ExplorerSession Target(string reference = "registry.test/shop/storefront:2.0") =>
         Session(["sha256:l0", "sha256:l1", "sha256:t2"],
         [
             Layers()[0],
             Layers()[1],
             Layer([File("app/package.json", 50, "pkg3"), File("app/src/index.js", 300, "idx"),
                 File("app/node_modules/left-pad/index.js", 64, "lp2")]),
-        ], new() { ["left-pad"] = "1.1.0" });
+        ], new() { ["left-pad"] = "1.1.0" }, reference: reference);
 
     public static ExplorerSession Session(string[] digests, IReadOnlyList<LayerChanges> layers, Dictionary<string, string> npm,
-        bool npmAvailable = true, string architecture = "amd64")
+        bool npmAvailable = true, string architecture = "amd64", string reference = Reference)
     {
         ImageAnalysisResult analysis = ImageAnalysis.Analyze(layers);
         OciImageManifest manifest = new()
@@ -109,7 +109,7 @@ internal static class ExplorerSamples
                     new Dictionary<string, IReadOnlyList<string>>()));
         return new ExplorerSession
         {
-            Image = ImageName.Parse(Reference),
+            Image = ImageName.Parse(reference),
             Resolved = new ResolvedManifest(new ManifestInfo("application/vnd.oci.image.manifest.v1+json",
                 "sha256:" + string.Join("", digests), manifest), manifest),
             Config = new Image { Os = "linux", Architecture = architecture },
@@ -193,7 +193,8 @@ internal sealed class FakeExplorerHost : IExplorerHost
         {
             return CompareWork();
         }
-        return Task.FromResult(ExplorerSession.Compare(Baseline!, Target?.Invoke(tag) ?? ExplorerSamples.Target()));
+        return Task.FromResult(ExplorerSession.Compare(Baseline!, Target?.Invoke(tag) ??
+            ExplorerSamples.Target(Valleysoft.Dredge.Commands.Image.ExploreCommand.ResolveCompareImage(Baseline!.Image, tag).ToString())));
     }
 
     public Task<PreviewContent> PreviewAsync(string path, int layer, CancellationToken cancellationToken)
