@@ -702,6 +702,7 @@ internal sealed class ExplorerWindow : Window
                 s.View = v.View;
                 if (v.View == RightView.Search && !Comparing)
                 {
+                    search.Text = s.SearchQuery;
                     search.Visible = true;
                     search.SetFocus();
                 }

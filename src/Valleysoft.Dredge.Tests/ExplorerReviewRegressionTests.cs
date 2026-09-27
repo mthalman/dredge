@@ -7,6 +7,28 @@ namespace Valleysoft.Dredge.Tests;
 [Collection(ExplorerUiCollection.Name)]
 public sealed class ExplorerReviewRegressionTests
 {
+    [Fact]
+    public void NormalSearchRestoresItsQueryAfterComparison()
+    {
+        using ExplorerUiHarness ui = ExplorerWindowTests.Open(out _);
+        ui.Press(new Key('/'));
+        ui.Type("package.json");
+        ui.Press(Key.Esc);
+        ui.Window.StartCompare("2.0");
+        ui.Until(() => ui.State.Compare is not null, "comparison");
+        ui.Press(new Key('/'));
+        ui.Type("left-pad");
+        Assert.Equal("left-pad", ui.State.Compare!.SearchQuery);
+        ui.Press(Key.Esc);
+        ui.Press(Key.Esc);
+        ui.Press(Key.Esc);
+        Assert.Null(ui.State.Compare);
+        ui.Press(new Key('/'));
+        Assert.Equal("package.json", ui.State.SearchQuery);
+        Assert.Equal(ui.State.SearchQuery, ui.Window.Search.Text);
+        Assert.Contains(ui.Window.Presenter.SearchResults(ui.State).Hits, hit => hit.Path == "app/package.json");
+    }
+
     [Theory]
     [InlineData(false)]
     [InlineData(true)]
