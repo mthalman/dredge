@@ -22,21 +22,27 @@ internal static class PackageFileLister
                         .Contains("node_modules/", StringComparison.Ordinal))
                     .Order(StringComparer.Ordinal).ToArray();
             case InstalledPackageEcosystem.Dpkg:
-                string? list = allPaths
+                string[] lists = allPaths
                     .Where(path => path.StartsWith("var/lib/dpkg/info/", StringComparison.Ordinal) &&
                         path.EndsWith(".list", StringComparison.Ordinal))
-                    .FirstOrDefault(path =>
+                    .Where(path =>
                     {
                         string file = path["var/lib/dpkg/info/".Length..^".list".Length];
                         int colon = file.IndexOf(':');
                         return (colon < 0 ? file : file[..colon]) == name;
-                    });
-                return list is null ? [] : ParseDpkgList(await readText(list, cancellationToken) ?? "");
+                    }).Order(StringComparer.Ordinal).ToArray();
+                HashSet<string> dpkgFiles = new(StringComparer.Ordinal);
+                foreach (string list in lists)
+                {
+                    cancellationToken.ThrowIfCancellationRequested();
+                    dpkgFiles.UnionWith(ParseDpkgList(await readText(list, cancellationToken) ?? ""));
+                }
+                return dpkgFiles.Order(StringComparer.Ordinal).ToArray();
             case InstalledPackageEcosystem.Apk:
                 return ParseApkInstalled(await readText("lib/apk/db/installed", cancellationToken) ?? "", name);
             case InstalledPackageEcosystem.Pip:
                 string normalized = NormalizePip(name);
-                string? record = allPaths.FirstOrDefault(path =>
+                IEnumerable<string> records = allPaths.Where(path =>
                 {
                     if (!path.EndsWith(".dist-info/RECORD", StringComparison.OrdinalIgnoreCase))
                     {
@@ -47,12 +53,14 @@ internal static class PackageFileLister
                     int dash = folder.IndexOf('-');
                     return NormalizePip(dash < 0 ? folder : folder[..dash]) == normalized;
                 });
-                if (record is null)
+                HashSet<string> pipFiles = new(StringComparer.Ordinal);
+                foreach (string record in records.Order(StringComparer.Ordinal))
                 {
-                    return [];
+                    cancellationToken.ThrowIfCancellationRequested();
+                    string root = ImagePath.GetDirectoryName(ImagePath.GetDirectoryName(record));
+                    pipFiles.UnionWith(ParsePipRecord(await readText(record, cancellationToken) ?? "", root));
                 }
-                string root = ImagePath.GetDirectoryName(ImagePath.GetDirectoryName(record));
-                return ParsePipRecord(await readText(record, cancellationToken) ?? "", root);
+                return pipFiles.Order(StringComparer.Ordinal).ToArray();
             default:
                 return [];
         }

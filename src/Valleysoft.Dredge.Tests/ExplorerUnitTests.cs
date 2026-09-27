@@ -303,6 +303,31 @@ public sealed class PackageFileListerTests
     }
 
     [Fact]
+    public async Task DpkgUnionsAllArchitecturesWithoutDuplicates()
+    {
+        Dictionary<string, string> manifests = new()
+        {
+            ["var/lib/dpkg/info/libfoo:amd64.list"] = "/usr/share/foo\n/usr/lib/x86_64/foo.so\n",
+            ["var/lib/dpkg/info/libfoo:i386.list"] = "/usr/share/foo\n/usr/lib/i386/foo.so\n",
+            ["var/lib/dpkg/info/libfoobar.list"] = "/unrelated"
+        };
+        Assert.Equal(["usr/lib/i386/foo.so", "usr/lib/x86_64/foo.so", "usr/share/foo"],
+            await List(InstalledPackageEcosystem.Dpkg, "libfoo", [.. manifests.Keys], manifests));
+    }
+
+    [Fact]
+    public async Task PipUnionsAllEnvironmentRoots()
+    {
+        Dictionary<string, string> manifests = new()
+        {
+            ["usr/lib/python3/site-packages/foo-1.dist-info/RECORD"] = "foo/__init__.py,,\n",
+            ["opt/venv/lib/python3/site-packages/foo-2.dist-info/RECORD"] = "foo/__init__.py,,\n"
+        };
+        Assert.Equal(["opt/venv/lib/python3/site-packages/foo/__init__.py", "usr/lib/python3/site-packages/foo/__init__.py"],
+            await List(InstalledPackageEcosystem.Pip, "foo", [.. manifests.Keys], manifests));
+    }
+
+    [Fact]
     public void ApkListsOnlyTheNamedPackage()
     {
         const string installed = "P:musl\nF:lib\nR:ld-musl.so.1\n\nP:busybox\nF:bin\nR:busybox\nF:etc\nR:motd\n";
