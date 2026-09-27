@@ -568,12 +568,14 @@ internal sealed class CompareView
         lines.Add(Line.Of(new string('─', half) + "─┼─" + new string('─', Math.Max(0, w - half - 3)), Theme.Shale));
         if (diff.Message is not null)
         {
-            lines.Add(Line.Blank);
             lines.AddRange(Syntax.Wrap([("  " + diff.Message, new Sty(Theme.Silt))], w, 4));
-            return ExplorerPresenter.Pane(lines, diff.Path.Split('/')[^1], true, "/" + diff.Path);
+            if (diff.Lines is null)
+            {
+                return ExplorerPresenter.Pane(lines, diff.Path.Split('/')[^1], true, "/" + diff.Path);
+            }
         }
         List<(DiffLine? Left, DiffLine? Right)> pairs = Pair(diff.Lines ?? []);
-        int room = Math.Max(1, RightInnerHeight - 3);
+        int room = Math.Max(1, RightInnerHeight - lines.Count);
         c.DiffScroll = Math.Clamp(c.DiffScroll, 0, Math.Max(0, pairs.Count - room));
         foreach ((DiffLine? left, DiffLine? right) in pairs.Skip(c.DiffScroll).Take(room))
         {

@@ -149,6 +149,8 @@ files. The picker accepts a full image reference or a tag and selects an exact
 tag match before substring suggestions. Package metadata is read only when a comparison starts; loading an
 image for browsing or insights does not scan packages. Press `Enter` on a
 changed text file to see a diff, and `s` to swap the two sides.
+Text diffs retain available content when a size limit is reached and show a
+notice identifying the partial preview.
 Comparison progress stays visible while you browse. Press `Esc` to cancel a
 pending comparison without leaving the explorer.
 

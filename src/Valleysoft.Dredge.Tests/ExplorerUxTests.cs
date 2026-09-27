@@ -8,6 +8,21 @@ namespace Valleysoft.Dredge.Tests;
 public sealed class ExplorerUxTests
 {
     [Fact]
+    public void PartialDiffShowsBothNoticeAndAvailableLines()
+    {
+        using ExplorerUiHarness ui = ExplorerWindowTests.Open(out _);
+        ui.Window.StartCompare("2.0");
+        ui.Until(() => ui.State.Compare is not null, "comparison");
+        ui.State.Compare!.Diff = new TextDiffContent("app/config.json",
+            TextDiff.Diff(["old-value"], ["new-value"]), "Showing the first 256 KB.");
+        ui.Window.ImageChanged();
+        ui.Pump();
+        Assert.True(ui.Shows("Showing the first 256 KB."));
+        Assert.True(ui.Shows("old-value"));
+        Assert.True(ui.Shows("new-value"));
+    }
+
+    [Fact]
     public void CompactAuxiliaryViewsUseTheBodyAndHelpScrolls()
     {
         using ExplorerUiHarness ui = ExplorerWindowTests.Open(out _, width: 80, height: 24);
