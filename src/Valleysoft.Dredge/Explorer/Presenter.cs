@@ -28,6 +28,7 @@ internal sealed class ExplorerState
     public bool NoticeIsError { get; set; }
     public string? ComparisonStatus { get; set; }
     public int PreviewScroll { get; set; }
+    public int PreviewColumn { get; set; }
     public string InspectPath { get; set; } = "";
     public PreviewContent? Preview { get; set; }
     public int Spinner { get; set; }
@@ -393,7 +394,7 @@ internal sealed partial class ExplorerPresenter
             ],
             RightView.Inspector =>
             [
-                new("↑↓", "Scroll"), new(K(KeyAction.Extract), "Extract…", new ExtractSelected()),
+                new("↑↓", "Scroll"), new("←→", "Pan text"), new(K(KeyAction.Extract), "Extract…", new ExtractSelected()),
                 new(K(KeyAction.CopyCommand), $"{CopyVerb} command", new CopyCommand()),
                 new(K(KeyAction.Viewer), "Open file in text viewer", new OpenInViewer()),
                 back, page, ends, keys, quit,

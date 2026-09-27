@@ -251,10 +251,17 @@ internal sealed partial class ExplorerPresenter
 
         PreviewContent? preview = s.Preview is { } p && p.Path == path ? p : null;
         List<string> previewLines = preview?.Lines ?? [];
+        int textWidth = Math.Max(1, w - 6);
+        int maxColumn = Math.Max(0, previewLines.Select(line => line.Length).DefaultIfEmpty(0).Max() - textWidth);
+        s.PreviewColumn = Math.Clamp(s.PreviewColumn, 0, maxColumn);
         string ruleText = node.Kind == Kind.Dir ? "  directory "
             : preview is null ? (img.Complete ? "  loading… " : "  available once every layer is indexed ")
             : preview.Lines is not null ? $"  {preview.Language ?? "text"} · {Fmt.N(previewLines.Count)} lines "
             : "  not shown ";
+        if (maxColumn > 0)
+        {
+            ruleText += $"· column {s.PreviewColumn + 1} · ←→ pan ";
+        }
         Line rule = new Line().Add("── ", Theme.Shale).Add("Preview", Theme.Foam).Add(ruleText, Theme.Silt);
         items.Add(rule.Add(new string('─', Math.Max(0, w - rule.Length)), Theme.Shale));
         int room = Math.Max(1, RightInnerHeight - items.Count - 2);
@@ -275,7 +282,7 @@ internal sealed partial class ExplorerPresenter
         foreach (var (text, i) in previewLines.Skip(s.PreviewScroll).Take(room).Select((t, i) => (t, i + s.PreviewScroll)))
         {
             Line body = json ? Syntax.Json(text) : Line.Of(text.Replace('\t', ' '), Theme.Foam);
-            items.Add(new Line().Add($"{i + 1,4}  ", Theme.Shale).Append(body).Truncate(w));
+            items.Add(new Line().Add($"{i + 1,4}  ", Theme.Shale).Append(body.Slice(s.PreviewColumn, textWidth)));
             shownLines++;
         }
         for (int i = shownLines; i < room; i++)
@@ -502,6 +509,7 @@ internal sealed partial class ExplorerPresenter
             ("Files", [("← →", "Fold or unfold"),
                 ($"{K(KeyAction.ToggleAdded)} {K(KeyAction.ToggleModified)} {K(KeyAction.ToggleIdentical)} {K(KeyAction.ToggleDeleted)}", "Show or hide changes"),
                 (K(KeyAction.FindingsOnly), "Only paths with findings"), ("Enter", "Inspect file")]),
+            ("Preview", [("← →", "Pan long text lines")]),
             ("Compare", [(K(KeyAction.SwapSides), "Swap sides"), ("Enter", "Diff a file"), ("Esc", "Leave compare")]),
         ];
         (string Group, (string Keys, string What)[] Items)[] right =

@@ -405,7 +405,7 @@ internal sealed class ExplorerWindow : Window
             : [new("Esc", "Cancel comparison", new Back()), .. hints.Where(h => h.Key != "Esc")];
     }
 
-    private bool UsesFullWidth() => s.View == RightView.Keys ||
+    private bool UsesFullWidth() => s.View == RightView.Keys || s.Compare?.Diff is not null ||
         !Comparing && (s.View == RightView.Inspector || ex.Narrow && s.View is RightView.Search or RightView.Insights);
 
     // A key acts only when the current context lists it; hints trimmed from a narrow footer still count.
@@ -486,8 +486,8 @@ internal sealed class ExplorerWindow : Window
             KeyCode.PageDown => new Move(page),
             KeyCode.Home => new Jump(false),
             KeyCode.End => new Jump(true),
-            KeyCode.CursorLeft => new Fold(false),
-            KeyCode.CursorRight => new Fold(true),
+            KeyCode.CursorLeft => s.View == RightView.Inspector || s.Compare?.Diff is not null ? new PanText(-8) : new Fold(false),
+            KeyCode.CursorRight => s.View == RightView.Inspector || s.Compare?.Diff is not null ? new PanText(8) : new Fold(true),
             _ => null,
         };
         if (ex.TooSmall && cmd is not null)
@@ -650,6 +650,9 @@ internal sealed class ExplorerWindow : Window
             case Move m when s.View == RightView.Inspector:
                 s.PreviewScroll = Math.Max(0, s.PreviewScroll + m.Delta);
                 break;
+            case PanText pan when s.View == RightView.Inspector:
+                s.PreviewColumn = Math.Max(0, s.PreviewColumn + pan.Delta);
+                break;
             case Move m when s.View == RightView.Keys:
                 s.KeysScroll = Math.Max(0, s.KeysScroll + m.Delta);
                 break;
@@ -693,6 +696,7 @@ internal sealed class ExplorerWindow : Window
                 s.InspectPath = row.Path;
                 s.View = RightView.Inspector;
                 s.PreviewScroll = 0;
+                s.PreviewColumn = 0;
                 s.Preview = null;
                 EnsurePreview();
                 break;
@@ -1240,6 +1244,9 @@ internal sealed class ExplorerWindow : Window
             case Move m when c.Diff is not null:
                 c.DiffScroll = Math.Max(0, c.DiffScroll + m.Delta);
                 return true;
+            case PanText pan when c.Diff is not null:
+                c.DiffColumn = Math.Max(0, c.DiffColumn + pan.Delta);
+                return true;
             case Move m when c.FocusLayers:
                 c.Layer = Math.Clamp(c.Layer + Math.Sign(m.Delta), 0, c.LayerCount - 1);
                 return true;
@@ -1297,7 +1304,9 @@ internal sealed class ExplorerWindow : Window
                     {
                         s.Compare.Diff = diff;
                         s.Compare.DiffScroll = 0;
+                        s.Compare.DiffColumn = 0;
                         s.Notice = null;
+                        right.SetFocus();
                     }
                 });
                 return true;

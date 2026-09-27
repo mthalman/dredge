@@ -93,6 +93,22 @@ internal sealed class Line
         return line;
     }
 
+    public Line Slice(int start, int width)
+    {
+        Line line = new();
+        foreach (var (text, style) in parts)
+        {
+            if (start >= text.Length)
+            {
+                start -= text.Length;
+                continue;
+            }
+            line.Add(text[start..], style);
+            start = 0;
+        }
+        return line.Truncate(width);
+    }
+
     // Like WithBackground, but keeps backgrounds the parts already set.
     public Line UnderBackground(Rgb bg)
     {

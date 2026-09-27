@@ -8,6 +8,35 @@ namespace Valleysoft.Dredge.Tests;
 public sealed class ExplorerUxTests
 {
     [Fact]
+    public void PreviewAndDiffExposeTheEndsOfLongLines()
+    {
+        using ExplorerUiHarness ui = ExplorerWindowTests.Open(ExplorerSamples.Image(), new ExplorerState
+        {
+            Layer = 2, View = RightView.Inspector, InspectPath = "app/package.json", Focus = FocusPane.Right,
+        }, s => new FakeExplorerHost
+        {
+            Baseline = s,
+            Preview = path => new PreviewContent(path, null, [new string('x', 150) + "preview-tail"], null, 162),
+        }, out _, width: 80, height: 24);
+        ui.Until(() => ui.State.Preview is not null, "preview");
+        Assert.False(ui.Shows("preview-tail"));
+        for (int i = 0; i < 30; i++) ui.Press(Key.CursorRight);
+        Assert.True(ui.Shows("preview-tail"));
+        ui.Press(Key.Esc);
+        ui.Window.StartCompare("2.0");
+        ui.Until(() => ui.State.Compare is not null, "comparison");
+        ui.State.Compare!.Diff = new TextDiffContent("app/config.json",
+            TextDiff.Diff([new string('x', 100) + "old-tail"], [new string('x', 100) + "new-tail"]), null);
+        ui.Window.ImageChanged();
+        ui.Pump();
+        Assert.False(ui.Window.Layers.Visible);
+        Assert.Equal(80, ui.Window.Right.Frame.Width);
+        for (int i = 0; i < 30; i++) ui.Press(Key.CursorRight);
+        Assert.True(ui.Shows("old-tail"));
+        Assert.True(ui.Shows("new-tail"));
+    }
+
+    [Fact]
     public void ComparisonSearchFindsCollapsedFilesAndPackages()
     {
         using ExplorerUiHarness ui = ExplorerWindowTests.Open(out FakeExplorerHost host);

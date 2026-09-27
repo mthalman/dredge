@@ -34,6 +34,7 @@ internal sealed class CompareState
     public HashSet<string> Expanded { get; } = new(StringComparer.Ordinal) { "section:packages", "section:files" };
     public TextDiffContent? Diff { get; set; }
     public int DiffScroll { get; set; }
+    public int DiffColumn { get; set; }
     public PackageFilesContent? PackageFiles { get; set; }
     public bool Busy { get; set; }
     public bool Searching { get; set; }
@@ -558,6 +559,8 @@ internal sealed class CompareView
         int w = RightInner;
         List<Line> lines = [];
         int half = (w - 3) / 2;
+        int maxColumn = Math.Max(0, (diff.Lines ?? []).Select(line => line.Text.Length).DefaultIfEmpty(0).Max() - Math.Max(1, half - 5));
+        c.DiffColumn = Math.Clamp(c.DiffColumn, 0, maxColumn);
         lines.Add(new Line().Add(Fmt.Fit(c.BaselineLabel, half).PadRight(half), Theme.S(Theme.Silt, null, Deco.Bold)).Add(" │ ", Theme.Shale)
             .Add(Fmt.Fit(c.TargetLabel, half), Theme.S(Theme.Foam, null, Deco.Bold)));
         lines.Add(Line.Of(new string('─', half) + "─┼─" + new string('─', Math.Max(0, w - half - 3)), Theme.Shale));
@@ -580,17 +583,20 @@ internal sealed class CompareView
             lines.Add(line);
         }
         int changes = (diff.Lines ?? []).Count(l => l.Op != DiffOp.Same);
-        return ExplorerPresenter.Pane(lines, diff.Path.Split('/')[^1], true, $"/{diff.Path} · {Fmt.N(changes)} changed lines");
+        return ExplorerPresenter.Pane(lines, diff.Path.Split('/')[^1], true,
+            $"/{diff.Path} · {Fmt.N(changes)} changed lines" +
+            (maxColumn > 0 ? $" · column {c.DiffColumn + 1} · ←→ pan" : ""));
     }
 
-    private static Line Half(DiffLine? line, int width, Rgb fg, int? number, Rgb? bg)
+    private Line Half(DiffLine? line, int width, Rgb fg, int? number, Rgb? bg)
     {
         Line result = new();
         if (line is null)
         {
             return result.Pad(width);
         }
-        result.Add($"{number,4} ", Theme.Shale).Add(line.Text.Replace('\t', ' '), new Sty(fg, bg));
+        result.Add($"{number,4} ", Theme.Shale).Append(Line.Of(line.Text.Replace('\t', ' '), new Sty(fg, bg))
+            .Slice(c.DiffColumn, Math.Max(1, width - 5)));
         result.Truncate(width).Pad(width, bg is null ? null : new Sty(fg, bg));
         return result;
     }
@@ -630,7 +636,7 @@ internal sealed class CompareView
         }
         if (c.Diff is not null)
         {
-            return [new("↑↓", "Scroll"), new("PgUp PgDn", "Page", ShowInFooter: false), new("Home End", "Top or bottom", ShowInFooter: false), new("Esc", "Back to differences", new Back()),
+            return [new("↑↓", "Scroll"), new("←→", "Pan text"), new("PgUp PgDn", "Page", ShowInFooter: false), new("Home End", "Top or bottom", ShowInFooter: false), new("Esc", "Back to differences", new Back()),
                 new(k.Label(KeyAction.Help), "Keys", new ShowView(RightView.Keys)), new(k.Label(KeyAction.Quit), "Quit", new Quit())];
         }
         return

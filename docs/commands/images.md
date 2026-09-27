@@ -151,7 +151,9 @@ tag match before substring suggestions. Package metadata is read only when a com
 image for browsing or insights does not scan packages. Press `Enter` on a
 changed text file to see a diff, and `s` to swap the two sides.
 Text diffs retain available content when a size limit is reached and show a
-notice identifying the partial preview.
+notice identifying the partial preview. Text diffs and file previews use the
+full body width. Use `Left`/`Right` to pan long lines; the preview indicates
+the current column when content extends beyond the viewport.
 Comparison progress stays visible while you browse. Press `Esc` to cancel a
 pending comparison without leaving the explorer.
 Within comparison, `/` searches changed package names and paths, including
