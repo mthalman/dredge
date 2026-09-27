@@ -127,9 +127,9 @@ internal static class TagPicker
         string current = ExplorerTags.Label(img.Reference);
         Dialog dialog = Dialogs.Create($"Compare {current} with", 80, 20);
 
-        Label prompt = new() { X = 1, Y = 1, Text = "Tag" };
+        Label prompt = new() { X = 1, Y = 1, Text = "Image or tag" };
         prompt.SetScheme(new Scheme(Paint.Attr(Theme.Silt, Theme.Graphite)));
-        TextField field = new() { X = 6, Y = 1, Width = Dim.Fill(2), Text = filter };
+        TextField field = new() { X = 15, Y = 1, Width = Dim.Fill(2), Text = filter };
         field.SetScheme(Dialogs.Input());
 
         TagSource source = new(img.LayerCount, current);
@@ -205,7 +205,8 @@ internal static class TagPicker
         public void Set(IReadOnlyList<TagChoice> choices) => all = [.. choices];
 
         public void Filter(string text) =>
-            shown = all.Where(t => t.Tag.Contains(text.Trim(), StringComparison.OrdinalIgnoreCase)).ToList();
+            shown = all.Where(t => t.Tag.Contains(text.Trim(), StringComparison.OrdinalIgnoreCase))
+                .OrderBy(t => t.Tag == text.Trim() ? 0 : 1).ToList();
 
         public event NotifyCollectionChangedEventHandler? CollectionChanged { add { } remove { } }
         public int Count => shown.Count;
