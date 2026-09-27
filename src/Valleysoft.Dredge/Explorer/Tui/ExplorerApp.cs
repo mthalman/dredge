@@ -214,6 +214,8 @@ internal sealed class ExplorerApp : IAsyncDisposable
     // Marshals to the UI thread, or holds the action while the viewer owns the screen.
     private void Post(Action action)
     {
+        IApplication? application;
+        int generation;
         lock (sync)
         {
             if (stopping)
@@ -221,10 +223,18 @@ internal sealed class ExplorerApp : IAsyncDisposable
                 return;
             }
             pending.Add(action);
-            if (app is { } application)
+            application = app;
+            generation = attachment;
+        }
+        // Invoke takes the timer lock; timer callbacks acquire sync in WhileAttached.
+        if (application is not null)
+        {
+            try
             {
-                int generation = attachment;
                 application.Invoke(() => DrainPending(application, generation));
+            }
+            catch (ObjectDisposedException) when (!WhileAttached(application, generation, () => true))
+            {
             }
         }
     }

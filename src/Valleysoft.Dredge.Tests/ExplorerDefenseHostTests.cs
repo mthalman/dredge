@@ -1,7 +1,9 @@
 using System.Formats.Tar;
 using System.IO.Compression;
+using System.Reflection;
 using System.Text;
 using System.Text.Json;
+using Terminal.Gui.App;
 using Valleysoft.DockerRegistryClient;
 using Valleysoft.DockerRegistryClient.Models.Images;
 using Valleysoft.DockerRegistryClient.Models.Manifests;
@@ -20,6 +22,35 @@ public sealed class ExplorerDefenseHostTests : IAsyncDisposable
     private readonly List<ExplorerHost> hosts = [];
     private static readonly ImageName Image = ImageName.Parse("registry.test/repo:current");
     private static CancellationToken Token => TestContext.Current.CancellationToken;
+
+    [Fact]
+    public async Task BackgroundDispatchDoesNotHoldExplorerLockWhileInvokingUi()
+    {
+        TestImage image = await CreateAsync(Blob(("file", "value")));
+        await using ExplorerApp app = new(image.Client.Object, Mock.Of<IDockerRegistryClientFactory>(),
+            image.Source, image.Store, new(null, null, false, ClipboardMode.Off, KeyMap.Default, "", ""), Token);
+        TaskCompletionSource<bool> observed = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        Mock<IApplication> application = new();
+        application.Setup(value => value.Invoke(It.IsAny<Action>())).Callback(() =>
+        {
+            ManualResetEventSlim detached = new(false);
+            Task detach = Task.Run(() =>
+            {
+                app.Detach();
+                detached.Set();
+            });
+            bool completed = detached.Wait(TimeSpan.FromSeconds(2), Token);
+            _ = detach.ContinueWith(_ => detached.Dispose(), TaskScheduler.Default);
+            observed.TrySetResult(completed);
+        });
+        typeof(ExplorerApp).GetField("app", BindingFlags.Instance | BindingFlags.NonPublic)!
+            .SetValue(app, application.Object);
+
+        app.Start();
+
+        Assert.True(await observed.Task.WaitAsync(TimeSpan.FromSeconds(10), Token),
+            "A UI dispatch must not retain the explorer lock while waiting for Terminal.Gui's timer lock.");
+    }
 
     [Fact]
     public async Task IndexerStopDrainsIgnoredCancellationWithoutPublishingLateResults()
