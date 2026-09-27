@@ -364,7 +364,7 @@ internal sealed class CompareView
                     string key = "file:" + n.Path;
                     bool expandable = n.Children.Count > 0;
                     bool open = expandable && (c.SearchQuery.Length > 0 || c.Expanded.Contains(key));
-                    list.Add(new(key, expandable || n.Dir ? CompareRowKind.Dir : CompareRowKind.File,
+                    list.Add(new(key, n.Dir ? CompareRowKind.Dir : CompareRowKind.File,
                         guide + (last ? "└─ " : "├─ "), c.SearchQuery.Length > 0 ? n.Path : n.Name, n.Change, n.Before, n.After,
                         Expandable: expandable, Expanded: open, Files: expandable ? n.FileCount : null, Path: n.Path));
                     if (open)
@@ -658,7 +658,8 @@ internal sealed class CompareView
     {
         List<CompareRow> list = Rows();
         CompareRow? row = list.ElementAtOrDefault(c.Cursor);
-        return row?.Expandable == true ? row.Expanded ? "Collapse group" : "Expand group"
+        return row?.Kind == CompareRowKind.File ? "Diff a file"
+            : row?.Expandable == true ? row.Expanded ? "Collapse group" : "Expand group"
             : row?.Kind == CompareRowKind.Package ? "Show package files" : "Diff a file";
     }
 
@@ -667,9 +668,12 @@ internal sealed class CompareView
         public string Name = "";
         public string Path = "";
         public bool Dir;
+        public bool HasEntry;
         public Change Change;
         public long? Before;
         public long? After;
+        public long? SubtreeBefore;
+        public long? SubtreeAfter;
         public int FileCount;
         public List<FileTree> Children = [];
 
@@ -693,9 +697,10 @@ internal sealed class CompareView
             foreach (ExplorerFileDifference file in files)
             {
                 FileTree node = Get(file.Path);
+                node.HasEntry = true;
                 node.Change = ExplorerImage.ToChange(file.Kind);
                 ImageFileSystemEntry? entry = file.Target ?? file.Baseline;
-                node.Dir = entry?.Type == ImageFileType.Directory && node.Children.Count == 0 ? true : node.Children.Count > 0;
+                node.Dir = entry?.Type == ImageFileType.Directory;
                 if (entry?.Type != ImageFileType.Directory)
                 {
                     node.Before = file.Baseline?.Size;
@@ -709,28 +714,28 @@ internal sealed class CompareView
         private static void Finish(FileTree node)
         {
             node.Children.Sort((a, b) => string.CompareOrdinal(a.Name, b.Name));
-            if (node.Children.Count == 0)
-            {
-                node.FileCount = node.Dir ? 0 : 1;
-                return;
-            }
-            node.Dir = true;
-            long before = 0, after = 0;
-            bool anyBefore = false, anyAfter = false;
+            node.FileCount = node.Dir ? 0 : 1;
+            long before = node.Before ?? 0, after = node.After ?? 0;
+            bool anyBefore = node.Before is not null, anyAfter = node.After is not null;
             foreach (FileTree child in node.Children)
             {
                 Finish(child);
                 node.FileCount += child.FileCount;
-                if (child.Before is long b) { before += b; anyBefore = true; }
-                if (child.After is long a) { after += a; anyAfter = true; }
+                if (child.SubtreeBefore is long b) { before += b; anyBefore = true; }
+                if (child.SubtreeAfter is long a) { after += a; anyAfter = true; }
             }
-            node.Before = anyBefore ? before : null;
-            node.After = anyAfter ? after : null;
-            if (node.Children.All(child => child.Change == Change.Added))
+            node.SubtreeBefore = anyBefore ? before : null;
+            node.SubtreeAfter = anyAfter ? after : null;
+            if (node.Dir)
+            {
+                node.Before = node.SubtreeBefore;
+                node.After = node.SubtreeAfter;
+            }
+            if (!node.HasEntry && node.Children.Count > 0 && node.Children.All(child => child.Change == Change.Added))
             {
                 node.Change = Change.Added;
             }
-            else if (node.Children.All(child => child.Change == Change.Removed))
+            else if (!node.HasEntry && node.Children.Count > 0 && node.Children.All(child => child.Change == Change.Removed))
             {
                 node.Change = Change.Removed;
             }

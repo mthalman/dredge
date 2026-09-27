@@ -36,8 +36,9 @@ internal sealed partial class ExplorerPresenter
             {
                 return known;
             }
-            // A folder is shown for the changes inside it; only an empty folder stands on its own change.
-            bool result = n.Kind == Kind.Dir && n.Children.Count > 0 ? n.Children.Any(Visible) : !s.Hidden.Contains(n.Change);
+            // Replacements can retain removed descendants even when the replacement itself is filtered out.
+            bool result = n.Children.Any(Visible) ||
+                ((n.Kind != Kind.Dir || n.Children.Count == 0) && !s.Hidden.Contains(n.Change));
             visibleCache[n] = result;
             return result;
         }

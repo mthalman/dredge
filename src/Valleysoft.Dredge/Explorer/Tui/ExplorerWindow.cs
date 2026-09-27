@@ -1403,7 +1403,7 @@ internal sealed class ExplorerWindow : Window
                 return true;
             case Activate when row is null:
                 return true;
-            case Activate when row.Expandable:
+            case Activate when row.Expandable && row.Kind != CompareRowKind.File:
                 if (!c.Expanded.Remove(row.Key))
                 {
                     c.Expanded.Add(row.Key);
