@@ -18,9 +18,11 @@ internal sealed class ExplorerWindow : Window
     private readonly ExplorerPresenter ex;
     private readonly ExplorerState s;
     private readonly CancellationToken lifetime;
+    private readonly CancellationTokenSource windowLifetime;
     private CancellationTokenRegistration lifetimeRegistration;
     private bool lifetimeRegistered;
     private bool windowDisposed;
+    private bool windowStopped;
     private readonly Action<string>? openWindowedViewer;
     private readonly HeaderView header;
     private readonly PaneView layers, details, right;
@@ -50,7 +52,8 @@ internal sealed class ExplorerWindow : Window
     {
         this.img = img;
         this.host = host;
-        this.lifetime = lifetime;
+        windowLifetime = CancellationTokenSource.CreateLinkedTokenSource(lifetime);
+        this.lifetime = windowLifetime.Token;
         this.openWindowedViewer = openWindowedViewer;
         s = state;
         if (s.Notice is null && img.BaseWarning is not null)
@@ -141,12 +144,16 @@ internal sealed class ExplorerWindow : Window
     // Puts Terminal.Gui focus where the state says it is.
     public void SyncFocus()
     {
+        if (windowDisposed || windowStopped)
+        {
+            return;
+        }
         if (!lifetimeRegistered && App is IApplication application)
         {
             lifetimeRegistered = true;
             lifetimeRegistration = lifetime.Register(() => application.Invoke(() =>
             {
-                if (!windowDisposed)
+                if (!windowDisposed && !windowStopped)
                 {
                     focusSynced = false;
                     application.RequestStop();
@@ -183,6 +190,10 @@ internal sealed class ExplorerWindow : Window
     private void Stop(ExplorerExit exit)
     {
         focusSynced = false;
+        windowStopped = true;
+        windowLifetime.Cancel();
+        CancelComparison();
+        CancelDiff();
         Exit = exit;
         App?.RequestStop();
     }
@@ -305,12 +316,16 @@ internal sealed class ExplorerWindow : Window
 
     protected override void Dispose(bool disposing)
     {
-        if (disposing)
+        if (disposing && !windowDisposed)
         {
             windowDisposed = true;
             lifetimeRegistration.Dispose();
+            windowLifetime.Cancel();
             CancelComparison();
             CancelDiff();
+            previewLoad?.Dispose();
+            previewLoad = null;
+            windowLifetime.Dispose();
         }
         if (disposing && watched is not null)
         {
@@ -638,6 +653,10 @@ internal sealed class ExplorerWindow : Window
 
     public void Apply(Cmd cmd)
     {
+        if (windowDisposed || windowStopped || lifetime.IsCancellationRequested)
+        {
+            return;
+        }
         if (diffLoad is not null && cmd is not (Redraw or Notify or PanText or CopyCommand))
         {
             CancelDiff();
@@ -1009,7 +1028,28 @@ internal sealed class ExplorerWindow : Window
 
     // ───────────────────────────── actions ─────────────────────────────
 
-    private Task RunAsync<T>(Func<CancellationToken, Task<T>> work, Action<T> done, Action<Exception>? failed = null,
+    private void Post(IApplication? app, Action action, CancellationToken token)
+    {
+        if (app is null || windowDisposed || windowStopped || lifetime.IsCancellationRequested || token.IsCancellationRequested)
+        {
+            return;
+        }
+        try
+        {
+            app.Invoke(() =>
+            {
+                if (!windowDisposed && !windowStopped && !lifetime.IsCancellationRequested && !token.IsCancellationRequested)
+                {
+                    action();
+                }
+            });
+        }
+        catch (ObjectDisposedException) when (windowDisposed || windowStopped || token.IsCancellationRequested)
+        {
+        }
+    }
+
+    internal Task RunAsync<T>(Func<CancellationToken, Task<T>> work, Action<T> done, Action<Exception>? failed = null,
         CancellationToken token = default)
     {
         IApplication? app = App;
@@ -1017,16 +1057,8 @@ internal sealed class ExplorerWindow : Window
         return Task.Run(() => work(ct), ct).ContinueWith(task =>
         {
             Exception? error = task.Exception?.GetBaseException();
-            if (ct.IsCancellationRequested || app is null)
+            Post(app, () =>
             {
-                return;
-            }
-            app.Invoke(() =>
-            {
-                if (ct.IsCancellationRequested)
-                {
-                    return;
-                }
                 if (task.IsCompletedSuccessfully)
                 {
                     done(task.Result);
@@ -1043,9 +1075,12 @@ internal sealed class ExplorerWindow : Window
                         Notice(error.Message, error: true);
                     }
                 }
-                ex.Invalidate();
-                Refresh();
-            });
+                if (!windowDisposed && !windowStopped)
+                {
+                    ex.Invalidate();
+                    Refresh();
+                }
+            }, ct);
         }, TaskScheduler.Default);
     }
 
@@ -1057,6 +1092,7 @@ internal sealed class ExplorerWindow : Window
             return;
         }
         previewLoad?.Cancel();
+        previewLoad?.Dispose();
         previewLoad = CancellationTokenSource.CreateLinkedTokenSource(lifetime);
         string path = s.InspectPath;
         int layer = s.Layer;
@@ -1239,7 +1275,7 @@ internal sealed class ExplorerWindow : Window
         }
         int generation = ++compareGeneration;
         IApplication? app = App;
-        RunAsync(ct => host.CompareAsync(tag, () => app?.Invoke(() =>
+        RunAsync(ct => host.CompareAsync(tag, () => Post(app, () =>
         {
             if (compareGeneration == generation)
             {
@@ -1248,7 +1284,7 @@ internal sealed class ExplorerWindow : Window
                 ex.Invalidate();
                 Refresh();
             }
-        }), ct), comparison =>
+        }, ct), ct), comparison =>
         {
             if (compareGeneration != generation)
             {

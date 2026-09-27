@@ -6,6 +6,52 @@ namespace Valleysoft.Dredge.Tests;
 [Collection(ExplorerUiCollection.Name)]
 public sealed class ExplorerDefenseUiTests
 {
+    [Theory]
+    [InlineData(false, false)]
+    [InlineData(false, true)]
+    [InlineData(true, false)]
+    [InlineData(true, true)]
+    public void ClosedWindowsRejectQueuedAndLateActionCallbacks(bool dispose, bool queued)
+    {
+        using ExplorerUiHarness ui = ExplorerWindowTests.Open(out _);
+        TaskCompletionSource<string> pending = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        TaskCompletionSource<bool> started = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        CancellationToken token = default;
+        bool delivered = false;
+        Task work = ui.Window.RunAsync(ct =>
+        {
+            token = ct;
+            started.SetResult(true);
+            return pending.Task;
+        }, _ => delivered = true);
+        Assert.True(SpinWait.SpinUntil(() => started.Task.IsCompleted, TimeSpan.FromSeconds(10)));
+        if (queued)
+        {
+            pending.SetResult("queued");
+            Assert.True(SpinWait.SpinUntil(() => work.IsCompleted, TimeSpan.FromSeconds(10)));
+        }
+        if (dispose)
+        {
+            ui.Window.Dispose();
+        }
+        else
+        {
+            ui.Window.Apply(new Quit());
+        }
+        if (!queued)
+        {
+            pending.SetResult("late");
+            Assert.True(SpinWait.SpinUntil(() => work.IsCompleted, TimeSpan.FromSeconds(10)));
+        }
+        bool drained = false;
+        ui.App.Invoke(() => drained = true);
+        ui.Input.ProcessQueue();
+        ui.App.TimedEvents?.RunTimers();
+        Assert.True(drained);
+        Assert.False(delivered);
+        Assert.True(token.IsCancellationRequested);
+    }
+
     [Fact]
     public void NewerDiffWinsWhenEarlierRequestFinishesLast()
     {
