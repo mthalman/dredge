@@ -50,7 +50,7 @@ internal sealed partial class ExplorerPresenter
                 Node n = visible[i];
                 bool last = i == visible.Count - 1;
                 string branch = depth == 0 ? "" : guide + (last ? "└─ " : "├─ ");
-                bool expandable = n.Kind == Kind.Dir && n.Children.Count > 0;
+                bool expandable = n.Children.Count > 0;
                 bool expanded = expandable && s.Expanded.Contains(n.Path);
                 rows.Add(new FlatRow(n, n.Path, branch, expanded, expandable));
                 if (expanded)

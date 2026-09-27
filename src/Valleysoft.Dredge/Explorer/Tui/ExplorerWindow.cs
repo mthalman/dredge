@@ -777,7 +777,7 @@ internal sealed class ExplorerWindow : Window
             case Activate when s.View == RightView.Search:
                 OpenSearchHit();
                 break;
-            case Activate when row is not null && row.Node.Children.Count > 0:
+            case Activate when row is not null && row.Node.Kind == Kind.Dir && row.Node.Children.Count > 0:
                 if (!s.Expanded.Remove(row.Path))
                 {
                     s.Expanded.Add(row.Path);

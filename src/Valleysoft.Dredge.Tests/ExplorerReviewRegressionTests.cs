@@ -7,6 +7,30 @@ namespace Valleysoft.Dredge.Tests;
 [Collection(ExplorerUiCollection.Name)]
 public sealed class ExplorerReviewRegressionTests
 {
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void DirectoryReplacementFileCanBeInspectedWithoutLosingDeletedChildren(bool whole)
+    {
+        ExplorerImage image = ExplorerSamples.Custom(
+        [
+            ExplorerSamples.Layer([ExplorerSamples.File("app/item/old", 1, "old")]),
+            ExplorerSamples.Layer([ExplorerSamples.File("app/item", 2, "new")], ["app/item"])
+        ]);
+        ExplorerState state = new() { Layer = 1, WholeFilesystem = whole, Focus = FocusPane.Right };
+        state.Expanded.Add("app");
+        using ExplorerUiHarness ui = ExplorerWindowTests.Open(image, state,
+            session => new FakeExplorerHost { Baseline = session }, out _);
+        Node node = ExplorerImage.Find(ui.Window.Presenter.Tree(state), "app/item")!;
+        Assert.Equal(Kind.File, node.Kind);
+        Assert.Equal(2, node.Size);
+        Assert.Equal(Change.Removed, Assert.Single(node.Children).Change);
+        state.Cursor = ui.Window.Presenter.IndexOf(state, "app/item");
+        ui.Window.Apply(new Activate());
+        Assert.Equal(RightView.Inspector, state.View);
+        Assert.Equal("app/item", state.InspectPath);
+    }
+
     [Fact]
     public void EmptyImageRendersAndLayerCommandsRemainSafe()
     {

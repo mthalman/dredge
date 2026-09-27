@@ -48,7 +48,7 @@ internal sealed class Node
             if (counts is null)
             {
                 counts = [];
-                if (Children.Count == 0)
+                if (Kind != Kind.Dir || Children.Count == 0)
                 {
                     counts[Change] = 1;
                 }
@@ -568,7 +568,7 @@ internal sealed class ExplorerImage
                 ImageFileType.SymbolicLink or ImageFileType.HardLink => Kind.Link,
                 _ => Kind.File
             };
-            Node node = GetOrCreate(path, kind);
+            Node node = GetOrCreate(path, kind, explicitKind: true, removed: change == Change.Removed);
             node.Change = change;
             node.OwnSize = kind == Kind.Dir ? 0 : size;
             node.Entry = entry;
@@ -581,30 +581,31 @@ internal sealed class ExplorerImage
             }
         }
 
-        private Node GetOrCreate(string path, Kind kind)
+        private Node GetOrCreate(string path, Kind kind, bool explicitKind = false, bool removed = false)
         {
             if (nodes.TryGetValue(path, out Node? existing))
             {
-                if (existing.Kind == kind || (existing.Kind == Kind.Dir && existing.Children.Count > 0))
+                if (existing.Kind == kind || (!explicitKind && removed))
                 {
                     return existing;
                 }
                 Node replacement = new() { Name = existing.Name, Path = path, Kind = kind };
-                List<Node> siblings = Parent(path);
+                replacement.Children.AddRange(existing.Children);
+                List<Node> siblings = Parent(path, removed);
                 siblings[siblings.IndexOf(existing)] = replacement;
                 nodes[path] = replacement;
                 return replacement;
             }
             Node node = new() { Name = path[(path.LastIndexOf('/') + 1)..], Path = path, Kind = kind };
-            Parent(path).Add(node);
+            Parent(path, removed).Add(node);
             nodes[path] = node;
             return node;
         }
 
-        private List<Node> Parent(string path)
+        private List<Node> Parent(string path, bool removed)
         {
             int slash = path.LastIndexOf('/');
-            return slash < 0 ? roots : GetOrCreate(path[..slash], Kind.Dir).Children;
+            return slash < 0 ? roots : GetOrCreate(path[..slash], Kind.Dir, removed: removed).Children;
         }
 
         public List<Node> Build()
