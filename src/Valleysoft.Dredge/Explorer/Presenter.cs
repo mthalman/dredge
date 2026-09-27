@@ -1,7 +1,7 @@
 namespace Valleysoft.Dredge.Explorer;
 
 internal enum FocusPane { Layers, Right }
-internal enum RightView { Files, Insights, Inspector, Search, Keys, Command }
+internal enum RightView { Files, Insights, Inspector, Search, Keys, Command, Warning }
 
 internal sealed class ExplorerState
 {
@@ -16,6 +16,7 @@ internal sealed class ExplorerState
     public int Finding { get; set; }
     public int FindingScroll { get; set; }
     public int KeysScroll { get; set; }
+    public int WarningScroll { get; set; }
     public bool ShowBaseFindings { get; set; }
     public string SearchQuery { get; set; } = "";
     public int SearchCursor { get; set; }
@@ -95,6 +96,7 @@ internal sealed partial class ExplorerPresenter
         RightView.Inspector => InspectorPane(s),
         RightView.Search => SearchPane(s),
         RightView.Keys => KeysPane(s),
+        RightView.Warning => WarningPane(s),
         RightView.Command => Pane([Line.Blank, Line.Blank, Line.Blank,
             Line.Of("Use Left/Right or Home/End to read the complete command.", Theme.Silt),
             Line.Of("Ctrl+A selects all. Esc returns to the explorer.", Theme.Silt)],
@@ -393,6 +395,7 @@ internal sealed partial class ExplorerPresenter
             ],
             RightView.Insights =>
             [
+                .. img.BaseWarning is not null ? new Hint[] { new("Alt+W", "Base warning", new ShowView(RightView.Warning)) } : [],
                 new("↑↓", "Finding"), new("Enter", "Show files", new Activate()),
                 .. img.LayerCount > 0 ? new Hint[] { new("Tab", "Layers", new FocusOn(FocusPane.Layers)) } : [], back,
                 ends, search, keys, quit,
@@ -404,7 +407,7 @@ internal sealed partial class ExplorerPresenter
                 new(K(KeyAction.Viewer), "Open file in text viewer", new OpenInViewer()),
                 back, page, ends, keys, quit,
             ],
-            RightView.Keys => [new("↑↓", "Scroll"), page, ends, back, quit],
+            RightView.Keys or RightView.Warning => [new("↑↓", "Scroll"), page, ends, back, quit],
             RightView.Command => [new("←→", "Scroll"), new("Ctrl+A", "Select all"), ends, back, keys, quit],
             _ when img.LayerCount == 0 => [compare, insights, search, .. platform, keys, back, quit],
             _ when s.Focus == FocusPane.Layers =>

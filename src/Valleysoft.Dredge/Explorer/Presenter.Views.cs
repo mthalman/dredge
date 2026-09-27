@@ -37,11 +37,9 @@ internal sealed partial class ExplorerPresenter
         int w = RightInner;
         bool focused = s.Focus == FocusPane.Right;
         List<Line> items = [];
-        if (img.BaseWarning is string warning)
+        if (img.BaseWarning is not null)
         {
-            items.AddRange(Syntax.Wrap([("Base verification: " + warning, new Sty(Theme.Ochre))],
-                w, Math.Max(1, RightInnerHeight - 2)));
-            items.Add(Line.Blank);
+            items.Add(Line.Of("Base verification warning - Alt+W for full details", Theme.Ochre).Truncate(w));
         }
         if (!img.Complete)
         {
@@ -178,6 +176,36 @@ internal sealed partial class ExplorerPresenter
             items.Add(list[i]);
         }
         return pane;
+    }
+
+    internal List<Line> WarningLines()
+    {
+        List<Line> lines = [];
+        foreach (string paragraph in (img.BaseWarning ?? "").Replace("\r\n", "\n", StringComparison.Ordinal).Split('\n'))
+        {
+            Line line = new();
+            System.Globalization.TextElementEnumerator elements = System.Globalization.StringInfo.GetTextElementEnumerator(paragraph);
+            while (elements.MoveNext())
+            {
+                string element = elements.GetTextElement();
+                if (line.Length > 0 && line.Length + DisplayText.Width(element) > RightInner)
+                {
+                    lines.Add(line);
+                    line = new();
+                }
+                line.Add(element, Theme.Ochre);
+            }
+            lines.Add(line);
+        }
+        return lines;
+    }
+
+    private PaneContent WarningPane(ExplorerState s)
+    {
+        List<Line> lines = WarningLines();
+        s.WarningScroll = Math.Clamp(s.WarningScroll, 0, Math.Max(0, lines.Count - RightInnerHeight));
+        return Pane(lines.Skip(s.WarningScroll).Take(RightInnerHeight).ToList(),
+            "Base verification warning", true, "Complete details - Esc returns to insights");
     }
 
     // ───────────────────────────── inspector ─────────────────────────────

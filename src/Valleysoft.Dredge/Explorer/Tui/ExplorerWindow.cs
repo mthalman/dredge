@@ -445,7 +445,7 @@ internal sealed class ExplorerWindow : Window
             : [new("Esc", "Cancel comparison", new Back()), .. hints.Where(h => h.Key != "Esc")];
     }
 
-    private bool UsesFullWidth() => s.View is RightView.Keys or RightView.Command || s.Compare?.Diff is not null ||
+    private bool UsesFullWidth() => s.View is RightView.Keys or RightView.Command or RightView.Warning || s.Compare?.Diff is not null ||
         !Comparing && (s.View == RightView.Inspector || ex.Narrow && s.View is RightView.Search or RightView.Insights);
 
     // A key acts only when the current context lists it; hints trimmed from a narrow footer still count.
@@ -551,6 +551,11 @@ internal sealed class ExplorerWindow : Window
             KeyCode.CursorRight => s.View == RightView.Inspector || s.Compare?.Diff is not null ? new PanText(8) : new Fold(true),
             _ => null,
         };
+        if (key.IsAlt && !key.IsCtrl && key.NoAlt.KeyCode == KeyCode.W &&
+            s.View == RightView.Insights && img.BaseWarning is not null)
+        {
+            cmd = new ShowView(RightView.Warning);
+        }
         if (ex.TooSmall && cmd is not null)
         {
             return true;
@@ -699,6 +704,10 @@ internal sealed class ExplorerWindow : Window
                 s.Hidden.Clear();
                 s.Cursor = s.Scroll = 0;
                 break;
+            case Back when s.View == RightView.Warning:
+                s.View = RightView.Insights;
+                right.SetFocus();
+                break;
             case Back:
                 s.View = RightView.Files;
                 right.SetFocus();
@@ -755,6 +764,9 @@ internal sealed class ExplorerWindow : Window
             case Move m when s.View == RightView.Keys:
                 s.KeysScroll = Math.Max(0, s.KeysScroll + m.Delta);
                 break;
+            case Move m when s.View == RightView.Warning:
+                s.WarningScroll = Math.Max(0, s.WarningScroll + m.Delta);
+                break;
             case Move m when s.View == RightView.Files:
                 s.Cursor = Math.Clamp(s.Cursor + m.Delta, 0, Math.Max(0, rows.Count - 1));
                 break;
@@ -772,6 +784,9 @@ internal sealed class ExplorerWindow : Window
                 break;
             case Jump j when s.View == RightView.Keys:
                 s.KeysScroll = j.ToEnd ? int.MaxValue : 0;
+                break;
+            case Jump j when s.View == RightView.Warning:
+                s.WarningScroll = j.ToEnd ? int.MaxValue : 0;
                 break;
             case Jump j when s.View == RightView.Files:
                 s.Cursor = j.ToEnd ? Math.Max(0, rows.Count - 1) : 0;

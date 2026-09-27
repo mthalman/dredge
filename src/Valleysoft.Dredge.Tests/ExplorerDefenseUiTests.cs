@@ -7,6 +7,43 @@ namespace Valleysoft.Dredge.Tests;
 public sealed class ExplorerDefenseUiTests
 {
     [Fact]
+    public void LongBaseWarningLeavesFindingsVisibleAndCompleteDetailsAccessible()
+    {
+        ExplorerImage sample = ExplorerSamples.Image();
+        string warning = string.Concat(Enumerable.Repeat("base verification failed; ", 80)) +
+            new string('x', 350) + " COMPLETE-WARNING-END";
+        ExplorerImage image = new(sample.Reference, sample.Platform, sample.Digest, sample.LayerDigests,
+            sample.LayerDownloads, ExplorerSamples.History(), sample.BaseLayerCount, sample.BaseName, warning);
+        LayerChanges[] layers = ExplorerSamples.Layers();
+        for (int i = 0; i < layers.Length; i++)
+        {
+            image.SetIndexed(i, layers[i]);
+        }
+        image.SetSession(sample.Session!, sample.Insights);
+        ExplorerState state = new() { View = RightView.Insights };
+        using ExplorerUiHarness ui = ExplorerWindowTests.Open(image, state,
+            session => new FakeExplorerHost { Baseline = session }, out _, width: 80, height: 24);
+
+        Assert.True(ui.Shows("Alt+W for full details"), ui.Screen());
+        Assert.True(ui.Shows(ui.Window.Presenter.VisibleFindings(state)[0]!.Title), ui.Screen());
+        ui.Press(Key.CursorDown);
+        int finding = state.Finding;
+        Assert.True(finding > 0);
+        ui.Press(new Key('w').WithAlt);
+        Assert.Equal(RightView.Warning, state.View);
+        Assert.Equal(warning, string.Concat(ui.Window.Presenter.WarningLines().Select(line => line.ToString())));
+        Assert.All(ui.Window.Presenter.WarningLines(), line => Assert.True(line.Length <= ui.Window.Presenter.RightInner));
+        ui.Press(Key.End);
+        Assert.True(state.WarningScroll > 0);
+        Assert.True(ui.Shows("WARNING-END"), ui.Screen());
+        ui.Press(Key.Home);
+        Assert.Equal(0, state.WarningScroll);
+        ui.Press(Key.Esc);
+        Assert.Equal(RightView.Insights, state.View);
+        Assert.Equal(finding, state.Finding);
+    }
+
+    [Fact]
     public void EmptyImageAuxiliaryKeysAreDispatched()
     {
         ExplorerImage image = ExplorerSamples.Custom([]);
