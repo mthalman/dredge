@@ -133,7 +133,7 @@ public sealed class ExplorerFeatureTests
         Assert.Contains("registry.test/shop/storefront:1.0", header);
         Assert.Contains("linux/amd64", header);
         Assert.Contains("sha256:manifest", header);
-        Assert.Contains("3.2 MB on disk", header);
+        Assert.Contains("3.2 MB file payload", header);
         Assert.Contains("1.7 KB download", header);
         Assert.Contains("37% efficient", header);
         // The strip under the core bar names the base and the user's layers.
@@ -170,7 +170,7 @@ public sealed class ExplorerFeatureTests
     {
         using ExplorerUiHarness ui = Open(out _);
 
-        AssertShows(ui, "Layer 2 ", "2.0 MB on disk   900 B download", "+ 4 added", "sha256:l2",
+        AssertShows(ui, "Layer 2 ", "2.0 MB file payload   900 B download", "+ 4 added", "sha256:l2",
             "▲ 2 findings involve this layer, 2.0 MB", "Files deleted after they were shipped, 2.0 MB", "to see insights");
 
         ui.Window.Apply(new SelectLayer(0));
@@ -735,7 +735,7 @@ public sealed class ExplorerFeatureTests
         ExplorerState s = ui.State;
         ui.Press(new Key('i'));
 
-        AssertShows(ui, "Insights  3 findings", "2.0 MB hidden bytes · 37% efficient", "1.2 MB more potential savings",
+        AssertShows(ui, "Insights  3 findings", "2.0 MB hidden file payload · 37% efficient", "1.2 MB more potential savings",
             "■ Deleted later 2.0 MB", "■ Replaced by later layers 40 B",
             "1 Files deleted after they were shipped · hidden", "layers 2 → 3", "/app/cache/big.bin",
             "Build in a separate stage", "2 Other small overwrites · hidden",
@@ -1120,7 +1120,7 @@ public sealed class ExplorerFeatureTests
         string header = ui.Row(0);
         Assert.Contains("1.0 → 2.0", header);
         Assert.Contains("2 of 4 layers shared", header);
-        Assert.Contains("−2.0 MB on disk", header);
+        Assert.Contains("−2.0 MB file payload", header);
         Assert.Contains("1.0 KB to download", header);
         Assert.StartsWith(" 1.0 ", ui.Row(1));
         Assert.StartsWith(" 2.0 ", ui.Row(2));
@@ -1440,7 +1440,7 @@ public sealed class ExplorerFeatureTests
         using ExplorerUiHarness ui = Open(out _, width: 100, height: 40);
 
         string header = ui.Row(0);
-        Assert.Contains("3.2 MB on disk", header);
+        Assert.Contains("3.2 MB file payload", header);
         Assert.Contains("37% efficient", header);
         Assert.DoesNotContain("sha256:manifest", header);
         Assert.DoesNotContain("download", header);
