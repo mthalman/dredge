@@ -43,8 +43,12 @@ or `null` to disable the timeout. Zero and negative values also disable the
 timeout. Positive values are limited to about 24.8 days by the runtime.
 
 For `image explore`, this limit covers the entire interactive session. On
-timeout, the explorer closes and reports the timeout. Disable or increase the
-limit before starting a longer exploration.
+timeout, an active explorer screen closes and reports the timeout. While a
+terminal viewer owns the screen, timeout observation is deferred until that
+viewer exits and any "Press Enter to return" pause completes. Dredge does not
+terminate the viewer to enforce the deadline. A configured windowed viewer
+does not delay the explorer's timeout and is not terminated when the explorer
+closes. Disable or increase the limit before starting a longer exploration.
 
 ## Configure the layer cache
 
