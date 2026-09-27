@@ -146,7 +146,7 @@ internal sealed class ExplorerSession
             before.TryGetValue(path, out ImageFileSystemEntry? old);
             after.TryGetValue(path, out ImageFileSystemEntry? current);
             if (old is null || current is null ||
-                !SameFile(old, current, baseline.Analysis.LiveEntries, target.Analysis.LiveEntries))
+                !SameFile(old, current, baseline.Analysis.LiveContents, target.Analysis.LiveContents))
             {
                 differences.Add(new(path, old is null ? LayerChangeKind.Added :
                     current is null ? LayerChangeKind.Deleted : LayerChangeKind.Modified, old, current));
@@ -193,8 +193,13 @@ internal sealed class ExplorerSession
         {
             return true;
         }
-        return oldEntries.TryGetValue(left.ContentPath ?? left.Path, out ScannedEntry? old) &&
-            newEntries.TryGetValue(right.ContentPath ?? right.Path, out ScannedEntry? current) &&
+        if (left.Type == ImageFileType.HardLink &&
+            (left.ContentLinkTarget is not null || right.ContentLinkTarget is not null))
+        {
+            return left.ContentLinkTarget == right.ContentLinkTarget;
+        }
+        return oldEntries.TryGetValue(left.Path, out ScannedEntry? old) &&
+            newEntries.TryGetValue(right.Path, out ScannedEntry? current) &&
             old.ContentHash == current.ContentHash;
     }
 

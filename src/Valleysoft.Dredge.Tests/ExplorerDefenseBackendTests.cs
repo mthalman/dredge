@@ -17,6 +17,68 @@ public sealed class ExplorerDefenseBackendTests : IAsyncDisposable
     private static readonly ImageName Image = ImageName.Parse("registry.test/repo:tag");
 
     [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task HardLinkSelfComparisonUsesCapturedContentAfterOriginalChanges(bool remove)
+    {
+        ExplorerSession session = await SessionAsync(
+            Archive(("original", "old", TarEntryType.RegularFile),
+                ("saved", "original", TarEntryType.HardLink),
+                ("chain", "saved", TarEntryType.HardLink)),
+            remove ? Blob((".wh.original", "")) : Blob(("original", "new")));
+
+        Assert.Empty(ExplorerSession.Compare(session, session).Files);
+        Assert.Equal(session.Analysis.LiveContents["saved"].ContentHash,
+            session.Analysis.LiveContents["chain"].ContentHash);
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task HardLinksWithMatchingHeadersCompareTheirCapturedBytes(bool remove)
+    {
+        ExplorerSession baseline = await SessionAsync(
+            Archive(("original", "old", TarEntryType.RegularFile),
+                ("saved", "original", TarEntryType.HardLink)),
+            remove ? Blob((".wh.original", "")) : Blob(("original", "new")));
+        ExplorerSession target = await SessionAsync(
+            Archive(("original", "new", TarEntryType.RegularFile),
+                ("saved", "original", TarEntryType.HardLink)),
+            remove ? Blob((".wh.original", "")) : Blob(("original", "new")));
+
+        ExplorerFileDifference difference = Assert.Single(ExplorerSession.Compare(baseline, target).Files);
+        Assert.Equal("saved", difference.Path);
+        Assert.Equal(LayerChangeKind.Modified, difference.Kind);
+    }
+
+    [Fact]
+    public async Task ReplacingOriginalDoesNotModifySurvivingHardLink()
+    {
+        byte[] shared = Archive(("original", "old", TarEntryType.RegularFile),
+            ("saved", "original", TarEntryType.HardLink));
+        ExplorerSession baseline = await SessionAsync(shared, Blob(("original", "new")));
+        ExplorerSession target = await SessionAsync(shared, Blob(("original", "NEW")));
+
+        Assert.Equal("original", Assert.Single(ExplorerSession.Compare(baseline, target).Files).Path);
+    }
+
+    [Fact]
+    public async Task HardLinksToSymbolicLinksCompareCapturedLinkTargets()
+    {
+        ExplorerSession baseline = await SessionAsync(
+            Archive(("original", "before", TarEntryType.SymbolicLink),
+                ("saved", "original", TarEntryType.HardLink)),
+            Blob((".wh.original", "")));
+        ExplorerSession target = await SessionAsync(
+            Archive(("original", "after", TarEntryType.SymbolicLink),
+                ("saved", "original", TarEntryType.HardLink)),
+            Blob((".wh.original", "")));
+
+        Assert.Empty(ExplorerSession.Compare(baseline, baseline).Files);
+        Assert.Equal("saved", Assert.Single(ExplorerSession.Compare(baseline, target).Files).Path);
+    }
+
+    [Theory]
     [InlineData("old", "new")]
     [InlineData("same", "same")]
     public void LastHardLinkReplacementDoesNotClaimIdenticalPayloadShipment(
@@ -154,6 +216,24 @@ public sealed class ExplorerDefenseBackendTests : IAsyncDisposable
         return (files, client, resolved);
     }
 
+    private async Task<ExplorerSession> SessionAsync(params byte[][] blobs)
+    {
+        (ImageFileSystem files, _, ResolvedManifest resolved) = await CreateAsync(blobs);
+        return new()
+        {
+            Image = Image,
+            Resolved = resolved,
+            Config = new Image { Os = "linux", Architecture = "amd64" },
+            Files = files,
+            Analysis = files.Analyze(),
+            Entries = files.List(null, true, false),
+            Packages = new InstalledPackageMetadata(Enum.GetValues<InstalledPackageEcosystem>()
+                .ToDictionary(ecosystem => ecosystem, _ => new InstalledPackageEcosystemMetadata(
+                    InstalledPackageMetadataAvailability.Unavailable,
+                    new Dictionary<string, IReadOnlyList<string>>())))
+        };
+    }
+
     private static LayerChanges Layer(params ScannedEntry[] entries) => new(entries, [], []);
 
     private static ScannedEntry File(string path, long size, string hash) =>
@@ -162,16 +242,28 @@ public sealed class ExplorerDefenseBackendTests : IAsyncDisposable
     private static ScannedEntry HardLink(string path, string target) =>
         File(path, 0, "") with { Type = ImageFileType.HardLink, LinkTarget = target };
 
-    private static byte[] Blob(params (string Path, string Content)[] files)
+    private static byte[] Blob(params (string Path, string Content)[] files) =>
+        Archive(files.Select(file => (file.Path, file.Content, TarEntryType.RegularFile)).ToArray());
+
+    private static byte[] Archive(params (string Path, string Value, TarEntryType Type)[] entries)
     {
         using MemoryStream result = new();
         using (GZipStream gzip = new(result, CompressionMode.Compress, leaveOpen: true))
         using (TarWriter writer = new(gzip, leaveOpen: true))
         {
-            foreach ((string path, string content) in files)
+            foreach ((string path, string value, TarEntryType type) in entries)
             {
-                using MemoryStream data = new(Encoding.UTF8.GetBytes(content));
-                writer.WriteEntry(new PaxTarEntry(TarEntryType.RegularFile, path) { DataStream = data });
+                using MemoryStream data = new(Encoding.UTF8.GetBytes(value));
+                PaxTarEntry entry = new(type, path);
+                if (type == TarEntryType.RegularFile)
+                {
+                    entry.DataStream = data;
+                }
+                else
+                {
+                    entry.LinkName = value;
+                }
+                writer.WriteEntry(entry);
             }
         }
         return result.ToArray();

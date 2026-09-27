@@ -21,6 +21,8 @@ internal sealed record ImageAnalysisResult(
     public double Efficiency => FileBytes == 0 ? 1 : 1 - (double)HiddenBytes / FileBytes;
     public IReadOnlyDictionary<string, ScannedEntry> LiveEntries { get; init; } =
         new Dictionary<string, ScannedEntry>(StringComparer.Ordinal);
+    public IReadOnlyDictionary<string, ScannedEntry> LiveContents { get; init; } =
+        new Dictionary<string, ScannedEntry>(StringComparer.Ordinal);
     public IReadOnlyDictionary<string, int> LiveLayers { get; init; } =
         new Dictionary<string, int>(StringComparer.Ordinal);
     public IReadOnlyList<HiddenFile> HiddenFiles { get; init; } = [];
@@ -207,6 +209,8 @@ internal static class ImageAnalysis
         {
             LiveEntries = live.ToDictionary(pair => pair.Key, pair => pair.Value.Entry,
                 StringComparer.Ordinal),
+            LiveContents = live.Where(pair => pair.Value.Content is not null)
+                .ToDictionary(pair => pair.Key, pair => pair.Value.Content!.Entry, StringComparer.Ordinal),
             LiveLayers = live.ToDictionary(pair => pair.Key, pair => pair.Value.Layer,
                 StringComparer.Ordinal),
             HiddenFiles = hiddenFiles
