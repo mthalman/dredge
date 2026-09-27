@@ -242,9 +242,40 @@ internal static class InstalledPackageReader
 
     internal static InstalledPackage ParsePipMetadata(string content, string sourcePath)
     {
-        Dictionary<string, string> metadata = ParseParagraphs(content, $"pip metadata '{sourcePath}'")
-            .FirstOrDefault() ??
-            throw new InvalidDataException($"pip metadata '{sourcePath}' is empty.");
+        Dictionary<string, string> metadata = new(StringComparer.OrdinalIgnoreCase);
+        string? previous = null;
+        foreach (string raw in content.Split('\n'))
+        {
+            string line = raw.TrimEnd('\r');
+            if (line.Length == 0)
+            {
+                break;
+            }
+            if (char.IsWhiteSpace(line[0]))
+            {
+                if (previous is null)
+                {
+                    throw new InvalidDataException($"pip metadata '{sourcePath}' has a continuation without a header.");
+                }
+                if (metadata.ContainsKey(previous))
+                {
+                    metadata[previous] += "\n" + line[1..];
+                }
+                continue;
+            }
+            int separator = line.IndexOf(':');
+            if (separator <= 0)
+            {
+                throw new InvalidDataException($"pip metadata '{sourcePath}' has an invalid header.");
+            }
+            previous = line[..separator];
+            if ((previous.Equals("Name", StringComparison.OrdinalIgnoreCase) ||
+                previous.Equals("Version", StringComparison.OrdinalIgnoreCase)) &&
+                !metadata.TryAdd(previous, line[(separator + 1)..].Trim()))
+            {
+                throw new InvalidDataException($"pip metadata '{sourcePath}' has a duplicate '{previous}' header.");
+            }
+        }
         return new InstalledPackage(
             GetRequiredField(metadata, "Name", $"pip metadata '{sourcePath}'"),
             GetRequiredField(metadata, "Version", $"pip metadata '{sourcePath}'"));

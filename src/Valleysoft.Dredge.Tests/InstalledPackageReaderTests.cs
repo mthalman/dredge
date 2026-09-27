@@ -222,6 +222,9 @@ public class InstalledPackageReaderTests
 
     [Theory]
     [InlineData("")]
+    [InlineData("Name: example\nName: duplicate\nVersion: 1\n")]
+    [InlineData("Name: example\nVersion: 1\nVersion: 2\n")]
+    [InlineData(" continuation\nName: example\nVersion: 1\n")]
     [InlineData("Metadata-Version: 2.4\nVersion: 1.0\n")]
     [InlineData("Metadata-Version: 2.4\nName: example\n")]
     [InlineData("invalid\n")]
@@ -229,6 +232,19 @@ public class InstalledPackageReaderTests
     {
         Assert.Throws<InvalidDataException>(() =>
             InstalledPackageReader.ParsePipMetadata(content, "example.dist-info/METADATA"));
+    }
+
+    [Fact]
+    public void ParsePipMetadata_AllowsRepeatedHeadersAndIgnoresDescription()
+    {
+        string content = "Name: Requests\nVersion: 2.32.3\n" +
+            "Requires-Dist: charset_normalizer<4,>=2\n ; python_version > \"3\"\n" +
+            "Requires-Dist: idna<4,>=2.5\nClassifier: First\nClassifier: Second\n" +
+            "Project-URL: Documentation, https://example.test\nProject-URL: Source, https://example.test/source\n" +
+            "\nDescription: includes arbitrary text\nName: not-a-header\n";
+
+        Assert.Equal(new InstalledPackage("Requests", "2.32.3"),
+            InstalledPackageReader.ParsePipMetadata(content, "requests.dist-info/METADATA"));
     }
 
     [Theory]
