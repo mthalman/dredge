@@ -225,7 +225,7 @@ internal sealed class ImageFileSystem : IAsyncDisposable
                 blob = await store.OpenIndexedBlobAsync(client, imageName, index,
                     layer.Select(item => item.Entry.ContentEntryIndex), cancellationToken);
             }
-            catch (Exception exception) when (exception is IOException or InvalidDataException or UnauthorizedAccessException or RegistryException)
+            catch (Exception exception) when (exception is IOException or InvalidDataException or UnauthorizedAccessException or RegistryException or HttpRequestException)
             {
                 layerError = exception;
             }
@@ -246,7 +246,7 @@ internal sealed class ImageFileSystem : IAsyncDisposable
                             using MemoryStream output = new(bytes, writable: true);
                             await reader!.CopyToAsync(entry, output, cancellationToken);
                         }
-                        catch (Exception exception) when (exception is IOException or InvalidDataException)
+                        catch (Exception exception) when (exception is IOException or InvalidDataException or HttpRequestException)
                         {
                             layerError = exception;
                             bytes = null;
