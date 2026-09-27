@@ -1,3 +1,5 @@
+using System.Text;
+
 namespace Valleysoft.Dredge;
 
 // Finds the files that belong to an installed package, so compare can show
@@ -105,18 +107,11 @@ internal static class PackageFileLister
     internal static IReadOnlyList<string> ParsePipRecord(string content, string root)
     {
         List<string> files = [];
-        foreach (string raw in content.Split('\n'))
+        foreach (string path in ReadRecordPaths(content))
         {
-            string line = raw.TrimEnd('\r');
-            if (line.Length == 0)
-            {
-                continue;
-            }
-            string relative = line.StartsWith('"')
-                ? line[1..Math.Max(1, line.IndexOf('"', 1))]
-                : line.Split(',')[0];
-            List<string> parts = [.. root.Split('/', StringSplitOptions.RemoveEmptyEntries)];
-            foreach (string part in relative.Split('/'))
+            List<string> parts = path.StartsWith('/')
+                ? [] : [.. root.Split('/', StringSplitOptions.RemoveEmptyEntries)];
+            foreach (string part in path.Split('/'))
             {
                 if (part == "..")
                 {
@@ -133,6 +128,85 @@ internal static class PackageFileLister
             files.Add(string.Join('/', parts));
         }
         return files.Distinct(StringComparer.Ordinal).Order(StringComparer.Ordinal).ToArray();
+    }
+
+    private static IEnumerable<string> ReadRecordPaths(string content)
+    {
+        int position = 0;
+        while (position < content.Length)
+        {
+            List<string> fields = [];
+            bool moreFields;
+            do
+            {
+                StringBuilder field = new();
+                bool quoted = position < content.Length && content[position] == '"';
+                if (quoted)
+                {
+                    position++;
+                    bool closed = false;
+                    while (position < content.Length)
+                    {
+                        char value = content[position++];
+                        if (value != '"')
+                        {
+                            field.Append(value);
+                        }
+                        else if (position < content.Length && content[position] == '"')
+                        {
+                            field.Append('"');
+                            position++;
+                        }
+                        else
+                        {
+                            closed = true;
+                            break;
+                        }
+                    }
+                    if (!closed || (position < content.Length && content[position] is not (',' or '\r' or '\n')))
+                    {
+                        throw new InvalidDataException("Python RECORD contains a malformed quoted CSV field.");
+                    }
+                }
+                else
+                {
+                    while (position < content.Length && content[position] is not (',' or '\r' or '\n'))
+                    {
+                        char value = content[position++];
+                        if (value == '"')
+                        {
+                            throw new InvalidDataException("Python RECORD contains a quote in an unquoted CSV field.");
+                        }
+                        field.Append(value);
+                    }
+                }
+                fields.Add(field.ToString());
+                moreFields = position < content.Length && content[position] == ',';
+                if (moreFields)
+                {
+                    position++;
+                }
+            }
+            while (moreFields);
+
+            if (position < content.Length && content[position] == '\r')
+            {
+                position++;
+            }
+            if (position < content.Length && content[position] == '\n')
+            {
+                position++;
+            }
+            if (fields.Count == 1 && fields[0].Length == 0)
+            {
+                continue;
+            }
+            if (fields.Count != 3 || fields[0].Length == 0)
+            {
+                throw new InvalidDataException("Python RECORD requires three CSV fields and a nonempty path.");
+            }
+            yield return fields[0];
+        }
     }
 
     private static string NormalizePip(string name) =>

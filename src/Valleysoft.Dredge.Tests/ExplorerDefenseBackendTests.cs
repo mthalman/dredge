@@ -16,6 +16,63 @@ public sealed class ExplorerDefenseBackendTests : IAsyncDisposable
     private readonly List<LayerStore> stores = [];
     private static readonly ImageName Image = ImageName.Parse("registry.test/repo:tag");
 
+    [Fact]
+    public void PythonRecordPreservesCsvPathsAndResolvesAbsoluteAndRelativeNames()
+    {
+        string content =
+            "\"pkg/a,b.py\",sha256=hash,12\r\n" +
+            "\"pkg/a\"\"b.py\",,\n" +
+            "\"pkg/line\nbreak.py\",,\n" +
+            "\"pkg/windows\r\nbreak.py\",,\r\n" +
+            "/usr/bin/absolute,,\n" +
+            "../../../bin/tool,,\n" +
+            "./pkg/normal.py,,\n" +
+            "pkg/normal.py,,";
+
+        Assert.Equal(new[]
+        {
+            "opt/bin/tool",
+            "opt/lib/python/site-packages/pkg/a\"b.py",
+            "opt/lib/python/site-packages/pkg/a,b.py",
+            "opt/lib/python/site-packages/pkg/line\nbreak.py",
+            "opt/lib/python/site-packages/pkg/normal.py",
+            "opt/lib/python/site-packages/pkg/windows\r\nbreak.py",
+            "usr/bin/absolute"
+        }.Order(StringComparer.Ordinal), PackageFileLister.ParsePipRecord(content, "opt/lib/python/site-packages"));
+    }
+
+    [Theory]
+    [InlineData("\"unterminated,,")]
+    [InlineData("\"closed\"junk,,")]
+    [InlineData("unquoted\"quote,,")]
+    [InlineData("missing-columns")]
+    [InlineData("extra,,,")]
+    [InlineData(",,")]
+    [InlineData("valid,,\n\"broken,,\nfabricated,,")]
+    public void MalformedPythonRecordCannotFabricateOwnership(string content)
+    {
+        Assert.Throws<InvalidDataException>(() => PackageFileLister.ParsePipRecord(content, "site-packages"));
+    }
+
+    [Fact]
+    public async Task PythonOwnershipUnionsCompleteCsvRecordsAcrossInstallations()
+    {
+        Dictionary<string, string> records = new()
+        {
+            ["usr/lib/python/site-packages/example-1.dist-info/RECORD"] = "\"pkg/a\"\"b.py\",,\n/usr/bin/example,,",
+            ["opt/venv/lib/python/site-packages/example-2.dist-info/RECORD"] = "\"pkg/a,b.py\",,\n/usr/bin/example,,"
+        };
+        IReadOnlyList<string> paths = await PackageFileLister.ListAsync(InstalledPackageEcosystem.Pip,
+            "example", records.Keys, (path, _) => Task.FromResult<string?>(records[path]),
+            TestContext.Current.CancellationToken);
+        Assert.Equal(new[]
+        {
+            "opt/venv/lib/python/site-packages/pkg/a,b.py",
+            "usr/bin/example",
+            "usr/lib/python/site-packages/pkg/a\"b.py"
+        }, paths);
+    }
+
     [Theory]
     [InlineData(false)]
     [InlineData(true)]
