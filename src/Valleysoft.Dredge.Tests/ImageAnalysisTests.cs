@@ -61,6 +61,59 @@ public class ImageAnalysisTests
         Assert.Empty(result.Layers);
     }
 
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void SurvivingHardLinksKeepOriginalContentLive(bool replace)
+    {
+        ScannedEntry link = File("survivor", 0, "") with
+        {
+            Type = ImageFileType.HardLink, LinkTarget = "original/file"
+        };
+        ImageAnalysisResult result = ImageAnalysis.Analyze(
+        [
+            Layer([File("original/file", 7, "old"), link,
+                link with { Path = "chain", LinkTarget = "survivor" }]),
+            replace ? Layer([File("original/file", 3, "new")]) : Layer([], whiteouts: ["original"]),
+            Layer([], whiteouts: ["survivor"])
+        ]);
+        Assert.Equal(0, result.HiddenBytes);
+        Assert.Empty(result.HiddenFiles);
+        Assert.Equal(1, result.Efficiency);
+    }
+
+    [Fact]
+    public void LastHardLinkRemovalChargesOriginalContentOnce()
+    {
+        ScannedEntry link = File("survivor", 0, "") with
+        {
+            Type = ImageFileType.HardLink, LinkTarget = "original/file"
+        };
+        ImageAnalysisResult result = ImageAnalysis.Analyze(
+        [
+            Layer([File("original/file", 7, "old")]),
+            Layer([link], whiteouts: []),
+            Layer([], whiteouts: ["original"]),
+            Layer([], whiteouts: ["survivor"])
+        ]);
+        Assert.Equal(7, result.HiddenBytes);
+        Assert.Equal(new HiddenFile("original/file", 0, 3, LayerChangeKind.Deleted, 7),
+            Assert.Single(result.HiddenFiles));
+    }
+
+    [Fact]
+    public void HardLinkThroughSymbolicParentKeepsContentLive()
+    {
+        ImageAnalysisResult result = ImageAnalysis.Analyze(
+        [
+            Layer([File("original/file", 7, "old"),
+                File("alias", 0, "") with { Type = ImageFileType.SymbolicLink, LinkTarget = "original" },
+                File("survivor", 0, "") with { Type = ImageFileType.HardLink, LinkTarget = "alias/file" }]),
+            Layer([], whiteouts: ["original"])
+        ]);
+        Assert.Equal(0, result.HiddenBytes);
+    }
+
     [Fact]
     public void PotentialSavingsCountOnlyLiveFilesAndStayOutsideEfficiency()
     {

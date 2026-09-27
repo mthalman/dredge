@@ -10,8 +10,7 @@ internal sealed record LayerFileChange(
 internal sealed record ImageLayerAnalysis(
     int Index, long FileBytes, long HiddenBytes, IReadOnlyList<LayerFileChange> Changes);
 
-// A regular file shipped by Layer whose bytes are hidden because HiddenBy
-// replaced (Modified or Identical) or deleted it.
+// Attribution stays with the shipped content even when a hard link is its last surviving name.
 internal sealed record HiddenFile(
     string Path, int Layer, int HiddenBy, LayerChangeKind Reason, long Size);
 
@@ -92,7 +91,14 @@ internal sealed record ImagePotentialSaving(PotentialSavingKind Kind, long Bytes
 
 internal static class ImageAnalysis
 {
-    private sealed record LiveEntry(ScannedEntry Entry, int Layer);
+    private sealed record LiveEntry(ScannedEntry Entry, int Layer, FileContent? Content);
+
+    private sealed class FileContent(ScannedEntry entry, int layer)
+    {
+        public ScannedEntry Entry { get; } = entry;
+        public int Layer { get; } = layer;
+        public int References { get; set; }
+    }
 
     public static ImageAnalysisResult Analyze(IReadOnlyList<LayerChanges> layers)
     {
@@ -111,7 +117,7 @@ internal static class ImageAnalysis
 
             void Remove(string path, LiveEntry old)
             {
-                Charge(path, old, LayerChangeKind.Deleted);
+                Charge(old, LayerChangeKind.Deleted);
                 changes.Add(new(path, index, LayerChangeKind.Deleted, old.Entry.Type, old.Entry.Size, old.Entry));
                 live.Remove(path);
                 paths.Remove(path);
@@ -129,12 +135,12 @@ internal static class ImageAnalysis
                 }
             }
 
-            void Charge(string path, LiveEntry old, LayerChangeKind reason)
+            void Charge(LiveEntry old, LayerChangeKind reason)
             {
-                if (old.Entry.Type == ImageFileType.File)
+                if (old.Content is FileContent content && --content.References == 0)
                 {
-                    hidden[old.Layer] += old.Entry.Size;
-                    hiddenFiles.Add(new(path, old.Layer, index, reason, old.Entry.Size));
+                    hidden[content.Layer] += content.Entry.Size;
+                    hiddenFiles.Add(new(content.Entry.Path, content.Layer, index, reason, content.Entry.Size));
                 }
             }
 
@@ -165,19 +171,27 @@ internal static class ImageAnalysis
                 }
 
                 LayerChangeKind kind = LayerChangeKind.Added;
+                FileContent? content = entry.Type == ImageFileType.File
+                    ? new(entry, index)
+                    : entry.Type == ImageFileType.HardLink ? GetHardLinkContent(entry, live) : null;
+                if (content is not null)
+                {
+                    content.References++;
+                }
                 if (live.TryGetValue(entry.Path, out LiveEntry? previous))
                 {
                     kind = Same(previous.Entry, entry)
                         ? LayerChangeKind.Identical : LayerChangeKind.Modified;
-                    Charge(entry.Path, previous, kind);
+                    Charge(previous, kind);
                 }
-                live[entry.Path] = new(entry, index);
+                live[entry.Path] = new(entry, index, content);
                 paths.Add(entry.Path);
                 changes.Add(new(entry.Path, index, kind, entry.Type, entry.Size, entry));
                 if (entry.Type == ImageFileType.File)
                 {
                     layerBytes += entry.Size;
                 }
+
             }
 
             total += layerBytes;
@@ -194,6 +208,38 @@ internal static class ImageAnalysis
             HiddenFiles = hiddenFiles
         };
     }
+    private static FileContent? GetHardLinkContent(ScannedEntry entry, IReadOnlyDictionary<string, LiveEntry> live)
+    {
+        string path = ImagePath.ResolveLinkTarget("", entry.LinkTarget ??
+            throw new InvalidDataException($"Hard link '/{entry.Path}' has no target."), "", entry.Path);
+        for (int hop = 0; hop < 40; hop++)
+        {
+            string[] parts = path.Split('/');
+            bool followed = false;
+            for (int i = 0; i < parts.Length - 1; i++)
+            {
+                string parent = string.Join('/', parts.Take(i + 1));
+                if (live.TryGetValue(parent, out LiveEntry? link) && link.Entry.Type == ImageFileType.SymbolicLink)
+                {
+                    string target = link.Entry.LinkTarget ??
+                        throw new InvalidDataException($"Link '/{parent}' has no target.");
+                    path = ImagePath.ResolveLinkTarget(
+                        ImagePath.IsAbsolute(target) ? "" : ImagePath.GetDirectoryName(parent),
+                        target, string.Join('/', parts.Skip(i + 1)), parent);
+                    followed = true;
+                    break;
+                }
+            }
+            if (!followed)
+            {
+                return live.TryGetValue(path, out LiveEntry? target)
+                    ? target.Content
+                    : throw new InvalidDataException($"Hard link '/{entry.Path}' targets missing path '/{path}'.");
+            }
+        }
+        throw new InvalidDataException($"Link resolution for '/{entry.Path}' exceeded 40 hops.");
+    }
+
     private static bool Same(ScannedEntry a, ScannedEntry b) =>
         a.Type == b.Type &&
         a.Mode == b.Mode &&
