@@ -7,6 +7,109 @@ namespace Valleysoft.Dredge.Tests;
 public sealed class ExplorerDefenseUiTests
 {
     [Fact]
+    public void NewerDiffWinsWhenEarlierRequestFinishesLast()
+    {
+        ExplorerImage image = ExplorerSamples.Image();
+        CompareState compare = new(ExplorerSession.Compare(image.Session!, ExplorerSamples.Target()), "before", "after");
+        compare.Expanded.UnionWith(["file:app", "file:app/dist"]);
+        TaskCompletionSource<TextDiffContent> first = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        TaskCompletionSource<TextDiffContent> second = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        System.Collections.Concurrent.ConcurrentDictionary<string, CancellationToken> tokens = new();
+        using ExplorerUiHarness ui = ExplorerWindowTests.Open(image, new ExplorerState { Compare = compare },
+            session => new FakeExplorerHost
+            {
+                Baseline = session,
+                DiffWork = (_, path, token) =>
+                {
+                    tokens[path] = token;
+                    return path == "app/package.json" ? first.Task : second.Task;
+                }
+            }, out _);
+        StartDiff(ui, "app/package.json");
+        Task firstWork = ui.Window.DiffTask;
+        ui.Until(() => tokens.Count == 1, "first diff request");
+        StartDiff(ui, "app/dist/main.js");
+        Task secondWork = ui.Window.DiffTask;
+        ui.Until(() => tokens.Count == 2, "second diff request");
+        second.SetResult(new("app/dist/main.js", [], null));
+        Drain(ui, secondWork);
+        Assert.Equal("app/dist/main.js", compare.Diff?.Path);
+        first.SetResult(new("app/package.json", [], null));
+        Drain(ui, firstWork);
+        Assert.Equal("app/dist/main.js", compare.Diff?.Path);
+        Assert.True(tokens["app/package.json"].IsCancellationRequested);
+    }
+
+    [Fact]
+    public void BackCancelsPendingDiffWithoutLeavingComparison()
+    {
+        ExplorerImage image = ExplorerSamples.Image();
+        CompareState compare = new(ExplorerSession.Compare(image.Session!, ExplorerSamples.Target()), "before", "after");
+        compare.Expanded.Add("file:app");
+        TaskCompletionSource<TextDiffContent> pending = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        using ExplorerUiHarness ui = ExplorerWindowTests.Open(image, new ExplorerState { Compare = compare },
+            session => new FakeExplorerHost { Baseline = session, DiffWork = (_, _, _) => pending.Task }, out FakeExplorerHost host);
+        StartDiff(ui, "app/package.json");
+        Task work = ui.Window.DiffTask;
+        ui.Until(() => host.Diffed.Count == 1, "pending diff");
+        ui.Press(Key.Esc);
+        pending.SetResult(new("app/package.json", [], null));
+        Drain(ui, work);
+        Assert.Same(compare, ui.State.Compare);
+        Assert.Null(compare.Diff);
+    }
+
+    [Theory]
+    [InlineData("back")]
+    [InlineData("move")]
+    [InlineData("swap")]
+    [InlineData("search")]
+    public void NavigationRejectsAlreadyQueuedDiffCallbacks(string navigation)
+    {
+        ExplorerImage image = ExplorerSamples.Image();
+        CompareState compare = new(ExplorerSession.Compare(image.Session!, ExplorerSamples.Target()), "before", "after");
+        compare.Expanded.Add("file:app");
+        TaskCompletionSource<TextDiffContent> pending = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        CancellationToken token = default;
+        using ExplorerUiHarness ui = ExplorerWindowTests.Open(image, new ExplorerState { Compare = compare },
+            session => new FakeExplorerHost
+            {
+                Baseline = session,
+                DiffWork = (_, _, ct) => { token = ct; return pending.Task; }
+            }, out FakeExplorerHost host);
+        StartDiff(ui, "app/package.json");
+        ui.Until(() => host.Diffed.Count == 1 && token.CanBeCanceled, "pending diff");
+        pending.SetResult(new("app/package.json", [], null));
+        // Keep the UI callback queued until navigation has invalidated its request.
+        Assert.True(SpinWait.SpinUntil(() => ui.Window.DiffTask.IsCompleted, TimeSpan.FromSeconds(10)));
+        ui.Window.Apply(navigation switch
+        {
+            "back" => new Back(),
+            "move" => new Move(1),
+            "swap" => new SwapSides(),
+            _ => new ShowView(RightView.Search),
+        });
+        ui.Pump();
+        Assert.True(token.IsCancellationRequested);
+        Assert.Null(compare.Diff);
+    }
+
+    private static void StartDiff(ExplorerUiHarness ui, string path)
+    {
+        List<CompareRow> rows = new CompareView(ui.Window.Presenter, ui.State.Compare!).Rows();
+        int cursor = rows.FindIndex(row => row.Path == path);
+        Assert.True(cursor >= 0);
+        ui.Window.Apply(new SetCursor(cursor));
+        ui.Window.Apply(new Activate());
+    }
+
+    private static void Drain(ExplorerUiHarness ui, Task work)
+    {
+        ui.Wait(async () => { await work; return true; }, "queued diff completion");
+        ui.Pump();
+    }
+
+    [Fact]
     public void CopiedFileCommandsUseResolvedManifestIdentity()
     {
         ExplorerImage image = ExplorerSamples.Image(digest: "sha256:resolvedarmv7");

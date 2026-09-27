@@ -151,6 +151,7 @@ internal sealed class FakeExplorerHost : IExplorerHost
     public Func<string, ExplorerSession>? Target { get; init; }
     public Exception? CompareError { get; init; }
     public Func<Task<ExplorerComparison>>? CompareWork { get; init; }
+    public Func<ExplorerComparison, string, CancellationToken, Task<TextDiffContent>>? DiffWork { get; init; }
     public Exception? TagsError { get; init; }
 
     public List<int> Prioritized { get; } = [];
@@ -207,6 +208,10 @@ internal sealed class FakeExplorerHost : IExplorerHost
     public Task<TextDiffContent> DiffAsync(ExplorerComparison comparison, string path, CancellationToken cancellationToken)
     {
         Diffed.Add(path);
+        if (DiffWork is not null)
+        {
+            return DiffWork(comparison, path, cancellationToken);
+        }
         return Task.FromResult(new TextDiffContent(path, TextDiff.Diff(["a", "old"], ["a", "new"]), null));
     }
 

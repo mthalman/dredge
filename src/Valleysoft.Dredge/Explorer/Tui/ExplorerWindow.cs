@@ -40,6 +40,8 @@ internal sealed class ExplorerWindow : Window
     private CancellationTokenSource? previewLoad;
     private int compareGeneration;
     private CancellationTokenSource? compareLoad;
+    private int diffGeneration;
+    private CancellationTokenSource? diffLoad;
     private (RightView View, FocusPane Focus, bool CompareLayers)? helpReturn;
     private (RightView View, FocusPane Focus, bool CompareLayers)? commandReturn;
 
@@ -123,6 +125,7 @@ internal sealed class ExplorerWindow : Window
     public TextField Search => search;
     public TextField ExtractField => extractField;
     internal TextField CommandText => commandText;
+    internal Task DiffTask { get; private set; } = Task.CompletedTask;
     public ExplorerExit Exit { get; private set; } = new(ExplorerExitKind.Quit);
     internal void ViewerFailed(string error) => Notice(error, error: true);
     private bool Comparing => s.Compare is not null;
@@ -307,6 +310,7 @@ internal sealed class ExplorerWindow : Window
             windowDisposed = true;
             lifetimeRegistration.Dispose();
             CancelComparison();
+            CancelDiff();
         }
         if (disposing && watched is not null)
         {
@@ -634,6 +638,16 @@ internal sealed class ExplorerWindow : Window
 
     public void Apply(Cmd cmd)
     {
+        if (diffLoad is not null && cmd is not (Redraw or Notify or PanText or CopyCommand))
+        {
+            CancelDiff();
+            if (cmd is Back)
+            {
+                s.Notice = null;
+                Refresh();
+                return;
+            }
+        }
         if (cmd is not (Notify or Redraw))
         {
             s.Notice = null;
@@ -995,26 +1009,31 @@ internal sealed class ExplorerWindow : Window
 
     // ───────────────────────────── actions ─────────────────────────────
 
-    private void RunAsync<T>(Func<CancellationToken, Task<T>> work, Action<T> done, Action<Exception>? failed = null,
+    private Task RunAsync<T>(Func<CancellationToken, Task<T>> work, Action<T> done, Action<Exception>? failed = null,
         CancellationToken token = default)
     {
         IApplication? app = App;
         CancellationToken ct = token == default ? lifetime : token;
-        Task.Run(() => work(ct), ct).ContinueWith(task =>
+        return Task.Run(() => work(ct), ct).ContinueWith(task =>
         {
+            Exception? error = task.Exception?.GetBaseException();
             if (ct.IsCancellationRequested || app is null)
             {
                 return;
             }
             app.Invoke(() =>
             {
+                if (ct.IsCancellationRequested)
+                {
+                    return;
+                }
                 if (task.IsCompletedSuccessfully)
                 {
                     done(task.Result);
                 }
                 else
                 {
-                    Exception error = task.Exception?.GetBaseException() ?? new OperationCanceledException();
+                    error ??= new OperationCanceledException();
                     if (failed is not null)
                     {
                         failed(error);
@@ -1204,6 +1223,7 @@ internal sealed class ExplorerWindow : Window
 
     public void StartCompare(string tag)
     {
+        CancelDiff();
         if (!img.Complete)
         {
             Notice("Compare works once every layer is indexed.");
@@ -1272,6 +1292,19 @@ internal sealed class ExplorerWindow : Window
         compareGeneration++;
         compareLoad?.Cancel();
         CompleteComparison();
+    }
+
+    private void CancelDiff()
+    {
+        diffGeneration++;
+        diffLoad?.Cancel();
+        CompleteDiff();
+    }
+
+    private void CompleteDiff()
+    {
+        diffLoad?.Dispose();
+        diffLoad = null;
     }
 
     // ───────────────────────────── compare ─────────────────────────────
@@ -1427,17 +1460,27 @@ internal sealed class ExplorerWindow : Window
             case Activate when row.Kind == CompareRowKind.File && row.Path is string path:
                 Notice($"Diffing /{path}…");
                 ExplorerComparison comparison = c.Comparison;
-                RunAsync(ct => host.DiffAsync(comparison, path, ct), diff =>
+                diffLoad = CancellationTokenSource.CreateLinkedTokenSource(lifetime);
+                int generation = ++diffGeneration;
+                DiffTask = RunAsync(ct => host.DiffAsync(comparison, path, ct), diff =>
                 {
-                    if (s.Compare?.Comparison == comparison)
+                    if (diffGeneration == generation && s.Compare == c && c.Comparison == comparison)
                     {
-                        s.Compare.Diff = diff;
-                        s.Compare.DiffScroll = 0;
-                        s.Compare.DiffColumn = 0;
+                        CompleteDiff();
+                        c.Diff = diff;
+                        c.DiffScroll = 0;
+                        c.DiffColumn = 0;
                         s.Notice = null;
                         right.SetFocus();
                     }
-                });
+                }, error =>
+                {
+                    if (diffGeneration == generation && s.Compare == c && c.Comparison == comparison)
+                    {
+                        CompleteDiff();
+                        Notice(error.Message, error: true);
+                    }
+                }, diffLoad.Token);
                 return true;
             case Activate when row.Kind == CompareRowKind.Package && row.Package is ExplorerPackageDifference package:
                 PackageFilesContent pending = new(package, null, "Reading package files…", 0);
