@@ -106,7 +106,7 @@ internal sealed class CompareView
         }
         Line right = new Line()
             .Add($"{shared} of {c.LayerCount}", Theme.Foam).Add(" layers shared", Theme.Silt).Add("   ")
-            .Add(Signed(delta), delta > 0 ? Theme.Ochre : delta < 0 ? Theme.Kelp : Theme.Silt).Add(" on disk", Theme.Silt).Add("   ")
+            .Add(Signed(delta), delta > 0 ? Theme.Ochre : delta < 0 ? Theme.Kelp : Theme.Silt).Add(" file payload", Theme.Silt).Add("   ")
             .Add(Fmt.SizeShort(c.Comparison.AdditionalDownloadBytes), Theme.Foam).Add(" to download ", Theme.Silt);
         title.PadRight(width, right);
         int labelWidth = Math.Min(16, Math.Max(c.BaselineLabel.Length, c.TargetLabel.Length)) + 3;

@@ -44,6 +44,21 @@ public sealed class ExplorerDefenseUiTests
     }
 
     [Fact]
+    public void PayloadAccountingIsNotLabeledAsDiskAllocation()
+    {
+        ExplorerImage image = ExplorerSamples.Image();
+        using ExplorerUiHarness ui = ExplorerWindowTests.Open(image, new ExplorerState { Layer = 2 },
+            session => new FakeExplorerHost { Baseline = session }, out _);
+        Assert.Contains("file payload", ui.Screen());
+        Assert.DoesNotContain("on disk", ui.Screen());
+        CompareState compare = new(ExplorerSession.Compare(image.Session!, ExplorerSamples.Target()), "before", "after");
+        string header = string.Join("\n", new CompareView(ui.Window.Presenter, compare).Header());
+        Assert.Contains("file payload", header);
+        Assert.Contains("to download", header);
+        Assert.DoesNotContain("on disk", header);
+    }
+
+    [Fact]
     public void EmptyImageAuxiliaryKeysAreDispatched()
     {
         ExplorerImage image = ExplorerSamples.Custom([]);

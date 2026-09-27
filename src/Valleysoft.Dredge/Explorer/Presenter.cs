@@ -170,7 +170,7 @@ internal sealed partial class ExplorerPresenter
         }
         else
         {
-            right.Add(Fmt.SizeShort(img.TotalSize), Theme.Foam).Add(" on disk", Theme.Silt).Add("   ");
+            right.Add(Fmt.SizeShort(img.TotalSize), Theme.Foam).Add(" file payload", Theme.Silt).Add("   ");
             if (!Narrow)
             {
                 right.Add(Fmt.SizeShort(img.TotalDownload), Theme.Foam).Add(" download", Theme.Silt).Add("   ");
@@ -682,7 +682,7 @@ internal sealed partial class ExplorerPresenter
         }
 
         Line sizes = new Line()
-            .Add(Fmt.Size(img.LayerSize(s.Layer)), Theme.Foam).Add(" on disk", Theme.Silt).Add("   ")
+            .Add(Fmt.Size(img.LayerSize(s.Layer)), Theme.Foam).Add(" file payload", Theme.Silt).Add("   ")
             .Add(Fmt.Size(row.Download), Theme.Foam).Add(" download", Theme.Silt);
         if (row.Created.Length > 0)
         {

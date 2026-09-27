@@ -64,7 +64,7 @@ internal sealed partial class ExplorerPresenter
         int eff = (int)Math.Floor(img.Efficiency * 100);
         items.Add(new Line()
             .Add(Fmt.Size(total), Theme.S(Theme.Garnet, null, Deco.Bold))
-            .Add($" hidden bytes · {eff}% efficient", Theme.Foam));
+            .Add($" hidden file payload · {eff}% efficient", Theme.Foam));
         items.Add(img.PotentialSavings > 0
             ? new Line().Add(Fmt.Size(img.PotentialSavings), Theme.Ochre)
                 .Add(" more potential savings · verify your app does not need these files", Theme.Silt)
@@ -75,7 +75,7 @@ internal sealed partial class ExplorerPresenter
         var categories = img.Findings.Where(f => f.Certain && !f.FromBase)
             .GroupBy(f => f.Category).Select(g => (g.Key, Bytes: g.Sum(f => f.Bytes))).ToList();
         long fromBase = img.Findings.Where(f => f.FromBase).Sum(f => f.Bytes) + img.Insights.BaseChurnBytes;
-        List<(string, long, Rgb)> parts = [("Other shipped bytes", Math.Max(0, img.TotalSize - total), Theme.Sand1)];
+        List<(string, long, Rgb)> parts = [("Other file payload", Math.Max(0, img.TotalSize - total), Theme.Sand1)];
         parts.AddRange(categories.Select((c, i) => (c.Key, c.Bytes, palette[i % palette.Length])));
         if (fromBase > 0)
         {
