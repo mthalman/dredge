@@ -76,6 +76,7 @@ internal sealed class CompareView
     private readonly int width;
     private readonly int height;
     private List<CompareRow>? rows;
+    private List<string>? warnings;
 
     public CompareView(ExplorerPresenter presenter, CompareState state)
     {
@@ -90,6 +91,12 @@ internal sealed class CompareView
     private int RightInnerHeight => presenter.RightInnerHeight;
     private int LeftInner => Narrow ? width - 4 : ExplorerPresenter.LeftWidth - 4;
     public int DiffRows => Math.Max(1, RightInnerHeight - 5);
+
+    public IReadOnlyList<string> Warnings() => warnings ??=
+    [
+        .. c.Comparison.Baseline.Packages.Diagnostics.Select(d => $"Baseline /{d.Path}: {d.Message}"),
+        .. c.Comparison.Target.Packages.Diagnostics.Select(d => $"Target /{d.Path}: {d.Message}"),
+    ];
 
     public List<Line> Header()
     {
@@ -421,7 +428,9 @@ internal sealed class CompareView
 
         List<Line> lines = [c.PackageFiles is { } package
                 ? Line.Of(package.Message ?? $"{Fmt.Count(package.Total, "file")}, {Fmt.N(package.Files?.Count ?? 0)} changed", Theme.Silt)
-                : Chips(w), c.SearchQuery.Length == 0 ? Line.Blank : Line.Of($"Filter: {c.SearchQuery} · {list.Count} matches", Theme.Silt),
+                : Chips(w), Warnings().Count > 0
+                ? Line.Of($"{Fmt.Count(Warnings().Count, "metadata warning")} - Alt+W for full details", Theme.Ochre)
+                : c.SearchQuery.Length == 0 ? Line.Blank : Line.Of($"Filter: {c.SearchQuery} · {list.Count} matches", Theme.Silt),
             new Line().Add("   ").Add(Fmt.Fit(c.BaselineLabel, 8).PadLeft(8), Theme.Silt).Add("    ").Add(Fmt.Fit(c.TargetLabel, 8).PadLeft(8), Theme.Silt).Add("  ")
                 .Add("change".PadLeft(9), Theme.Silt).Add("  ").Add("name".PadRight(28), Theme.Silt).Add("version", Theme.Silt).Truncate(w)];
         PaneContent pane = ExplorerPresenter.Pane(lines, c.PackageFiles?.Package.Name ?? "Differences",
@@ -644,6 +653,7 @@ internal sealed class CompareView
         }
         return
         [
+            .. Warnings().Count > 0 ? new Hint[] { new("Alt+W", "Warnings", new ShowView(RightView.Warning)) } : [],
             new("Tab", c.FocusLayers ? "Differences" : "Layers", new FocusOn(c.FocusLayers ? FocusPane.Right : FocusPane.Layers)), new("↑↓", "Move", ShowInFooter: false),
             new($"{k.Label(KeyAction.PreviousLayer)} {k.Label(KeyAction.NextLayer)}", "Next difference"),
             new(k.Label(KeyAction.SwapSides), "Swap sides", new SwapSides()),

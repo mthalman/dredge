@@ -6,6 +6,31 @@ namespace Valleysoft.Dredge.Tests;
 [Collection(ExplorerUiCollection.Name)]
 public sealed class ExplorerDefenseUiTests
 {
+    [Fact]
+    public void PackageMetadataWarningsRemainAvailableAfterNavigation()
+    {
+        ExplorerImage image = ExplorerSamples.Image();
+        string message = string.Concat(Enumerable.Repeat("Skipped unreadable manifest; ", 100)) + "DIAGNOSTIC-END";
+        ExplorerSession baseline = ExplorerSamples.Session(ExplorerSamples.Digests, ExplorerSamples.Layers(), [],
+            diagnostics: [new("app/node_modules/pkg/package.json", message)]);
+        CompareState compare = new(ExplorerSession.Compare(baseline, ExplorerSamples.Target()), "before", "after");
+        using ExplorerUiHarness ui = ExplorerWindowTests.Open(image, new ExplorerState { Compare = compare },
+            session => new FakeExplorerHost { Baseline = session }, out _, width: 80, height: 24);
+        Assert.True(ui.Shows("1 metadata warning"), ui.Screen());
+        ui.Press(Key.CursorDown);
+        Assert.True(ui.Shows("1 metadata warning"), ui.Screen());
+        int cursor = compare.Cursor;
+        ui.Press(new Key('w').WithAlt);
+        Assert.Equal(RightView.Warning, ui.State.View);
+        Assert.Contains("Baseline /app/node_modules/pkg/package.json: " + message, ui.State.WarningText);
+        ui.Press(Key.End);
+        Assert.True(ui.Shows("DIAGNOSTIC-END"), ui.Screen());
+        ui.Press(Key.Esc);
+        Assert.Same(compare, ui.State.Compare);
+        Assert.Equal(cursor, compare.Cursor);
+        Assert.True(ui.Shows("1 metadata warning"), ui.Screen());
+    }
+
     [Theory]
     [InlineData(false, false)]
     [InlineData(false, true)]

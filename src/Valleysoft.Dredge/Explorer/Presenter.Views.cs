@@ -180,10 +180,10 @@ internal sealed partial class ExplorerPresenter
         return pane;
     }
 
-    internal List<Line> WarningLines()
+    internal List<Line> WarningLines(ExplorerState? state = null)
     {
         List<Line> lines = [];
-        foreach (string paragraph in (img.BaseWarning ?? "").Replace("\r\n", "\n", StringComparison.Ordinal).Split('\n'))
+        foreach (string paragraph in (state?.WarningText ?? img.BaseWarning ?? "").Replace("\r\n", "\n", StringComparison.Ordinal).Split('\n'))
         {
             Line line = new();
             System.Globalization.TextElementEnumerator elements = System.Globalization.StringInfo.GetTextElementEnumerator(paragraph);
@@ -204,10 +204,10 @@ internal sealed partial class ExplorerPresenter
 
     private PaneContent WarningPane(ExplorerState s)
     {
-        List<Line> lines = WarningLines();
+        List<Line> lines = WarningLines(s);
         s.WarningScroll = Math.Clamp(s.WarningScroll, 0, Math.Max(0, lines.Count - RightInnerHeight));
         return Pane(lines.Skip(s.WarningScroll).Take(RightInnerHeight).ToList(),
-            "Base verification warning", true, "Complete details - Esc returns to insights");
+            s.WarningTitle ?? "Base verification warning", true, "Complete details - Esc returns");
     }
 
     // ───────────────────────────── inspector ─────────────────────────────

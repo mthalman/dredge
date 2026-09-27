@@ -92,7 +92,8 @@ internal static class ExplorerSamples
         ], new() { ["left-pad"] = "1.1.0" }, reference: reference);
 
     public static ExplorerSession Session(string[] digests, IReadOnlyList<LayerChanges> layers, Dictionary<string, string> npm,
-        bool npmAvailable = true, string architecture = "amd64", string reference = Reference)
+        bool npmAvailable = true, string architecture = "amd64", string reference = Reference,
+        IReadOnlyList<InstalledPackageDiagnostic>? diagnostics = null)
     {
         ImageAnalysisResult analysis = ImageAnalysis.Analyze(layers);
         OciImageManifest manifest = new()
@@ -124,7 +125,7 @@ internal static class ExplorerSamples
                 LinkTarget = entry.LinkTarget,
                 IntroducedLayer = new(analysis.LiveLayers[entry.Path], digests[analysis.LiveLayers[entry.Path]]),
             }).ToArray(),
-            Packages = new InstalledPackageMetadata(ecosystems),
+            Packages = new InstalledPackageMetadata(ecosystems) { Diagnostics = diagnostics ?? [] },
             BaseLayerCount = 1,
         };
     }

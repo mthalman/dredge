@@ -46,6 +46,7 @@ internal sealed class ExplorerWindow : Window
     private CancellationTokenSource? diffLoad;
     private (RightView View, FocusPane Focus, bool CompareLayers)? helpReturn;
     private (RightView View, FocusPane Focus, bool CompareLayers)? commandReturn;
+    private (RightView View, FocusPane Focus, bool CompareLayers)? warningReturn;
 
     public ExplorerWindow(ExplorerImage img, ExplorerState state, IExplorerHost host, CancellationToken lifetime,
         Action<string>? openWindowedViewer = null)
@@ -72,7 +73,7 @@ internal sealed class ExplorerWindow : Window
         };
         layers = new PaneView(() => Comparing ? Compare.Layers() : ex.LayersPane(s), focusable: true) { KeepsFocusAway = Typing, BufferIntact = BufferIntact };
         details = new PaneView(() => Comparing ? Compare.Details() : ex.DetailsPane(s), focusable: false) { BufferIntact = BufferIntact };
-        right = new PaneView(() => Comparing && s.View is not (RightView.Keys or RightView.Command) ? Compare.Diff() : ex.RightPane(s), focusable: true) { ActivateOnDoubleClick = true, KeepsFocusAway = Typing, BufferIntact = BufferIntact };
+        right = new PaneView(() => Comparing && s.View is not (RightView.Keys or RightView.Command or RightView.Warning) ? Compare.Diff() : ex.RightPane(s), focusable: true) { ActivateOnDoubleClick = true, KeepsFocusAway = Typing, BufferIntact = BufferIntact };
         header.Command += Apply;
         layers.Command += Apply;
         details.Command += Apply;
@@ -138,7 +139,7 @@ internal sealed class ExplorerWindow : Window
     private List<Line> HeaderLines() =>
         ex.TooSmall ? ex.TooSmallMessage() : Comparing ? Compare.Header() : ex.Header(s);
 
-    private bool Searching => Comparing ? s.Compare!.Searching && s.View != RightView.Keys : s.View == RightView.Search;
+    private bool Searching => Comparing ? s.Compare!.Searching && s.View is not (RightView.Keys or RightView.Warning) : s.View == RightView.Search;
     private bool Typing() => pendingExtract is not null || Searching;
 
     // Puts Terminal.Gui focus where the state says it is.
@@ -455,7 +456,7 @@ internal sealed class ExplorerWindow : Window
 
     private List<Hint> ContextHints()
     {
-        List<Hint> hints = Comparing && s.View is not (RightView.Keys or RightView.Command) ? Compare.Hints() : ex.Hints(s);
+        List<Hint> hints = Comparing && s.View is not (RightView.Keys or RightView.Command or RightView.Warning) ? Compare.Hints() : ex.Hints(s);
         if (ex.FullWidthContent)
         {
             hints = hints.Where(h => h.Key != "Tab").ToList();
@@ -571,7 +572,7 @@ internal sealed class ExplorerWindow : Window
             _ => null,
         };
         if (key.IsAlt && !key.IsCtrl && key.NoAlt.KeyCode == KeyCode.W &&
-            s.View == RightView.Insights && img.BaseWarning is not null)
+            (s.View == RightView.Insights && img.BaseWarning is not null || Comparing && Compare.Warnings().Count > 0))
         {
             cmd = new ShowView(RightView.Warning);
         }
@@ -677,6 +678,34 @@ internal sealed class ExplorerWindow : Window
         {
             helpReturn = (s.View, s.Focus, s.Compare?.FocusLayers ?? false);
         }
+        if (cmd is ShowView { View: RightView.Warning } && s.View != RightView.Warning)
+        {
+            warningReturn = (s.View, s.Focus, s.Compare?.FocusLayers ?? false);
+            s.WarningText = Comparing ? string.Join("\n\n", Compare.Warnings()) : img.BaseWarning;
+            s.WarningTitle = Comparing ? "Package metadata warnings" : "Base verification warning";
+            s.WarningScroll = 0;
+            s.View = RightView.Warning;
+            Relayout();
+            SyncFocus();
+            Refresh();
+            return;
+        }
+        if (cmd is Back && s.View == RightView.Warning)
+        {
+            (RightView View, FocusPane Focus, bool CompareLayers) previous =
+                warningReturn ?? (RightView.Insights, FocusPane.Right, false);
+            s.View = previous.View;
+            s.Focus = previous.Focus;
+            if (s.Compare is not null)
+            {
+                s.Compare.FocusLayers = previous.CompareLayers;
+            }
+            warningReturn = null;
+            Relayout();
+            SyncFocus();
+            Refresh();
+            return;
+        }
         if (cmd is Back && s.View == RightView.Keys)
         {
             (RightView View, FocusPane Focus, bool CompareLayers) previous =
@@ -736,10 +765,6 @@ internal sealed class ExplorerWindow : Window
                 s.FindingsOnly = false;
                 s.Hidden.Clear();
                 s.Cursor = s.Scroll = 0;
-                break;
-            case Back when s.View == RightView.Warning:
-                s.View = RightView.Insights;
-                right.SetFocus();
                 break;
             case Back:
                 s.View = RightView.Files;
@@ -1348,6 +1373,10 @@ internal sealed class ExplorerWindow : Window
     private bool ApplyCompare(Cmd cmd)
     {
         CompareState c = s.Compare!;
+        if (s.View == RightView.Warning)
+        {
+            return false;
+        }
         if (s.View == RightView.Keys)
         {
             if (cmd is Move m)

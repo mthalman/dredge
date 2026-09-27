@@ -17,6 +17,8 @@ internal sealed class ExplorerState
     public int FindingScroll { get; set; }
     public int KeysScroll { get; set; }
     public int WarningScroll { get; set; }
+    public string? WarningText { get; set; }
+    public string? WarningTitle { get; set; }
     public bool ShowBaseFindings { get; set; }
     public string SearchQuery { get; set; } = "";
     public int SearchCursor { get; set; }
