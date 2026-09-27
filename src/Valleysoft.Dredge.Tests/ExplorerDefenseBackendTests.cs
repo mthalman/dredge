@@ -16,6 +16,19 @@ public sealed class ExplorerDefenseBackendTests : IAsyncDisposable
     private readonly List<LayerStore> stores = [];
     private static readonly ImageName Image = ImageName.Parse("registry.test/repo:tag");
 
+    [Fact]
+    public async Task NuGetDependencyMetadataDoesNotImplyFileOwnership()
+    {
+        NotSupportedException exception = await Assert.ThrowsAsync<NotSupportedException>(() =>
+            PackageFileLister.ListAsync(InstalledPackageEcosystem.NuGet, "Example.Package",
+                ["app/app.deps.json", "app/Example.Package.dll"],
+                (_, _) => throw new InvalidOperationException("Ownership must not guess from dependency metadata."),
+                TestContext.Current.CancellationToken));
+
+        Assert.Equal("NuGet dependency metadata identifies packages but does not establish deployed file ownership.",
+            exception.Message);
+    }
+
     [Theory]
     [InlineData(10, false)]
     [InlineData(2_000_000, false)]

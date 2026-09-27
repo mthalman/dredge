@@ -25,6 +25,57 @@ public class ImageFileSystemTests : IAsyncDisposable
     private static readonly ImageName ImageName = ImageName.Parse("registry.test/repo:tag");
 
     [Fact]
+    public async Task NuGetMetadata_UsesFinalDependencyFilesAndSkipsInvalidDocuments()
+    {
+        static string Deps(string version) =>
+            """{"runtimeTarget":{"name":"net"},"targets":{"net":{"Example/VERSION":{}}},"libraries":{"Example/VERSION":{"type":"package"}}}"""
+                .Replace("VERSION", version, StringComparison.Ordinal);
+        byte[][] layers =
+        [
+            CreateLayer(Entry.File("app/App.deps.json", Deps("1.0")),
+                Entry.File("deleted/App.deps.json", Deps("0.1"))),
+            CreateLayer(Entry.File("app/App.deps.json", Deps("2.0")),
+                Entry.File("worker/Worker.deps.json", Deps("3.0")),
+                Entry.File("deleted/.wh.App.deps.json", ""),
+                Entry.File("broken/App.deps.json", "{"),
+                Entry.SymbolicLink("missing/App.deps.json", "/missing"),
+                Entry.File("root/.nuget/packages/cached/1.0/cached.nuspec", "<package/>"))
+        ];
+        using IDockerRegistryClient client = CreateClient(layers).Object;
+        await using ImageFileSystem fileSystem = await CreateFileSystemAsync(
+            client, ImageName, new PlatformOptionsBase(), TestContext.Current.CancellationToken);
+
+        InstalledPackageMetadata metadata = await InstalledPackageReader.ReadAsync(
+            fileSystem, TestContext.Current.CancellationToken);
+
+        InstalledPackageEcosystemMetadata nuget = metadata.Ecosystems[InstalledPackageEcosystem.NuGet];
+        Assert.Equal(InstalledPackageMetadataAvailability.Available, nuget.Availability);
+        Assert.Equal(["example"], nuget.Packages.Keys);
+        Assert.Equal(["2.0", "3.0"], nuget.Packages["example"]);
+    }
+
+    [Theory]
+    [InlineData("{}", false)]
+    [InlineData("""{"runtimeTarget":{"name":"net"},"targets":{"net":{}},"libraries":{}}""",
+        true)]
+    public async Task NuGetMetadata_DistinguishesInvalidFromValidEmpty(
+        string content, bool expectedAvailable)
+    {
+        using IDockerRegistryClient client = CreateClient(
+            [CreateLayer(Entry.File("app/App.deps.json", content))]).Object;
+        await using ImageFileSystem fileSystem = await CreateFileSystemAsync(
+            client, ImageName, new PlatformOptionsBase(), TestContext.Current.CancellationToken);
+
+        InstalledPackageMetadata metadata = await InstalledPackageReader.ReadAsync(
+            fileSystem, TestContext.Current.CancellationToken);
+
+        Assert.Equal(expectedAvailable,
+            metadata.Ecosystems[InstalledPackageEcosystem.NuGet].Availability ==
+                InstalledPackageMetadataAvailability.Available);
+        Assert.Empty(metadata.Ecosystems[InstalledPackageEcosystem.NuGet].Packages);
+    }
+
+    [Fact]
     public async Task PackageMetadata_ReadsEachLayerOnceAndIsolatesInvalidManifests()
     {
         byte[] layer = CreateLayer(

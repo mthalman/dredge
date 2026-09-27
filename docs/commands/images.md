@@ -157,6 +157,17 @@ files. The picker accepts a full image reference or a tag and selects an exact
 tag match before substring suggestions. Package metadata is read only when a comparison starts; loading an
 image for browsing or insights does not scan packages. Press `Enter` on a
 changed text file to see a diff, and `s` to swap the two sides.
+Detected ecosystems include npm, dpkg, apk, pip, and NuGet. NuGet inventory
+comes from deployed `.deps.json` files: only libraries marked `package` in the
+selected runtime target are counted, not project references or restore-cache
+contents. Package IDs are normalized to lowercase and versions from multiple
+applications are combined. Dependency files are limited to 64 MiB each.
+Missing or unreadable dependency metadata means NuGet inventory is unavailable,
+not proof that the image has no packages; a valid empty inventory is distinguished.
+Images that omit `.deps.json` files (for example, some single-file or Native AOT
+deployments) cannot be inventoried this way. NuGet package-file drill-down is
+unavailable because dependency metadata does not reliably establish deployed
+file ownership.
 Text diffs retain available content when a size limit is reached and show a
 notice identifying the partial preview. Text diffs and file previews use the
 full body width. Use `Left`/`Right` to pan long lines; the preview indicates

@@ -8,7 +8,8 @@ internal enum InstalledPackageEcosystem
     Npm,
     Dpkg,
     Apk,
-    Pip
+    Pip,
+    NuGet
 }
 
 internal enum InstalledPackageMetadataAvailability
@@ -49,6 +50,9 @@ internal static class InstalledPackageReader
         ImageFileSystemEntry[] pipManifests = entries
             .Where(entry => IsReadableFile(entry) && IsPipMetadataPath(entry.Path))
             .ToArray();
+        ImageFileSystemEntry[] nugetManifests = entries
+            .Where(entry => IsReadableFile(entry) && IsNuGetDepsPath(entry.Path))
+            .ToArray();
         ImageFileSystemEntry? dpkgStatus = entries.SingleOrDefault(
             entry => IsReadableFile(entry) && entry.Path == DpkgStatusPath);
         ImageFileSystemEntry? apkInstalled = entries.SingleOrDefault(
@@ -58,12 +62,15 @@ internal static class InstalledPackageReader
         // and an unreadable database marks only its ecosystem unavailable.
         List<InstalledPackage> npmPackages = [];
         List<InstalledPackage> pipPackages = [];
+        List<InstalledPackage> nugetPackages = [];
+        bool nugetAvailable = false;
         IReadOnlyList<InstalledPackage>? dpkgPackages = null;
         IReadOnlyList<InstalledPackage>? apkPackages = null;
         IEnumerable<(string Path, long MaximumBytes)> requests = npmManifests.Concat(pipManifests)
             .Select(entry => (entry.Path, MaxPackageManifestBytes))
             .Concat(new[] { dpkgStatus, apkInstalled }.OfType<ImageFileSystemEntry>()
-                .Select(entry => (entry.Path, MaxDatabaseManifestBytes)));
+                .Select(entry => (entry.Path, MaxDatabaseManifestBytes)))
+            .Concat(nugetManifests.Select(entry => (entry.Path, MaxDatabaseManifestBytes)));
         await foreach (var result in fileSystem.ReadFilesAsync(requests, cancellationToken))
         {
             if (result.Error is not null)
@@ -90,6 +97,17 @@ internal static class InstalledPackageReader
                     apkPackages = TryParse(() => ParseApkInstalled(content));
                     break;
                 default:
+                    if (IsNuGetDepsPath(result.Path))
+                    {
+                        IReadOnlyList<InstalledPackage>? dependencies =
+                            TryParse(() => ParseNuGetDepsJson(content, result.Path));
+                        if (dependencies is not null)
+                        {
+                            nugetAvailable = true;
+                            nugetPackages.AddRange(dependencies);
+                        }
+                        break;
+                    }
                     bool npm = IsNpmPackageManifestPath(result.Path);
                     InstalledPackage? package = TryParse(() => npm
                         ? ParseNpmPackageJson(content, result.Path) : ParsePipMetadata(content, result.Path));
@@ -106,7 +124,8 @@ internal static class InstalledPackageReader
             [InstalledPackageEcosystem.Npm] = CreateMetadata(npmPackages.Count > 0, npmPackages),
             [InstalledPackageEcosystem.Dpkg] = CreateMetadata(dpkgPackages is not null, dpkgPackages ?? []),
             [InstalledPackageEcosystem.Apk] = CreateMetadata(apkPackages is not null, apkPackages ?? []),
-            [InstalledPackageEcosystem.Pip] = CreateMetadata(pipPackages.Count > 0, pipPackages)
+            [InstalledPackageEcosystem.Pip] = CreateMetadata(pipPackages.Count > 0, pipPackages),
+            [InstalledPackageEcosystem.NuGet] = CreateMetadata(nugetAvailable, nugetPackages)
         };
 
         return new InstalledPackageMetadata(ecosystems);
@@ -145,6 +164,67 @@ internal static class InstalledPackageReader
         return segments.Length >= 2 &&
             segments[^1] == "METADATA" &&
             segments[^2].EndsWith(".dist-info", StringComparison.OrdinalIgnoreCase);
+    }
+
+    internal static bool IsNuGetDepsPath(string path) =>
+        path.EndsWith(".deps.json", StringComparison.OrdinalIgnoreCase);
+
+    internal static IReadOnlyList<InstalledPackage> ParseNuGetDepsJson(string content, string sourcePath)
+    {
+        try
+        {
+            using JsonDocument document = JsonDocument.Parse(content.TrimStart('\uFEFF'));
+            JsonElement root = document.RootElement;
+            if (root.ValueKind != JsonValueKind.Object ||
+                !root.TryGetProperty("runtimeTarget", out JsonElement runtimeTarget) ||
+                runtimeTarget.ValueKind != JsonValueKind.Object ||
+                !root.TryGetProperty("targets", out JsonElement targets) ||
+                targets.ValueKind != JsonValueKind.Object ||
+                !root.TryGetProperty("libraries", out JsonElement libraries) ||
+                libraries.ValueKind != JsonValueKind.Object)
+            {
+                throw new InvalidDataException($"NuGet metadata '{sourcePath}' must contain runtimeTarget, targets, and libraries objects.");
+            }
+            string targetName = GetRequiredJsonString(runtimeTarget, "name", sourcePath, "NuGet");
+            if (!targets.TryGetProperty(targetName, out JsonElement target) ||
+                target.ValueKind != JsonValueKind.Object)
+            {
+                throw new InvalidDataException($"NuGet metadata '{sourcePath}' is missing runtime target '{targetName}'.");
+            }
+            List<InstalledPackage> packages = [];
+            foreach (JsonProperty dependency in target.EnumerateObject())
+            {
+                if (dependency.Value.ValueKind != JsonValueKind.Object ||
+                    !libraries.TryGetProperty(dependency.Name, out JsonElement library) ||
+                    library.ValueKind != JsonValueKind.Object)
+                {
+                    throw new InvalidDataException($"NuGet metadata '{sourcePath}' has an invalid library '{dependency.Name}'.");
+                }
+                string type = GetRequiredJsonString(library, "type", sourcePath, "NuGet");
+                if (type != "package")
+                {
+                    continue;
+                }
+                int separator = dependency.Name.IndexOf('/');
+                if (separator <= 0 || separator == dependency.Name.Length - 1 ||
+                    dependency.Name.IndexOf('/', separator + 1) >= 0)
+                {
+                    throw new InvalidDataException($"NuGet metadata '{sourcePath}' has an invalid package identity '{dependency.Name}'.");
+                }
+                string name = dependency.Name[..separator];
+                string version = dependency.Name[(separator + 1)..];
+                if (name.Any(char.IsWhiteSpace) || version.Any(char.IsWhiteSpace))
+                {
+                    throw new InvalidDataException($"NuGet metadata '{sourcePath}' has an invalid package identity '{dependency.Name}'.");
+                }
+                packages.Add(new(name.ToLowerInvariant(), version));
+            }
+            return packages;
+        }
+        catch (JsonException exception)
+        {
+            throw new InvalidDataException($"NuGet metadata '{sourcePath}' is not valid JSON.", exception);
+        }
     }
 
     internal static InstalledPackage ParseNpmPackageJson(string content, string sourcePath)

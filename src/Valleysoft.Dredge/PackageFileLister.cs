@@ -15,6 +15,9 @@ internal static class PackageFileLister
     {
         switch (ecosystem)
         {
+            case InstalledPackageEcosystem.NuGet:
+                throw new NotSupportedException(
+                    "NuGet dependency metadata identifies packages but does not establish deployed file ownership.");
             case InstalledPackageEcosystem.Npm:
                 string marker = "node_modules/" + name + "/";
                 return allPaths.Where(path =>

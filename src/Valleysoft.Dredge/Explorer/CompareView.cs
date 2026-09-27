@@ -391,7 +391,9 @@ internal sealed class CompareView
         InstalledPackageEcosystem.Npm => "npm",
         InstalledPackageEcosystem.Dpkg => "dpkg",
         InstalledPackageEcosystem.Apk => "apk",
-        _ => "pip",
+        InstalledPackageEcosystem.Pip => "pip",
+        InstalledPackageEcosystem.NuGet => "NuGet",
+        _ => ecosystem.ToString(),
     };
 
     private static CompareRow PackageRow(ExplorerPackageDifference p, string branch)
