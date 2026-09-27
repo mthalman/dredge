@@ -2,6 +2,7 @@ using Valleysoft.DockerRegistryClient;
 using Valleysoft.DockerRegistryClient.Models.Images;
 using Valleysoft.DockerRegistryClient.Models.Manifests;
 using Valleysoft.Dredge.Commands;
+using System.Runtime.CompilerServices;
 
 namespace Valleysoft.Dredge;
 
@@ -183,6 +184,81 @@ internal sealed class ImageFileSystem : IAsyncDisposable
             imageName,
             GetIndexAsync,
             cancellationToken);
+    }
+
+    internal async IAsyncEnumerable<(string Path, byte[]? Content, Exception? Error)> ReadFilesAsync(
+        IEnumerable<(string Path, long MaximumBytes)> requests,
+        [EnumeratorCancellation] CancellationToken cancellationToken)
+    {
+        List<(string Path, ImageFileSystemEntry Entry)> resolved = [];
+        foreach ((string path, long maximumBytes) in requests)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            Exception? error = null;
+            try
+            {
+                ImageFileSystemEntry entry = ResolveContentEntry(path);
+                if (entry.Size < 0 || entry.Size > maximumBytes || entry.Size > int.MaxValue)
+                {
+                    throw new InvalidDataException($"File '/{path}' exceeds the supported maximum of {maximumBytes} bytes.");
+                }
+                resolved.Add((path, entry));
+            }
+            catch (Exception exception) when (exception is IOException or InvalidDataException or InvalidOperationException or NotSupportedException)
+            {
+                error = exception;
+            }
+            if (error is not null)
+            {
+                yield return (path, null, error);
+            }
+        }
+
+        foreach (var layer in resolved.GroupBy(item => item.Entry.ContentLayerIndex))
+        {
+            Stream? blob = null;
+            StoredLayerIndex? index = null;
+            Exception? layerError = null;
+            try
+            {
+                index = await GetIndexAsync(layer.Key, cancellationToken);
+                blob = await store.OpenIndexedBlobAsync(client, imageName, index,
+                    layer.Select(item => item.Entry.ContentEntryIndex), cancellationToken);
+            }
+            catch (Exception exception) when (exception is IOException or InvalidDataException or UnauthorizedAccessException or RegistryException)
+            {
+                layerError = exception;
+            }
+            using (blob)
+            using (LayerContentReader? reader = blob is null ? null : new(blob))
+            {
+                Dictionary<int, ScannedEntry>? entriesByIndex = index?.Changes.Entries.ToDictionary(entry => entry.EntryIndex);
+                foreach (var content in layer.GroupBy(item => item.Entry.ContentEntryIndex).OrderBy(group => group.Key))
+                {
+                    cancellationToken.ThrowIfCancellationRequested();
+                    byte[]? bytes = null;
+                    if (layerError is null)
+                    {
+                        try
+                        {
+                            ScannedEntry entry = entriesByIndex![content.Key];
+                            bytes = new byte[checked((int)entry.Size)];
+                            using MemoryStream output = new(bytes, writable: true);
+                            await reader!.CopyToAsync(entry, output, cancellationToken);
+                        }
+                        catch (Exception exception) when (exception is IOException or InvalidDataException)
+                        {
+                            layerError = exception;
+                            bytes = null;
+                        }
+                    }
+                    foreach (var item in content)
+                    {
+                        yield return (item.Path, bytes, layerError);
+                    }
+                }
+            }
+        }
     }
 
     public async Task ExtractAsync(

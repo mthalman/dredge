@@ -57,35 +57,49 @@ internal static class InstalledPackageReader
         // Package metadata is advisory: a malformed per-package manifest is skipped,
         // and an unreadable database marks only its ecosystem unavailable.
         List<InstalledPackage> npmPackages = [];
-        foreach (ImageFileSystemEntry manifest in npmManifests)
-        {
-            cancellationToken.ThrowIfCancellationRequested();
-            string? content = await TryReadAsync(() => ReadManifestAsync(
-                fileSystem, manifest, MaxPackageManifestBytes, cancellationToken));
-            if (content is not null && TryParse(() => ParseNpmPackageJson(content, manifest.Path)) is { } package)
-            {
-                npmPackages.Add(package);
-            }
-        }
-
         List<InstalledPackage> pipPackages = [];
-        foreach (ImageFileSystemEntry manifest in pipManifests)
+        IReadOnlyList<InstalledPackage>? dpkgPackages = null;
+        IReadOnlyList<InstalledPackage>? apkPackages = null;
+        IEnumerable<(string Path, long MaximumBytes)> requests = npmManifests.Concat(pipManifests)
+            .Select(entry => (entry.Path, MaxPackageManifestBytes))
+            .Concat(new[] { dpkgStatus, apkInstalled }.OfType<ImageFileSystemEntry>()
+                .Select(entry => (entry.Path, MaxDatabaseManifestBytes)));
+        await foreach (var result in fileSystem.ReadFilesAsync(requests, cancellationToken))
         {
-            cancellationToken.ThrowIfCancellationRequested();
-            string? content = await TryReadAsync(() => ReadManifestAsync(
-                fileSystem, manifest, MaxPackageManifestBytes, cancellationToken));
-            if (content is not null && TryParse(() => ParsePipMetadata(content, manifest.Path)) is { } package)
+            if (result.Error is not null)
             {
-                pipPackages.Add(package);
+                Console.Error.WriteLine($"Skipping installed-package metadata '{result.Path}': {result.Error.Message}");
+                continue;
+            }
+            string content;
+            try
+            {
+                content = StrictUtf8.GetString(result.Content!).TrimStart('\uFEFF');
+            }
+            catch (DecoderFallbackException exception)
+            {
+                Console.Error.WriteLine($"Skipping installed-package metadata '{result.Path}': {exception.Message}");
+                continue;
+            }
+            switch (result.Path)
+            {
+                case DpkgStatusPath:
+                    dpkgPackages = TryParse(() => ParseDpkgStatus(content));
+                    break;
+                case ApkInstalledPath:
+                    apkPackages = TryParse(() => ParseApkInstalled(content));
+                    break;
+                default:
+                    bool npm = IsNpmPackageManifestPath(result.Path);
+                    InstalledPackage? package = TryParse(() => npm
+                        ? ParseNpmPackageJson(content, result.Path) : ParsePipMetadata(content, result.Path));
+                    if (package is not null)
+                    {
+                        (npm ? npmPackages : pipPackages).Add(package);
+                    }
+                    break;
             }
         }
-
-        IReadOnlyList<InstalledPackage>? dpkgPackages = dpkgStatus is null
-            ? null
-            : await ReadDatabaseAsync(fileSystem, dpkgStatus, ParseDpkgStatus, cancellationToken);
-        IReadOnlyList<InstalledPackage>? apkPackages = apkInstalled is null
-            ? null
-            : await ReadDatabaseAsync(fileSystem, apkInstalled, ParseApkInstalled, cancellationToken);
 
         Dictionary<InstalledPackageEcosystem, InstalledPackageEcosystemMetadata> ecosystems = new()
         {
@@ -96,29 +110,6 @@ internal static class InstalledPackageReader
         };
 
         return new InstalledPackageMetadata(ecosystems);
-    }
-
-    private static async Task<IReadOnlyList<InstalledPackage>?> ReadDatabaseAsync(
-        ImageFileSystem fileSystem, ImageFileSystemEntry entry,
-        Func<string, IReadOnlyList<InstalledPackage>> parse, CancellationToken cancellationToken)
-    {
-        string? content = await TryReadAsync(() => ReadManifestAsync(
-            fileSystem, entry, MaxDatabaseManifestBytes, cancellationToken));
-        return content is null ? null : TryParse(() => parse(content));
-    }
-
-    private static async Task<string?> TryReadAsync(Func<Task<string>> read)
-    {
-        try
-        {
-            return await read();
-        }
-        // Package metadata is advisory: a dangling or special symlink, an oversized
-        // file, or an unreadable entry must not fail the whole session.
-        catch (Exception exception) when (exception is not OperationCanceledException)
-        {
-            return null;
-        }
     }
 
     private static T? TryParse<T>(Func<T> parse) where T : class
@@ -272,28 +263,6 @@ internal static class InstalledPackageReader
     private static bool IsReadableFile(ImageFileSystemEntry entry) =>
         entry.Type is ImageFileType.File or ImageFileType.HardLink or ImageFileType.SymbolicLink;
 
-    private static async Task<string> ReadManifestAsync(
-        ImageFileSystem fileSystem,
-        ImageFileSystemEntry entry,
-        long maximumBytes,
-        CancellationToken cancellationToken)
-    {
-        ValidateManifestSize(entry.Path, entry.Size, maximumBytes);
-        using BoundedMemoryStream content = new(maximumBytes);
-        await fileSystem.CopyFileToAsync(entry.Path, content, cancellationToken);
-        try
-        {
-            return StrictUtf8
-                .GetString(content.GetBuffer(), 0, checked((int)content.Length))
-                .TrimStart('\uFEFF');
-        }
-        catch (DecoderFallbackException exception)
-        {
-            throw new InvalidDataException(
-                $"Installed-package metadata '{entry.Path}' is not valid UTF-8.", exception);
-        }
-    }
-
     internal static InstalledPackageEcosystemMetadata CreateMetadata(
         bool available,
         IEnumerable<InstalledPackage> packages)
@@ -403,35 +372,4 @@ internal static class InstalledPackageReader
         }
     }
 
-    private sealed class BoundedMemoryStream(long maximumBytes) : MemoryStream
-    {
-        public override void Write(byte[] buffer, int offset, int count)
-        {
-            EnsureCapacity(count);
-            base.Write(buffer, offset, count);
-        }
-
-        public override void Write(ReadOnlySpan<byte> buffer)
-        {
-            EnsureCapacity(buffer.Length);
-            base.Write(buffer);
-        }
-
-        public override ValueTask WriteAsync(
-            ReadOnlyMemory<byte> buffer,
-            CancellationToken cancellationToken = default)
-        {
-            EnsureCapacity(buffer.Length);
-            return base.WriteAsync(buffer, cancellationToken);
-        }
-
-        private void EnsureCapacity(int additionalBytes)
-        {
-            if (Length > maximumBytes - additionalBytes)
-            {
-                throw new InvalidDataException(
-                    $"Installed-package metadata content exceeds the supported maximum of {maximumBytes} bytes.");
-            }
-        }
-    }
 }

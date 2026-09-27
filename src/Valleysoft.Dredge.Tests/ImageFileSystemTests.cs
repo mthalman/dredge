@@ -25,6 +25,44 @@ public class ImageFileSystemTests : IAsyncDisposable
     private static readonly ImageName ImageName = ImageName.Parse("registry.test/repo:tag");
 
     [Fact]
+    public async Task PackageMetadata_ReadsEachLayerOnceAndIsolatesInvalidManifests()
+    {
+        byte[] layer = CreateLayer(
+            Entry.File("prefix", new byte[1024 * 1024]),
+            Entry.File("node_modules/z/package.json", """{"name":"z","version":"1"}"""),
+            Entry.File("node_modules/bad/package.json", "{"),
+            Entry.File("node_modules/oversize/package.json", new byte[1024 * 1024 + 1]),
+            Entry.File("node_modules/a/package.json", """{"name":"a","version":"2"}"""),
+            Entry.SymbolicLink("node_modules/alias/package.json", "/node_modules/z/package.json"),
+            Entry.SymbolicLink("node_modules/missing/package.json", "/missing"),
+            Entry.File("python/example-1.dist-info/METADATA", "Name: example\nVersion: 1\n"));
+        Mock<IDockerRegistryClient> client = CreateClient([layer]);
+        await using (ImageFileSystem initial = await CreateFileSystemAsync(
+            client.Object, ImageName, new PlatformOptionsBase(), TestContext.Current.CancellationToken))
+        {
+            Assert.NotEmpty(initial.List(null, true, false));
+        }
+        await cache.EvictBlobsAsync();
+        string digest = LayerCacheTestContext.Digest(layer);
+        client.Setup(c => c.Blobs.GetRangeAsync(ImageName.Repo, digest, 0,
+                It.Is<long?>(length => length != null), It.IsAny<CancellationToken>()))
+            .ReturnsAsync((string _, string _, long _, long? length, CancellationToken _) =>
+                new Valleysoft.DockerRegistryClient.BlobDownloadResult(
+                    new MemoryStream(layer[..checked((int)length!.Value)]),
+                    true, 0, length - 1, layer.Length));
+        await using ImageFileSystem fileSystem = await CreateFileSystemAsync(
+            client.Object, ImageName, new PlatformOptionsBase(), TestContext.Current.CancellationToken);
+
+        InstalledPackageMetadata metadata = await InstalledPackageReader.ReadAsync(
+            fileSystem, TestContext.Current.CancellationToken);
+
+        Assert.Equal(["a", "z"], metadata.Ecosystems[InstalledPackageEcosystem.Npm].Packages.Keys);
+        Assert.Equal(["example"], metadata.Ecosystems[InstalledPackageEcosystem.Pip].Packages.Keys);
+        client.Verify(c => c.Blobs.GetRangeAsync(ImageName.Repo, digest, 0,
+            It.Is<long?>(length => length != null), It.IsAny<CancellationToken>()), Times.Once);
+    }
+
+    [Fact]
     public async Task Analyze_UsesCachedLayerIndexesForHiddenBytes()
     {
         byte[][] layers =
