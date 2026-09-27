@@ -341,11 +341,12 @@ public class SaveLayersCommandTests : IAsyncDisposable
                     Layers = [new ManifestLayer { Digest = digest, Size = bytes.Length }]
                 }));
         client
-            .Setup(item => item.Blobs.GetAsync(
+            .Setup(item => item.Blobs.GetRangeAsync(
                 "library/image",
                 digest,
-                It.IsAny<CancellationToken>()))
-            .ReturnsAsync(() => new MemoryStream(bytes));
+                0, null, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(() => new Valleysoft.DockerRegistryClient.BlobDownloadResult(
+                new MemoryStream(bytes), false, null, null, bytes.Length));
         return client;
     }
 

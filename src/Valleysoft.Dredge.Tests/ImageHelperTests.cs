@@ -40,7 +40,7 @@ public class ImageHelperTests : IAsyncDisposable
         List<string> exposedScratch = [];
         string[] privateScratch = [];
         Mock<IDockerRegistryClient> client = CreateSingleLayerClient(digest, () => new MemoryStream(bytes));
-        client.Setup(item => item.Blobs.GetAsync("library/image", digest, It.IsAny<CancellationToken>()))
+        client.Setup(item => item.Blobs.GetRangeAsync("library/image", digest, 0, null, It.IsAny<CancellationToken>()))
             .ReturnsAsync(() =>
             {
                 foreach (string directory in Directory.GetDirectories(sharedTemp, "layer-*"))
@@ -51,7 +51,7 @@ public class ImageHelperTests : IAsyncDisposable
                     File.WriteAllText(Path.Combine(directory, "injected.txt"), "untrusted");
                 }
                 privateScratch = Directory.GetDirectories(dataPath, "*.scratch.dir");
-                return new MemoryStream(bytes);
+                return FullBlob(bytes);
             });
         Mock<IDockerRegistryClientFactory> factory = new();
         factory.Setup(item => item.GetClientAsync(null, It.IsAny<CancellationToken>())).ReturnsAsync(client.Object);
@@ -82,7 +82,7 @@ public class ImageHelperTests : IAsyncDisposable
         Exception failure = canceled
             ? new OperationCanceledException()
             : new IOException("Download failed.");
-        client.Setup(item => item.Blobs.GetAsync("library/image", digest, It.IsAny<CancellationToken>()))
+        client.Setup(item => item.Blobs.GetRangeAsync("library/image", digest, 0, null, It.IsAny<CancellationToken>()))
             .ThrowsAsync(failure);
         Mock<IDockerRegistryClientFactory> factory = new();
         factory.Setup(item => item.GetClientAsync(null, It.IsAny<CancellationToken>())).ReturnsAsync(client.Object);
@@ -128,11 +128,11 @@ public class ImageHelperTests : IAsyncDisposable
                     ]
                 }));
         client
-            .Setup(o => o.Blobs.GetAsync("library/image", firstDigest, It.IsAny<CancellationToken>()))
-            .ReturnsAsync(() => new MemoryStream(first));
+            .Setup(o => o.Blobs.GetRangeAsync("library/image", firstDigest, 0, null, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(() => FullBlob(first));
         client
-            .Setup(o => o.Blobs.GetAsync("library/image", secondDigest, It.IsAny<CancellationToken>()))
-            .ReturnsAsync(() => new MemoryStream(second));
+            .Setup(o => o.Blobs.GetRangeAsync("library/image", secondDigest, 0, null, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(() => FullBlob(second));
         Mock<IDockerRegistryClientFactory> factory = new();
         factory.Setup(o => o.GetClientAsync(null, It.IsAny<CancellationToken>())).ReturnsAsync(client.Object);
 
@@ -188,15 +188,15 @@ public class ImageHelperTests : IAsyncDisposable
             digest,
             () => new MemoryStream(bytes));
         client
-            .Setup(o => o.Blobs.GetAsync(
+            .Setup(o => o.Blobs.GetRangeAsync(
                 "library/image",
                 digest,
-                It.IsAny<CancellationToken>()))
+                0, null, It.IsAny<CancellationToken>()))
             .Returns(async () =>
             {
                 Interlocked.Increment(ref downloadCount);
                 await Task.Delay(100, TestContext.Current.CancellationToken);
-                return new MemoryStream(bytes);
+                return FullBlob(bytes);
             });
         Mock<IDockerRegistryClientFactory> factory = new();
         factory.Setup(o => o.GetClientAsync(null, It.IsAny<CancellationToken>())).ReturnsAsync(client.Object);
@@ -273,8 +273,8 @@ public class ImageHelperTests : IAsyncDisposable
                     ]
                 }));
         client
-            .Setup(o => o.Blobs.GetAsync("library/image", secondDigest, It.IsAny<CancellationToken>()))
-            .ReturnsAsync(() => new MemoryStream(bytes));
+            .Setup(o => o.Blobs.GetRangeAsync("library/image", secondDigest, 0, null, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(() => FullBlob(bytes));
         Mock<IDockerRegistryClientFactory> factory = new();
         factory.Setup(o => o.GetClientAsync(null, It.IsAny<CancellationToken>())).ReturnsAsync(client.Object);
 
@@ -292,16 +292,16 @@ public class ImageHelperTests : IAsyncDisposable
                 new TestDredgePathProvider(tempRoot));
 
             client.Verify(
-                o => o.Blobs.GetAsync(
+                o => o.Blobs.GetRangeAsync(
                     "library/image",
                     firstDigest,
-                    It.IsAny<CancellationToken>()),
+                    0, null, It.IsAny<CancellationToken>()),
                 Times.Never);
             client.Verify(
-                o => o.Blobs.GetAsync(
+                o => o.Blobs.GetRangeAsync(
                     "library/image",
                     secondDigest,
-                    It.IsAny<CancellationToken>()),
+                    0, null, It.IsAny<CancellationToken>()),
                 Times.Once);
         }
         finally
@@ -431,8 +431,8 @@ public class ImageHelperTests : IAsyncDisposable
                     Layers = [new ManifestLayer { Digest = digest, Size = bytes.Length }]
                 }));
         client
-            .Setup(o => o.Blobs.GetAsync("library/image", digest, It.IsAny<CancellationToken>()))
-            .ReturnsAsync(() => new MemoryStream(bytes));
+            .Setup(o => o.Blobs.GetRangeAsync("library/image", digest, 0, null, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(() => FullBlob(bytes));
         Mock<IDockerRegistryClientFactory> factory = new();
         factory.Setup(o => o.GetClientAsync(null, It.IsAny<CancellationToken>())).ReturnsAsync(client.Object);
 
@@ -594,10 +594,13 @@ public class ImageHelperTests : IAsyncDisposable
                     Layers = [new ManifestLayer { Digest = digest, Size = bytes.Length }]
                 }));
         client
-            .Setup(o => o.Blobs.GetAsync("library/image", digest, It.IsAny<CancellationToken>()))
-            .ReturnsAsync(() => new MemoryStream(bytes));
+            .Setup(o => o.Blobs.GetRangeAsync("library/image", digest, 0, null, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(() => FullBlob(bytes));
         return client;
     }
+
+    private static Valleysoft.DockerRegistryClient.BlobDownloadResult FullBlob(byte[] bytes) =>
+        new(new MemoryStream(bytes), false, null, null, bytes.Length);
 
     private static Stream CreateLayer(params (string Name, string Content)[] files)
     {

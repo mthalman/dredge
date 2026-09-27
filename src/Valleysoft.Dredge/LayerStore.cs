@@ -51,7 +51,8 @@ internal sealed class LayerStore : IAsyncDisposable
             return cached;
         }
 
-        using Stream source = await client.Blobs.GetAsync(image.Repo, digest, cancellationToken);
+        BlobDownloadResult download = await DownloadFullBlobAsync(client, image, digest, cancellationToken);
+        using Stream source = download.Content;
         return await PublishBlobAsync(source, digest, expectedSize, cancellationToken, progress);
     }
 
@@ -154,8 +155,25 @@ internal sealed class LayerStore : IAsyncDisposable
             }
         }
 
-        using Stream full = await client.Blobs.GetAsync(image.Repo, index.Digest, cancellationToken);
+        BlobDownloadResult fullDownload = await DownloadFullBlobAsync(client, image, index.Digest, cancellationToken);
+        using Stream full = fullDownload.Content;
         return await PublishBlobAsync(full, index.Digest, index.BlobLength, cancellationToken);
+    }
+
+    private static async Task<BlobDownloadResult> DownloadFullBlobAsync(
+        IDockerRegistryClient client, ImageName image, string digest, CancellationToken cancellationToken)
+    {
+        // The registry client's ordinary GetAsync buffers the entire response (at most 2 GB).
+        BlobDownloadResult download = await client.Blobs.GetRangeAsync(
+            image.Repo, digest, 0, null, cancellationToken);
+        if (download.IsRangeHonored &&
+            (download.RangeStart != 0 ||
+                (download.TotalLength is long total && download.RangeEnd != total - 1)))
+        {
+            download.Content.Dispose();
+            throw new InvalidDataException($"The registry returned an incomplete layer '{digest}'.");
+        }
+        return download;
     }
 
     private static async Task ValidatePrefixAsync(

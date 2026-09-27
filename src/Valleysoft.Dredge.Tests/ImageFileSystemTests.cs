@@ -71,8 +71,8 @@ public class ImageFileSystemTests : IAsyncDisposable
         Assert.Equal(2, warm.Analyze().Layers.Count);
         foreach (byte[] layer in layers)
         {
-            client.Verify(c => c.Blobs.GetAsync(ImageName.Repo, LayerCacheTestContext.Digest(layer),
-                It.IsAny<CancellationToken>()), Times.Once);
+            client.Verify(c => c.Blobs.GetRangeAsync(ImageName.Repo, LayerCacheTestContext.Digest(layer),
+                0, null, It.IsAny<CancellationToken>()), Times.Once);
         }
     }
 
@@ -93,8 +93,8 @@ public class ImageFileSystemTests : IAsyncDisposable
             await selective.CopyFileToAsync("newest", output, TestContext.Current.CancellationToken);
             Assert.Equal("new", Encoding.UTF8.GetString(output.ToArray()));
         }
-        client.Verify(c => c.Blobs.GetAsync(ImageName.Repo, LayerCacheTestContext.Digest(layers[0]),
-            It.IsAny<CancellationToken>()), Times.Never);
+        client.Verify(c => c.Blobs.GetRangeAsync(ImageName.Repo, LayerCacheTestContext.Digest(layers[0]),
+            0, null, It.IsAny<CancellationToken>()), Times.Never);
         Assert.Empty(Directory.GetFiles(Path.Combine(cache.Paths.CachePath, "layer-store", "data"), "*.view"));
 
         await using ImageFileSystem complete = await CreateFileSystemAsync(
@@ -109,8 +109,8 @@ public class ImageFileSystemTests : IAsyncDisposable
         Assert.Equal("new", Encoding.UTF8.GetString(content.ToArray()));
         foreach (byte[] layer in layers)
         {
-            client.Verify(c => c.Blobs.GetAsync(ImageName.Repo, LayerCacheTestContext.Digest(layer),
-                It.IsAny<CancellationToken>()), Times.Once);
+            client.Verify(c => c.Blobs.GetRangeAsync(ImageName.Repo, LayerCacheTestContext.Digest(layer),
+                0, null, It.IsAny<CancellationToken>()), Times.Once);
         }
     }
 
@@ -144,8 +144,8 @@ public class ImageFileSystemTests : IAsyncDisposable
         ImageFileSystem fileSystem = await CreateFileSystemAsync(
             second.Object, ImageName, new PlatformOptionsBase(), TestContext.Current.CancellationToken);
         Assert.Equal(1, Assert.Single(fileSystem.List("shared", false, false)).IntroducedLayer.Index);
-        second.Verify(c => c.Blobs.GetAsync(ImageName.Repo, LayerCacheTestContext.Digest(shared),
-            It.IsAny<CancellationToken>()), Times.Never);
+        second.Verify(c => c.Blobs.GetRangeAsync(ImageName.Repo, LayerCacheTestContext.Digest(shared),
+            0, null, It.IsAny<CancellationToken>()), Times.Never);
     }
 
     [Fact]
@@ -162,8 +162,8 @@ public class ImageFileSystemTests : IAsyncDisposable
         ImageFileSystem restored = await CreateFileSystemAsync(
             client.Object, ImageName, new PlatformOptionsBase(), TestContext.Current.CancellationToken);
         Assert.Equal(original.List(null, true, true), restored.List(null, true, true));
-        client.Verify(c => c.Blobs.GetAsync(ImageName.Repo, LayerCacheTestContext.Digest(bytes),
-            It.IsAny<CancellationToken>()), Times.Once);
+        client.Verify(c => c.Blobs.GetRangeAsync(ImageName.Repo, LayerCacheTestContext.Digest(bytes),
+            0, null, It.IsAny<CancellationToken>()), Times.Once);
     }
 
     [Fact]
@@ -177,8 +177,8 @@ public class ImageFileSystemTests : IAsyncDisposable
         string output = Path.Combine(cache.Root, "extracted");
         await fileSystem.ExtractAsync("new", output, TestContext.Current.CancellationToken);
         Assert.Equal("new", await File.ReadAllTextAsync(output, TestContext.Current.CancellationToken));
-        client.Verify(c => c.Blobs.GetAsync(ImageName.Repo, LayerCacheTestContext.Digest(layers[0]),
-            It.IsAny<CancellationToken>()), Times.Never);
+        client.Verify(c => c.Blobs.GetRangeAsync(ImageName.Repo, LayerCacheTestContext.Digest(layers[0]),
+            0, null, It.IsAny<CancellationToken>()), Times.Never);
     }
 
     [Fact]
