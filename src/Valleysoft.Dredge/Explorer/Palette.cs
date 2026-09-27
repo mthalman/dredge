@@ -52,7 +52,10 @@ internal static class Theme
     public static Rgb Bedrock2 { get; private set; }
     public static Rgb Sand1 { get; private set; }
     public static Rgb Sand2 { get; private set; }
+    // Wasted strata carry the size text, so they keep at least 4.5:1 contrast with Foam.
+    public static Rgb StratumWaste { get; private set; }
     public static Rgb Shared2 { get; private set; }
+    // Backgrounds that shade a layer's size in proportion to it, readable under Foam text.
     public static Rgb Rose { get; private set; }
     public static Rgb Mauve { get; private set; }
     public static Rgb DfKeyword { get; private set; }
@@ -98,10 +101,11 @@ internal static class Theme
             OchreDeep = Rgb.Hex(0xB98A1E);
             Garnet = Rgb.Hex(0xC0283B);
             GarnetDeep = Rgb.Hex(0xFBE1E5);
-            Bedrock1 = Rgb.Hex(0x8C8279);
-            Bedrock2 = Rgb.Hex(0xA89E92);
-            Sand1 = Rgb.Hex(0xC29B5C);
-            Sand2 = Rgb.Hex(0xD9BA86);
+            Bedrock1 = Rgb.Hex(0x91AABB);
+            Bedrock2 = Rgb.Hex(0xBDCDD7);
+            Sand1 = Rgb.Hex(0xBC875B);
+            Sand2 = Rgb.Hex(0xD7B287);
+            StratumWaste = Rgb.Hex(0xD9818A);
             Shared2 = Rgb.Hex(0xB4BBC4);
             Rose = Rgb.Hex(0xC24E60);
             Mauve = Rgb.Hex(0x8E5E87);
@@ -129,10 +133,11 @@ internal static class Theme
         OchreDeep = Rgb.Hex(0xC99E2E);
         Garnet = Rgb.Hex(0xE5566E);
         GarnetDeep = Rgb.Hex(0x4A1E27);
-        Bedrock1 = Rgb.Hex(0x6B635A);
-        Bedrock2 = Rgb.Hex(0x847A6D);
-        Sand1 = Rgb.Hex(0xA8916B);
-        Sand2 = Rgb.Hex(0xC4AC82);
+        Bedrock1 = Rgb.Hex(0x324451);
+        Bedrock2 = Rgb.Hex(0x4C6371);
+        Sand1 = Rgb.Hex(0x684728);
+        Sand2 = Rgb.Hex(0x825A34);
+        StratumWaste = Rgb.Hex(0x963C4F);
         Shared2 = Rgb.Hex(0x5A6270);
         Rose = Rgb.Hex(0xF29CA8);
         Mauve = Rgb.Hex(0xB48EAD);

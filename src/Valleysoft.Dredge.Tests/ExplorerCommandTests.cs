@@ -29,18 +29,62 @@ public class ExploreCommandOptionTests
     [Fact]
     public void FlagsPassThroughToTheExplorer()
     {
-        ExploreOptions options = Parse("shop/app:1", "--layer", "3", "--compare", "2.0", "--base-image", "base:1");
+        ExploreOptions options = Parse("shop/app:1", "--layer", "3", "--compare", "2.0",
+            "--base-image", "base:1", "--base-image", "base:2");
 
         ExplorerOptions explorer = ExploreCommand.CreateExplorerOptions(options, new ExploreSettings());
 
         Assert.Equal("shop/app:1", options.Image);
-        Assert.Equal("base:1", options.BaseImage);
+        Assert.Equal(["base:1", "base:2"], options.BaseImages);
         Assert.Equal(3, explorer.Layer);
         Assert.Equal("2.0", explorer.Compare);
         Assert.True(explorer.Mouse);
-        Assert.False(explorer.Clipboard);
+        Assert.Equal(Clipboard.Resolve(OperatingSystem.IsWindows(),
+            Clipboard.IsRemoteSession(Environment.GetEnvironmentVariable)), explorer.Clipboard);
         Assert.Equal('q', explorer.Keys[KeyAction.Quit]);
+        Assert.Equal(OperatingSystem.IsWindows() ? "cmd.exe" : "less", explorer.ViewerExePath);
+        Assert.Equal(OperatingSystem.IsWindows() ? "/d /s /c \"more < \"{0}\"\"" : "-X \"{0}\"", explorer.ViewerArgs);
+        Assert.True(explorer.ViewerUsesTerminal);
+        Assert.True(explorer.PauseAfterViewer);
         Assert.Null(explorer.Notice);
+    }
+
+    [Fact]
+    public void ViewerSettingsConfigureExecutableAndArguments()
+    {
+        ExploreSettings settings = new();
+        settings.Viewer.ExePath = "custom-viewer";
+        settings.Viewer.Args = "--read-only \"{0}\"";
+
+        ExplorerOptions explorer = ExploreCommand.CreateExplorerOptions(Parse("app"), settings);
+
+        Assert.Equal("custom-viewer", explorer.ViewerExePath);
+        Assert.Equal("--read-only \"{0}\"", explorer.ViewerArgs);
+        Assert.False(explorer.ViewerUsesTerminal);
+        Assert.False(explorer.PauseAfterViewer);
+    }
+
+    [Fact]
+    public void CustomTerminalViewerCanUseTheTerminal()
+    {
+        ExploreSettings settings = new();
+        settings.Viewer.ExePath = "vim";
+        settings.Viewer.Terminal = "true";
+
+        Assert.True(ExploreCommand.CreateExplorerOptions(Parse("app"), settings).ViewerUsesTerminal);
+        Assert.False(ExploreCommand.CreateExplorerOptions(Parse("app"), settings).PauseAfterViewer);
+    }
+
+    [Fact]
+    public void InvalidViewerTerminalSettingIsReported()
+    {
+        ExploreSettings settings = new();
+        settings.Viewer.ExePath = "viewer";
+        settings.Viewer.Terminal = "maybe";
+
+        Assert.Contains("explore.viewer.terminal",
+            Assert.Throws<InvalidOperationException>(() =>
+                ExploreCommand.CreateExplorerOptions(Parse("app"), settings)).Message);
     }
 
     [Theory]
@@ -58,14 +102,15 @@ public class ExploreCommandOptionTests
     }
 
     [Fact]
-    public void SettingsEnableTheClipboardAndRemapKeys()
+    public void SettingsRemapKeysWithoutChangingClipboardSelection()
     {
-        ExploreSettings settings = new() { Clipboard = "osc52" };
+        ExploreSettings settings = new();
         settings.Keys.Quit = "Q";
 
         ExplorerOptions explorer = ExploreCommand.CreateExplorerOptions(Parse("app"), settings);
 
-        Assert.True(explorer.Clipboard);
+        Assert.Equal(Clipboard.Resolve(OperatingSystem.IsWindows(),
+            Clipboard.IsRemoteSession(Environment.GetEnvironmentVariable)), explorer.Clipboard);
         Assert.Equal('Q', explorer.Keys[KeyAction.Quit]);
     }
 
@@ -75,9 +120,6 @@ public class ExploreCommandOptionTests
         Assert.Contains("explore.mouse",
             Assert.Throws<InvalidOperationException>(() =>
                 ExploreCommand.CreateExplorerOptions(Parse("app"), new ExploreSettings { Mouse = "yes" })).Message);
-        Assert.Contains("explore.clipboard",
-            Assert.Throws<InvalidOperationException>(() =>
-                ExploreCommand.CreateExplorerOptions(Parse("app"), new ExploreSettings { Clipboard = "tmux" })).Message);
     }
 
     [Theory]
@@ -305,6 +347,76 @@ public class ExplorerBaseVerificationTests
         IDockerRegistryClientFactory? factory = null, ExplorerPlatform? platform = null) =>
         ExplorerSession.VerifyBaseAsync(client.Object, factory ?? Mock.Of<IDockerRegistryClientFactory>(), Image, target,
             new PlatformOptionsBase(), explicitBase, TestContext.Current.CancellationToken, platform);
+
+    private static Task<(IReadOnlyList<ExplorerBaseImage> Bases, string? Warning)> VerifyChain(
+        Mock<IDockerRegistryClient> client, ResolvedManifest target, params string[] bases) =>
+        ExplorerSession.VerifyBasesAsync(client.Object, Mock.Of<IDockerRegistryClientFactory>(), Image, target,
+            new PlatformOptionsBase(), bases, TestContext.Current.CancellationToken);
+
+    [Fact]
+    public async Task BasesHaveSeparateVerifiedLayerBoundariesRegardlessOfInputOrder()
+    {
+        Mock<IDockerRegistryClient> client = new() { DefaultValue = DefaultValue.Mock };
+        SetupBase(client, "base", "1", "sha256:one", "sha256:l0");
+        SetupBase(client, "base", "2", "sha256:two", "sha256:l0", "sha256:l1");
+
+        foreach (string[] input in new[]
+        {
+            new[] { "registry.test/base:1", "registry.test/base:2" },
+            new[] { "registry.test/base:2", "registry.test/base:1" }
+        })
+        {
+            (IReadOnlyList<ExplorerBaseImage> bases, string? warning) = await VerifyChain(
+                client, Target(Annotated("registry.test/base:2", "sha256:two")), input);
+
+            Assert.Null(warning);
+            Assert.Equal([new ExplorerBaseImage("registry.test/base:1", 1),
+                new ExplorerBaseImage("registry.test/base:2", 2)], bases);
+        }
+    }
+
+    [Fact]
+    public async Task RepeatedBaseBoundariesFail()
+    {
+        Mock<IDockerRegistryClient> client = new() { DefaultValue = DefaultValue.Mock };
+        SetupBase(client, "base", "1", "sha256:one", "sha256:l0");
+        SetupBase(client, "base", "2", "sha256:two", "sha256:l0", "sha256:l1");
+
+        SetupBase(client, "base", "same", "sha256:same", "sha256:l0");
+        foreach (string[] chain in new[]
+        {
+            new[] { "registry.test/base:1", "registry.test/base:1" },
+            new[] { "registry.test/base:same", "registry.test/base:1" }
+        })
+        {
+            InvalidOperationException error = await Assert.ThrowsAsync<InvalidOperationException>(() =>
+                VerifyChain(client, Target(null), chain));
+            Assert.Contains("same layer boundary", error.Message);
+        }
+    }
+
+    [Fact]
+    public async Task EveryBaseInTheChainMustMatchTheExploredImage()
+    {
+        Mock<IDockerRegistryClient> client = new() { DefaultValue = DefaultValue.Mock };
+        SetupBase(client, "base", "1", "sha256:one", "sha256:elsewhere");
+        SetupBase(client, "base", "2", "sha256:two", "sha256:l0", "sha256:l1");
+
+        await Assert.ThrowsAsync<InvalidOperationException>(() => VerifyChain(client, Target(null),
+            "registry.test/base:1", "registry.test/base:2"));
+    }
+
+    [Fact]
+    public async Task DeepestBaseMustAgreeWithAnnotation()
+    {
+        Mock<IDockerRegistryClient> client = new() { DefaultValue = DefaultValue.Mock };
+        SetupBase(client, "base", "1", "sha256:one", "sha256:l0");
+        SetupBase(client, "base", "2", "sha256:two", "sha256:l0", "sha256:l1");
+
+        InvalidOperationException error = await Assert.ThrowsAsync<InvalidOperationException>(() => VerifyChain(client,
+            Target(Annotated("registry.test/base:1")), "registry.test/base:2", "registry.test/base:1"));
+        Assert.Contains("disagrees with the annotation", error.Message);
+    }
 
     private static void SetupArmBase(Mock<IDockerRegistryClient> client)
     {
@@ -543,8 +655,8 @@ public class ExplorerComparisonTests
         Assert.Equal(expected, ExplorerHost.TagNote(digest, "sha256:img", shared, baseLayers));
 }
 
-// The pager suspends the explorer and runs $PAGER through the platform shell.
-public class ExplorerPagerTests
+// The configured viewer suspends the explorer while displaying a staged file.
+public class ExplorerViewerTests
 {
     [Theory]
     [InlineData("app/package.json", "package.json")]
@@ -572,21 +684,49 @@ public class ExplorerPagerTests
     }
 
     [Fact]
-    public void PagerGetsTheStagedFileEvenWhenItsNameLooksLikeAVariable()
+    public void DefaultTerminalViewerWaitsForConfirmationAfterItCloses()
+    {
+        string file = Stage("needle\n");
+        (string exe, string args) = Grep("needle");
+        using StringReader input = new("\n");
+        using StringWriter output = new();
+
+        Assert.Null(ExplorerApp.RunTerminalViewer(file, exe, args, true, input, output));
+        Assert.Equal("\nPress Enter to return to the explorer...", output.ToString());
+        Assert.False(System.IO.File.Exists(file));
+    }
+
+    [Fact]
+    public void WindowedOrFailedViewerDoesNotPrompt()
+    {
+        (string exe, string args) = Grep("needle");
+        using StringReader input = new("");
+        using StringWriter output = new();
+
+        Assert.Null(ExplorerApp.RunTerminalViewer(Stage("needle\n"), exe, args, false, input, output));
+        Assert.Equal("", output.ToString());
+        Assert.StartsWith("Could not run the viewer",
+            ExplorerApp.RunTerminalViewer(Stage("needle\n"), "missing-dredge-test-viewer", "\"{0}\"",
+                true, input, output));
+        Assert.Equal("", output.ToString());
+    }
+
+    [Fact]
+    public void ViewerGetsTheStagedFileEvenWhenItsNameLooksLikeAVariable()
     {
         string directory = Path.Combine(Path.GetTempPath(), "dredge-" + Guid.NewGuid().ToString("N")[..12]);
         Directory.CreateDirectory(directory);
         string file = Path.Combine(directory, ExplorerHost.StagedFileName("tmp/%USERNAME%.txt"));
         System.IO.File.WriteAllText(file, "needle\n");
-        string pager = OperatingSystem.IsWindows() ? "findstr needle >nul" : "grep -q needle";
+        (string exe, string args) = Grep("needle");
 
-        Assert.Null(ExplorerApp.RunPager(file, pager, OperatingSystem.IsWindows()));
+        Assert.Null(ExplorerApp.RunViewer(file, exe, args));
         Assert.False(Directory.Exists(directory));
     }
 
     private static string Stage(string contents)
     {
-        string directory = Path.Combine(Path.GetTempPath(), "dredge pager " + Guid.NewGuid().ToString("N"));
+        string directory = Path.Combine(Path.GetTempPath(), "dredge viewer " + Guid.NewGuid().ToString("N"));
         Directory.CreateDirectory(directory);
         string file = Path.Combine(directory, "a file.txt");
         System.IO.File.WriteAllText(file, contents);
@@ -594,23 +734,23 @@ public class ExplorerPagerTests
     }
 
     [Fact]
-    public void SuccessfulPagerReturnsNoErrorAndRemovesTheStagedFile()
+    public void SuccessfulViewerReturnsNoErrorAndRemovesTheStagedFile()
     {
         string file = Stage("needle\n");
-        string pager = OperatingSystem.IsWindows() ? "findstr needle >nul" : "grep -q needle";
+        (string exe, string args) = Grep("needle");
 
-        Assert.Null(ExplorerApp.RunPager(file, pager, OperatingSystem.IsWindows()));
+        Assert.Null(ExplorerApp.RunViewer(file, exe, args));
         Assert.False(System.IO.File.Exists(file));
         Assert.False(Directory.Exists(Path.GetDirectoryName(file)));
     }
 
     [Fact]
-    public void PagerReadsTheFileItWasGiven()
+    public void ViewerReadsTheFileItWasGiven()
     {
         string file = Stage("hay\n");
-        string pager = OperatingSystem.IsWindows() ? "findstr needle >nul" : "grep -q needle";
+        (string exe, string args) = Grep("needle");
 
-        Assert.Equal($"The pager '{pager}' exited with code 1.", ExplorerApp.RunPager(file, pager, OperatingSystem.IsWindows()));
+        Assert.Equal($"The viewer '{exe}' exited with code 1.", ExplorerApp.RunViewer(file, exe, args));
         Assert.False(System.IO.File.Exists(file));
     }
 
@@ -619,17 +759,24 @@ public class ExplorerPagerTests
     {
         string file = Stage("x");
 
-        Assert.Equal("The pager 'exit 3' exited with code 3.", ExplorerApp.RunPager(file, "exit 3", OperatingSystem.IsWindows()));
+        string exe = OperatingSystem.IsWindows() ? "cmd.exe" : "/bin/sh";
+        string args = OperatingSystem.IsWindows() ? "/c exit 3" : "-c \"exit 3\"";
+        Assert.Equal($"The viewer '{exe}' exited with code 3.", ExplorerApp.RunViewer(file, exe, args));
     }
 
     [Fact]
-    public void ShellThatCannotStartBecomesANotice()
+    public void MissingViewerBecomesANotice()
     {
         string file = Stage("x");
 
-        string? error = ExplorerApp.RunPager(file, null, !OperatingSystem.IsWindows());
+        const string exe = "missing-dredge-test-viewer";
+        string? error = ExplorerApp.RunViewer(file, exe, "\"{0}\"");
 
-        Assert.StartsWith($"Could not run the pager '{(OperatingSystem.IsWindows() ? "less" : "more")}': ", error);
+        Assert.StartsWith($"Could not run the viewer '{exe}': ", error);
         Assert.False(System.IO.File.Exists(file));
     }
+
+    private static (string Exe, string Args) Grep(string pattern) => OperatingSystem.IsWindows()
+        ? ("findstr.exe", $"{pattern} \"{{0}}\"")
+        : ("/bin/grep", $"{pattern} \"{{0}}\"");
 }

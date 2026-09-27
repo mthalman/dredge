@@ -45,6 +45,86 @@ public sealed class ExplorerFeatureTests
     // ───────────────────────────── tour 1: layers and files ─────────────────────────────
 
     [Fact]
+    public void OrderedBaseImagesLabelTheirOwnLayerRanges()
+    {
+        ExplorerImage img = new(Reference, "linux/amd64", "sha256:app",
+            ["sha256:0", "sha256:1", "sha256:2", "sha256:3"],
+            [100, 100, 100, 100], null, 3, "base:new",
+            baseImages: [new("base:old", 1), new("base:new", 3)]);
+        ExplorerPresenter presenter = new(img, 150, 42);
+        ExplorerState state = new() { Focus = FocusPane.Layers };
+
+        Assert.Equal("base:old", img.BaseImageAt(0));
+        Assert.Equal("base:new", img.BaseImageAt(1));
+        Assert.Equal("base:new", img.BaseImageAt(2));
+        Assert.Null(img.BaseImageAt(3));
+        string[] layerLines = presenter.LayersPane(state).Lines.Select(line => line.ToString()).ToArray();
+        Assert.Contains(layerLines, line => line.Contains("── base:old"));
+        Assert.Contains(layerLines, line => line.Contains("── base:new"));
+        Assert.Contains(layerLines, line => line.Contains("── " + img.Reference));
+        string brackets = presenter.Header(state)[2].ToString();
+        Assert.Contains("base:old", brackets);
+        Assert.Contains("base:new", brackets);
+        Assert.Contains(img.RepoName, brackets);
+        presenter.Width = 100;
+        state.Layer = 1;
+        Assert.Equal("base:new", presenter.LayersPane(state).Subtitle);
+        state.Layer = 0;
+        Assert.Equal("base:old", presenter.LayersPane(state).Subtitle);
+        state.Layer = 3;
+        Assert.Equal(img.Reference, presenter.LayersPane(state).Subtitle);
+    }
+
+    [Fact]
+    public void BaseImageGroupsUseShortUnambiguousRepositoryNames()
+    {
+        ExplorerImage img = new("mcr.microsoft.com/dotnet/sdk:10.0", "linux/amd64", "sha256:app",
+            ["sha256:0", "sha256:1", "sha256:2", "sha256:3", "sha256:4"],
+            [100, 100, 100, 100, 100], null, 4, "mcr.microsoft.com/dotnet/aspnet:10.0",
+            baseImages:
+            [
+                new("ubuntu.azurecr.io/ubuntu:noble", 1),
+                new("mcr.microsoft.com/dotnet/runtime-deps:10.0", 2),
+                new("mcr.microsoft.com/dotnet/runtime:10.0", 3),
+                new("mcr.microsoft.com/dotnet/aspnet:10.0", 4)
+            ]);
+        ExplorerPresenter presenter = new(img, 150, 42);
+        ExplorerState state = new() { Focus = FocusPane.Layers };
+
+        Assert.Equal(["ubuntu.azurecr.io/ubuntu:noble",
+            "mcr.microsoft.com/dotnet/runtime-deps:10.0",
+            "mcr.microsoft.com/dotnet/runtime:10.0",
+            "mcr.microsoft.com/dotnet/aspnet:10.0",
+            "mcr.microsoft.com/dotnet/sdk:10.0"],
+            img.LayerIndexes.Select(img.GroupAt));
+        string[] rows = presenter.LayersPane(state).Lines.Select(line => line.ToString()).ToArray();
+        foreach (string label in img.LayerIndexes.Select(img.GroupAt))
+        {
+            Assert.Contains(rows, row => row.Contains($"── {label} "));
+        }
+        string brackets = presenter.Header(state)[2].ToString();
+        Assert.Contains("ubuntu", brackets);
+        Assert.DoesNotContain("ubuntu.azurecr.io", brackets);
+
+        presenter.Width = 100;
+        state.Layer = 2;
+        Assert.Equal("mcr.microsoft.com/dotnet/runtime:10.0", presenter.LayersPane(state).Subtitle);
+        Assert.Equal("mcr.microsoft.com/dotnet/runtime:10.0", img.BaseImageAt(2));
+    }
+
+    [Fact]
+    public void DuplicateRepositoryNamesKeepFullReferencesToDistinguishGroups()
+    {
+        ExplorerImage img = new("registry.test/shop/app:1", "linux/amd64", "sha256:app",
+            ["sha256:0", "sha256:1", "sha256:2"], [100, 100, 100], null, 2,
+            "second.test/base:2", baseImages: [new("first.test/base:1", 1), new("second.test/base:2", 2)]);
+
+        Assert.Equal("first.test/base:1", img.GroupAt(0));
+        Assert.Equal("second.test/base:2", img.GroupAt(1));
+        Assert.Equal("registry.test/shop/app:1", img.GroupAt(2));
+    }
+
+    [Fact]
     public void HeaderSummarizesTheImage()
     {
         using ExplorerUiHarness ui = Open(out _);
@@ -61,13 +141,22 @@ public sealed class ExplorerFeatureTests
     }
 
     [Fact]
+    public void HeaderShowsTheFullImageDigest()
+    {
+        string digest = "sha256:" + new string('a', 64);
+        using ExplorerUiHarness ui = OpenCustom(ExplorerSamples.Image(digest: digest), out _, width: 220);
+
+        Assert.Contains(digest, ui.Row(0));
+    }
+
+    [Fact]
     public void LayerListGroupsBaseAndUserLayersWithSizes()
     {
         using ExplorerUiHarness ui = Open(out _);
 
-        AssertShows(ui, "Layers  4 with files", "── registry.test/base:1", "── storefront");
+        AssertShows(ui, "Layers  4 with files", "── registry.test/base:1", "── registry.test/shop/storefront:1.0");
         string selected = ui.Row(ui.Find("COPY . /app").Y);
-        Assert.Contains("▌ 2 ", selected);
+        Assert.Contains("▌2 ", selected);
         Assert.Contains("2.0 MB", selected);
         string first = ui.Row(ui.Find("ADD file:rootfs /").Y);
         Assert.Contains("0 ", first);
@@ -139,18 +228,7 @@ public sealed class ExplorerFeatureTests
         ui.Press(Key.Enter);
         Assert.Contains("app/src", s.Expanded);
 
-        // Space folds everything below the selection's folder.
-        s.Expanded.Add("app/cache");
-        ui.Window.Presenter.Invalidate();
-        ui.Window.Apply(new SetCursor(RowOf(ui, "app/src/index.js")));
-        ui.Press(Key.Space);
-        Assert.DoesNotContain("app/src", s.Expanded);
-        Assert.Contains("app/cache", s.Expanded);
-        Assert.Equal(RowOf(ui, "app/src"), s.Cursor);
-        ui.Window.Apply(new SetCursor(RowOf(ui, "app")));
-        ui.Press(Key.Space);
-        Assert.Empty(s.Expanded);
-        Assert.Equal(0, s.Cursor);
+        Assert.DoesNotContain(ui.Window.Presenter.Hints(s), hint => hint.Key == "Space");
     }
 
     [Fact]
@@ -208,11 +286,15 @@ public sealed class ExplorerFeatureTests
     {
         using ExplorerUiHarness ui = Open(out _);
         string footer = Footer(ui);
-        foreach (string hint in new[] { "Tab  Layers", "↑↓  Move", "[ ]  Step layer", "a  Whole filesystem", "+ ~ = -  Filter",
+        foreach (string hint in new[] { "Tab  Layers", "[ ]  Step layer", "a  Whole filesystem", "+ ~ = -  Filter",
             "Enter  Inspect", "/  Search", "i  Insights", "?  Keys", "q  Quit" })
         {
             Assert.Contains(hint, footer);
         }
+        Assert.DoesNotContain("↑↓  Move", footer);
+        Assert.DoesNotContain("←→  Fold", footer);
+        Assert.DoesNotContain("PgUp PgDn  Page", footer);
+        Assert.DoesNotContain("Home End  First or last", footer);
 
         ui.Click(footer.IndexOf("i  Insights", StringComparison.Ordinal) + 3, ui.Height - 1);
         Assert.Equal(RightView.Insights, ui.State.View);
@@ -223,6 +305,160 @@ public sealed class ExplorerFeatureTests
         ui.Click(Footer(ui).IndexOf("Tab  Layers", StringComparison.Ordinal) + 2, ui.Height - 1);
         Assert.Equal(FocusPane.Layers, ui.State.Focus);
     }
+
+    [Fact]
+    public void LayerSizesAreShadedInProportionWithWasteInRed()
+    {
+        using ExplorerUiHarness ui = Open(out _);
+        ui.Window.Apply(new FocusOn(FocusPane.Right));
+        ExplorerImage img = ui.Window.Presenter.Image;
+        long max = Enumerable.Range(0, img.LayerCount).Max(img.LayerSize);
+        PaneContent pane = ui.Window.Presenter.LayersPane(ui.State);
+        Rgb[] strata = ui.Window.Presenter.StrataColors();
+        List<double> shaded = [];
+        bool sawWaste = false;
+        for (int layer = 0; layer < img.LayerCount; layer++)
+        {
+            bool selected = layer == ui.State.Layer;
+            Line line = pane.Lines.Single(l => l.ToString().StartsWith($"{(selected ? '▌' : ' ')}{layer} "));
+            // The size is right-aligned in the gauge, straight after the index.
+            string gauge = line.ToString().Substring(3, ExplorerPresenter.GaugeWidth);
+            Assert.Equal(Fmt.Size(img.LayerSize(layer)).PadLeft(ExplorerPresenter.GaugeWidth), gauge);
+            Assert.StartsWith(gauge + " ", line.ToString()[3..]);
+
+            Rgb under = selected ? Theme.Graphite : Theme.Ground;
+            // The same colour the layer has in the core bar above.
+            Rgb fill = strata[layer];
+            Assert.Contains(strata[layer], img.Row(layer).IsBase ? new[] { Theme.Bedrock1, Theme.Bedrock2 } : new[] { Theme.Sand1, Theme.Sand2 });
+            Rgb[] cells = Backgrounds(line).Skip(3).Take(ExplorerPresenter.GaugeWidth).Select(bg => bg ?? under).ToArray();
+            double reach = ExplorerPresenter.GaugeReach((double)img.LayerSize(layer) / max);
+            int full = (int)reach;
+            // Fully covered cells take the fill (or red for waste); past the reach, the row shows through.
+            Assert.All(cells[..full], bg => Assert.True(bg == fill || bg == Theme.StratumWaste));
+            Assert.All(cells[(int)Math.Ceiling(reach)..], bg => Assert.Equal(under, bg));
+            sawWaste |= cells.Contains(Theme.StratumWaste);
+            // The number reads in one colour, whatever is shaded behind it.
+            Assert.All(Foregrounds(line).Skip(3).Take(ExplorerPresenter.GaugeWidth), fg => Assert.Equal(Theme.Foam, fg));
+            // Coverage, weighting the blended edge cell by how far it is from the unselected gauge background.
+            shaded.Add(cells.Take((int)Math.Ceiling(reach)).Sum(bg => Coverage(Theme.Ground, fill, bg)));
+        }
+        Assert.True(sawWaste);
+        // The largest layer fills the gauge; the rest are ordered by size and don't collapse together.
+        Assert.Equal(ExplorerPresenter.GaugeWidth, shaded[Enumerable.Range(0, img.LayerCount).First(l => img.LayerSize(l) == max)], 1);
+        for (int a = 0; a < img.LayerCount; a++)
+        {
+            for (int b = 0; b < img.LayerCount; b++)
+            {
+                // Layers too small to show more than the minimum sliver are allowed to tie.
+                double reachA = ExplorerPresenter.GaugeReach((double)img.LayerSize(a) / max);
+                double reachB = ExplorerPresenter.GaugeReach((double)img.LayerSize(b) / max);
+                if (img.LayerSize(a) > img.LayerSize(b) && reachA - reachB > 0.1)
+                {
+                    Assert.True(shaded[a] > shaded[b], $"layer {a} ({img.LayerSize(a)}) should shade more than layer {b} ({img.LayerSize(b)})");
+                }
+            }
+        }
+    }
+
+    [Fact]
+    public void SelectingALayerPreservesItsSizeAndCoreBarColors()
+    {
+        ExplorerImage img = ExplorerSamples.Image();
+        ExplorerPresenter presenter = new(img, 150, 42);
+        ExplorerState state = new() { Focus = FocusPane.Layers };
+        Rgb[] strata = presenter.StrataColors();
+
+        foreach (int layer in new[] { 1, 2 })
+        {
+            state.Layer = layer == 1 ? 2 : 1;
+            Rgb?[] unselectedBar = Foregrounds(presenter.Header(state)[1]).ToArray();
+            Line unselected = presenter.LayersPane(state).Lines.Single(line => line.ToString().StartsWith($" {layer} "));
+            state.Layer = layer;
+            Rgb?[] selectedBar = Foregrounds(presenter.Header(state)[1]).ToArray();
+            Line selected = presenter.LayersPane(state).Lines.Single(line => line.ToString().StartsWith($"▌{layer} "));
+
+            int shadedCells = (int)Math.Ceiling(ExplorerPresenter.GaugeReach(
+                (double)img.LayerSize(layer) / Enumerable.Range(0, img.LayerCount).Max(img.LayerSize)));
+            Assert.Equal(Backgrounds(unselected).Skip(3).Take(shadedCells),
+                Backgrounds(selected).Skip(3).Take(shadedCells));
+            Assert.Equal(unselectedBar, selectedBar);
+            Assert.Equal(Theme.Channel, selected.Parts[0].Sty.Foreground);
+            if (layer == 1)
+            {
+                Assert.Contains(strata[layer], Backgrounds(selected).Skip(3).Take(shadedCells));
+            }
+            else
+            {
+                Assert.Contains(Theme.StratumWaste, Backgrounds(selected).Skip(3).Take(shadedCells));
+            }
+        }
+    }
+
+    // How much of a cell is shaded: the blend amount that reproduces its colour
+    // from the row colour toward the fill or the waste colour, whichever fits.
+    private static double Coverage(Rgb under, Rgb fill, Rgb bg)
+    {
+        static (double Amount, double Error) Fit(Rgb from, Rgb to, Rgb bg)
+        {
+            (double, double)[] ch = [(from.R, to.R), (from.G, to.G), (from.B, to.B)];
+            double[] got = [bg.R, bg.G, bg.B];
+            double num = 0, den = 0;
+            for (int i = 0; i < 3; i++)
+            {
+                num += (got[i] - ch[i].Item1) * (ch[i].Item2 - ch[i].Item1);
+                den += (ch[i].Item2 - ch[i].Item1) * (ch[i].Item2 - ch[i].Item1);
+            }
+            double t = den == 0 ? 0 : Math.Clamp(num / den, 0, 1);
+            double err = 0;
+            for (int i = 0; i < 3; i++)
+            {
+                err += Math.Abs(ch[i].Item1 + (ch[i].Item2 - ch[i].Item1) * t - got[i]);
+            }
+            return (t, err);
+        }
+        var a = Fit(under, fill, bg);
+        var b = Fit(under, Theme.StratumWaste, bg);
+        return a.Error <= b.Error ? a.Amount : b.Amount;
+    }
+
+    [Fact]
+    public void LayerRowsUseOnlyTheMarginsTheyNeedAndKeepInstructionsAligned()
+    {
+        Valleysoft.DockerRegistryClient.Models.Images.LayerHistory[] history =
+        [
+            new() { CreatedBy = "RUN /bin/sh -c step 0 # buildkit" },
+            new() { CreatedBy = "ENV APP_UID=1654 ASPNETCORE_HTTP_PORTS=8080", IsEmptyLayer = true },
+            new() { CreatedBy = "RUN /bin/sh -c step 1 # buildkit" },
+        ];
+        ExplorerImage img = new("registry.test/group/app:1.0", "linux/amd64", "sha256:m", ["sha256:c0", "sha256:c1"], [100, 200],
+            history, baseLayerCount: null, baseName: null, now: new DateTime(2026, 1, 1));
+        using ExplorerUiHarness ui = OpenCustom(img, out _);
+        PaneContent pane = ui.Window.Presenter.LayersPane(ui.State);
+        // The marker sits in the pane's padding column, and the index is only as wide as it needs to be.
+        Assert.Equal(0, pane.Inset);
+        string gauge = "waiting".PadLeft(ExplorerPresenter.GaugeWidth);
+        Assert.Equal([$"▌0 {gauge} RUN step 0", $"{new string(' ', 4 + ExplorerPresenter.GaugeWidth)}ENV APP_UID=165", $" 1 {gauge} RUN step 1"],
+            pane.Lines.Select(l => l.ToString().TrimEnd()[..Math.Min(l.ToString().TrimEnd().Length, 3 + ExplorerPresenter.GaugeWidth + 16)]));
+        using ExplorerUiHarness screen = OpenCustom(img, out _);
+        Assert.Contains(screen.Screen().Split('\n'), row => row.Contains("┃▌0 ") || row.Contains("│▌0 "));
+    }
+
+    [Fact]
+    public void GaugeUsesASquareRootScaleSoSmallLayersStayDistinct()
+    {
+        // With one layer 25x the next, a linear scale would give it a third of one cell.
+        Assert.Equal(ExplorerPresenter.GaugeWidth, ExplorerPresenter.GaugeReach(1));
+        Assert.Equal(ExplorerPresenter.GaugeWidth / 5.0, ExplorerPresenter.GaugeReach(1 / 25.0), 6);
+        Assert.Equal(0, ExplorerPresenter.GaugeReach(0));
+        Assert.True(ExplorerPresenter.GaugeReach(1e-9) > 0);
+        Assert.True(ExplorerPresenter.GaugeReach(0.16) > ExplorerPresenter.GaugeReach(0.08));
+    }
+
+    private static IEnumerable<Rgb?> Foregrounds(Line line) =>
+        line.Parts.SelectMany(p => Enumerable.Repeat(p.Sty.Foreground, p.Text.Length));
+
+    private static IEnumerable<Rgb?> Backgrounds(Line line) =>
+        line.Parts.SelectMany(p => Enumerable.Repeat(p.Sty.Background, p.Text.Length));
 
     [Fact]
     public void OnlyPanesWhoseContentChangedRepaint()
@@ -372,16 +608,18 @@ public sealed class ExplorerFeatureTests
 
         using (ExplorerUiHarness ui = OpenCustom(Custom([Layer([File("a", 1, "a")]), Layer([File("b", 1, "b")])]), out _, layer: 1))
         {
+            // Without a verified base the key is not offered, so it does nothing.
+            Assert.DoesNotContain(ui.Window.Presenter.Hints(ui.State), h => h.Cmd is FirstUserLayer);
             ui.Press(new Key('b'));
             Assert.Equal(1, ui.State.Layer);
-            Assert.Equal("No verified base image, so every layer is shown as yours.", ui.State.Notice);
-            AssertShows(ui, "No verified base image");
+            Assert.Null(ui.State.Notice);
         }
 
         using (ExplorerUiHarness ui = OpenCustom(Custom([Layer([File("a", 1, "a")]), Layer([File("b", 1, "b")])], baseLayerCount: 2), out _))
         {
+            Assert.DoesNotContain(ui.Window.Presenter.Hints(ui.State), h => h.Cmd is FirstUserLayer);
             ui.Press(new Key('b'));
-            Assert.Equal("Every layer is part of the base image.", ui.State.Notice);
+            Assert.Null(ui.State.Notice);
         }
     }
 
@@ -426,9 +664,10 @@ public sealed class ExplorerFeatureTests
         s.Expanded.Add("usr/bin");
         ui.Window.Presenter.Invalidate();
         ui.Window.Apply(new SetCursor(RowOf(ui, "usr/bin/tool")));
-        ui.Press(new Key('o'));
-        Assert.Equal("The pager works once every layer is indexed.", s.Notice);
-        AssertShows(ui, "The pager works once every layer is indexed.");
+        ui.Window.Apply(new OpenInViewer());
+        Assert.Equal("The viewer works once every layer is indexed.", s.Notice);
+        ui.Pump();
+        AssertShows(ui, "The viewer works once every layer is indexed.");
 
         // Selecting an unindexed layer moves it to the front of the queue.
         ui.Window.Apply(new SelectLayer(3));
@@ -581,10 +820,50 @@ public sealed class ExplorerFeatureTests
             "layer 2  + added", "COPY . /app", "layer 3  ~ modified", "Preview  json · 3 lines",
             "1  {", "2    \"name\": \"storefront\"", "3  }");
 
-        // [ and ] leave the inspector for the tree of the next layer.
+        Assert.DoesNotContain(ui.Window.Presenter.Hints(s), hint => hint.Label == "Step layer");
+        Assert.DoesNotContain("[ ]  Step layer", Footer(ui));
+        int layer = s.Layer;
         ui.Press(new Key(']'));
+        ui.Press(new Key('['));
+        ui.Window.Apply(new StepLayer(1));
+        Assert.Equal(layer, s.Layer);
+        Assert.Equal(RightView.Inspector, s.View);
+        Assert.True(ui.Shows("\"storefront\""), ui.Screen());
+
+        ui.Press(Key.Esc);
         Assert.Equal(RightView.Files, s.View);
+        ui.Press(new Key(']'));
         Assert.Equal(3, s.Layer);
+    }
+
+    [Theory]
+    [InlineData(150, 42)]
+    [InlineData(100, 40)]
+    public void InspectorUsesFullWidthAndRestoresTheExplorerOnBack(int width, int height)
+    {
+        using ExplorerUiHarness ui = Open(out _, width: width, height: height);
+        ui.Window.Apply(new SetCursor(RowOf(ui, "app/package.json")));
+        ui.Press(Key.Enter);
+        ui.Until(() => ui.State.Preview is not null, "the file preview");
+
+        Assert.Equal(RightView.Inspector, ui.State.View);
+        Assert.False(ui.Window.Layers.Visible);
+        Assert.Equal(0, ui.Window.Right.Frame.X);
+        Assert.Equal(width, ui.Window.Right.Frame.Width);
+        Assert.Equal(ExplorerPresenter.HeaderHeight, ui.Window.Right.Frame.Y);
+        Assert.True(ui.Window.Right.HasFocus);
+        Assert.True(ui.Shows("\"storefront\""), ui.Screen());
+        int selectedLayer = ui.State.Layer;
+        ui.Click(width / 2, 1);
+        Assert.Equal(selectedLayer, ui.State.Layer);
+        Assert.Equal(RightView.Inspector, ui.State.View);
+
+        ui.Press(Key.Esc);
+        Assert.Equal(RightView.Files, ui.State.View);
+        Assert.True(ui.Window.Layers.Visible);
+        Assert.Equal(width < 120 ? 0 : ExplorerPresenter.LeftWidth, ui.Window.Right.Frame.X);
+        Assert.Equal(width < 120 ? width : width - ExplorerPresenter.LeftWidth, ui.Window.Right.Frame.Width);
+        Assert.True(ui.Shows("package.json"), ui.Screen());
     }
 
     [Fact]
@@ -634,17 +913,17 @@ public sealed class ExplorerFeatureTests
     }
 
     [Fact]
-    public void PagerAndExtractNeedALiveFile()
+    public void ViewerAndExtractNeedALiveFile()
     {
         using ExplorerUiHarness ui = Open(out _);
         ExplorerState s = ui.State;
         ui.Window.Apply(new SetCursor(RowOf(ui, "app")));
-        ui.Press(new Key('o'));
-        Assert.Equal("Select a file to open in the pager.", s.Notice);
+        ui.Window.Apply(new OpenInViewer());
+        Assert.Equal("Select a file to open in the viewer.", s.Notice);
         s.Expanded.Add("app/cache");
         ui.Window.Presenter.Invalidate();
         ui.Window.Apply(new SetCursor(RowOf(ui, "app/cache/big.bin")));
-        ui.Press(new Key('o'));
+        ui.Window.Apply(new OpenInViewer());
         Assert.Equal("/app/cache/big.bin is not in the final image.", s.Notice);
         Assert.False(ui.Window.StopRequested);
     }
@@ -857,6 +1136,10 @@ public sealed class ExplorerFeatureTests
         {
             Assert.Contains(hint, Footer(ui));
         }
+        Assert.DoesNotContain("↑↓  Move", Footer(ui));
+        Assert.DoesNotContain("←→  Fold", Footer(ui));
+        Assert.DoesNotContain("PgUp PgDn  Page", Footer(ui));
+        Assert.DoesNotContain("Home End  First or last", Footer(ui));
     }
 
     [Fact]
@@ -927,9 +1210,10 @@ public sealed class ExplorerFeatureTests
         c.Expanded.Add("file:app");
         ui.Window.Apply(new Redraw());
         Assert.Contains(Rows(), row => row.Path == "app/x");
+        int cursor = c.Cursor;
         ui.Press(Key.Space);
-        Assert.DoesNotContain(Rows(), row => row.Path == "app/x");
-        Assert.Equal(0, c.Cursor);
+        Assert.Contains(Rows(), row => row.Path == "app/x");
+        Assert.Equal(cursor, c.Cursor);
     }
 
     [Fact]
@@ -953,22 +1237,20 @@ public sealed class ExplorerFeatureTests
         Assert.Equal(RightView.Keys, s.View);
         AssertShows(ui, "Compare", "Swap sides", "Leave compare");
         AssertShows(ui, "Esc  Back");
-        // Any view key closes the key list and returns to the comparison rather than leaving it.
+        // Keys the key list does not offer do nothing; Esc returns to the comparison rather than leaving it.
         ui.Press(new Key('i'));
-        Assert.Equal(RightView.Files, s.View);
-        Assert.NotNull(s.Compare);
-        AssertShows(ui, "Differences  1.0 → 2.0");
-        ui.Press(new Key('?'));
         ui.Press(Key.Tab);
         Assert.Equal(RightView.Keys, s.View);
         ui.Press(Key.Esc);
         Assert.Equal(RightView.Files, s.View);
         Assert.NotNull(s.Compare);
 
+        AssertShows(ui, "Differences  1.0 → 2.0");
         foreach (char key in "ia/+x")
         {
             ui.Press(new Key(key));
-            Assert.Equal("Press Esc to leave compare first.", s.Notice);
+            Assert.Null(s.Notice);
+            Assert.Equal(RightView.Files, s.View);
         }
         Assert.NotNull(s.Compare);
 
@@ -993,11 +1275,52 @@ public sealed class ExplorerFeatureTests
     }
 
     [Fact]
-    public void SwapAndDifferenceStepsOnlyWorkInCompare()
+    public void KeysOnlyActWhenTheirContextListsThem()
     {
-        using ExplorerUiHarness ui = Open(out _);
-        ui.Press(new Key('s'));
-        Assert.Equal("Swap and difference stepping work in the compare view.", ui.State.Notice);
+        using ExplorerUiHarness ui = Open(out FakeExplorerHost host);
+        ExplorerState s = ui.State;
+        s.Expanded.Add("app");
+        ui.Window.Presenter.Invalidate();
+        ui.Window.Apply(new Redraw());
+
+        // Outside compare, with one platform and no failed layer, s, p and r are not offered.
+        foreach (char key in "spr")
+        {
+            ui.Press(new Key(key));
+            Assert.Null(s.Notice);
+        }
+        Assert.Empty(host.Retried);
+        Assert.False(ui.Window.StopRequested);
+
+        // Copy and viewer belong to the inspector, not the file tree.
+        ui.Window.Apply(new SetCursor(RowOf(ui, "app/package.json")));
+        ui.Press(new Key('y'));
+        ui.Press(new Key('o'));
+        Assert.Null(s.Notice);
+        Assert.False(ui.Window.StopRequested);
+
+        // With the layer list focused, file keys do not reach the file tree.
+        ui.Press(Key.Tab);
+        Assert.Equal(FocusPane.Layers, s.Focus);
+        foreach (Key key in new[] { new Key('y'), new Key('x'), new Key('o'), new Key('+'), Key.Enter, Key.Space, Key.CursorLeft, Key.PageDown })
+        {
+            ui.Press(key);
+            Assert.Null(s.Notice);
+            Assert.Contains("app", s.Expanded);
+            Assert.Empty(s.Hidden);
+            Assert.False(ui.Window.ExtractField.Visible);
+        }
+        Assert.Equal(2, s.Layer);
+
+        // The inspector does not offer Tab, so focus stays put.
+        ui.Press(Key.Tab);
+        ui.Window.Apply(new SetCursor(RowOf(ui, "app/package.json")));
+        ui.Press(Key.Enter);
+        Assert.Equal(RightView.Inspector, s.View);
+        ui.Press(Key.Tab);
+        Assert.Equal(FocusPane.Right, s.Focus);
+        ui.Press(new Key('a'));
+        Assert.False(s.WholeFilesystem);
     }
 
     // ───────────────────────────── tour 9: keys ─────────────────────────────
@@ -1010,7 +1333,7 @@ public sealed class ExplorerFeatureTests
 
         AssertShows(ui, "Move", "Views", "Layers", "Search", "Files", "Actions", "Compare", "Change markers", "Tips",
             "Toggle whole filesystem", "First layer after base", "Compare with a tag…", "Choose platform…",
-            "Retry a failed layer", "Fold everything below", "Only paths with findings", "Swap sides");
+            "Retry a failed layer", "Only paths with findings", "Swap sides", "Open file in text viewer");
         ui.Press(Key.Esc);
         Assert.Equal(RightView.Files, ui.State.View);
     }
@@ -1019,7 +1342,7 @@ public sealed class ExplorerFeatureTests
     {
         { '?', "keys" }, { 'i', "insights" }, { '/', "search" }, { 'a', "whole" }, { 'b', "base" }, { 'w', "findings" },
         { '[', "previous" }, { ']', "next" }, { '+', "added" }, { '~', "modified" }, { '=', "identical" }, { '-', "deleted" },
-        { 'p', "platform" }, { 'x', "extract" }, { 'y', "copy" }, { 'o', "pager" }, { 's', "swap" }, { 'r', "retry" }, { 'q', "quit" },
+        { 'x', "extract" }, { 'y', "copy" }, { 'o', "viewer" }, { 'q', "quit" },
     };
 
     [Theory]
@@ -1028,12 +1351,17 @@ public sealed class ExplorerFeatureTests
     {
         using ExplorerUiHarness ui = Open(out FakeExplorerHost host);
         ExplorerState s = ui.State;
-        if (action is "extract" or "copy" or "pager")
+        if (action is "extract" or "copy" or "viewer")
         {
             ui.Window.Apply(new SelectLayer(3));
             s.Expanded.Add("app");
             ui.Window.Presenter.Invalidate();
             ui.Window.Apply(new SetCursor(RowOf(ui, "app/package.json")));
+            if (action is "copy" or "viewer")
+            {
+                ui.Press(Key.Enter);
+                Assert.Equal(RightView.Inspector, s.View);
+            }
         }
         ui.Press(new Key(key));
         switch (action)
@@ -1050,12 +1378,9 @@ public sealed class ExplorerFeatureTests
             case "modified": Assert.Contains(Change.Modified, s.Hidden); break;
             case "identical": Assert.Contains(Change.Identical, s.Hidden); break;
             case "deleted": Assert.Contains(Change.Removed, s.Hidden); break;
-            case "platform": Assert.Equal("This image has only one platform.", s.Notice); break;
             case "extract": Assert.True(ui.Window.ExtractField.Visible); break;
             case "copy": Assert.Equal("$ dredge image cat registry.test/shop/storefront:1.0 /app/package.json", s.Notice); break;
-            case "pager": ui.Until(() => ui.Window.StopRequested, "the pager"); Assert.Equal(ExplorerExitKind.Pager, ui.Window.Exit.Kind); break;
-            case "swap": Assert.Equal("Swap and difference stepping work in the compare view.", s.Notice); break;
-            case "retry": Assert.Equal("Only a failed layer can be retried.", s.Notice); break;
+            case "viewer": ui.Until(() => ui.Window.StopRequested, "the viewer"); Assert.Equal(ExplorerExitKind.Viewer, ui.Window.Exit.Kind); break;
             case "quit": Assert.True(ui.Window.StopRequested); break;
         }
     }
@@ -1141,6 +1466,80 @@ public sealed class ExplorerThemeTests : IDisposable
         Assert.NotEqual(ground, Theme.Ground);
         Assert.NotEqual(foam, Theme.Foam);
         Assert.NotEqual(dark, Theme.S(Theme.Foam).ToAttribute());
+    }
+
+    [Fact]
+    public void SizeTextIsReadableOnEveryStratumColour()
+    {
+        foreach (ThemeKind kind in new[] { ThemeKind.Dark, ThemeKind.Light })
+        {
+            Theme.Apply(kind);
+            foreach (Rgb bg in new[] { Theme.Bedrock1, Theme.Bedrock2, Theme.Sand1, Theme.Sand2, Theme.StratumWaste })
+            {
+                Assert.True(ContrastRatio(Theme.Foam, bg) >= 4.5, $"{bg} against {Theme.Foam} in {kind}");
+            }
+        }
+    }
+
+    [Fact]
+    public void AdjacentStrataAndWasteRemainDistinctInEveryTheme()
+    {
+        foreach (ThemeKind kind in new[] { ThemeKind.Dark, ThemeKind.Light })
+        {
+            Theme.Apply(kind);
+            Assert.True(LabDistance(Theme.Bedrock1, Theme.Bedrock2) >= 9, $"Base shades in {kind}");
+            Assert.True(LabDistance(Theme.Sand1, Theme.Sand2) >= 9, $"App shades in {kind}");
+            foreach (Rgb baseColor in new[] { Theme.Bedrock1, Theme.Bedrock2 })
+            {
+                foreach (Rgb appColor in new[] { Theme.Sand1, Theme.Sand2 })
+                {
+                    Assert.True(LabDistance(baseColor, appColor) >= 25, $"Base and app in {kind}");
+                }
+            }
+            foreach (Rgb appColor in new[] { Theme.Sand1, Theme.Sand2 })
+            {
+                Assert.True(LabDistance(appColor, Theme.StratumWaste) >= 20, $"App and waste in {kind}");
+            }
+        }
+    }
+
+    private static double LabDistance(Rgb a, Rgb b)
+    {
+        static (double L, double A, double B) Lab(Rgb rgb)
+        {
+            static double Linear(int value)
+            {
+                double channel = value / 255.0;
+                return channel <= 0.04045 ? channel / 12.92 : Math.Pow((channel + 0.055) / 1.055, 2.4);
+            }
+            static double Curve(double value) =>
+                value > 0.008856 ? Math.Cbrt(value) : 7.787 * value + 16.0 / 116;
+
+            double r = Linear(rgb.R), g = Linear(rgb.G), b = Linear(rgb.B);
+            double x = Curve((0.4124 * r + 0.3576 * g + 0.1805 * b) / 0.95047);
+            double y = Curve(0.2126 * r + 0.7152 * g + 0.0722 * b);
+            double z = Curve((0.0193 * r + 0.1192 * g + 0.9505 * b) / 1.08883);
+            return (116 * y - 16, 500 * (x - y), 200 * (y - z));
+        }
+
+        (double l1, double a1, double b1) = Lab(a);
+        (double l2, double a2, double b2) = Lab(b);
+        return Math.Sqrt(Math.Pow(l1 - l2, 2) + Math.Pow(a1 - a2, 2) + Math.Pow(b1 - b2, 2));
+    }
+
+    private static double ContrastRatio(Rgb a, Rgb b)
+    {
+        static double Lum(Rgb c)
+        {
+            static double Ch(int v)
+            {
+                double s = v / 255.0;
+                return s <= 0.03928 ? s / 12.92 : Math.Pow((s + 0.055) / 1.055, 2.4);
+            }
+            return 0.2126 * Ch(c.R) + 0.7152 * Ch(c.G) + 0.0722 * Ch(c.B);
+        }
+        double la = Lum(a), lb = Lum(b);
+        return (Math.Max(la, lb) + 0.05) / (Math.Min(la, lb) + 0.05);
     }
 
     [Fact]

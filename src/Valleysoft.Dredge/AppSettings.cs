@@ -1,4 +1,4 @@
-﻿using System.Globalization;
+using System.Globalization;
 using System.Text.Json.Serialization;
 using IOPath = System.IO.Path;
 
@@ -191,8 +191,8 @@ internal partial class ExploreSettings
     [JsonPropertyName("mouse")]
     public string Mouse { get; set; } = "true";
 
-    [JsonPropertyName("clipboard")]
-    public string Clipboard { get; set; } = "off";
+    [JsonPropertyName("viewer")]
+    public ExploreViewerSettings Viewer { get; set; } = new();
 
     [JsonPropertyName("keys")]
     public ExploreKeysSettings Keys { get; set; } = new();
@@ -204,13 +204,26 @@ internal partial class ExploreSettings
         _ => throw new InvalidOperationException(
             $"Invalid explore.mouse value '{Mouse}'; expected true or false.")
     };
+}
 
-    public bool IsOsc52ClipboardEnabled() => Clipboard switch
+[GenerateSettings]
+internal partial class ExploreViewerSettings
+{
+    [JsonPropertyName("exePath")]
+    public string ExePath { get; set; } = string.Empty;
+
+    [JsonPropertyName("args")]
+    public string Args { get; set; } = "\"{0}\"";
+
+    [JsonPropertyName("terminal")]
+    public string Terminal { get; set; } = "false";
+
+    public bool UsesTerminal() => Terminal switch
     {
-        "off" or "" => false,
-        "osc52" => true,
+        "true" => true,
+        "false" => false,
         _ => throw new InvalidOperationException(
-            $"Invalid explore.clipboard value '{Clipboard}'; expected off or osc52.")
+            $"Invalid explore.viewer.terminal value '{Terminal}'; expected true or false.")
     };
 }
 
@@ -269,8 +282,8 @@ internal partial class ExploreKeysSettings
     [JsonPropertyName("copyCommand")]
     public string CopyCommand { get; set; } = "";
 
-    [JsonPropertyName("pager")]
-    public string Pager { get; set; } = "";
+    [JsonPropertyName("viewer")]
+    public string Viewer { get; set; } = "";
 
     [JsonPropertyName("swapSides")]
     public string SwapSides { get; set; } = "";

@@ -93,6 +93,17 @@ internal sealed class Line
         return line;
     }
 
+    // Like WithBackground, but keeps backgrounds the parts already set.
+    public Line UnderBackground(Rgb bg)
+    {
+        Line line = new();
+        foreach (var (text, style) in parts)
+        {
+            line.Add(text, style.Background is null ? new Sty(style.Foreground, bg, style.Deco) : style);
+        }
+        return line;
+    }
+
     public IReadOnlyList<(string Text, Sty Sty)> Parts => parts;
 
     public bool SameAs(Line other) => Length == other.Length && parts.SequenceEqual(other.parts);
@@ -159,28 +170,4 @@ internal static class Fmt
 
     public static long MB(double mb) => (long)(mb * 1_000_000);
     public static long KB(double kb) => (long)(kb * 1_000);
-
-    // Eighth-block bar so small differences stay visible in narrow columns.
-    public static string Bar(double fraction, int width)
-    {
-        const string eighths = " ▏▎▍▌▋▊▉";
-        double cells = Math.Clamp(fraction, 0, 1) * width;
-        int full = (int)cells;
-        int rem = (int)Math.Round((cells - full) * 8);
-        if (rem == 8)
-        {
-            full++;
-            rem = 0;
-        }
-        string bar = new string('█', Math.Min(full, width));
-        if (full < width && rem > 0)
-        {
-            bar += eighths[rem];
-        }
-        if (bar.Length == 0 && fraction > 0)
-        {
-            bar = "▏";
-        }
-        return bar;
-    }
 }

@@ -80,13 +80,16 @@ public sealed class ExplorerIntegrationTests
             client, factory, image, new PlatformOptionsBase(), null, ct, settingsStore: new EmptySettingsStore());
         Assert.Equal(3, source.LayerCount);
 
-        ExplorerOptions options = new(Layer: 1, Compare: null, Mouse: true, Clipboard: false, Keys: KeyMap.Default);
+        ExplorerOptions options = new(Layer: 1, Compare: null, Mouse: true, Clipboard: ClipboardMode.Off, Keys: KeyMap.Default,
+            ViewerExePath: "less", ViewerArgs: "\"{0}\"");
         await using ExplorerApp explorer = new(client, factory, source, cacheContext.Store, options, ct);
         ExplorerState state = explorer.Start();
+        Assert.Equal(FocusPane.Layers, state.Focus);
         using ExplorerUiHarness ui = new(150, 42, app => explorer.Attach(app, state));
         ExplorerImage img = explorer.Image;
         try
         {
+            Assert.True(ui.Window.Layers.HasFocus);
             ui.Until(() => img.Complete || img.SessionError is not null, "the session to load");
             Assert.Null(img.SessionError);
             Assert.Equal(1, ui.State.Layer);
@@ -146,14 +149,14 @@ public sealed class ExplorerIntegrationTests
             ui.Press(Key.Esc);
             Assert.Null(ui.State.Compare);
 
-            // Extract and pager staging read from the live image.
+            // Extract and viewer staging read from the live image.
             string output = Path.Combine(cacheContext.Root, "out", "config.json");
             string message = ui.Wait(() => explorer.Host.ExtractAsync("app/config.json", output, ct), "the extraction");
             Assert.Contains("Extracted", message);
             Assert.Contains("debug", File.ReadAllText(output));
-            string paged = ui.Wait(() => explorer.Host.PrepareForPagerAsync("app/package.json", ct), "the pager file");
-            Assert.Contains("1.0.0", File.ReadAllText(paged));
-            Directory.Delete(Path.GetDirectoryName(paged)!, recursive: true);
+            string viewed = ui.Wait(() => explorer.Host.PrepareForViewerAsync("app/package.json", ct), "the viewer file");
+            Assert.Contains("1.0.0", File.ReadAllText(viewed));
+            Directory.Delete(Path.GetDirectoryName(viewed)!, recursive: true);
 
             PreviewContent binary = ui.Wait(() => explorer.Host.PreviewAsync("etc/os-release", 0, ct), "the preview");
             Assert.Equal(["ID=test", "VERSION_ID=1"], binary.Lines);
@@ -195,8 +198,8 @@ public sealed class ExplorerIntegrationTests
         ExplorerSource source = await ExplorerSource.OpenAsync(
             client, factory, image, new PlatformOptionsBase(), null, ct, settingsStore: new EmptySettingsStore());
 
-        ExplorerOptions options = new(Layer: null, Compare: "2.0", Mouse: true, Clipboard: false, Keys: KeyMap.Default,
-            Notice: "Saved settings were ignored.");
+        ExplorerOptions options = new(Layer: null, Compare: "2.0", Mouse: true, Clipboard: ClipboardMode.Off, Keys: KeyMap.Default,
+            ViewerExePath: "less", ViewerArgs: "\"{0}\"", Notice: "Saved settings were ignored.");
         await using ExplorerApp explorer = new(client, factory, source, cacheContext.Store, options, ct);
         ExplorerState state = explorer.Start();
         Assert.Equal(1, state.Layer);

@@ -33,10 +33,11 @@ internal interface IExplorerHost
     Task<PackageFilesContent> PackageFilesAsync(
         ExplorerComparison comparison, ExplorerPackageDifference package, CancellationToken cancellationToken);
     Task<string> ExtractAsync(string path, string destination, CancellationToken cancellationToken);
-    Task<string> PrepareForPagerAsync(string path, CancellationToken cancellationToken);
-    void WriteClipboard(string text);
+    Task<string> PrepareForViewerAsync(string path, CancellationToken cancellationToken);
+    // False when the clipboard couldn't be reached.
+    bool WriteClipboard(string text);
 }
 
-internal enum ExplorerExitKind { Quit, Pager, Platform }
+internal enum ExplorerExitKind { Quit, Viewer, Platform }
 
-internal sealed record ExplorerExit(ExplorerExitKind Kind, string? PagerFile = null, ExplorerPlatform? Platform = null);
+internal sealed record ExplorerExit(ExplorerExitKind Kind, string? ViewerFile = null, ExplorerPlatform? Platform = null);

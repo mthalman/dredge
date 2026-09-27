@@ -458,7 +458,7 @@ internal sealed class CompareView
 
         lines.Add(Line.Blank);
         lines.Add(new Line().Append(ExplorerPresenter.Keycap("Enter")).Add(" Diff a file   ", Theme.Silt)
-            .Append(ExplorerPresenter.Keycap(presenter.Keys.Label(KeyAction.CopyCommand))).Add(" Show ", Theme.Silt)
+            .Append(ExplorerPresenter.Keycap(presenter.Keys.Label(KeyAction.CopyCommand))).Add($" {presenter.CopyVerb} ", Theme.Silt)
             .Add("dredge image compare files", Theme.Foam).Truncate(w));
         return pane;
     }
@@ -628,16 +628,18 @@ internal sealed class CompareView
         KeyMap k = presenter.Keys;
         if (c.Diff is not null)
         {
-            return [new("↑↓", "Scroll"), new("PgUp PgDn", "Page"), new("Esc", "Back to differences", new Back()),
+            return [new("↑↓", "Scroll"), new("PgUp PgDn", "Page", ShowInFooter: false), new("Home End", "Top or bottom", ShowInFooter: false), new("Esc", "Back to differences", new Back()),
                 new(k.Label(KeyAction.Help), "Keys", new ShowView(RightView.Keys)), new(k.Label(KeyAction.Quit), "Quit", new Quit())];
         }
         return
         [
-            new("Tab", c.FocusLayers ? "Differences" : "Layers", new FocusOn(c.FocusLayers ? FocusPane.Right : FocusPane.Layers)), new("↑↓", "Move"),
+            new("Tab", c.FocusLayers ? "Differences" : "Layers", new FocusOn(c.FocusLayers ? FocusPane.Right : FocusPane.Layers)), new("↑↓", "Move", ShowInFooter: false),
             new($"{k.Label(KeyAction.PreviousLayer)} {k.Label(KeyAction.NextLayer)}", "Next difference"),
             new(k.Label(KeyAction.SwapSides), "Swap sides", new SwapSides()),
             new("Enter", "Diff a file", new Activate()),
-            new(k.Label(KeyAction.Compare), "Change tag…", new PickTag()), new("Esc", "Leave compare", new Back()), new("←→", "Fold"),
+            new(k.Label(KeyAction.Compare), "Change tag…", new PickTag()), new("Esc", "Leave compare", new Back()), new("←→", "Fold", ShowInFooter: false),
+            new(k.Label(KeyAction.CopyCommand), $"{presenter.CopyVerb} command", new CopyCommand()),
+            new("PgUp PgDn", "Page", ShowInFooter: false), new("Home End", "First or last", ShowInFooter: false),
             new(k.Label(KeyAction.Help), "Keys", new ShowView(RightView.Keys)), new(k.Label(KeyAction.Quit), "Quit", new Quit()),
         ];
     }

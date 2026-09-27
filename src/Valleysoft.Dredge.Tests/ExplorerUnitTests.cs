@@ -89,22 +89,66 @@ public sealed class ExplorerSettingsTests
         Assert.Throws<InvalidOperationException>(() => Theme.Parse("Dark", false));
 
     [Fact]
-    public void ValidatesMouseAndClipboard()
+    public void ValidatesMouse()
     {
         ExploreSettings settings = new();
         Assert.True(settings.IsMouseEnabled());
-        Assert.False(settings.IsOsc52ClipboardEnabled());
 
         settings.Mouse = "false";
-        settings.Clipboard = "osc52";
         Assert.False(settings.IsMouseEnabled());
-        Assert.True(settings.IsOsc52ClipboardEnabled());
 
         settings.Mouse = "yes";
-        settings.Clipboard = "on";
         Assert.Throws<InvalidOperationException>(() => settings.IsMouseEnabled());
-        Assert.Throws<InvalidOperationException>(() => settings.IsOsc52ClipboardEnabled());
     }
+
+    [Theory]
+    [InlineData(true, false, ClipboardMode.Native)]
+    [InlineData(true, true, ClipboardMode.Osc52)]
+    [InlineData(false, false, ClipboardMode.Osc52)]
+    [InlineData(false, true, ClipboardMode.Osc52)]
+    internal void ClipboardPrefersTheLocalWindowsClipboard(bool windows, bool remote, ClipboardMode expected) =>
+        Assert.Equal(expected, Clipboard.Resolve(windows, remote));
+
+    [Fact]
+    public void NativeClipboardRoundTripsOnWindows()
+    {
+        Assert.SkipUnless(OperatingSystem.IsWindows(), "The native clipboard is Windows only.");
+        string? previous = ReadWindowsClipboard();
+        try
+        {
+            string text = $"dredge image ls app:1 /héllo {Guid.NewGuid()}";
+            Assert.True(Clipboard.Write(ClipboardMode.Native, text));
+            Assert.Equal(text, ReadWindowsClipboard());
+        }
+        finally
+        {
+            if (!string.IsNullOrEmpty(previous))
+            {
+                Clipboard.Write(ClipboardMode.Native, previous);
+            }
+        }
+    }
+
+    private static string? ReadWindowsClipboard()
+    {
+        System.Diagnostics.ProcessStartInfo info = new("powershell", "-NoProfile -Command \"[Console]::OutputEncoding=[Text.Encoding]::UTF8; Get-Clipboard -Raw\"")
+        {
+            RedirectStandardOutput = true,
+            StandardOutputEncoding = System.Text.Encoding.UTF8,
+        };
+        using System.Diagnostics.Process process = System.Diagnostics.Process.Start(info)!;
+        string output = process.StandardOutput.ReadToEnd();
+        process.WaitForExit();
+        return output.TrimEnd('\r', '\n');
+    }
+
+    [Theory]
+    [InlineData("SSH_CONNECTION", true)]
+    [InlineData("SSH_CLIENT", true)]
+    [InlineData("SSH_TTY", true)]
+    [InlineData("TERM", false)]
+    public void SshSessionsCountAsRemote(string variable, bool remote) =>
+        Assert.Equal(remote, Clipboard.IsRemoteSession(name => name == variable ? "x" : null));
 
     [Fact]
     public void SettingsAreAddressableByPath()
@@ -162,7 +206,7 @@ public sealed class ExplorerHostTests
 
     [Fact]
     public void FormatsOsc52() =>
-        Assert.Equal("\u001b]52;c;aGk=\a", ExplorerHost.Osc52("aGk="));
+        Assert.Equal("\u001b]52;c;aGk=\a", Clipboard.Osc52("aGk="));
 
     [Fact]
     public void LimitedStreamKeepsThePrefixAndStops()

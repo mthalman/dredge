@@ -63,16 +63,21 @@ internal sealed partial class ExplorerPresenter
 
     public ExplorerImage Image => img;
     public KeyMap Keys { get; }
+    // Whether `y` copies or only shows the command, so hints can say which.
+    public bool Copies { get; init; }
+    internal string CopyVerb => Copies ? "Copy" : "Show";
+    public bool MultiPlatform { get; init; }
     public int Width { get; set; }
     public int Height { get; set; }
+    public bool FullWidthInspector { get; set; }
 
     public bool TooSmall => Width < MinimumWidth || Height < MinimumHeight;
     public bool Narrow => Width < 120;
     private int BodyHeight => Height - HeaderHeight - 1;
-    private int RightWidth => Narrow ? Width : Width - LeftWidth;
+    private int RightWidth => FullWidthInspector || Narrow ? Width : Width - LeftWidth;
     public int RightInner => RightWidth - 4;
     private int LeftInner => Narrow ? Width - 4 : LeftWidth - 4;
-    public int RightInnerHeight => Narrow ? BodyHeight - NarrowLayersHeight - 2 : BodyHeight - 2;
+    public int RightInnerHeight => Narrow && !FullWidthInspector ? BodyHeight - NarrowLayersHeight - 2 : BodyHeight - 2;
     private int LayersInnerHeight => Narrow ? NarrowLayersHeight - 2 : BodyHeight - DetailsHeight - 2;
     public int TreeRows => Math.Max(1, RightInnerHeight - 5);
     public int SearchRows => Math.Max(1, RightInnerHeight - 9);
@@ -133,7 +138,7 @@ internal sealed partial class ExplorerPresenter
             .Add("  " + img.Platform, Theme.Silt);
         if (!Narrow)
         {
-            title.Add("  " + ShortDigest(img.Digest), Theme.Silt);
+            title.Add("  " + img.Digest, Theme.Silt);
         }
         Line right = new();
         if (!img.Complete)
@@ -189,23 +194,42 @@ internal sealed partial class ExplorerPresenter
         return null;
     }
 
+    // Each layer's colour in the core bar. Base and app layers alternate between
+    // two shades, counting only the layers wide enough to be drawn, so that
+    // neighbouring strata always differ.
+    private Rgb[] StrataColors(int[] cells)
+    {
+        Rgb[] colors = new Rgb[cells.Length];
+        int baseOrdinal = 0, appOrdinal = 0;
+        for (int layer = 0; layer < cells.Length; layer++)
+        {
+            bool isBase = img.IsBase(layer);
+            int ordinal = isBase ? baseOrdinal : appOrdinal;
+            colors[layer] = isBase
+                ? (ordinal % 2 == 0 ? Theme.Bedrock1 : Theme.Bedrock2)
+                : (ordinal % 2 == 0 ? Theme.Sand1 : Theme.Sand2);
+            if (cells[layer] > 0)
+            {
+                _ = isBase ? baseOrdinal++ : appOrdinal++;
+            }
+        }
+        return colors;
+    }
+
+    internal Rgb[] StrataColors() => StrataColors(Allocate(img.LayerIndexes.Select(Weight).ToArray(), Width - 2));
+
     // The "core sample": one bar for the whole image, one stratum per layer.
     private (Line Bar, Line Brackets) CoreBar(ExplorerState s, int width)
     {
         long[] sizes = img.LayerIndexes.Select(Weight).ToArray();
         int[] cells = Allocate(sizes, width);
 
+        Rgb[] strata = StrataColors(cells);
         Line bar = new();
-        int baseOrdinal = 0, appOrdinal = 0;
-        int baseCells = 0, selStart = -1, selLen = 0, cursor = 0;
+        int selStart = -1, selLen = 0, cursor = 0;
         for (int layer = 0; layer < sizes.Length; layer++)
         {
             int n = cells[layer];
-            bool isBase = img.IsBase(layer);
-            if (isBase)
-            {
-                baseCells += n;
-            }
             if (layer == s.Layer)
             {
                 selStart = cursor;
@@ -216,13 +240,7 @@ internal sealed partial class ExplorerPresenter
             {
                 continue;
             }
-            Rgb color = isBase
-                ? (baseOrdinal++ % 2 == 0 ? Theme.Bedrock1 : Theme.Bedrock2)
-                : (appOrdinal++ % 2 == 0 ? Theme.Sand1 : Theme.Sand2);
-            if (layer == s.Layer)
-            {
-                color = Theme.Channel;
-            }
+            Rgb color = strata[layer];
             if (img.States[layer] != ExplorerLayerState.Ready)
             {
                 int done = (int)Math.Round(n * Math.Clamp(img.Progress[layer], 0, 1));
@@ -233,7 +251,7 @@ internal sealed partial class ExplorerPresenter
             long reclaimable = img.IsAnalyzed(layer) ? img.Analysis!.Layers[layer].HiddenBytes : 0;
             long size = img.LayerSize(layer);
             int waste = size == 0 || !img.Complete ? 0 : (int)Math.Round(n * Math.Min(1, (double)reclaimable / size));
-            bar.Add(new string('█', n - waste), color).Add(new string('█', waste), Theme.Garnet);
+            bar.Add(new string('█', n - waste), color).Add(new string('█', waste), Theme.StratumWaste);
         }
 
         char[] chars = new char[width];
@@ -263,11 +281,21 @@ internal sealed partial class ExplorerPresenter
                 }
             }
         }
-        if (baseCells > 0)
+        int groupStart = 0, previousLayer = 0;
+        foreach (ExplorerBaseImage baseImage in img.BaseImages)
         {
-            Bracket(0, baseCells, img.BaseName ?? "base image");
+            int end = cells.Take(baseImage.LayerCount).Sum();
+            Bracket(groupStart, end - groupStart, img.BaseLabel(baseImage.Name));
+            groupStart = end;
+            previousLayer = baseImage.LayerCount;
         }
-        Bracket(baseCells, width - baseCells, img.RepoName);
+        if (img.BaseImages.Count == 0 && img.BaseLayerCount is int baseCount)
+        {
+            groupStart = cells.Take(baseCount).Sum();
+            Bracket(0, groupStart, img.BaseName is string baseName ? img.BaseLabel(baseName) : "base image");
+            previousLayer = baseCount;
+        }
+        Bracket(groupStart, cells.Skip(previousLayer).Sum(), img.RepoName);
         for (int i = selStart; i >= 0 && i < selStart + selLen && i < width; i++)
         {
             if (chars[i] == '─')
@@ -339,11 +367,18 @@ internal sealed partial class ExplorerPresenter
         Hint step = new($"{K(KeyAction.PreviousLayer)} {K(KeyAction.NextLayer)}", "Step layer");
         List<Hint> retry = img.States[s.Layer] == ExplorerLayerState.Failed
             ? [new(K(KeyAction.Retry), "Retry layer", new RetryLayer(s.Layer))] : [];
+        Hint page = new("PgUp PgDn", "Page", ShowInFooter: false);
+        Hint ends = new("Home End", "First or last", ShowInFooter: false);
+        List<Hint> platform = MultiPlatform ? [new(K(KeyAction.Platform), "Platform…", new PickPlatform())] : [];
+        List<Hint> firstOwn = img.BaseLayerCount is not null && img.FirstUserLayer is not null
+            ? [new(K(KeyAction.FirstUserLayer), "First own layer", new FirstUserLayer())] : [];
+        Hint findingsOnly = new(K(KeyAction.FindingsOnly), s.FindingsOnly ? "All paths" : "Findings only", new ToggleFindingsOnly());
+        List<Hint> clear = s.FindingsOnly || s.Hidden.Count > 0 ? [new("Esc", "Clear filters", new Back())] : [];
         return s.View switch
         {
             RightView.Search =>
             [
-                new("↑↓", "Select"), new("Enter", "Open", new Activate()),
+                new("↑↓", "Select"), new("Enter", "Open", new Activate()), page,
                 new("Alt+L", s.SearchLayerOnly ? "Whole image" : $"Layer {s.Layer} only", new SetSearchScope(!s.SearchLayerOnly)),
                 new("Alt+D", s.SearchIncludeDeleted ? "Hide deleted" : "Include deleted", new ToggleIncludeDeleted()),
                 new("Alt+C", s.SearchExactCase ? "Ignore case" : "Exact case", new ToggleExactCase()),
@@ -351,26 +386,29 @@ internal sealed partial class ExplorerPresenter
             ],
             RightView.Insights =>
             [
-                new("↑↓", "Finding"), new("Enter", "Show files", new Activate()), new("Tab", "Layers", new FocusOn(FocusPane.Layers)), back, keys, quit,
+                new("↑↓", "Finding"), new("Enter", "Show files", new Activate()), new("Tab", "Layers", new FocusOn(FocusPane.Layers)), back,
+                ends, search, keys, quit,
             ],
             RightView.Inspector =>
             [
-                new("↑↓", "Scroll"), step, new(K(KeyAction.Extract), "Extract…", new ExtractSelected()),
-                new(K(KeyAction.CopyCommand), "Show command", new CopyCommand()),
-                new(K(KeyAction.Pager), "Open in pager", new OpenInPager()),
-                back, keys, quit,
+                new("↑↓", "Scroll"), new(K(KeyAction.Extract), "Extract…", new ExtractSelected()),
+                new(K(KeyAction.CopyCommand), $"{CopyVerb} command", new CopyCommand()),
+                new(K(KeyAction.Viewer), "Open file in text viewer", new OpenInViewer()),
+                back, page, ends, keys, quit,
             ],
             RightView.Keys => [back, quit],
             _ when s.Focus == FocusPane.Layers =>
             [
-                .. retry, new("Tab", "Files", new FocusOn(FocusPane.Right)), new("↑↓", "Layer"), whole, compare, search, insights, keys, quit,
+                .. retry, new("Tab", "Files", new FocusOn(FocusPane.Right)), new("↑↓", "Layer"), whole, compare, search, insights,
+                .. firstOwn, ends, .. platform, keys, quit,
             ],
             _ =>
             [
-                .. retry, new("Tab", "Layers", new FocusOn(FocusPane.Layers)), new("↑↓", "Move"), step, whole,
+                .. retry, new("Tab", "Layers", new FocusOn(FocusPane.Layers)), new("↑↓", "Move", ShowInFooter: false), step, whole,
                 new($"{K(KeyAction.ToggleAdded)} {K(KeyAction.ToggleModified)} {K(KeyAction.ToggleIdentical)} {K(KeyAction.ToggleDeleted)}", "Filter"),
                 new("Enter", "Inspect", new Activate()), search, insights,
-                new(K(KeyAction.Extract), "Extract…", new ExtractSelected()), compare, new("←→", "Fold"), keys, quit,
+                new(K(KeyAction.Extract), "Extract…", new ExtractSelected()), compare, new("←→", "Fold", ShowInFooter: false), .. clear, findingsOnly,
+                page, ends, .. firstOwn, .. platform, keys, quit,
             ],
         };
     }
@@ -417,12 +455,14 @@ internal sealed partial class ExplorerPresenter
     public PaneContent LayersPane(ExplorerState s)
     {
         bool focused = s.Focus == FocusPane.Layers;
-        int w = LeftInner;
+        // The selection marker takes the pane's left padding, leaving more room for instructions.
+        int w = LeftInner + 1;
         long max = Math.Max(1, img.LayerIndexes.Select(img.LayerSize).DefaultIfEmpty(0).Max());
+        Rgb[] strata = StrataColors();
         ExplorerFinding? finding = s.View == RightView.Insights ? SelectedFinding(s) : null;
         List<(Line Line, int? Layer, bool Selected)> rows = [];
         void AddRow(HistoryRow row) =>
-            rows.Add((LayerRow(row, s, w, max, focused, finding), row.Layer, row.Layer == s.Layer));
+            rows.Add((LayerRow(row, s, w, max, strata, focused, finding), row.Layer, row.Layer == s.Layer));
 
         string sub = $"{img.LayerCount} with files";
         if (Narrow)
@@ -432,6 +472,10 @@ internal sealed partial class ExplorerPresenter
             {
                 AddRow(row);
             }
+            if (img.BaseLayerCount is not null)
+            {
+                sub = img.GroupAt(s.Layer);
+            }
             List<ExplorerFinding> related = RelatedFindings(s.Layer);
             if (related.Count > 0)
             {
@@ -440,15 +484,18 @@ internal sealed partial class ExplorerPresenter
         }
         else
         {
-            bool? previousBase = null;
-            foreach (HistoryRow row in img.History)
+            string? previousGroup = null;
+            for (int index = 0; index < img.History.Count; index++)
             {
-                if (img.BaseLayerCount is not null && previousBase != row.IsBase)
+                HistoryRow row = img.History[index];
+                int? layer = row.Layer ?? img.History.Skip(index + 1).FirstOrDefault(next => next.Layer is not null)?.Layer;
+                string group = layer is int value ? img.GroupAt(value) : img.Reference;
+                if (img.BaseLayerCount is not null && previousGroup != group)
                 {
-                    string label = row.IsBase ? img.BaseName ?? "base image" : img.RepoName;
-                    rows.Add((new Line().Add("── ", Theme.Shale).Add(label, Theme.Silt).Add(" ")
-                        .Add(new string('─', Math.Max(0, w - label.Length - 4)), Theme.Shale), null, false));
-                    previousBase = row.IsBase;
+                    string label = group;
+                    rows.Add((new Line().Add(" ── ", Theme.Shale).Add(label, Theme.Silt).Add(" ")
+                        .Add(new string('─', Math.Max(0, w - label.Length - 5)), Theme.Shale), null, false));
+                    previousGroup = group;
                 }
                 AddRow(row);
             }
@@ -458,7 +505,7 @@ internal sealed partial class ExplorerPresenter
         int at = Math.Max(0, rows.FindIndex(row => row.Selected));
         int start = rows.Count <= visible ? 0 : Math.Clamp(at - visible / 2, 0, rows.Count - visible);
         List<Line> lines = [];
-        PaneContent pane = Pane(lines, "Layers", focused, sub);
+        PaneContent pane = Pane(lines, "Layers", focused, sub) with { Inset = 0 };
         foreach ((Line line, int? layer, _) in rows.Skip(start).Take(visible))
         {
             if (layer is int value)
@@ -466,7 +513,7 @@ internal sealed partial class ExplorerPresenter
                 pane.On(lines.Count, new SelectLayer(value));
                 if (img.States[value] == ExplorerLayerState.Failed)
                 {
-                    pane.On(lines.Count, new RetryLayer(value), 3, 3 + 11);
+                    pane.On(lines.Count, new RetryLayer(value), 1 + IndexWidth + 1, 1 + IndexWidth + 1 + GaugeWidth);
                 }
             }
             lines.Add(line);
@@ -474,49 +521,41 @@ internal sealed partial class ExplorerPresenter
         return pane;
     }
 
-    private Line LayerRow(HistoryRow row, ExplorerState s, int w, long max, bool focused, ExplorerFinding? finding)
+    private Line LayerRow(HistoryRow row, ExplorerState s, int w, long max, Rgb[] strata, bool focused, ExplorerFinding? finding)
     {
         bool selected = row.Layer == s.Layer;
         bool implicated = row.Layer is int l && finding?.Layers.Contains(l) == true;
         Line line = new Line().Add(selected ? "▌" : " ", Theme.Channel);
-        const int barWidth = 11;
+        Rgb under = implicated ? Theme.GarnetDeep : selected ? focused ? Theme.ChannelDeep : Theme.Graphite : Theme.Ground;
         if (row.Layer is int layer)
         {
             Sty idx = implicated ? Theme.S(Theme.Garnet, null, Deco.Bold)
                 : selected ? Theme.S(Theme.Foam, null, Deco.Bold) : Theme.S(Theme.Silt);
-            line.Add($"{layer,2} ", idx);
+            line.Add(layer.ToString(System.Globalization.CultureInfo.InvariantCulture).PadLeft(IndexWidth) + " ", idx);
             ExplorerLayerState state = img.States[layer];
             if (state == ExplorerLayerState.Indexing)
             {
                 double p = Math.Clamp(img.Progress[layer], 0, 1);
-                int filled = (int)Math.Round(p * barWidth);
-                line.Add(new string('━', filled), Theme.Channel).Add(new string('─', barWidth - filled), Theme.Shale)
-                    .Add(" ").Add($"{(int)(p * 100)}%".PadLeft(8), Theme.Silt);
+                Gauge(line, $"{(int)(p * 100)}%", p * GaugeWidth, 0, Theme.S(Theme.Silt), Theme.Silt, under);
             }
             else if (state == ExplorerLayerState.Waiting)
             {
-                line.Add("waiting".PadRight(barWidth), Theme.Shale).Add(" ")
-                    .Add(Fmt.Size(row.Download).PadLeft(8), Theme.Shale);
+                line.Add("waiting".PadLeft(GaugeWidth), Theme.Shale);
             }
             else if (state == ExplorerLayerState.Failed)
             {
-                line.Add(" ↻ retry ".PadRight(barWidth), Theme.S(Theme.Garnet, Theme.GarnetDeep, Deco.Bold))
-                    .Add(" ").Add("failed".PadLeft(8), Theme.Garnet);
+                line.Add("↻ retry".PadLeft(GaugeWidth), Theme.S(Theme.Garnet, Theme.GarnetDeep, Deco.Bold));
             }
             else
             {
                 long size = img.LayerSize(layer);
-                string bar = Fmt.Bar((double)size / max, barWidth);
-                int waste = size > 0 && img.Complete
-                    ? (int)Math.Round(bar.Length * Math.Min(1, (double)row.Reclaimable / size)) : 0;
-                Rgb color = selected ? Theme.Channel : row.IsBase ? Theme.Bedrock2 : Theme.Sand2;
-                line.Add(bar[..(bar.Length - waste)], color)
-                    .Add(bar[(bar.Length - waste)..], Theme.Garnet)
-                    .Add(new string(' ', barWidth - bar.Length))
-                    .Add(" ")
-                    .Add(Fmt.Size(size).PadLeft(8), selected ? Theme.S(Theme.Foam, null, Deco.Bold) : Theme.S(row.IsBase ? Theme.Silt : Theme.Foam));
+                double waste = size > 0 && img.Complete ? Math.Min(1, (double)row.Reclaimable / size) : 0;
+                Rgb fill = strata[layer];
+                Sty text = Theme.S(Theme.Foam, null, selected ? Deco.Bold : Deco.None);
+                Gauge(line, Fmt.Size(size), GaugeReach(max <= 0 ? 0 : (double)size / max), waste, text, fill,
+                    implicated ? Theme.GarnetDeep : Theme.Ground);
             }
-            line.Add("  ");
+            line.Add(new string(' ', GaugeGap));
             foreach (var (text, style) in Syntax.Dockerfile(row.Instruction, row.IsBase && !selected ? Theme.Silt : Theme.Foam))
             {
                 line.Add(text, style);
@@ -524,15 +563,68 @@ internal sealed partial class ExplorerPresenter
         }
         else
         {
-            line.Add(new string(' ', 3 + barWidth + 1 + 8 + 2)).Add(row.Instruction, Theme.Silt);
+            line.Add(new string(' ', IndexWidth + 1 + GaugeWidth + GaugeGap)).Add(row.Instruction, Theme.Silt);
         }
         line.Truncate(w).Pad(w);
         if (implicated)
         {
-            return line.WithBackground(Theme.GarnetDeep);
+            return line.UnderBackground(Theme.GarnetDeep);
         }
-        return selected ? line.WithBackground(focused ? Theme.ChannelDeep : Theme.Graphite) : line;
+        return selected ? line.UnderBackground(focused ? Theme.ChannelDeep : Theme.Graphite) : line;
     }
+
+    // Wide enough for any size, such as "530.5 MB", plus a gap after the index.
+    // Wide enough for the longest size, 999.9 MB.
+    internal const int GaugeWidth = 8;
+    private const int GaugeGap = 1;
+
+    // Only as many digits as the highest layer index needs.
+    private int IndexWidth => Math.Max(1, (img.LayerCount - 1).ToString(System.Globalization.CultureInfo.InvariantCulture).Length);
+
+    // How far across the gauge a size reaches. One large layer (often the
+    // runtime or SDK) would squash every other layer into the first cell on a
+    // linear scale, so the square root spreads the rest out while keeping order.
+    // Any nonzero size shows at least a sliver.
+    internal static double GaugeReach(double fraction)
+    {
+        fraction = Math.Clamp(fraction, 0, 1);
+        return fraction <= 0 ? 0 : Math.Max(Math.Sqrt(fraction) * GaugeWidth, MinReach);
+    }
+
+    private const double MinReach = 0.35;
+
+    // Right-aligns the text and shades reach cells from the left, so the number
+    // doubles as the bar. The cell where the shading ends is blended with the
+    // row's background by how much of it is covered, giving sub-cell steps. The
+    // wasted share of the shading, at its end, is red.
+    private static void Gauge(Line line, string text, double reach, double waste, Sty style, Rgb fill, Rgb under)
+    {
+        string padded = text.PadLeft(GaugeWidth);
+        double kept = reach * (1 - Math.Clamp(waste, 0, 1));
+        for (int i = 0; i < GaugeWidth; i++)
+        {
+            double cover = Math.Clamp(reach - i, 0, 1);
+            string cell = padded[i].ToString();
+            if (cover <= 0)
+            {
+                line.Add(cell, style);
+            }
+            else if (Theme.NoColor)
+            {
+                line.Add(cell, style with { Deco = style.Deco | Deco.Underline });
+            }
+            else
+            {
+                Rgb bg = Blend(under, i + cover / 2 < kept ? fill : Theme.StratumWaste, cover);
+                line.Add(cell, style with { Background = bg });
+            }
+        }
+    }
+
+    private static Rgb Blend(Rgb from, Rgb to, double amount) => new(
+        (int)Math.Round(from.R + (to.R - from.R) * amount),
+        (int)Math.Round(from.G + (to.G - from.G) * amount),
+        (int)Math.Round(from.B + (to.B - from.B) * amount));
 
     public List<ExplorerFinding> RelatedFindings(int layer) =>
         img.Complete ? img.Findings.Where(f => f.Layers.Contains(layer) && !f.FromBase).ToList() : [];
@@ -599,10 +691,10 @@ internal sealed partial class ExplorerPresenter
                 : new Line().Add("▲ ", Theme.Garnet).Add("Insights are unavailable; press ", Theme.Silt)
                     .Append(Keycap(Keys.Label(KeyAction.Insights))).Add(" for details.", Theme.Silt));
         }
-        else if (img.IsBase(s.Layer) && img.BaseName is not null)
+        else if (img.BaseImageAt(s.Layer) is string baseName)
         {
             lines.Add(Line.Blank);
-            lines.Add(new Line().Add("From the base image ", Theme.Silt).Add(img.BaseName, Theme.Foam));
+            lines.Add(new Line().Add("From the base image ", Theme.Silt).Add(baseName, Theme.Foam));
         }
         return Pane(lines, $"Layer {s.Layer}", false);
     }

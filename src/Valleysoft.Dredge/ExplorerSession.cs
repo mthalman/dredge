@@ -34,17 +34,18 @@ internal sealed class ExplorerSession
     public Func<CancellationToken, Task<IReadOnlyList<string>>>? TagsAsync { get; set; }
 
     public string? BaseName { get; init; }
+    public IReadOnlyList<ExplorerBaseImage> BaseImages { get; init; } = [];
     public ExplorerPlatform? Platform { get; init; }
     public IReadOnlyList<ExplorerPlatform> Platforms { get; init; } = [];
 
     public static async Task<ExplorerSession> LoadAsync(
         IDockerRegistryClient client, IDockerRegistryClientFactory factory,
         ImageName image, PlatformOptionsBase options,
-        LayerStore store, string? baseImage, CancellationToken cancellationToken,
+        LayerStore store, IReadOnlyList<string>? baseImages, CancellationToken cancellationToken,
         IProgress<ImageIndexProgress>? progress = null, ExplorerPlatform? exactPlatform = null)
     {
         ExplorerSource source = await ExplorerSource.OpenAsync(
-            client, factory, image, options, baseImage, cancellationToken, exactPlatform: exactPlatform);
+            client, factory, image, options, baseImages, cancellationToken, exactPlatform: exactPlatform);
         return await CreateAsync(client, source, store, null, cancellationToken, progress);
     }
 
@@ -73,6 +74,7 @@ internal sealed class ExplorerSession
                 BaseLayerCount = source.BaseLayerCount,
                 BaseWarning = source.BaseWarning,
                 BaseName = source.BaseName,
+                BaseImages = source.BaseImages,
                 Platform = source.Platform,
                 Platforms = source.Platforms
             };
@@ -175,8 +177,19 @@ internal sealed class ExplorerSession
 
     internal static async Task<(int? Count, string? Name, string? Warning)> VerifyBaseAsync(
         IDockerRegistryClient client, IDockerRegistryClientFactory factory,
+        ImageName image, ResolvedManifest target, PlatformOptionsBase options,
+        string? explicitBase, CancellationToken cancellationToken, ExplorerPlatform? platform = null)
+    {
+        (IReadOnlyList<ExplorerBaseImage> bases, string? warning) = await VerifyBasesAsync(
+            client, factory, image, target, options,
+            explicitBase is null ? null : [explicitBase], cancellationToken, platform);
+        return (bases.LastOrDefault()?.LayerCount, bases.LastOrDefault()?.Name, warning);
+    }
+
+    internal static async Task<(IReadOnlyList<ExplorerBaseImage> Bases, string? Warning)> VerifyBasesAsync(
+        IDockerRegistryClient client, IDockerRegistryClientFactory factory,
         ImageName image, ResolvedManifest target,
-        PlatformOptionsBase options, string? explicitBase, CancellationToken cancellationToken,
+        PlatformOptionsBase options, IReadOnlyList<string>? explicitBases, CancellationToken cancellationToken,
         ExplorerPlatform? platform = null)
     {
         IDictionary<string, string>? annotations =
@@ -187,43 +200,73 @@ internal sealed class ExplorerSession
         string? annotatedDigest = annotations is not null &&
             annotations.TryGetValue("org.opencontainers.image.base.digest", out string? digest)
             ? digest : null;
-        if (explicitBase is null && string.IsNullOrEmpty(annotatedName))
+        if (explicitBases is not { Count: > 0 } && string.IsNullOrEmpty(annotatedName))
         {
-            return (null, null, string.IsNullOrEmpty(annotatedDigest) ? null :
+            return ([], string.IsNullOrEmpty(annotatedDigest) ? null :
                 "A base digest is annotated without a base name; the base boundary cannot be verified.");
         }
 
-        ImageName? baseName = explicitBase is null ? null : ImageName.Parse(explicitBase);
+        ImageName[] baseNames = explicitBases?.Select(ImageName.Parse).ToArray() ?? [];
         ImageName? annotationName = string.IsNullOrEmpty(annotatedName) ? null :
             ImageName.Parse(annotatedName);
-        ImageName reference = baseName ?? annotationName!;
-        ResolvedManifest resolved;
-        try
+        ImageName annotatedReference = annotationName!;
+        List<(ExplorerBaseImage Base, string Digest)> verified = [];
+        foreach (ImageName baseName in baseNames.Length == 0 ? [annotatedReference] : baseNames)
         {
-            resolved = await ResolveAsync(reference);
-            if (baseName is not null && annotationName is not null &&
-                baseName.ToString() != annotationName.ToString())
+            ResolvedManifest resolved;
+            if (baseNames.Length == 0)
             {
-                ResolvedManifest annotated = await ResolveAsync(annotationName);
-                if (resolved.ManifestInfo.DockerContentDigest !=
-                    annotated.ManifestInfo.DockerContentDigest)
+                try
                 {
-                    throw new InvalidOperationException(
-                        $"The explicit base image '{baseName}' disagrees with the annotation '{annotationName}'.");
+                    resolved = await ResolveAsync(baseName);
+                }
+                catch (Exception exception) when (exception is not OperationCanceledException)
+                {
+                    return ([], $"Annotated base '{annotatedReference}' could not be verified: {exception.Message}");
                 }
             }
+            else
+            {
+                resolved = await ResolveAsync(baseName);
+            }
+            int count = VerifyPrefix(target.Manifest, resolved.Manifest);
+            verified.Add((new(baseName.ToString(), count), resolved.ManifestInfo.DockerContentDigest));
         }
-        catch (Exception exception) when (baseName is null && exception is not OperationCanceledException)
+        verified.Sort((left, right) => left.Base.LayerCount.CompareTo(right.Base.LayerCount));
+        if (baseNames.Length > 1)
         {
-            return (null, null, $"Annotated base '{reference}' could not be verified: {exception.Message}");
+            for (int index = 1; index < verified.Count; index++)
+            {
+                if (verified[index - 1].Base.LayerCount == verified[index].Base.LayerCount)
+                {
+                    throw new InvalidOperationException(
+                        $"Base images '{verified[index - 1].Base.Name}' and '{verified[index].Base.Name}' have the same layer boundary; each base must add layers.");
+                }
+            }
+            if (verified[0].Base.LayerCount == 0)
+            {
+                throw new InvalidOperationException(
+                    $"Base image '{verified[0].Base.Name}' has no layers; each base must add layers.");
+            }
+        }
+        (ExplorerBaseImage deepest, string deepestDigest) = verified[^1];
+        if (baseNames.Length > 0 && annotationName is not null &&
+            deepest.Name != annotationName.ToString())
+        {
+            ResolvedManifest annotated = await ResolveAsync(annotationName);
+            if (deepestDigest != annotated.ManifestInfo.DockerContentDigest)
+            {
+                throw new InvalidOperationException(
+                    $"The explicit base image '{deepest.Name}' disagrees with the annotation '{annotationName}'.");
+            }
         }
         if (!string.IsNullOrEmpty(annotatedDigest) &&
-            annotatedDigest != resolved.ManifestInfo.DockerContentDigest)
+            annotatedDigest != deepestDigest)
         {
             throw new InvalidOperationException(
-                $"The base annotation digest '{annotatedDigest}' does not match '{reference}'.");
+                $"The base annotation digest '{annotatedDigest}' does not match '{deepest.Name}'.");
         }
-        return (VerifyPrefix(target.Manifest, resolved.Manifest), reference.ToString(), null);
+        return (verified.Select(entry => entry.Base).ToArray(), null);
 
         async Task<ResolvedManifest> ResolveAsync(ImageName name)
         {

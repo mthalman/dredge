@@ -496,7 +496,7 @@ internal sealed partial class ExplorerPresenter
                 (K(KeyAction.WholeFilesystem), "Toggle whole filesystem"), (K(KeyAction.FirstUserLayer), "First layer after base"),
                 (K(KeyAction.Compare), "Compare with a tag…"), (K(KeyAction.Platform), "Choose platform…"),
                 (K(KeyAction.Retry), "Retry a failed layer")]),
-            ("Files", [("← →", "Fold or unfold"), ("Space", "Fold everything below"),
+            ("Files", [("← →", "Fold or unfold"),
                 ($"{K(KeyAction.ToggleAdded)} {K(KeyAction.ToggleModified)} {K(KeyAction.ToggleIdentical)} {K(KeyAction.ToggleDeleted)}", "Show or hide changes"),
                 (K(KeyAction.FindingsOnly), "Only paths with findings"), ("Enter", "Inspect file")]),
             ("Compare", [(K(KeyAction.SwapSides), "Swap sides"), ("Enter", "Diff a file"), ("Esc", "Leave compare")]),
@@ -505,8 +505,8 @@ internal sealed partial class ExplorerPresenter
         [
             ("Views", [(K(KeyAction.Insights), "Insights"), (K(KeyAction.Search), "Search"), (K(KeyAction.Help), "This screen"), ("Esc", "Back")]),
             ("Search", [("Alt+L", "Whole image or this layer"), ("Alt+D", "Include deleted paths"), ("Alt+C", "Match exact case")]),
-            ("Actions", [(K(KeyAction.Extract), "Extract file or folder…"), (K(KeyAction.CopyCommand), "Show as dredge command"),
-                (K(KeyAction.Pager), "Open file in $PAGER"), (K(KeyAction.Quit), "Quit")]),
+            ("Actions", [(K(KeyAction.Extract), "Extract file or folder…"), (K(KeyAction.CopyCommand), $"{CopyVerb} as dredge command"),
+                (K(KeyAction.Viewer), "Open file in text viewer"), (K(KeyAction.Quit), "Quit")]),
         ];
 
         int leftCol = Math.Min(46, RightInner / 2);

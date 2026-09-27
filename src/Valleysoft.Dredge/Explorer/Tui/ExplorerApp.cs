@@ -10,11 +10,13 @@ using Valleysoft.Dredge.Commands.Image;
 namespace Valleysoft.Dredge.Explorer.Tui;
 
 internal sealed record ExplorerOptions(
-    int? Layer, string? Compare, bool Mouse, bool Clipboard, KeyMap Keys, string? Notice = null);
+    int? Layer, string? Compare, bool Mouse, ClipboardMode Clipboard, KeyMap Keys,
+    string ViewerExePath, string ViewerArgs, string? Notice = null, bool ViewerUsesTerminal = true,
+    bool PauseAfterViewer = false);
 
 // Runs the explorer for one image: wires the layer indexer to the window,
 // analyzes the growing indexed prefix in the background, builds the full
-// session once every layer is indexed, and suspends the screen for the pager.
+// session once every layer is indexed, and suspends the screen for the viewer.
 // Returns when the user quits or picks another platform.
 internal sealed class ExplorerApp : IAsyncDisposable
 {
@@ -63,12 +65,13 @@ internal sealed class ExplorerApp : IAsyncDisposable
         while (true)
         {
             ExplorerExit exit = RunScreen(state);
-            if (exit.Kind != ExplorerExitKind.Pager || exit.PagerFile is null)
+            if (exit.Kind != ExplorerExitKind.Viewer || exit.ViewerFile is null)
             {
                 cts.Cancel();
                 return exit;
             }
-            if (RunPager(exit.PagerFile) is string error)
+            if (RunTerminalViewer(exit.ViewerFile, options.ViewerExePath, options.ViewerArgs,
+                options.PauseAfterViewer, Console.In, Console.Out) is string error)
             {
                 state.Notice = error;
                 state.NoticeIsError = true;
@@ -102,7 +105,7 @@ internal sealed class ExplorerApp : IAsyncDisposable
         int layer = options.Layer ?? Math.Max(0, img.LayerCount - 1);
         indexer.Prioritize(layer);
         indexer.Start(cts.Token);
-        return new() { Layer = layer, Notice = options.Notice, NoticeIsError = options.Notice is not null };
+        return new() { Layer = layer, Focus = FocusPane.Layers, Notice = options.Notice, NoticeIsError = options.Notice is not null };
     }
 
     private ExplorerExit RunScreen(ExplorerState state)
@@ -136,7 +139,8 @@ internal sealed class ExplorerApp : IAsyncDisposable
     // updates to it. Headless tests call this with the ANSI driver.
     internal ExplorerWindow Attach(IApplication application, ExplorerState state)
     {
-        ExplorerWindow w = new(img, state, host, cts.Token);
+        ExplorerWindow w = new(img, state, host, cts.Token,
+            options.ViewerUsesTerminal ? null : OpenWindowedViewer);
         List<Action> queued;
         lock (sync)
         {
@@ -185,7 +189,7 @@ internal sealed class ExplorerApp : IAsyncDisposable
         }
     }
 
-    // Marshals to the UI thread, or holds the action while the pager owns the screen.
+    // Marshals to the UI thread, or holds the action while the viewer owns the screen.
     private void Post(Action action)
     {
         lock (sync)
@@ -206,6 +210,18 @@ internal sealed class ExplorerApp : IAsyncDisposable
             pendingCompare = null;
             window.StartCompare(tag);
         }
+    }
+
+    private void OpenWindowedViewer(string file)
+    {
+        _ = Task.Run(() =>
+        {
+            string? error = RunViewer(file, options.ViewerExePath, options.ViewerArgs);
+            if (error is not null)
+            {
+                Post(() => window?.ViewerFailed(error));
+            }
+        });
     }
 
     // Serialized: at most one analysis runs, and a newer prefix reruns it once.
@@ -275,32 +291,33 @@ internal sealed class ExplorerApp : IAsyncDisposable
     }
 
     // Returns an error to show once the explorer is back, or null on success.
-    internal static string? RunPager(string file) =>
-        RunPager(file, Environment.GetEnvironmentVariable("PAGER"), OperatingSystem.IsWindows());
-
-    internal static string? RunPager(string file, string? pager, bool windows)
+    internal static string? RunTerminalViewer(string file, string exePath, string args, bool pause,
+        TextReader input, TextWriter output)
     {
-        if (string.IsNullOrWhiteSpace(pager))
+        string? error = RunViewer(file, exePath, args);
+        if (pause && error is null)
         {
-            pager = windows ? "more" : "less";
+            output.Write("\nPress Enter to return to the explorer...");
+            output.Flush();
+            input.ReadLine();
         }
-        // cmd.exe does not follow the MSVCRT quoting that ArgumentList produces, so
-        // build its command line directly; /s strips only the outermost quotes.
-        // Windows paths cannot contain quotes, so quoting the file is enough.
-        ProcessStartInfo info = windows
-            ? new("cmd.exe") { Arguments = $"/d /s /c \"{pager} < \"{file}\"\"" }
-            : new("/bin/sh") { ArgumentList = { "-c", pager + " \"$1\"", "sh", file } };
+        return error;
+    }
+
+    internal static string? RunViewer(string file, string exePath, string args)
+    {
+        ProcessStartInfo info = new(exePath, args.Replace("{0}", file, StringComparison.Ordinal));
         info.UseShellExecute = false;
         try
         {
             using Process process = Process.Start(info) ??
                 throw new InvalidOperationException("The process did not start.");
             process.WaitForExit();
-            return process.ExitCode == 0 ? null : $"The pager '{pager}' exited with code {process.ExitCode}.";
+            return process.ExitCode == 0 ? null : $"The viewer '{exePath}' exited with code {process.ExitCode}.";
         }
         catch (Exception exception)
         {
-            return $"Could not run the pager '{pager}': {exception.Message}";
+            return $"Could not run the viewer '{exePath}': {exception.Message}";
         }
         finally
         {
@@ -365,7 +382,7 @@ internal sealed class ExplorerHost : IExplorerHost, IAsyncDisposable
 
     public ExplorerSession? Session { get; set; }
     public KeyMap Keys => options.Keys;
-    public bool ClipboardEnabled => options.Clipboard;
+    public bool ClipboardEnabled => options.Clipboard != ClipboardMode.Off;
     public IReadOnlyList<ExplorerPlatform> Platforms => source.Platforms;
     public ExplorerPlatform? Platform => source.Platform;
 
@@ -461,7 +478,7 @@ internal sealed class ExplorerHost : IExplorerHost, IAsyncDisposable
                     ownedClients.Add(targetClient);
                 }
                 target = await ExplorerSession.LoadAsync(targetClient, factory, name, PlatformOptions,
-                    store, baseImage: null, cancellationToken, exactPlatform: source.Platform);
+                    store, baseImages: null, cancellationToken, exactPlatform: source.Platform);
                 targets[tag] = target;
             }
             return ExplorerSession.Compare(baseline, target);
@@ -610,7 +627,7 @@ internal sealed class ExplorerHost : IExplorerHost, IAsyncDisposable
         return $"Extracted /{path} to {full}";
     }
 
-    public async Task<string> PrepareForPagerAsync(string path, CancellationToken cancellationToken)
+    public async Task<string> PrepareForViewerAsync(string path, CancellationToken cancellationToken)
     {
         string directory = Path.Combine(Path.GetTempPath(), "dredge-" + Guid.NewGuid().ToString("N")[..12]);
         Directory.CreateDirectory(directory);
@@ -633,8 +650,8 @@ internal sealed class ExplorerHost : IExplorerHost, IAsyncDisposable
          "LPT1", "LPT2", "LPT3", "LPT4", "LPT5", "LPT6", "LPT7", "LPT8", "LPT9"];
 
     // Image paths can hold characters the host file system rejects (? * : < > |) or that
-    // cmd.exe expands (% ^ &) when the pager runs. Keep the name recognizable, and its
-    // extension for syntax-highlighting pagers, but stage it under safe characters only.
+    // Keep the name recognizable, and its extension for syntax-highlighting viewers,
+    // but stage it under safe characters only.
     internal static string StagedFileName(string path)
     {
         const int MaxLength = 100;
@@ -652,16 +669,7 @@ internal sealed class ExplorerHost : IExplorerHost, IAsyncDisposable
         return name;
     }
 
-    public void WriteClipboard(string text)
-    {
-        string payload = Convert.ToBase64String(Encoding.UTF8.GetBytes(text));
-        using Stream stdout = Console.OpenStandardOutput();
-        byte[] bytes = Encoding.ASCII.GetBytes(Osc52(payload));
-        stdout.Write(bytes);
-        stdout.Flush();
-    }
-
-    internal static string Osc52(string base64) => $"\u001b]52;c;{base64}\a";
+    public bool WriteClipboard(string text) => Clipboard.Write(options.Clipboard, text);
 
     public async ValueTask DisposeAsync()
     {

@@ -35,10 +35,11 @@ internal static class ExplorerSamples
         new() { CreatedBy = "RUN /bin/sh -c rm -rf /app/cache && npm run build # buildkit" },
     ];
 
-    public static ExplorerImage Image(bool complete = true, IReadOnlyList<ExplorerPlatform>? platforms = null)
+    public static ExplorerImage Image(bool complete = true, IReadOnlyList<ExplorerPlatform>? platforms = null,
+        string digest = "sha256:manifest")
     {
         LayerChanges[] layers = Layers();
-        ExplorerImage img = new(Reference, "linux/amd64", "sha256:manifest", Digests, [100, 400, 900, 300],
+        ExplorerImage img = new(Reference, "linux/amd64", digest, Digests, [100, 400, 900, 300],
             History(), baseLayerCount: 1, baseName: "registry.test/base:1", now: new DateTime(2026, 1, 1));
         return Load(img, layers, complete, npm: new() { ["left-pad"] = "1.0.0" });
     }
@@ -212,10 +213,15 @@ internal sealed class FakeExplorerHost : IExplorerHost
         return Task.FromResult($"Extracted /{path} to {destination}");
     }
 
-    public Task<string> PrepareForPagerAsync(string path, CancellationToken cancellationToken) =>
+    public Task<string> PrepareForViewerAsync(string path, CancellationToken cancellationToken) =>
         Task.FromResult("/tmp/dredge-test/" + path.Split('/')[^1]);
 
-    public void WriteClipboard(string text) => Clipboard.Add(text);
+    public bool ClipboardWorks { get; init; } = true;
+    public bool WriteClipboard(string text)
+    {
+        Clipboard.Add(text);
+        return ClipboardWorks;
+    }
 }
 
 [Collection(ExplorerUiCollection.Name)]
@@ -223,13 +229,14 @@ public sealed class ExplorerWindowTests
 {
     internal static ExplorerUiHarness Open(
         out FakeExplorerHost host, int width = 150, int height = 42, bool complete = true,
-        KeyMap? keys = null, bool clipboard = false, IReadOnlyList<ExplorerPlatform>? platforms = null)
+        KeyMap? keys = null, bool clipboard = false, IReadOnlyList<ExplorerPlatform>? platforms = null, bool clipboardWorks = true)
     {
         ExplorerImage img = ExplorerSamples.Image(complete);
         FakeExplorerHost fake = new()
         {
             Keys = keys ?? KeyMap.Default,
             ClipboardEnabled = clipboard,
+            ClipboardWorks = clipboardWorks,
             Platforms = platforms ?? [],
             Platform = platforms?.FirstOrDefault(),
             Baseline = img.Session,
@@ -287,7 +294,7 @@ public sealed class ExplorerWindowTests
         ui.Press(Key.Home);
         Assert.Equal(0, s.Cursor);
         ui.Press(Key.Space);
-        Assert.DoesNotContain("app", s.Expanded);
+        Assert.Contains("app", s.Expanded);
         ui.Press(Key.CursorRight);
         Assert.Contains("app", s.Expanded);
 
@@ -435,10 +442,30 @@ public sealed class ExplorerWindowTests
     {
         using ExplorerUiHarness ui = Open(out FakeExplorerHost host, clipboard: true);
         ui.Window.Apply(new SetCursor(RowOf(ui, "app")));
-        ui.Press(new Key('y'));
+        ui.Window.Apply(new CopyCommand());
         string copied = Assert.Single(host.Clipboard);
         Assert.StartsWith("dredge image ls registry.test/shop/storefront:1.0 /app", copied);
         Assert.StartsWith("Copied: ", ui.State.Notice);
+    }
+
+    [Theory]
+    [InlineData(true, "Copy as dredge command")]
+    [InlineData(false, "Show as dredge command")]
+    public void KeysScreenSaysWhetherYCopies(bool clipboard, string label)
+    {
+        using ExplorerUiHarness ui = Open(out _, clipboard: clipboard);
+        ui.Press(new Key('?'));
+        Assert.True(ui.Shows(label), ui.Screen());
+    }
+
+    [Fact]
+    public void AClipboardFailureShowsTheCommandInstead()
+    {
+        using ExplorerUiHarness ui = Open(out FakeExplorerHost host, clipboard: true, clipboardWorks: false);
+        ui.Window.Apply(new SetCursor(RowOf(ui, "app")));
+        ui.Window.Apply(new CopyCommand());
+        Assert.Single(host.Clipboard);
+        Assert.StartsWith("Couldn't reach the clipboard. $ dredge image ls registry.test/shop/storefront:1.0 /app", ui.State.Notice);
     }
 
     [Fact]
@@ -470,26 +497,51 @@ public sealed class ExplorerWindowTests
     }
 
     [Fact]
-    public void PagerExitsWithTheStagedFile()
+    public void ViewerExitsWithTheStagedFile()
     {
         using ExplorerUiHarness ui = Open(out _);
         ui.Window.Apply(new SetCursor(RowOf(ui, "app")));
-        ui.Press(new Key('o'));
-        Assert.Equal("Select a file to open in the pager.", ui.State.Notice);
+        ui.Window.Apply(new OpenInViewer());
+        Assert.Equal("Select a file to open in the viewer.", ui.State.Notice);
 
         ui.State.Expanded.Add("app/src");
         ui.Window.Presenter.Invalidate();
         ui.Window.Apply(new SetCursor(RowOf(ui, "app/src/index.js")));
-        ui.Press(new Key('o'));
-        ui.Until(() => ui.Window.StopRequested, "the pager exit");
-        Assert.Equal(ExplorerExitKind.Pager, ui.Window.Exit.Kind);
-        Assert.Equal("/tmp/dredge-test/index.js", ui.Window.Exit.PagerFile);
+        ui.Window.Apply(new OpenInViewer());
+        ui.Until(() => ui.Window.StopRequested, "the viewer exit");
+        Assert.Equal(ExplorerExitKind.Viewer, ui.Window.Exit.Kind);
+        Assert.Equal("/tmp/dredge-test/index.js", ui.Window.Exit.ViewerFile);
 
-        // The explorer reopens with this state after the pager, so focus moves
+        // The explorer reopens with this state after the viewer, so focus moves
         // while the screen closes must not leak into it.
         Assert.Equal(FocusPane.Right, ui.State.Focus);
         ui.Window.Layers.SetFocus();
         Assert.Equal(FocusPane.Right, ui.State.Focus);
+    }
+
+    [Fact]
+    public void WindowedViewerOpensWithoutStoppingTheExplorer()
+    {
+        ExplorerImage img = ExplorerSamples.Image();
+        ExplorerState state = new() { Layer = 2, Focus = FocusPane.Right };
+        state.Expanded.Add("app");
+        FakeExplorerHost host = new() { Baseline = img.Session };
+        List<string> opened = [];
+        using ExplorerUiHarness ui = new(150, 42, _ =>
+            new ExplorerWindow(img, state, host, CancellationToken.None, opened.Add));
+        state.Expanded.Add("app/src");
+        ui.Window.Presenter.Invalidate();
+        ui.Window.Apply(new SetCursor(ui.Window.Presenter.IndexOf(state, "app/src/index.js")));
+
+        ui.Window.Apply(new OpenInViewer());
+        ui.Until(() => opened.Count == 1, "the windowed viewer launch");
+
+        Assert.Equal(["/tmp/dredge-test/index.js"], opened);
+        Assert.False(ui.Window.StopRequested);
+        Assert.Equal(ExplorerExitKind.Quit, ui.Window.Exit.Kind);
+        Assert.True(ui.Window.Right.HasFocus);
+        ui.Window.Apply(new SelectLayer(1));
+        Assert.Equal(1, state.Layer);
     }
 
     [Fact]
@@ -507,7 +559,7 @@ public sealed class ExplorerWindowTests
         Assert.Equal("Compare works once every layer is indexed.", ui.State.Notice);
 
         ui.Press(new Key('r'));
-        Assert.Equal("Only a failed layer can be retried.", ui.State.Notice);
+        Assert.Empty(host.Retried);
         ui.Window.Apply(new SelectLayer(3));
         ui.Pump();
         Assert.Contains(3, host.Prioritized);
@@ -600,7 +652,8 @@ public sealed class ExplorerWindowTests
         ui.Press(new Key('y'));
         Assert.Equal("$ dredge image compare files registry.test/shop/storefront:2.0 registry.test/shop/storefront:1.0", s.Notice);
         ui.Press(new Key('w'));
-        Assert.Equal("Press Esc to leave compare first.", s.Notice);
+        Assert.False(s.FindingsOnly);
+        Assert.StartsWith("$ dredge image compare files", s.Notice);
 
         ui.Press(Key.Esc);
         Assert.Null(s.Compare);
@@ -612,12 +665,14 @@ public sealed class ExplorerWindowTests
     {
         using (ExplorerUiHarness single = Open(out _))
         {
+            Assert.DoesNotContain(single.Window.Presenter.Hints(single.State), h => h.Cmd is PickPlatform);
             single.Press(new Key('p'));
-            Assert.Equal("This image has only one platform.", single.State.Notice);
+            Assert.Null(single.State.Notice);
         }
 
         ExplorerPlatform amd = new("linux", "amd64", null, null), arm = new("linux", "arm64", "v8", null);
         using ExplorerUiHarness ui = Open(out _, platforms: [amd, arm]);
+        Assert.Contains(ui.Window.Presenter.Hints(ui.State), h => h.Cmd is PickPlatform);
         bool picked = ui.AnswerDialog(() => ui.Press(new Key('p')), Key.CursorDown, Key.Enter);
         Assert.True(picked);
         Assert.True(ui.Window.StopRequested);

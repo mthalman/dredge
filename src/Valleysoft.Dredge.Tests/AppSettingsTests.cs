@@ -137,6 +137,15 @@ public class AppSettingsTests
     }
 
     [Fact]
+    public void ClipboardIsNotAConfigurableSetting()
+    {
+        AppSettings settings = CreateSettings();
+
+        Assert.DoesNotContain("\"clipboard\"", JsonHelper.Serialize(settings));
+        Assert.Throws<ArgumentException>(() => settings.GetProperty(new Queue<string>(["explore", "clipboard"])));
+    }
+
+    [Fact]
     public void Load_MergesDuplicateSettingsObjects()
     {
         string settingsPath = Path.GetTempFileName();

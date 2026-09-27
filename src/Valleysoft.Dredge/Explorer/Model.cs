@@ -94,7 +94,8 @@ internal sealed class ExplorerImage
     public ExplorerImage(
         string reference, string? platform, string digest, IReadOnlyList<string> layerDigests,
         IReadOnlyList<long> layerSizes, IReadOnlyList<LayerHistory>? configHistory, int? baseLayerCount,
-        string? baseName, string? baseWarning = null, DateTime? now = null)
+        string? baseName, string? baseWarning = null, DateTime? now = null,
+        IReadOnlyList<ExplorerBaseImage>? baseImages = null)
     {
         Reference = reference;
         Platform = platform ?? "linux";
@@ -103,6 +104,8 @@ internal sealed class ExplorerImage
         LayerDownloads = layerSizes;
         BaseLayerCount = baseLayerCount;
         BaseName = baseName;
+        BaseImages = baseImages ?? (baseLayerCount is int count && baseName is not null
+            ? [new ExplorerBaseImage(baseName, count)] : []);
         BaseWarning = baseWarning;
         LayerCount = layerDigests.Count;
         States = new ExplorerLayerState[LayerCount];
@@ -121,7 +124,8 @@ internal sealed class ExplorerImage
         source.Resolved.ManifestInfo.DockerContentDigest,
         source.Resolved.Manifest.Layers.Select(layer => layer.Digest ?? "").ToArray(),
         source.Resolved.Manifest.Layers.Select(layer => layer.Size).ToArray(),
-        source.Config.History, source.BaseLayerCount, source.BaseName, source.BaseWarning)
+        source.Config.History, source.BaseLayerCount, source.BaseName, source.BaseWarning,
+        baseImages: source.BaseImages)
     {
         PlatformArguments = source.Platforms.Count > 1 && source.Platform is ExplorerPlatform platform
             ? PlatformArgumentsFor(platform) : "",
@@ -145,6 +149,7 @@ internal sealed class ExplorerImage
     public string Digest { get; }
     public string RepoName { get; }
     public string? BaseName { get; }
+    public IReadOnlyList<ExplorerBaseImage> BaseImages { get; }
     public string? BaseWarning { get; }
     public int? BaseLayerCount { get; }
     public int LayerCount { get; }
@@ -170,6 +175,16 @@ internal sealed class ExplorerImage
 
     public IEnumerable<int> LayerIndexes => Enumerable.Range(0, LayerCount);
     public bool IsBase(int layer) => layer < (BaseLayerCount ?? 0);
+    public string? BaseImageAt(int layer) =>
+        BaseImages.FirstOrDefault(baseImage => layer < baseImage.LayerCount)?.Name;
+    public string BaseLabel(string reference)
+    {
+        string name = ImageName.Parse(reference).Repo.Split('/')[^1];
+        return name == RepoName || BaseImages.Any(baseImage =>
+            baseImage.Name != reference && ImageName.Parse(baseImage.Name).Repo.Split('/')[^1] == name)
+            ? reference : name;
+    }
+    public string GroupAt(int layer) => BaseImageAt(layer) ?? Reference;
     public bool IsIndexed(int layer) => raw.ContainsKey(layer) || IsAnalyzed(layer);
     public bool IsAnalyzed(int layer) => layer < AnalyzedCount;
 

@@ -74,7 +74,7 @@ internal sealed class PaneView : View
         Rectangle frame = FrameToScreen();
         PaneContent c = drawn = latest = fresh && latest is not null ? latest : content();
         fresh = false;
-        bool partial = before is not null && frame == drawnFrame && BufferIntact?.Invoke() == true;
+        bool partial = before is not null && before.Inset == c.Inset && frame == drawnFrame && BufferIntact?.Invoke() == true;
         drawnFrame = frame;
         if (Viewport.Width < 4 || Viewport.Height < 2)
         {
@@ -87,7 +87,7 @@ internal sealed class PaneView : View
         {
             Paint.Frame(this, c.Title, c.Subtitle, c.Focused);
         }
-        int inner = Viewport.Width - 4;
+        int left = 1 + c.Inset, inner = Viewport.Width - 2 - 2 * c.Inset;
         for (int i = 0; i < Viewport.Height - 2; i++)
         {
             Line? line = i < c.Lines.Count ? c.Lines[i] : null;
@@ -101,16 +101,16 @@ internal sealed class PaneView : View
             }
             else
             {
-                Paint.Fill(this, 1, 1 + i, null, 1);
-                Paint.Fill(this, Viewport.Width - 2, 1 + i, null, 1);
+                Paint.Fill(this, 1, 1 + i, null, c.Inset);
+                Paint.Fill(this, Viewport.Width - 1 - c.Inset, 1 + i, null, c.Inset);
             }
             if (partial)
             {
-                Paint.Patch(this, 2, 1 + i, line, i < before!.Lines.Count ? before.Lines[i] : null, inner);
+                Paint.Patch(this, left, 1 + i, line, i < before!.Lines.Count ? before.Lines[i] : null, inner);
             }
             else
             {
-                Paint.Fill(this, 2, 1 + i, line, inner);
+                Paint.Fill(this, left, 1 + i, line, inner);
             }
         }
         return true;
@@ -137,7 +137,7 @@ internal sealed class PaneView : View
         {
             TakeFocus();
         }
-        if (mouse.Position is { } p && latest?.HitTest(p.Y - 1, p.X - 2) is Cmd cmd)
+        if (mouse.Position is { } p && latest?.HitTest(p.Y - 1, p.X - 1 - latest.Inset) is Cmd cmd)
         {
             if (press)
             {

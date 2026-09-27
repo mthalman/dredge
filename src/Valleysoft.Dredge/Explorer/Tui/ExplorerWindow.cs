@@ -18,6 +18,7 @@ internal sealed class ExplorerWindow : Window
     private readonly ExplorerPresenter ex;
     private readonly ExplorerState s;
     private readonly CancellationToken lifetime;
+    private readonly Action<string>? openWindowedViewer;
     private readonly HeaderView header;
     private readonly PaneView layers, details, right;
     private readonly Label searchKey, matches, extractLabel;
@@ -26,6 +27,7 @@ internal sealed class ExplorerWindow : Window
     private int footerLeft;
     private bool? narrow;
     private bool? tooSmall;
+    private bool? inspecting;
     private bool focusSynced;
     private CompareView? compareView;
     private Cell[,]? shown;
@@ -33,17 +35,20 @@ internal sealed class ExplorerWindow : Window
     private bool clearedThisFrame;
     private CancellationTokenSource? previewLoad;
 
-    public ExplorerWindow(ExplorerImage img, ExplorerState state, IExplorerHost host, CancellationToken lifetime)
+    public ExplorerWindow(ExplorerImage img, ExplorerState state, IExplorerHost host, CancellationToken lifetime,
+        Action<string>? openWindowedViewer = null)
     {
         this.img = img;
         this.host = host;
         this.lifetime = lifetime;
+        this.openWindowedViewer = openWindowedViewer;
         s = state;
-        ex = new ExplorerPresenter(img, 150, 42, host.Keys);
+        ex = new ExplorerPresenter(img, 150, 42, host.Keys) { Copies = host.ClipboardEnabled, MultiPlatform = host.Platforms.Count > 1 };
         BorderStyle = LineStyle.None;
         SetScheme(new Scheme(Paint.Attr(Theme.Foam)));
 
-        header = new HeaderView(HeaderLines, col => Comparing || ex.TooSmall ? null : ex.LayerAtColumn(col))
+        header = new HeaderView(HeaderLines, col => Comparing || s.View == RightView.Inspector || ex.TooSmall
+            ? null : ex.LayerAtColumn(col))
         {
             X = 0, Y = 0, Width = Dim.Fill(), Height = ExplorerPresenter.HeaderHeight,
         };
@@ -99,6 +104,7 @@ internal sealed class ExplorerWindow : Window
     public TextField Search => search;
     public TextField ExtractField => extractField;
     public ExplorerExit Exit { get; private set; } = new(ExplorerExitKind.Quit);
+    internal void ViewerFailed(string error) => Notice(error, error: true);
     private bool Comparing => s.Compare is not null;
     private CompareView Compare => compareView ??= new CompareView(ex, s.Compare!);
     private string? pendingExtract;
@@ -132,7 +138,7 @@ internal sealed class ExplorerWindow : Window
     }
 
     // Tearing down the screen moves Terminal.Gui focus; the state outlives this
-    // window (the pager reopens it), so stop mirroring focus into it first.
+    // window (the viewer reopens it), so stop mirroring focus into it first.
     private void Stop(ExplorerExit exit)
     {
         focusSynced = false;
@@ -273,6 +279,8 @@ internal sealed class ExplorerWindow : Window
         int w = Math.Max(Viewport.Width, 1), h = Math.Max(Viewport.Height, 1);
         ex.Width = w;
         ex.Height = h;
+        bool inspector = s.View == RightView.Inspector && !Comparing;
+        ex.FullWidthInspector = inspector;
         compareView = null;
         if (tooSmall != ex.TooSmall)
         {
@@ -280,11 +288,20 @@ internal sealed class ExplorerWindow : Window
             layers.Visible = right.Visible = !ex.TooSmall;
             header.Height = ex.TooSmall ? Dim.Fill() : ExplorerPresenter.HeaderHeight;
             narrow = null;
+            inspecting = null;
         }
-        if (!ex.TooSmall && narrow != ex.Narrow)
+        if (!ex.TooSmall && (narrow != ex.Narrow || inspecting != inspector))
         {
             narrow = ex.Narrow;
-            if (ex.Narrow)
+            inspecting = inspector;
+            layers.Visible = !inspector;
+            if (inspector)
+            {
+                details.Visible = false;
+                right.X = 0;
+                right.Y = ExplorerPresenter.HeaderHeight;
+            }
+            else if (ex.Narrow)
             {
                 layers.X = 0;
                 layers.Y = ExplorerPresenter.HeaderHeight;
@@ -321,6 +338,11 @@ internal sealed class ExplorerWindow : Window
     // Brings the footer and every pane up to date with the state; each repaints only if it changed.
     private void Refresh()
     {
+        if (!ex.TooSmall && inspecting != (s.View == RightView.Inspector && !Comparing))
+        {
+            Relayout();
+            return;
+        }
         compareView = null;
         bool extracting = pendingExtract is not null;
         bool searching = s.View == RightView.Search && !Comparing && !ex.TooSmall && !extracting;
@@ -350,9 +372,8 @@ internal sealed class ExplorerWindow : Window
         if (!extracting)
         {
             int room = Math.Max(0, Viewport.Width - left - status.Length - 1);
-            List<Hint> source = ex.TooSmall ? [new(host.Keys.Label(KeyAction.Quit), "Quit", new Quit())]
-                : Comparing && s.View != RightView.Keys ? Compare.Hints() : ex.Hints(s);
-            hints = ex.Fit(source, room, h => h.Key.Length + h.Label.Length + 5);
+            List<Hint> source = ex.TooSmall ? [new(host.Keys.Label(KeyAction.Quit), "Quit", new Quit())] : ContextHints();
+            hints = ex.Fit(source.Where(h => h.ShowInFooter).ToList(), room, h => h.Key.Length + h.Label.Length + 5);
         }
         footer.Show(hints, status, s.NoticeIsError && s.Notice is not null, Math.Max(0, Viewport.Width - left));
 
@@ -363,6 +384,30 @@ internal sealed class ExplorerWindow : Window
     }
 
     // ───────────────────────────── input ─────────────────────────────
+
+    private static bool IsTab(Key key) => key.NoShift.KeyCode == KeyCode.Tab && !key.IsCtrl && !key.IsAlt;
+
+    private List<Hint> ContextHints() => Comparing && s.View != RightView.Keys ? Compare.Hints() : ex.Hints(s);
+
+    // A key acts only when the current context lists it; hints trimmed from a narrow footer still count.
+    private bool Listed(Key key)
+    {
+        string? token = IsTab(key) ? "Tab" : key.KeyCode switch
+        {
+            KeyCode.CursorUp or KeyCode.CursorDown => "↑↓",
+            KeyCode.CursorLeft or KeyCode.CursorRight => "←→",
+            KeyCode.PageUp => "PgUp",
+            KeyCode.PageDown => "PgDn",
+            KeyCode.Home => "Home",
+            KeyCode.End => "End",
+            KeyCode.Enter => "Enter",
+            KeyCode.Esc => "Esc",
+            _ when key.IsAlt && !key.IsCtrl => "Alt+" + key.NoAlt.KeyCode,
+            _ when key.AsRune.Value is int ch and > 32 and < 127 => ((char)ch).ToString(),
+            _ => null,
+        };
+        return token is not null && ContextHints().Any(h => h.Key.Split(' ').Contains(token));
+    }
 
     protected override bool OnKeyDown(Key key)
     {
@@ -400,10 +445,17 @@ internal sealed class ExplorerWindow : Window
             {
                 return false;
             }
-            Apply(inField);
+            if (Listed(key))
+            {
+                Apply(inField);
+            }
             return true;
         }
 
+        if (IsTab(key) && !ex.TooSmall && !Listed(key))
+        {
+            return true;
+        }
         int page = Comparing ? Compare.DiffRows : ex.TreeRows;
         Cmd? cmd = key.KeyCode switch
         {
@@ -415,7 +467,6 @@ internal sealed class ExplorerWindow : Window
             KeyCode.PageDown => new Move(page),
             KeyCode.Home => new Jump(false),
             KeyCode.End => new Jump(true),
-            KeyCode.Space => new FoldAll(),
             KeyCode.CursorLeft => new Fold(false),
             KeyCode.CursorRight => new Fold(true),
             _ => null,
@@ -450,7 +501,7 @@ internal sealed class ExplorerWindow : Window
                 KeyAction.Platform => new PickPlatform(),
                 KeyAction.Extract => new ExtractSelected(),
                 KeyAction.CopyCommand => new CopyCommand(),
-                KeyAction.Pager => new OpenInPager(),
+                KeyAction.Viewer => new OpenInViewer(),
                 KeyAction.SwapSides => new SwapSides(),
                 KeyAction.Retry => new RetryLayer(s.Layer),
                 _ => null,
@@ -460,7 +511,10 @@ internal sealed class ExplorerWindow : Window
         {
             return false;
         }
-        Apply(cmd);
+        if (Listed(key))
+        {
+            Apply(cmd);
+        }
         return true;
     }
 
@@ -540,7 +594,7 @@ internal sealed class ExplorerWindow : Window
             case SelectLayer l:
                 SelectLayerCore(l.Layer);
                 break;
-            case StepLayer d:
+            case StepLayer d when s.View != RightView.Inspector:
                 SelectLayerCore(s.Layer + d.Delta);
                 break;
             case FirstUserLayer when img.BaseLayerCount is not null && img.FirstUserLayer is int first:
@@ -625,12 +679,6 @@ internal sealed class ExplorerWindow : Window
                     s.Cursor = Math.Max(0, rows.FindIndex(r => r.Path == parent));
                 }
                 break;
-            case FoldAll when row is not null && s.View == RightView.Files:
-                string root = row.Node.Children.Count > 0 || !row.Path.Contains('/') ? row.Path : row.Path[..row.Path.LastIndexOf('/')];
-                s.Expanded.RemoveWhere(p => p == root || p.StartsWith(root + "/", StringComparison.Ordinal));
-                ex.Invalidate();
-                s.Cursor = Math.Max(0, ex.IndexOf(s, root));
-                break;
             case ToggleFindingsOnly when !img.Complete:
                 Notice("Findings appear once every layer is indexed.");
                 break;
@@ -700,11 +748,8 @@ internal sealed class ExplorerWindow : Window
             case CopyCommand:
                 CopySelected();
                 break;
-            case OpenInPager:
-                OpenPager();
-                break;
-            case SwapSides or StepDifference:
-                Notice("Swap and difference stepping work in the compare view.");
+            case OpenInViewer:
+                OpenViewer();
                 break;
             case FocusOn f:
                 (f.Pane == FocusPane.Layers ? layers : right).SetFocus();
@@ -913,10 +958,13 @@ internal sealed class ExplorerWindow : Window
 
     private void Copy(string command)
     {
-        if (host.ClipboardEnabled)
+        if (host.ClipboardEnabled && host.WriteClipboard(command))
         {
-            host.WriteClipboard(command);
             Notice("Copied: " + command);
+        }
+        else if (host.ClipboardEnabled)
+        {
+            Notice("Couldn't reach the clipboard. $ " + command);
         }
         else
         {
@@ -924,17 +972,17 @@ internal sealed class ExplorerWindow : Window
         }
     }
 
-    private void OpenPager()
+    private void OpenViewer()
     {
         string? path = SelectedPath();
         if (path is null || IsDirectory(path))
         {
-            Notice("Select a file to open in the pager.");
+            Notice("Select a file to open in the viewer.");
             return;
         }
         if (!img.Complete)
         {
-            Notice("The pager works once every layer is indexed.");
+            Notice("The viewer works once every layer is indexed.");
             return;
         }
         if (!Live(path))
@@ -943,9 +991,17 @@ internal sealed class ExplorerWindow : Window
             return;
         }
         Notice($"Opening /{path}…");
-        RunAsync(ct => host.PrepareForPagerAsync(path, ct), file =>
+        RunAsync(ct => host.PrepareForViewerAsync(path, ct), file =>
         {
-            Stop(new(ExplorerExitKind.Pager, file));
+            if (openWindowedViewer is null)
+            {
+                Stop(new(ExplorerExitKind.Viewer, file));
+            }
+            else
+            {
+                openWindowedViewer(file);
+                Notice($"Starting viewer for /{path}…");
+            }
         });
     }
 
@@ -1111,10 +1167,6 @@ internal sealed class ExplorerWindow : Window
                         break;
                     }
                 }
-                return true;
-            case FoldAll:
-                c.Expanded.RemoveWhere(key => key.StartsWith("file:", StringComparison.Ordinal) || key.StartsWith("scope:", StringComparison.Ordinal));
-                c.Cursor = 0;
                 return true;
             case Activate when row is null:
                 return true;

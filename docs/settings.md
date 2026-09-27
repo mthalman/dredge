@@ -29,7 +29,9 @@ Setting names use dot notation with `dredge settings get` and
 | `cache.maxBytes` | `5368709120` | Maximum retained cache bytes (5 GiB); `0` disables retention |
 | `explore.theme` | `dark` | Explorer color theme: `dark` or `light` |
 | `explore.mouse` | `true` | Whether the explorer uses the mouse: `true` or `false` |
-| `explore.clipboard` | `off` | Explorer copy target: `off` or `osc52` |
+| `explore.viewer.exePath` | Empty | Executable for `o`; empty uses the platform's default text viewer |
+| `explore.viewer.args` | `"{0}"` | Arguments for the text viewer; `{0}` is the staged file path |
+| `explore.viewer.terminal` | `false` | Set to `true` when a configured viewer uses the current terminal |
 | `explore.keys.<action>` | Empty | Replacement key for an explorer action; empty uses the default |
 
 An empty platform setting does not filter candidate manifests. Command-line
@@ -117,18 +119,40 @@ Set `explore.theme` to `light` for light terminal backgrounds. When the
 Set `explore.mouse` to `false` to leave the mouse to the terminal, which is the
 same as passing `--no-mouse`.
 
-By default, `y` shows the equivalent `dredge` command so you can select and copy
-it. Set `explore.clipboard` to `osc52` to also send the command to the
-clipboard through the OSC 52 terminal escape sequence. Your terminal must
-support and allow OSC 52; remote sessions can then copy to the local
-clipboard.
+`y` copies the equivalent `dredge` command. On local Windows, it uses the
+Windows clipboard. Elsewhere, including SSH sessions, it asks the terminal to
+copy with OSC 52. The terminal must support and allow OSC 52; tmux must be
+configured to pass it through. If the clipboard can't be reached, dredge
+shows the command instead.
+
+Press `o` while inspecting a file to open it in an external text viewer.
+Configure the viewer executable with `explore.viewer.exePath` and its arguments
+with `explore.viewer.args`. The arguments string uses `{0}` for the staged file
+path; quote the placeholder when the viewer expects a filename argument.
+When `exePath` is empty, dredge uses `less -X` on Unix-like systems or the
+Windows `more` command. The Windows default passes the file to `more` through
+standard input. Both built-in defaults ignore `explore.viewer.args`; set both
+settings to use custom arguments. The built-in pagers leave their output visible
+and wait for Enter after closing before the explorer screen returns. Terminal
+viewers temporarily replace the explorer screen; configured windowed viewers
+leave the explorer visible and interactive while the viewer runs. Set
+`explore.viewer.terminal` to `true` for a configured terminal viewer such as
+`vim`. The staged file is removed when the viewer process exits; configure the
+viewer to remain running while it uses the file.
+
+For example, to use Notepad++ on Windows:
+
+```console
+dredge settings set explore.viewer.exePath "C:\Program Files\Notepad++\notepad++.exe"
+dredge settings set explore.viewer.args "\"{0}\""
+```
 
 Each single-character explorer key can be replaced with any printable ASCII
 character. Two actions cannot share a key. The actions are `quit`, `help`,
 `insights`, `search`, `wholeFilesystem`, `firstUserLayer`, `compare`,
 `findingsOnly`, `previousLayer`, `nextLayer`, `toggleAdded`,
 `toggleModified`, `toggleIdentical`, `toggleDeleted`, `platform`, `extract`,
-`copyCommand`, `pager`, `swapSides`, and `retry`. For example, to quit with
+`copyCommand`, `viewer`, `swapSides`, and `retry`. For example, to quit with
 `Q` and use `q` to toggle the whole filesystem:
 
 ```console
@@ -136,7 +160,7 @@ dredge settings set explore.keys.quit Q
 dredge settings set explore.keys.wholeFilesystem q
 ```
 
-Arrow keys, `Tab`, `Enter`, `Space`, `Esc`, and the `Alt` search shortcuts
+Arrow keys, `Tab`, `Enter`, `Esc`, and the `Alt` search shortcuts
 cannot be remapped.
 
 ## Settings file schema
@@ -162,9 +186,14 @@ cannot be remapped.
   "explore": {
     "theme": "dark",
     "mouse": "true",
-    "clipboard": "off",
+    "viewer": {
+      "exePath": "",
+      "args": "\"{0}\"",
+      "terminal": "false"
+    },
     "keys": {
-      "quit": "<string>"
+      "quit": "<string>",
+      "viewer": "<string>"
     }
   }
 }

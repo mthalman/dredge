@@ -23,6 +23,8 @@ internal sealed record ExplorerPlatform(string Os, string Architecture, string? 
     }
 }
 
+internal sealed record ExplorerBaseImage(string Name, int LayerCount);
+
 // What the explorer knows before any layer is downloaded: two small requests
 // for the manifest and config, plus base verification.
 internal sealed class ExplorerSource
@@ -34,13 +36,14 @@ internal sealed class ExplorerSource
     public ExplorerPlatform? Platform { get; init; }
     public int? BaseLayerCount { get; init; }
     public string? BaseName { get; init; }
+    public IReadOnlyList<ExplorerBaseImage> BaseImages { get; init; } = [];
     public string? BaseWarning { get; init; }
 
     public int LayerCount => Resolved.Manifest.Layers.Length;
 
     public static async Task<ExplorerSource> OpenAsync(
         IDockerRegistryClient client, IDockerRegistryClientFactory factory,
-        ImageName image, PlatformOptionsBase options, string? baseImage,
+        ImageName image, PlatformOptionsBase options, IReadOnlyList<string>? baseImages,
         CancellationToken cancellationToken,
         Func<IReadOnlyList<ExplorerPlatform>, ExplorerPlatform?>? choosePlatform = null,
         IAppSettingsStore? settingsStore = null, ExplorerPlatform? exactPlatform = null)
@@ -58,8 +61,8 @@ internal sealed class ExplorerSource
                 $"The image explorer supports Linux images only (found '{config.Os}').");
         }
 
-        (int? baseLayerCount, string? baseName, string? warning) = await ExplorerSession.VerifyBaseAsync(
-            client, factory, image, resolved, resolvedOptions, baseImage, cancellationToken, platform);
+        (IReadOnlyList<ExplorerBaseImage> verifiedBases, string? warning) = await ExplorerSession.VerifyBasesAsync(
+            client, factory, image, resolved, resolvedOptions, baseImages, cancellationToken, platform);
         return new ExplorerSource
         {
             Image = image,
@@ -67,8 +70,9 @@ internal sealed class ExplorerSource
             Config = config,
             Platforms = platforms,
             Platform = platform,
-            BaseLayerCount = baseLayerCount,
-            BaseName = baseName,
+            BaseLayerCount = verifiedBases.LastOrDefault()?.LayerCount,
+            BaseName = verifiedBases.LastOrDefault()?.Name,
+            BaseImages = verifiedBases,
             BaseWarning = warning
         };
     }

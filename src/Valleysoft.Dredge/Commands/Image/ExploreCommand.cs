@@ -33,7 +33,7 @@ public sealed class ExploreCommand : RegistryCommandBase<ExploreOptions>
                 await DockerRegistryClientFactory.GetClientAsync(image.Registry, ct);
             await using LayerStore store = LayerStore.Create();
             ExplorerSource source = await ExplorerSource.OpenAsync(
-                client, DockerRegistryClientFactory, image, Options, Options.BaseImage, ct);
+                client, DockerRegistryClientFactory, image, Options, Options.BaseImages, ct);
             ValidateLayer(Options.Layer, source.LayerCount);
 
             Theme.Apply(theme);
@@ -51,7 +51,7 @@ public sealed class ExploreCommand : RegistryCommandBase<ExploreOptions>
                 try
                 {
                     source = await ExplorerSource.OpenAsync(client, DockerRegistryClientFactory, image,
-                        ExplorerSource.ForPlatform(exit.Platform), Options.BaseImage, ct,
+                        ExplorerSource.ForPlatform(exit.Platform), Options.BaseImages, ct,
                         exactPlatform: exit.Platform);
                     explorerOptions = explorerOptions with { Layer = null, Compare = null, Notice = null };
                 }
@@ -73,8 +73,17 @@ public sealed class ExploreCommand : RegistryCommandBase<ExploreOptions>
     internal static ExplorerOptions CreateExplorerOptions(ExploreOptions options, ExploreSettings settings) => new(
         options.Layer, options.Compare,
         Mouse: !options.NoMouse && settings.IsMouseEnabled(),
-        Clipboard: settings.IsOsc52ClipboardEnabled(),
-        Keys: KeyMap.FromSettings(settings.Keys));
+        Clipboard: Explorer.Tui.Clipboard.Resolve(OperatingSystem.IsWindows(),
+            Explorer.Tui.Clipboard.IsRemoteSession(Environment.GetEnvironmentVariable)),
+        Keys: KeyMap.FromSettings(settings.Keys),
+        ViewerExePath: string.IsNullOrWhiteSpace(settings.Viewer.ExePath)
+            ? OperatingSystem.IsWindows() ? "cmd.exe" : "less"
+            : settings.Viewer.ExePath,
+        ViewerArgs: string.IsNullOrWhiteSpace(settings.Viewer.ExePath)
+            ? OperatingSystem.IsWindows() ? "/d /s /c \"more < \"{0}\"\"" : "-X \"{0}\""
+            : settings.Viewer.Args,
+        ViewerUsesTerminal: settings.Viewer.UsesTerminal() || string.IsNullOrWhiteSpace(settings.Viewer.ExePath),
+        PauseAfterViewer: string.IsNullOrWhiteSpace(settings.Viewer.ExePath));
 
     internal static void ValidateLayer(int? layer, int layerCount)
     {

@@ -93,7 +93,7 @@ layers, see which files each layer adds, changes, or deletes, find wasted
 space, and compare with another tag.
 
 ```console
-dredge image explore <image> [--layer <n>] [--compare <image-or-tag>] [--base-image <image>] [--no-mouse] [--os <os>] [--arch <arch>] [--os-version <version>]
+dredge image explore <image> [--layer <n>] [--compare <image-or-tag>] [--base-image <image> ...] [--no-mouse] [--os <os>] [--arch <arch>] [--os-version <version>]
 ```
 
 - `--layer <n>` opens with layer `n` selected. Layer numbers are zero-based,
@@ -101,28 +101,43 @@ dredge image explore <image> [--layer <n>] [--compare <image-or-tag>] [--base-im
 - `--compare <image-or-tag>` opens compare mode with `<image>` as the baseline.
   A bare tag, such as `--compare 2.0`, resolves in the same repository. Both
   images resolve to the same platform.
-- `--base-image <image>` names the base image, which the explorer otherwise
-  reads from the `org.opencontainers.image.base.name` annotation. If both are
-  present, they must identify the same image. Without either, the explorer
-  treats every layer as your own.
+- Repeat `--base-image <image>` to identify ancestors in any order, for example
+  `--base-image sdk:1 --base-image runtime:1`. Each image must share the
+  explored image's layer prefix and identify a distinct boundary. The explorer
+  sorts them by layer count and labels each ancestor's own layer range. Without
+  this option, it reads the immediate base from
+  `org.opencontainers.image.base.name`. If the annotation is present with
+  explicit ancestors, the image with the most layers must identify that
+  immediate base. Without either, every layer is yours.
 - `--no-mouse` leaves the mouse to the terminal, so you can select text without
   a modifier key.
 
 The explorer opens as soon as the manifest and configuration load. Layers are
-indexed in the background, and the selected layer is indexed first. A layer
+indexed in the background, with focus in the Layers pane and the selected layer
+indexed first. A layer
 that fails to download shows an error in place, and `r` retries it. Indexed
 layers use the [shared layer cache](#shared-layer-cache).
 
 The screen has four parts:
 
-- **Strata bar.** The top of the screen shows each layer's size, with the base
-  image's layers separated from your own.
+- **Strata bar.** The top of the screen shows each layer's size, with slate
+  shades for base-image layers, separately labeled by ancestor, and copper
+  shades for your own. Labels use short repository names unless ambiguous.
 - **Layers pane.** Lists layers with their size and the instruction that
-  created them.
+  created them, grouped under full image references (shown in the pane subtitle
+  when the terminal is narrow). Each size is shaded relative to the largest
+  layer on a square-root scale, so smaller layers stay distinguishable. The shading
+  matches the layer's color in the strata bar; space wasted by later layers
+  stays coral even when selected. The selected row has a teal marker.
 - **Files pane.** Shows the files changed by the selected layer. Press `a` to
   show the whole filesystem instead.
 - **Details pane.** Describes the selected layer or file. Press `Enter` to
-  inspect a file, and `o` to open a text file in `$PAGER`.
+  inspect a file in a full-width preview; use `Esc` to return to the Layers and
+  Files panes. Layer stepping is unavailable while previewing. Press `o` to
+  open the file in the configured text viewer. A configured windowed viewer
+  leaves the explorer open; terminal viewers temporarily use its screen. The
+  built-in `less`/`more` viewer leaves its output visible until you press Enter
+  to return to the explorer.
 
 Press `i` for **insights**: an efficiency score and findings such as files
 replaced by a later layer, deleted files that still take space, and large
@@ -133,11 +148,17 @@ with another tag. Compare mode lists added, changed, and removed packages and
 files. Press `Enter` on a changed text file to see a diff, and `s` to swap the
 two sides.
 
-Press `x` to extract the selected file or directory, and `y` to show the
+Press `x` to extract the selected file or directory, and `y` to copy the
 equivalent `dredge image` command. Press `p` to choose another Linux platform,
 including an architecture variant such as `arm/v7`, of a multi-platform image.
 Compare mode opens the other tag on the same platform. Press `?` for all keys,
 and `q` to quit.
+
+Keys work only in their applicable pane or view. Navigation keys such as
+arrows, `PgUp`/`PgDn`, and `Home`/`End` remain active even though they aren't
+shown in the footer; `?` lists them. A narrow footer can also trim hints for
+active commands. For example, `b` works only when the image has a verified
+base, and `p` only for a multi-platform image.
 
 | Key | Action |
 |-----|--------|
@@ -146,7 +167,7 @@ and `q` to quit.
 | `[` `]` | Previous or next layer; in compare, previous or next difference |
 | `a` | Toggle the whole filesystem |
 | `b` | Select the first layer after the base image |
-| `←` `→` `Space` | Fold or unfold directories |
+| `←` `→` | Fold or unfold directories |
 | `+` `~` `=` `-` | Show or hide added, modified, identical, or deleted files; `Esc` clears the filters |
 | `w` | Show only paths with findings |
 | `Enter` | Inspect a file, open a finding, or diff a compared file |
@@ -154,14 +175,14 @@ and `q` to quit.
 | `Alt+L` `Alt+D` `Alt+C` | In search: this layer only, include deleted paths, exact case |
 | `c` `s` | Compare with a tag; swap compared sides |
 | `p` `r` | Choose platform; retry a failed layer |
-| `x` `y` `o` | Extract; show the dredge command; open in `$PAGER` |
+| `x` `y` `o` | Extract; copy the dredge command; open in the text viewer |
 | `Esc` `q` | Back; quit |
 
 With the mouse enabled, click a row, chip, or footer hint to use it, and
 double-click a row to open it. The wheel scrolls the pane under the pointer.
 
-You can remap the single-character keys, and change the theme, mouse, and
-clipboard behavior, through the
+You can remap the single-character keys and configure the theme, mouse, and
+text viewer through the
 [`explore` settings](../settings.md#configure-the-explorer).
 
 The explorer needs an interactive terminal of at least 80 × 24. If standard
