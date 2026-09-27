@@ -96,6 +96,7 @@ internal sealed class CompareView
     [
         .. c.Comparison.Baseline.Packages.Diagnostics.Select(d => $"Baseline /{d.Path}: {d.Message}"),
         .. c.Comparison.Target.Packages.Diagnostics.Select(d => $"Target /{d.Path}: {d.Message}"),
+        .. c.PackageFiles?.Warnings ?? [],
     ];
 
     public List<Line> Header()

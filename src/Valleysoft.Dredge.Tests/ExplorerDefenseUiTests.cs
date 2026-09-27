@@ -6,6 +6,36 @@ namespace Valleysoft.Dredge.Tests;
 [Collection(ExplorerUiCollection.Name)]
 public sealed class ExplorerDefenseUiTests
 {
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void PartialAndUnavailablePackageOwnershipExposeCompleteWarnings(bool unavailable)
+    {
+        ExplorerImage image = ExplorerSamples.Image();
+        CompareState compare = new(ExplorerSession.Compare(image.Session!, ExplorerSamples.Target()), "before", "after");
+        ExplorerPackageDifference package = Assert.Single(compare.Comparison.Packages);
+        string warning = "Baseline /var/lib/dpkg/info/package.list: " + new string('x', 300) + " OWNERSHIP-END";
+        PackageFilesContent result = new(package, unavailable ? null : [("app/package.json", Change.Modified)],
+            unavailable ? "Package file ownership is unavailable." : "Ownership is incomplete; showing readable metadata.",
+            unavailable ? 0 : 1, [warning]);
+        compare.PackageFiles = result;
+        using ExplorerUiHarness ui = ExplorerWindowTests.Open(image, new ExplorerState { Compare = compare },
+            session => new FakeExplorerHost { Baseline = session }, out _, width: 80, height: 24);
+        Assert.True(ui.Shows(unavailable ? "ownership is unavailable" : "Ownership is incomplete"), ui.Screen());
+        Assert.True(ui.Shows("1 metadata warning"), ui.Screen());
+        if (!unavailable)
+        {
+            Assert.True(ui.Shows("app/package.json"), ui.Screen());
+        }
+        ui.Press(new Key('w').WithAlt);
+        Assert.Equal(warning, ui.State.WarningText);
+        ui.Press(Key.End);
+        Assert.True(ui.Shows("OWNERSHIP-END"), ui.Screen());
+        ui.Press(Key.Esc);
+        Assert.Same(result, compare.PackageFiles);
+        Assert.True(ui.Shows("1 metadata warning"), ui.Screen());
+    }
+
     [Fact]
     public void PackageMetadataWarningsRemainAvailableAfterNavigation()
     {
