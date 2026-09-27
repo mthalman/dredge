@@ -54,6 +54,7 @@ internal sealed record FocusOn(FocusPane Pane) : Cmd;
 internal sealed record Quit : Cmd;
 
 internal sealed record Notify(string Text) : Cmd;
+internal sealed record ShowComparisonSnapshot : Cmd;
 internal sealed record RetryLayer(int Layer) : Cmd;
 internal sealed record FirstUserLayer : Cmd;
 internal sealed record ExtractSelected : Cmd;

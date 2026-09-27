@@ -99,6 +99,16 @@ internal sealed class CompareView
         .. c.PackageFiles?.Warnings ?? [],
     ];
 
+    public string SnapshotDetails()
+    {
+        ExplorerSession before = c.Comparison.Baseline, after = c.Comparison.Target;
+        return $"Baseline ({c.BaselineLabel})\n" +
+            ExplorerImage.DigestReference(before.Image, before.Resolved.ManifestInfo.DockerContentDigest) +
+            $"\n\nTarget ({c.TargetLabel})\n" +
+            ExplorerImage.DigestReference(after.Image, after.Resolved.ManifestInfo.DockerContentDigest) +
+            "\n\nThis comparison uses session snapshots. Reopen explorer to refresh tags.";
+    }
+
     public List<Line> Header()
     {
         int shared = Enumerable.Range(0, c.LayerCount).Count(c.Shared);
@@ -654,6 +664,7 @@ internal sealed class CompareView
         }
         return
         [
+            new("Alt+I", "Snapshot", new ShowComparisonSnapshot()),
             .. Warnings().Count > 0 ? new Hint[] { new("Alt+W", "Warnings", new ShowView(RightView.Warning)) } : [],
             new("Tab", c.FocusLayers ? "Differences" : "Layers", new FocusOn(c.FocusLayers ? FocusPane.Right : FocusPane.Layers)), new("↑↓", "Move", ShowInFooter: false),
             new($"{k.Label(KeyAction.PreviousLayer)} {k.Label(KeyAction.NextLayer)}", "Next difference"),

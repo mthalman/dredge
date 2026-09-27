@@ -576,6 +576,10 @@ internal sealed class ExplorerWindow : Window
         {
             cmd = new ShowView(RightView.Warning);
         }
+        if (key.IsAlt && !key.IsCtrl && key.NoAlt.KeyCode == KeyCode.I && Comparing)
+        {
+            cmd = new ShowComparisonSnapshot();
+        }
         if (ex.TooSmall && cmd is not null)
         {
             return true;
@@ -678,11 +682,14 @@ internal sealed class ExplorerWindow : Window
         {
             helpReturn = (s.View, s.Focus, s.Compare?.FocusLayers ?? false);
         }
-        if (cmd is ShowView { View: RightView.Warning } && s.View != RightView.Warning)
+        if ((cmd is ShowView { View: RightView.Warning } || cmd is ShowComparisonSnapshot && Comparing)
+            && s.View != RightView.Warning)
         {
             warningReturn = (s.View, s.Focus, s.Compare?.FocusLayers ?? false);
-            s.WarningText = Comparing ? string.Join("\n\n", Compare.Warnings()) : img.BaseWarning;
-            s.WarningTitle = Comparing ? "Package metadata warnings" : "Base verification warning";
+            s.WarningText = cmd is ShowComparisonSnapshot ? Compare.SnapshotDetails()
+                : Comparing ? string.Join("\n\n", Compare.Warnings()) : img.BaseWarning;
+            s.WarningTitle = cmd is ShowComparisonSnapshot ? "Comparison snapshot"
+                : Comparing ? "Package metadata warnings" : "Base verification warning";
             s.WarningScroll = 0;
             s.View = RightView.Warning;
             Relayout();

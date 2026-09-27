@@ -6,6 +6,30 @@ namespace Valleysoft.Dredge.Tests;
 [Collection(ExplorerUiCollection.Name)]
 public sealed class ExplorerDefenseUiTests
 {
+    [Fact]
+    public void ComparisonSnapshotShowsAuthoritativeIdentitiesAndRefreshPolicy()
+    {
+        ExplorerImage image = ExplorerSamples.Image();
+        ExplorerSession target = ExplorerSamples.Target("other.test/team/app:rolling");
+        CompareState compare = new(ExplorerSession.Compare(image.Session!, target), "before", "after");
+        using ExplorerUiHarness ui = ExplorerWindowTests.Open(image, new ExplorerState { Compare = compare },
+            session => new FakeExplorerHost { Baseline = session }, out _, width: 80, height: 24);
+        ui.Press(new Key('i').WithAlt);
+        Assert.Equal(RightView.Warning, ui.State.View);
+        Assert.Equal("Comparison snapshot", ui.State.WarningTitle);
+        Assert.Contains(ExplorerImage.DigestReference(image.Session!.Image,
+            image.Session.Resolved.ManifestInfo.DockerContentDigest), ui.State.WarningText);
+        Assert.Contains(ExplorerImage.DigestReference(target.Image,
+            target.Resolved.ManifestInfo.DockerContentDigest), ui.State.WarningText);
+        Assert.True(ui.Shows("Reopen explorer to refresh tags."), ui.Screen());
+        ui.Press(Key.Esc);
+        Assert.Same(compare, ui.State.Compare);
+        Assert.Equal(RightView.Files, ui.State.View);
+        ui.Window.Apply(new SwapSides());
+        ui.Press(new Key('i').WithAlt);
+        Assert.StartsWith("Baseline (after)\nother.test/team/app@", ui.State.WarningText);
+    }
+
     [Theory]
     [InlineData(false)]
     [InlineData(true)]
