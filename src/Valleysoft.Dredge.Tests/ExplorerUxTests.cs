@@ -8,6 +8,28 @@ namespace Valleysoft.Dredge.Tests;
 public sealed class ExplorerUxTests
 {
     [Fact]
+    public void CompactAuxiliaryViewsUseTheBodyAndHelpScrolls()
+    {
+        using ExplorerUiHarness ui = ExplorerWindowTests.Open(out _, width: 80, height: 24);
+        ui.Press(new Key('?'));
+        Assert.False(ui.Window.Layers.Visible);
+        ui.Press(Key.End);
+        Assert.True(ui.Shows("NO_COLOR=1"));
+        ui.Press(Key.Home);
+        Assert.True(ui.Shows("Move"));
+        ui.Press(Key.Esc);
+        ui.Press(new Key('i'));
+        Assert.False(ui.Window.Layers.Visible);
+        Assert.True(ui.Shows("COPY --from=build"));
+        ui.Press(Key.Esc);
+        ui.Press(new Key('/'));
+        ui.Type("app");
+        Assert.False(ui.Window.Layers.Visible);
+        Assert.True(ui.Shows("Esc  Close"));
+        Assert.True(ui.Shows("/app/package.json"));
+    }
+
+    [Fact]
     public void ComparisonProgressSurvivesNavigationAndCanBeCanceled()
     {
         TaskCompletionSource<ExplorerComparison> completion = new(TaskCreationOptions.RunContinuationsAsynchronously);

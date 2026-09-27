@@ -49,7 +49,7 @@ internal sealed class ExplorerWindow : Window
         BorderStyle = LineStyle.None;
         SetScheme(new Scheme(Paint.Attr(Theme.Foam)));
 
-        header = new HeaderView(HeaderLines, col => Comparing || s.View == RightView.Inspector || ex.TooSmall
+        header = new HeaderView(HeaderLines, col => Comparing || ex.FullWidthContent || ex.TooSmall
             ? null : ex.LayerAtColumn(col))
         {
             X = 0, Y = 0, Width = Dim.Fill(), Height = ExplorerPresenter.HeaderHeight,
@@ -285,8 +285,8 @@ internal sealed class ExplorerWindow : Window
         int w = Math.Max(Viewport.Width, 1), h = Math.Max(Viewport.Height, 1);
         ex.Width = w;
         ex.Height = h;
-        bool inspector = s.View == RightView.Inspector && !Comparing;
-        ex.FullWidthInspector = inspector;
+        bool inspector = UsesFullWidth();
+        ex.FullWidthContent = inspector;
         compareView = null;
         if (tooSmall != ex.TooSmall)
         {
@@ -344,7 +344,7 @@ internal sealed class ExplorerWindow : Window
     // Brings the footer and every pane up to date with the state; each repaints only if it changed.
     private void Refresh()
     {
-        if (!ex.TooSmall && inspecting != (s.View == RightView.Inspector && !Comparing))
+        if (!ex.TooSmall && inspecting != UsesFullWidth())
         {
             Relayout();
             return;
@@ -396,9 +396,16 @@ internal sealed class ExplorerWindow : Window
     private List<Hint> ContextHints()
     {
         List<Hint> hints = Comparing && s.View != RightView.Keys ? Compare.Hints() : ex.Hints(s);
+        if (ex.FullWidthContent)
+        {
+            hints = hints.Where(h => h.Key != "Tab").ToList();
+        }
         return compareLoad is null ? hints
             : [new("Esc", "Cancel comparison", new Back()), .. hints.Where(h => h.Key != "Esc")];
     }
+
+    private bool UsesFullWidth() => s.View == RightView.Keys ||
+        !Comparing && (s.View == RightView.Inspector || ex.Narrow && s.View is RightView.Search or RightView.Insights);
 
     // A key acts only when the current context lists it; hints trimmed from a narrow footer still count.
     private bool Listed(Key key)
@@ -642,6 +649,9 @@ internal sealed class ExplorerWindow : Window
             case Move m when s.View == RightView.Inspector:
                 s.PreviewScroll = Math.Max(0, s.PreviewScroll + m.Delta);
                 break;
+            case Move m when s.View == RightView.Keys:
+                s.KeysScroll = Math.Max(0, s.KeysScroll + m.Delta);
+                break;
             case Move m when s.View == RightView.Files:
                 s.Cursor = Math.Clamp(s.Cursor + m.Delta, 0, Math.Max(0, rows.Count - 1));
                 break;
@@ -656,6 +666,9 @@ internal sealed class ExplorerWindow : Window
                 break;
             case Jump j when s.View == RightView.Inspector:
                 s.PreviewScroll = j.ToEnd ? int.MaxValue : 0;
+                break;
+            case Jump j when s.View == RightView.Keys:
+                s.KeysScroll = j.ToEnd ? int.MaxValue : 0;
                 break;
             case Jump j when s.View == RightView.Files:
                 s.Cursor = j.ToEnd ? Math.Max(0, rows.Count - 1) : 0;
@@ -1138,6 +1151,16 @@ internal sealed class ExplorerWindow : Window
         CompareState c = s.Compare!;
         if (s.View == RightView.Keys)
         {
+            if (cmd is Move m)
+            {
+                s.KeysScroll = Math.Max(0, s.KeysScroll + m.Delta);
+                return true;
+            }
+            if (cmd is Jump j)
+            {
+                s.KeysScroll = j.ToEnd ? int.MaxValue : 0;
+                return true;
+            }
             if (cmd is Back or ShowView)
             {
                 s.View = RightView.Files;

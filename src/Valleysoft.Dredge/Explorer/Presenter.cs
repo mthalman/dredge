@@ -15,6 +15,7 @@ internal sealed class ExplorerState
     public int Scroll { get; set; }
     public int Finding { get; set; }
     public int FindingScroll { get; set; }
+    public int KeysScroll { get; set; }
     public bool ShowBaseFindings { get; set; }
     public string SearchQuery { get; set; } = "";
     public int SearchCursor { get; set; }
@@ -70,15 +71,15 @@ internal sealed partial class ExplorerPresenter
     public bool MultiPlatform { get; init; }
     public int Width { get; set; }
     public int Height { get; set; }
-    public bool FullWidthInspector { get; set; }
+    public bool FullWidthContent { get; set; }
 
     public bool TooSmall => Width < MinimumWidth || Height < MinimumHeight;
     public bool Narrow => Width < 120;
     private int BodyHeight => Height - HeaderHeight - 1;
-    private int RightWidth => FullWidthInspector || Narrow ? Width : Width - LeftWidth;
+    private int RightWidth => FullWidthContent || Narrow ? Width : Width - LeftWidth;
     public int RightInner => RightWidth - 4;
     private int LeftInner => Narrow ? Width - 4 : LeftWidth - 4;
-    public int RightInnerHeight => Narrow && !FullWidthInspector ? BodyHeight - NarrowLayersHeight - 2 : BodyHeight - 2;
+    public int RightInnerHeight => Narrow && !FullWidthContent ? BodyHeight - NarrowLayersHeight - 2 : BodyHeight - 2;
     private int LayersInnerHeight => Narrow ? NarrowLayersHeight - 2 : BodyHeight - DetailsHeight - 2;
     public int TreeRows => Math.Max(1, RightInnerHeight - 5);
     public int SearchRows => Math.Max(1, RightInnerHeight - 9);
@@ -397,7 +398,7 @@ internal sealed partial class ExplorerPresenter
                 new(K(KeyAction.Viewer), "Open file in text viewer", new OpenInViewer()),
                 back, page, ends, keys, quit,
             ],
-            RightView.Keys => [back, quit],
+            RightView.Keys => [new("↑↓", "Scroll"), page, ends, back, quit],
             _ when s.Focus == FocusPane.Layers =>
             [
                 .. retry, new("Tab", "Files", new FocusOn(FocusPane.Right)), new("↑↓", "Layer"), whole, compare, search, insights,
@@ -436,7 +437,7 @@ internal sealed partial class ExplorerPresenter
     // Keeps as many hints as fit; help and quit stay so they are always discoverable.
     internal List<Hint> Fit(List<Hint> hints, int room, Func<Hint, int> cost)
     {
-        List<Hint> pinned = hints.Where(h => h.Cmd is Quit || (h.Cmd is ShowView { View: RightView.Keys })).ToList();
+        List<Hint> pinned = hints.Where(h => h.Cmd is Quit or Back || (h.Cmd is ShowView { View: RightView.Keys })).ToList();
         int used = pinned.Sum(cost);
         List<Hint> kept = [];
         foreach (Hint h in hints.Except(pinned))

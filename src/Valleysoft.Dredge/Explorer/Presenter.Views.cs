@@ -77,8 +77,11 @@ internal sealed partial class ExplorerPresenter
         {
             parts.Add(("From the base image", fromBase, Theme.Silt));
         }
-        items.AddRange(Breakdown.Render(parts, w));
-        items.Add(Line.Blank);
+        if (!Narrow)
+        {
+            items.AddRange(Breakdown.Render(parts, w));
+            items.Add(Line.Blank);
+        }
         int headerLines = items.Count;
 
         List<ExplorerFinding?> findings = VisibleFindings(s);
@@ -121,7 +124,7 @@ internal sealed partial class ExplorerPresenter
                 .Add("  " + Fmt.Fit(layers, 15).PadRight(15), Theme.Silt));
             list.Add(selected ? title.WithBackground(focused ? Theme.ChannelDeep : Theme.Graphite) : title);
             list.Add(new Line().Add("   ").Add(f.Where, Theme.DirName).Truncate(w));
-            list.Add(new Line().Add("   ").Add(f.Why, Theme.Silt).Truncate(w));
+            list.AddRange(Syntax.Wrap([("   " + f.Why, new Sty(Theme.Silt))], w, int.MaxValue));
             if (f.Fix.Length > 0)
             {
                 Line fix = new Line().Add("   ").Add(f.FixLabel + "  ", Theme.Kelp);
@@ -138,7 +141,7 @@ internal sealed partial class ExplorerPresenter
                     fix.Add(f.Fix, Theme.S(Theme.Foam, Theme.Graphite));
                 }
                 fix.Add(" ", Theme.S(Theme.Foam, Theme.Graphite));
-                list.Add(fix.Truncate(w));
+                list.AddRange(Syntax.Wrap(fix.Parts.ToList(), w, int.MaxValue));
             }
             blocks.Add((start, list.Count - start));
             list.Add(Line.Blank);
@@ -509,7 +512,7 @@ internal sealed partial class ExplorerPresenter
                 (K(KeyAction.Viewer), "Open file in text viewer"), (K(KeyAction.Quit), "Quit")]),
         ];
 
-        int leftCol = Math.Min(46, RightInner / 2);
+        int leftCol = Math.Min(46, (RightInner - 3) / 2);
         List<Line> Column((string Group, (string Keys, string What)[] Items)[] groups, int keyWidth)
         {
             List<Line> lines = [];
@@ -544,10 +547,18 @@ internal sealed partial class ExplorerPresenter
         b.Add(new Line().Add("  ").Add("▲", Theme.Garnet).Add("  part of a finding", Theme.Silt));
 
         List<Line> rows = [];
-        for (int i = 0; i < Math.Max(a.Count, b.Count); i++)
+        if (RightInner < 110)
         {
-            Line line = (i < a.Count ? a[i] : new Line()).Truncate(leftCol).Pad(leftCol);
-            rows.Add(line.Append(i < b.Count ? b[i] : new Line()).Truncate(RightInner));
+            rows.AddRange(a);
+            rows.AddRange(b);
+        }
+        else
+        {
+            for (int i = 0; i < Math.Max(a.Count, b.Count); i++)
+            {
+                Line line = (i < a.Count ? a[i] : new Line()).Truncate(leftCol).Pad(leftCol + 3);
+                rows.Add(line.Append(i < b.Count ? b[i] : new Line()).Truncate(RightInner));
+            }
         }
         rows.Add(Line.Of("Tips", Theme.S(Theme.Foam, null, Deco.Bold)));
         foreach (var (what, cmd) in new[]
@@ -559,8 +570,11 @@ internal sealed partial class ExplorerPresenter
             ("Turn off color", "NO_COLOR=1 dredge image explore <image>"),
         })
         {
-            rows.Add(new Line().Add("  " + what.PadRight(22), Theme.Silt).Add("$ ", Theme.Shale).Add(cmd, Theme.Foam).Truncate(RightInner));
+            rows.AddRange(Syntax.Wrap(new Line().Add("  " + what.PadRight(22), Theme.Silt)
+                .Add("$ ", Theme.Shale).Add(cmd, Theme.Foam).Parts.ToList(), RightInner, int.MaxValue));
         }
-        return Pane(rows.Take(RightInnerHeight).ToList(), "Keys", true);
+        s.KeysScroll = Math.Clamp(s.KeysScroll, 0, Math.Max(0, rows.Count - RightInnerHeight));
+        return Pane(rows.Skip(s.KeysScroll).Take(RightInnerHeight).ToList(), "Keys", true,
+            $"{s.KeysScroll + 1}–{Math.Min(rows.Count, s.KeysScroll + RightInnerHeight)} of {rows.Count} lines");
     }
 }
