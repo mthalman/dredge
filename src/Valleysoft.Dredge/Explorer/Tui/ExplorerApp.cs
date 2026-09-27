@@ -542,7 +542,7 @@ internal sealed class ExplorerHost : IExplorerHost, IAsyncDisposable
         (List<string>? lines, string? message, long bytes) = await ReadTextAsync(session.Files, path, cancellationToken);
         if (lines is not null && live != layer)
         {
-            message = $"Showing the final version from layer {live}.";
+            message = string.Join(" ", new[] { message, $"Showing the final version from layer {live}." }.OfType<string>());
         }
         return new PreviewContent(path, LanguageFor(path), lines, message, bytes);
     }

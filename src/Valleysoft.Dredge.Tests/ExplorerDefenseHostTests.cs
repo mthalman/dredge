@@ -22,6 +22,19 @@ public sealed class ExplorerDefenseHostTests : IAsyncDisposable
     private static CancellationToken Token => TestContext.Current.CancellationToken;
 
     [Fact]
+    public async Task PreviewRetainsTruncationAlongsideFinalVersionProvenance()
+    {
+        TestImage image = await CreateAsync(Blob(("file", "old")),
+            Blob(("file", new string('x', ExplorerApp.PreviewLimit + 1))));
+        PreviewContent preview = await Host(image).PreviewAsync("file", 0, Token);
+
+        Assert.NotNull(preview.Lines);
+        Assert.Contains("Showing the first", preview.Message);
+        Assert.Contains("Showing the final version from layer 1.", preview.Message);
+        Assert.Equal(ExplorerApp.PreviewLimit, preview.Bytes);
+    }
+
+    [Fact]
     public async Task CachedTagDescriptionUsesTheComparisonSnapshotAfterTagMoves()
     {
         TestImage baseline = await CreateAsync(Blob(("baseline", "base")));
