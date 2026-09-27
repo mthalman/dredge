@@ -22,6 +22,48 @@ public sealed class ExplorerDefenseHostTests : IAsyncDisposable
     private static CancellationToken Token => TestContext.Current.CancellationToken;
 
     [Fact]
+    public async Task CachedTagDescriptionUsesTheComparisonSnapshotAfterTagMoves()
+    {
+        TestImage baseline = await CreateAsync(Blob(("baseline", "base")));
+        byte[] targetBlob = Blob(("target", "old tag"));
+        TestImage target = await CreateAsync(targetBlob);
+        TestImage moved = await CreateAsync(Blob(("moved", "new tag")), Blob(("extra", "new layer")));
+        baseline.Client.Setup(c => c.Manifests.GetAsync(Image.Repo, "previous", It.IsAny<CancellationToken>()))
+            .ReturnsAsync(target.Source.Resolved.ManifestInfo);
+        baseline.Client.Setup(c => c.Blobs.GetRangeAsync(Image.Repo, LayerCacheTestContext.Digest(targetBlob),
+            0, It.IsAny<long?>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(() => new BlobDownloadResult(new MemoryStream(targetBlob), false, null, null, targetBlob.Length));
+        ExplorerHost host = Host(baseline);
+        ExplorerComparison comparison = await host.CompareAsync("registry.test/repo:previous", () => { }, Token);
+        baseline.Client.Setup(c => c.Manifests.GetAsync(Image.Repo, "previous", It.IsAny<CancellationToken>()))
+            .ReturnsAsync(moved.Source.Resolved.ManifestInfo);
+
+        TagChoice choice = new("previous");
+        await host.DescribeTagAsync(choice, Token);
+        ExplorerComparison repeated = await host.CompareAsync("previous", () => { }, Token);
+
+        Assert.Same(comparison.Target, repeated.Target);
+        Assert.Equal(comparison.Target.Resolved.ManifestInfo.DockerContentDigest, choice.Digest);
+        Assert.Equal(1, choice.LayerCount);
+        Assert.Equal(targetBlob.Length, choice.AdditionalDownload);
+        Assert.Contains("cached session snapshot", choice.Note);
+        Assert.Contains("reopen explorer", choice.Note);
+        baseline.Client.Verify(c => c.Manifests.GetAsync(Image.Repo, "previous", It.IsAny<CancellationToken>()), Times.Once);
+    }
+
+    [Fact]
+    public async Task BaselineTagDescriptionIncludesItsResolvedSnapshotDigest()
+    {
+        TestImage baseline = await CreateAsync();
+        TagChoice choice = new("current");
+        await Host(baseline).DescribeTagAsync(choice, Token);
+        Assert.Equal(baseline.Source.Resolved.ManifestInfo.DockerContentDigest, choice.Digest);
+        Assert.Contains("session snapshot", choice.Note);
+        baseline.Client.Verify(c => c.Manifests.GetAsync(Image.Repo, It.IsAny<string>(),
+            It.IsAny<CancellationToken>()), Times.Never);
+    }
+
+    [Fact]
     public async Task OversizedOwnershipIsRejectedBeforeDownloadWhileReadableFilesRemain()
     {
         byte[] large = Blob(("other/example-1.dist-info/RECORD", "oversized,,"));

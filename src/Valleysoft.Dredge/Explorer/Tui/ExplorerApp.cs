@@ -439,19 +439,36 @@ internal sealed class ExplorerHost : IExplorerHost, IAsyncDisposable
     {
         if (choice.Tag == ExplorerTags.Label(img.Reference))
         {
+            choice.Digest = img.Digest;
             choice.Shared = choice.LayerCount = img.LayerCount;
             choice.AdditionalDownload = 0;
+            choice.Note = "same digest; session snapshot; reopen explorer to refresh";
             return;
         }
-        ImageName name = ImageName.Parse(ExplorerTags.WithTag(img.Reference, choice.Tag));
-        (ResolvedManifest resolved, _, _) = await ExplorerSource.ResolveAsync(
-            client, name, PlatformOptions, source.Platform, cancellationToken);
-        choice.Digest = resolved.ManifestInfo.DockerContentDigest;
-        string[] digests = resolved.Manifest.Layers.Select(layer => layer.Digest ?? "").ToArray();
-        (choice.Shared, choice.AdditionalDownload) = Describe(img.LayerDigests, digests,
-            resolved.Manifest.Layers.Select(layer => layer.Size).ToArray());
-        choice.LayerCount = digests.Length;
-        choice.Note = TagNote(choice.Digest, img.Digest, choice.Shared.Value, img.BaseLayerCount);
+        ImageName name = ExploreCommand.ResolveCompareImage(source.Image, choice.Tag);
+        await compareGate.WaitAsync(cancellationToken);
+        try
+        {
+            bool cached = targets.TryGetValue(name.ToString(), out ExplorerSession? target);
+            ResolvedManifest resolved = cached ? target!.Resolved :
+                (await ExplorerSource.ResolveAsync(
+                    client, name, PlatformOptions, source.Platform, cancellationToken)).Resolved;
+            choice.Digest = resolved.ManifestInfo.DockerContentDigest;
+            string[] digests = resolved.Manifest.Layers.Select(layer => layer.Digest ?? "").ToArray();
+            (choice.Shared, choice.AdditionalDownload) = Describe(img.LayerDigests, digests,
+                resolved.Manifest.Layers.Select(layer => layer.Size).ToArray());
+            choice.LayerCount = digests.Length;
+            choice.Note = TagNote(choice.Digest, img.Digest, choice.Shared.Value, img.BaseLayerCount);
+            if (cached)
+            {
+                choice.Note = string.Join("; ", new[] { choice.Note, "cached session snapshot; reopen explorer to refresh" }
+                    .OfType<string>());
+            }
+        }
+        finally
+        {
+            compareGate.Release();
+        }
     }
 
     // Flags tags that are this image, or that can't share its verified base.
@@ -486,12 +503,13 @@ internal sealed class ExplorerHost : IExplorerHost, IAsyncDisposable
     public async Task<ExplorerComparison> CompareAsync(string tag, Action readingPackages, CancellationToken cancellationToken)
     {
         ExplorerSession baseline = Loaded;
+        ImageName name = ExploreCommand.ResolveCompareImage(source.Image, tag);
+        string key = name.ToString();
         await compareGate.WaitAsync(cancellationToken);
         try
         {
-            if (!targets.TryGetValue(tag, out ExplorerSession? target))
+            if (!targets.TryGetValue(key, out ExplorerSession? target))
             {
-                ImageName name = ExploreCommand.ResolveCompareImage(source.Image, tag);
                 IDockerRegistryClient targetClient = client;
                 if (name.Registry != source.Image.Registry)
                 {
@@ -500,7 +518,7 @@ internal sealed class ExplorerHost : IExplorerHost, IAsyncDisposable
                 }
                 target = await ExplorerSession.LoadAsync(targetClient, factory, name, PlatformOptions,
                     store, baseImages: null, cancellationToken, exactPlatform: source.Platform);
-                targets[tag] = target;
+                targets[key] = target;
             }
             cancellationToken.ThrowIfCancellationRequested();
             readingPackages();
