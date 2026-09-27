@@ -94,6 +94,11 @@ public sealed class ExplorerIntegrationTests
             Assert.Null(img.SessionError);
             Assert.Equal(1, ui.State.Layer);
             Assert.True(ui.Shows("COPY . /app"), ui.Screen());
+            img.States[1] = ExplorerLayerState.Indexing;
+            img.Progress[1] = 1;
+            ui.Until(() => img.States[1] == ExplorerLayerState.Ready,
+                "the indexed layer to recover from a missed UI update");
+            Assert.Equal(img.LayerCount, img.ReadyCount);
 
             // The deleted cache file and the replaced config are hidden bytes.
             Assert.Equal(cache.Length + "{\n  \"level\": \"info\"\n}\n".Length, img.TotalReclaimable);

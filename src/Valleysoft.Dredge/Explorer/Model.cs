@@ -214,6 +214,20 @@ internal sealed class ExplorerImage
         searchIndex = null;
     }
 
+    public bool ReconcileIndexes(IReadOnlyDictionary<int, StoredLayerIndex> indexes)
+    {
+        bool changed = false;
+        foreach ((int layer, StoredLayerIndex index) in indexes)
+        {
+            if (States[layer] != ExplorerLayerState.Ready)
+            {
+                SetIndexed(layer, index.Changes);
+                changed = true;
+            }
+        }
+        return changed;
+    }
+
     public IReadOnlyList<LayerChanges>? IndexedPrefix()
     {
         int count = 0;

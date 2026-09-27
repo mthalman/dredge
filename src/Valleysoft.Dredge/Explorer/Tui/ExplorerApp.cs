@@ -36,6 +36,7 @@ internal sealed class ExplorerApp : IAsyncDisposable
     private readonly List<Action> pending = [];
     private IApplication? app;
     private ExplorerWindow? window;
+    private ExplorerInsightsResult? completedInsights;
     private bool analyzing;
     private bool analysisDirty;
     private string? pendingCompare;
@@ -161,6 +162,19 @@ internal sealed class ExplorerApp : IAsyncDisposable
         });
         application.AddTimeout(TimeSpan.FromMilliseconds(100), () =>
         {
+            bool indexed = img.ReconcileIndexes(indexer.Snapshot());
+            if (indexed)
+            {
+                ScheduleAnalysis();
+                w.ImageChanged();
+            }
+            if (!img.Complete && host.Session is { } session &&
+                Volatile.Read(ref completedInsights) is { } insights)
+            {
+                img.SetSession(session, insights);
+                w.ImageChanged();
+                StartPendingCompare();
+            }
             bool changed = false;
             for (int i = 0; i < progress.Length; i++)
             {
@@ -270,11 +284,15 @@ internal sealed class ExplorerApp : IAsyncDisposable
             ExplorerInsightsResult insights = ExplorerInsights.Build(
                 session.Analysis, img.Instructions, img.BaseLayerCount, includePotential: true);
             host.Session = session;
+            Volatile.Write(ref completedInsights, insights);
             Post(() =>
             {
-                img.SetSession(session, insights);
-                window?.ImageChanged();
-                StartPendingCompare();
+                if (!img.Complete)
+                {
+                    img.SetSession(session, insights);
+                    window?.ImageChanged();
+                    StartPendingCompare();
+                }
             });
         }
         catch (OperationCanceledException) when (cts.IsCancellationRequested)

@@ -581,6 +581,28 @@ public sealed class ExplorerImageModelTests
     }
 
     [Fact]
+    public void ReconcilesIndexedLayersWhenAUiNotificationWasMissed()
+    {
+        ExplorerImage img = new("app:1", null, "sha256:m", ["l0", "l1"], [10, 20],
+            null, null, null, now: Now);
+        LayerChanges first = ExplorerInsightsTests.Layer(ExplorerInsightsTests.File("a", 5, "a"));
+        LayerChanges second = ExplorerInsightsTests.Layer(ExplorerInsightsTests.File("b", 6, "b"));
+        img.SetIndexed(0, first);
+        img.States[1] = ExplorerLayerState.Indexing;
+        img.Progress[1] = 1;
+        Dictionary<int, StoredLayerIndex> completed = new()
+        {
+            [0] = new("l0", 10, first),
+            [1] = new("l1", 20, second)
+        };
+
+        Assert.True(img.ReconcileIndexes(completed));
+        Assert.Equal(2, img.ReadyCount);
+        Assert.Equal(2, img.IndexedPrefix()!.Count);
+        Assert.False(img.ReconcileIndexes(completed));
+    }
+
+    [Fact]
     public void PlatformArgumentsIncludeOsVersion() =>
         Assert.Equal("--os windows --arch amd64 --os-version 10.0",
             ExplorerImage.PlatformArgumentsFor(new ExplorerPlatform("windows", "amd64", null, "10.0")));
