@@ -440,6 +440,8 @@ public sealed class ExplorerWindowTests
         Assert.Equal("$ dredge image cat registry.test/shop/storefront:1.0 /app/package.json", s.Notice);
         Assert.Empty(host.Clipboard);
         ui.Press(Key.Esc);
+        Assert.Equal(RightView.Inspector, s.View);
+        ui.Press(Key.Esc);
         Assert.Equal(RightView.Files, s.View);
     }
 
@@ -661,6 +663,8 @@ public sealed class ExplorerWindowTests
         Assert.False(s.FindingsOnly);
         Assert.StartsWith("$ dredge image compare files", s.Notice);
 
+        ui.Press(Key.Esc);
+        Assert.NotNull(s.Compare);
         ui.Press(Key.Esc);
         Assert.Null(s.Compare);
         Assert.False(ui.Window.StopRequested);

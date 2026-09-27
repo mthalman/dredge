@@ -292,7 +292,7 @@ internal sealed partial class ExplorerPresenter
         items.Add(new Line()
             .Add("$ ", Theme.Shale)
             .Add(CopyCommandText(s, path, node.Kind == Kind.Dir), Theme.Foam)
-            .PadRight(w, new Line().Append(Keycap(Keys.Label(KeyAction.CopyCommand))).Add(" copy", Theme.Silt)));
+            .PadRight(w, new Line().Append(Keycap(Keys.Label(KeyAction.CopyCommand))).Add(" " + CopyVerb.ToLowerInvariant(), Theme.Silt)));
 
         return Pane(items, path.Split('/')[^1], true, "/" + path);
     }

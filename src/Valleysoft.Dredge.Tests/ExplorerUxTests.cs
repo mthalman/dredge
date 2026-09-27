@@ -8,6 +8,42 @@ namespace Valleysoft.Dredge.Tests;
 public sealed class ExplorerUxTests
 {
     [Fact]
+    public void ClipboardOffShowsACompleteSelectableCommand()
+    {
+        using ExplorerUiHarness ui = ExplorerWindowTests.Open(out _, width: 80, height: 24);
+        ui.Window.Apply(new SetCursor(ui.Window.Presenter.IndexOf(ui.State, "app/package.json")));
+        ui.Press(Key.Enter);
+        ui.Until(() => ui.State.Preview is not null, "preview");
+        ui.Press(new Key('y'));
+        Assert.Equal(RightView.Command, ui.State.View);
+        Assert.Equal("dredge image cat registry.test/shop/storefront:1.0 /app/package.json", ui.Window.CommandText.Text);
+        Assert.True(ui.Window.CommandText.ReadOnly);
+        Assert.True(ui.Window.CommandText.HasFocus);
+        ui.Press(Key.A.WithCtrl);
+        Assert.Equal(ui.Window.CommandText.Text, ui.Window.CommandText.SelectedText);
+        ui.Press(Key.Esc);
+        Assert.Equal(RightView.Inspector, ui.State.View);
+    }
+
+    [Fact]
+    public void LongCommandsScrollWithoutLosingTheirTail()
+    {
+        string path = "app/" + new string('a', 150) + "-tail.txt";
+        ExplorerImage image = ExplorerSamples.Custom([ExplorerSamples.Layer([ExplorerSamples.File(path, 10, "h")])]);
+        using ExplorerUiHarness ui = ExplorerWindowTests.Open(image, new ExplorerState
+        {
+            Layer = 0, View = RightView.Inspector, InspectPath = path, Focus = FocusPane.Right,
+        }, s => new FakeExplorerHost { Baseline = s }, out _, width: 80, height: 24);
+        ui.Press(new Key('y'));
+        Assert.Equal(RightView.Command, ui.State.View);
+        ui.Press(Key.End);
+        Assert.True(ui.Shows("-tail.txt"));
+        ui.Press(Key.A.WithCtrl);
+        Assert.Equal(ui.Window.CommandText.Text, ui.Window.CommandText.SelectedText);
+        Assert.Contains(path, ui.Window.CommandText.SelectedText);
+    }
+
+    [Fact]
     public void HelpRestoresPreviewAndItsScrollPosition()
     {
         using ExplorerUiHarness ui = ExplorerWindowTests.Open(ExplorerSamples.Image(), new ExplorerState

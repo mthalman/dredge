@@ -1,7 +1,7 @@
 namespace Valleysoft.Dredge.Explorer;
 
 internal enum FocusPane { Layers, Right }
-internal enum RightView { Files, Insights, Inspector, Search, Keys }
+internal enum RightView { Files, Insights, Inspector, Search, Keys, Command }
 
 internal sealed class ExplorerState
 {
@@ -95,6 +95,10 @@ internal sealed partial class ExplorerPresenter
         RightView.Inspector => InspectorPane(s),
         RightView.Search => SearchPane(s),
         RightView.Keys => KeysPane(s),
+        RightView.Command => Pane([Line.Blank, Line.Blank, Line.Blank,
+            Line.Of("Use Left/Right or Home/End to read the complete command.", Theme.Silt),
+            Line.Of("Ctrl+A selects all. Esc returns to the explorer.", Theme.Silt)],
+            "Dredge command", true, "Read-only · scroll horizontally"),
         _ => FilesPane(s),
     };
 
@@ -400,6 +404,7 @@ internal sealed partial class ExplorerPresenter
                 back, page, ends, keys, quit,
             ],
             RightView.Keys => [new("↑↓", "Scroll"), page, ends, back, quit],
+            RightView.Command => [new("←→", "Scroll"), new("Ctrl+A", "Select all"), ends, back, keys, quit],
             _ when s.Focus == FocusPane.Layers =>
             [
                 .. retry, new("Tab", "Files", new FocusOn(FocusPane.Right)), new("↑↓", "Layer"), whole, compare, search, insights,

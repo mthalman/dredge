@@ -132,6 +132,7 @@ public sealed class ExplorerIntegrationTests
             Assert.StartsWith("$ dredge image cat", ui.State.Notice);
             Assert.Contains("/app/config.json", ui.State.Notice);
             ui.Press(Key.Esc);
+            ui.Press(Key.Esc);
 
             // Compare through the tag picker.
             bool picked = ui.AnswerDialog(() => ui.Press(new Key('c')),

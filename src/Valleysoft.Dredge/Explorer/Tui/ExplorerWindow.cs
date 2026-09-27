@@ -23,6 +23,7 @@ internal sealed class ExplorerWindow : Window
     private readonly PaneView layers, details, right;
     private readonly Label searchKey, matches, extractLabel;
     private readonly TextField search, extractField;
+    private readonly TextField commandText;
     private readonly FooterView footer;
     private int footerLeft;
     private bool? narrow;
@@ -37,6 +38,7 @@ internal sealed class ExplorerWindow : Window
     private int compareGeneration;
     private CancellationTokenSource? compareLoad;
     private (RightView View, FocusPane Focus, bool CompareLayers)? helpReturn;
+    private (RightView View, FocusPane Focus, bool CompareLayers)? commandReturn;
 
     public ExplorerWindow(ExplorerImage img, ExplorerState state, IExplorerHost host, CancellationToken lifetime,
         Action<string>? openWindowedViewer = null)
@@ -57,7 +59,7 @@ internal sealed class ExplorerWindow : Window
         };
         layers = new PaneView(() => Comparing ? Compare.Layers() : ex.LayersPane(s), focusable: true) { KeepsFocusAway = Typing, BufferIntact = BufferIntact };
         details = new PaneView(() => Comparing ? Compare.Details() : ex.DetailsPane(s), focusable: false) { BufferIntact = BufferIntact };
-        right = new PaneView(() => Comparing && s.View != RightView.Keys ? Compare.Diff() : ex.RightPane(s), focusable: true) { ActivateOnDoubleClick = true, KeepsFocusAway = Typing, BufferIntact = BufferIntact };
+        right = new PaneView(() => Comparing && s.View is not (RightView.Keys or RightView.Command) ? Compare.Diff() : ex.RightPane(s), focusable: true) { ActivateOnDoubleClick = true, KeepsFocusAway = Typing, BufferIntact = BufferIntact };
         header.Command += Apply;
         layers.Command += Apply;
         details.Command += Apply;
@@ -95,7 +97,13 @@ internal sealed class ExplorerWindow : Window
         footer = new FooterView { X = 0, Y = Pos.AnchorEnd(1), Width = Dim.Fill(), Height = 1 };
         footer.Command += Apply;
 
-        Add(header, layers, details, right, searchKey, search, matches, extractLabel, extractField, footer);
+        commandText = new TextField
+        {
+            X = 2, Y = ExplorerPresenter.HeaderHeight + 2, Width = Dim.Fill(2),
+            ReadOnly = true, Visible = false,
+        };
+        commandText.SetScheme(Dialogs.Input());
+        Add(header, layers, details, right, searchKey, search, matches, extractLabel, extractField, commandText, footer);
         FrameChanged += (_, _) => Relayout();
         Relayout();
     }
@@ -106,6 +114,7 @@ internal sealed class ExplorerWindow : Window
     public PaneView Right => right;
     public TextField Search => search;
     public TextField ExtractField => extractField;
+    internal TextField CommandText => commandText;
     public ExplorerExit Exit { get; private set; } = new(ExplorerExitKind.Quit);
     internal void ViewerFailed(string error) => Notice(error, error: true);
     private bool Comparing => s.Compare is not null;
@@ -122,7 +131,11 @@ internal sealed class ExplorerWindow : Window
     public void SyncFocus()
     {
         focusSynced = true;
-        if (pendingExtract is not null)
+        if (s.View == RightView.Command)
+        {
+            commandText.SetFocus();
+        }
+        else if (pendingExtract is not null)
         {
             extractField.SetFocus();
         }
@@ -353,6 +366,7 @@ internal sealed class ExplorerWindow : Window
         }
         compareView = null;
         bool extracting = pendingExtract is not null;
+        commandText.Visible = s.View == RightView.Command && !ex.TooSmall;
         bool searching = Searching && !ex.TooSmall && !extracting;
         searchKey.Visible = search.Visible = matches.Visible = searching;
         extractLabel.Visible = extractField.Visible = extracting;
@@ -397,7 +411,7 @@ internal sealed class ExplorerWindow : Window
 
     private List<Hint> ContextHints()
     {
-        List<Hint> hints = Comparing && s.View != RightView.Keys ? Compare.Hints() : ex.Hints(s);
+        List<Hint> hints = Comparing && s.View is not (RightView.Keys or RightView.Command) ? Compare.Hints() : ex.Hints(s);
         if (ex.FullWidthContent)
         {
             hints = hints.Where(h => h.Key != "Tab").ToList();
@@ -406,7 +420,7 @@ internal sealed class ExplorerWindow : Window
             : [new("Esc", "Cancel comparison", new Back()), .. hints.Where(h => h.Key != "Esc")];
     }
 
-    private bool UsesFullWidth() => s.View == RightView.Keys || s.Compare?.Diff is not null ||
+    private bool UsesFullWidth() => s.View is RightView.Keys or RightView.Command || s.Compare?.Diff is not null ||
         !Comparing && (s.View == RightView.Inspector || ex.Narrow && s.View is RightView.Search or RightView.Insights);
 
     // A key acts only when the current context lists it; hints trimmed from a narrow footer still count.
@@ -431,6 +445,27 @@ internal sealed class ExplorerWindow : Window
 
     protected override bool OnKeyDown(Key key)
     {
+        if (commandText.HasFocus)
+        {
+            if (IsTab(key))
+            {
+                return true;
+            }
+            if (key == Key.Esc)
+            {
+                Apply(new Back());
+                return true;
+            }
+            if (!key.IsCtrl && !key.IsAlt && host.Keys.Lookup((char)key.AsRune.Value) is KeyAction commandAction)
+            {
+                if (commandAction is KeyAction.Help or KeyAction.Quit)
+                {
+                    Apply(commandAction == KeyAction.Help ? new ShowView(RightView.Keys) : new Quit());
+                    return true;
+                }
+            }
+            return false;
+        }
         if (extractField.HasFocus || pendingExtract is not null)
         {
             if (key.KeyCode == KeyCode.Esc)
@@ -585,6 +620,22 @@ internal sealed class ExplorerWindow : Window
                 s.Compare.FocusLayers = previous.CompareLayers;
             }
             helpReturn = null;
+            Relayout();
+            SyncFocus();
+            Refresh();
+            return;
+        }
+        if (cmd is Back && s.View == RightView.Command)
+        {
+            (RightView View, FocusPane Focus, bool CompareLayers) previous =
+                commandReturn ?? (RightView.Files, FocusPane.Right, false);
+            s.View = previous.View;
+            s.Focus = previous.Focus;
+            if (s.Compare is not null)
+            {
+                s.Compare.FocusLayers = previous.CompareLayers;
+            }
+            commandReturn = null;
             Relayout();
             SyncFocus();
             Refresh();
@@ -1018,11 +1069,22 @@ internal sealed class ExplorerWindow : Window
         else if (host.ClipboardEnabled)
         {
             Notice("Couldn't reach the clipboard. $ " + command);
+            ShowCommand(command);
         }
         else
         {
             Notice("$ " + command);
+            ShowCommand(command);
         }
+    }
+
+    private void ShowCommand(string command)
+    {
+        commandReturn = (s.View, s.Focus, s.Compare?.FocusLayers ?? false);
+        commandText.Text = command;
+        s.View = RightView.Command;
+        Relayout();
+        commandText.SetFocus();
     }
 
     private void OpenViewer()
