@@ -183,6 +183,11 @@ Within comparison, `/` searches changed package names and paths, including
 collapsed folders. Select a package and press `Enter` to browse all its changed
 files, then `Enter` on a file to open its diff. `Esc` closes search, clears an
 active filter, or returns from package files before leaving comparison.
+Ownership is considered on both sides of an upgrade, so files no longer owned
+by the newer version can still appear as removed. Each ownership metadata file
+is limited to 64 MiB. If some ownership metadata is unreadable, malformed, or
+oversized, the explorer retains readable results and displays a warning that
+the list may be incomplete.
 
 Press `x` to extract the selected file or directory, and `y` to copy the
 equivalent `dredge image` command. Press `p` to choose another Linux platform,
