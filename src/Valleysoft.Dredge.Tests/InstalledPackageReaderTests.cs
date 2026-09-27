@@ -111,6 +111,26 @@ public class InstalledPackageReaderTests
     }
 
     [Theory]
+    [InlineData("install ok installed")]
+    [InlineData("hold ok installed")]
+    [InlineData("deinstall ok installed")]
+    [InlineData("purge ok installed")]
+    public void ParseDpkgStatus_UsesInstallationStateNotSelection(string status)
+    {
+        Assert.Equal([new InstalledPackage("example", "1")],
+            InstalledPackageReader.ParseDpkgStatus($"Package: example\nStatus: {status}\nVersion: 1\n"));
+    }
+
+    [Theory]
+    [InlineData("hold ok config-files")]
+    [InlineData("install ok unpacked")]
+    [InlineData("install ok half-configured")]
+    public void ParseDpkgStatus_ExcludesPackagesNotInstalled(string status)
+    {
+        Assert.Empty(InstalledPackageReader.ParseDpkgStatus($"Package: example\nStatus: {status}\nVersion: 1\n"));
+    }
+
+    [Theory]
     [InlineData("Package: example\nStatus: install ok installed\n")]
     [InlineData("Status: install ok installed\nVersion: 1.0\n")]
     [InlineData("Package: example\nPackage: duplicate\nStatus: install ok installed\nVersion: 1.0\n")]

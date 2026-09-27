@@ -172,8 +172,12 @@ internal static class InstalledPackageReader
         List<InstalledPackage> packages = [];
         foreach (Dictionary<string, string> paragraph in ParseParagraphs(content, "dpkg status"))
         {
-            if (!paragraph.TryGetValue("Status", out string? status) ||
-                !string.Equals(status, "install ok installed", StringComparison.Ordinal))
+            if (!paragraph.TryGetValue("Status", out string? status))
+            {
+                continue;
+            }
+            string[] states = status.Split((char[]?)null, StringSplitOptions.RemoveEmptyEntries);
+            if (states.Length != 3 || states[2] != "installed")
             {
                 continue;
             }
