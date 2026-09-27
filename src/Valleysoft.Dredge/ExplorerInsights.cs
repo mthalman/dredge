@@ -115,7 +115,7 @@ internal static class ExplorerInsights
             foreach (ImagePotentialSaving saving in analysis.FindPotentialSavings())
             {
                 potentialBytes += saving.Bytes;
-                findings.Add(CreatePotential(saving, analysis.LiveLayers, instructions));
+                findings.Add(CreatePotential(saving, analysis.LiveLayers, instructions, baseCount));
             }
         }
 
@@ -212,7 +212,8 @@ internal static class ExplorerInsights
     }
 
     private static ExplorerFinding CreatePotential(
-        ImagePotentialSaving saving, IReadOnlyDictionary<string, int> liveLayers, IReadOnlyList<string> instructions)
+        ImagePotentialSaving saving, IReadOnlyDictionary<string, int> liveLayers,
+        IReadOnlyList<string> instructions, int baseCount)
     {
         int[] layers = saving.Paths
             .Select(path => liveLayers.TryGetValue(path, out int layer) ? layer : -1)
@@ -250,13 +251,27 @@ internal static class ExplorerInsights
         };
         string where = FormatWhere(roots, saving.Paths);
         string layerText = layers.Length == 1 ? $"layer {layers[0]}" : $"layers {string.Join(", ", layers)}";
+        List<string> explain =
+        [
+            $"{Count(saving.Paths.Count, "file")} under {where}, from {layerText}.",
+            "",
+            "These bytes are live in the final filesystem, so they only count as savings if your app does not need them.",
+        ];
+        int inheritedCount = saving.Paths.Count(path =>
+            liveLayers.TryGetValue(path, out int layer) && layer < baseCount);
+        if (inheritedCount > 0)
+        {
+            bool allInherited = inheritedCount == saving.Paths.Count;
+            why += $" {Count(inheritedCount, "file")} {(inheritedCount == 1 ? "is" : "are")} inherited from the base image.";
+            label = allInherited ? "Change or rebuild the base image" : "Change the base and derived layers";
+            fix = allInherited
+                ? $"Choose a base without these files, or rebuild the base using this approach: {fix}"
+                : $"Change or rebuild the base for inherited files. Apply this in the producing layers for the remaining files: {fix}";
+            dockerfile = false;
+            explain.Add("Deleting inherited files in a later derived layer only hides them; their payload remains in the base layers.");
+        }
         return new(ExplorerFindingKind.Potential, title, "Potential savings", saving.Bytes, saving.Paths.Count,
-            layers, roots, where, why, label, fix, dockerfile,
-            [
-                $"{Count(saving.Paths.Count, "file")} under {where}, from {layerText}.",
-                "",
-                "These bytes are live in the final filesystem, so they only count as savings if your app does not need them.",
-            ]);
+            layers, roots, where, why, label, fix, dockerfile, explain);
     }
 
     private static (string Label, string Fix, bool Dockerfile) Fix(

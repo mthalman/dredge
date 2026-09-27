@@ -16,6 +16,42 @@ public sealed class ExplorerDefenseBackendTests : IAsyncDisposable
     private readonly List<LayerStore> stores = [];
     private static readonly ImageName Image = ImageName.Parse("registry.test/repo:tag");
 
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void PotentialAdviceRequiresBaseChangesForInheritedFiles(bool mixed)
+    {
+        ImageAnalysisResult analysis = ImageAnalysis.Analyze(
+        [
+            Layer(File("var/lib/apt/lists/base", 12, "base")),
+            mixed ? Layer(File("var/lib/apt/lists/app", 7, "app")) : Layer()
+        ]);
+        ExplorerInsightsResult insights = ExplorerInsights.Build(analysis, ["RUN apt-get update", "RUN apt-get update"], 1);
+        ExplorerFinding finding = Assert.Single(insights.Findings);
+
+        Assert.Equal(mixed ? 19 : 12, insights.PotentialBytes);
+        Assert.Contains("1 file is inherited", finding.Why);
+        Assert.False(finding.FixIsDockerfile);
+        Assert.Contains("rebuild the base", finding.Fix);
+        Assert.Contains("rm -rf /var/lib/apt/lists", finding.Fix);
+        Assert.Contains("payload remains in the base layers", string.Join("\n", finding.Explain));
+        Assert.Equal(mixed ? "Change the base and derived layers" : "Change or rebuild the base image", finding.FixLabel);
+    }
+
+    [Fact]
+    public void DerivedPotentialAdviceRetainsSameLayerCleanup()
+    {
+        ImageAnalysisResult analysis = ImageAnalysis.Analyze(
+        [
+            Layer(File("base", 12, "base")),
+            Layer(File("var/lib/apt/lists/app", 7, "app"))
+        ]);
+        ExplorerFinding finding = Assert.Single(ExplorerInsights.Build(analysis, ["", "RUN apt-get update"], 1).Findings);
+        Assert.Equal("Clean up in the same RUN", finding.FixLabel);
+        Assert.True(finding.FixIsDockerfile);
+        Assert.DoesNotContain("inherited", finding.Why);
+    }
+
     [Fact]
     public void PythonRecordPreservesCsvPathsAndResolvesAbsoluteAndRelativeNames()
     {
