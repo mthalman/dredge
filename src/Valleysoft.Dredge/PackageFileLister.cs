@@ -1,4 +1,5 @@
 using System.Text;
+using Valleysoft.DockerRegistryClient;
 
 namespace Valleysoft.Dredge;
 
@@ -11,8 +12,30 @@ internal static class PackageFileLister
         string name,
         IReadOnlyCollection<string> allPaths,
         Func<string, CancellationToken, Task<string?>> readText,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        Action<string, Exception>? onError = null)
     {
+        async Task<IReadOnlyList<string>> ReadListAsync(string path, Func<string, IReadOnlyList<string>> parse)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            try
+            {
+                string? content = await readText(path, cancellationToken);
+                if (content is null && onError is not null)
+                {
+                    throw new FileNotFoundException($"Ownership metadata '/{path}' is unavailable.");
+                }
+                return parse(content ?? "");
+            }
+            catch (Exception exception) when (onError is not null &&
+                exception is IOException or InvalidDataException or HttpRequestException or RegistryException or
+                    UnauthorizedAccessException or DecoderFallbackException or NotSupportedException)
+            {
+                onError(path, exception);
+                return [];
+            }
+        }
+
         switch (ecosystem)
         {
             case InstalledPackageEcosystem.NuGet:
@@ -40,11 +63,11 @@ internal static class PackageFileLister
                 foreach (string list in lists)
                 {
                     cancellationToken.ThrowIfCancellationRequested();
-                    dpkgFiles.UnionWith(ParseDpkgList(await readText(list, cancellationToken) ?? ""));
+                    dpkgFiles.UnionWith(await ReadListAsync(list, ParseDpkgList));
                 }
                 return dpkgFiles.Order(StringComparer.Ordinal).ToArray();
             case InstalledPackageEcosystem.Apk:
-                return ParseApkInstalled(await readText("lib/apk/db/installed", cancellationToken) ?? "", name);
+                return await ReadListAsync("lib/apk/db/installed", content => ParseApkInstalled(content, name));
             case InstalledPackageEcosystem.Pip:
                 string normalized = NormalizePip(name);
                 IEnumerable<string> records = allPaths.Where(path =>
@@ -63,7 +86,7 @@ internal static class PackageFileLister
                 {
                     cancellationToken.ThrowIfCancellationRequested();
                     string root = ImagePath.GetDirectoryName(ImagePath.GetDirectoryName(record));
-                    pipFiles.UnionWith(ParsePipRecord(await readText(record, cancellationToken) ?? "", root));
+                    pipFiles.UnionWith(await ReadListAsync(record, content => ParsePipRecord(content, root)));
                 }
                 return pipFiles.Order(StringComparer.Ordinal).ToArray();
             default:

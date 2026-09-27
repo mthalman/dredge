@@ -21,6 +21,77 @@ public sealed class ExplorerDefenseHostTests : IAsyncDisposable
     private static readonly ImageName Image = ImageName.Parse("registry.test/repo:current");
     private static CancellationToken Token => TestContext.Current.CancellationToken;
 
+    [Fact]
+    public async Task OversizedOwnershipIsRejectedBeforeDownloadWhileReadableFilesRemain()
+    {
+        byte[] large = Blob(("other/example-1.dist-info/RECORD", "oversized,,"));
+        TestImage baseline = await CreateAsync(
+            [Blob(("site/example-1.dist-info/RECORD", "good,,"), ("site/good", "old")), large],
+            indexes =>
+            {
+                StoredLayerIndex index = indexes[1];
+                indexes[1] = index with
+                {
+                    Changes = index.Changes with
+                    {
+                        Entries = index.Changes.Entries.Select(entry =>
+                            entry with { Size = ExplorerHost.MaxPackageOwnershipBytes + 1 }).ToArray()
+                    }
+                };
+            });
+        TestImage target = await CreateAsync();
+        PackageFilesContent result = await Host(baseline).PackageFilesAsync(await CompareAsync(baseline, target),
+            new(InstalledPackageEcosystem.Pip, "example", "1", null), Token);
+
+        Assert.Equal(("site/good", Change.Removed), Assert.Single(result.Files!));
+        Assert.Equal(1, result.Total);
+        Assert.Contains("incomplete", result.Message);
+        Assert.Contains("67108864", Assert.Single(result.Warnings!));
+        baseline.Client.Verify(c => c.Blobs.GetRangeAsync(Image.Repo, LayerCacheTestContext.Digest(large),
+            0, It.IsAny<long?>(), It.IsAny<CancellationToken>()), Times.Never);
+    }
+
+    [Fact]
+    public async Task MalformedAndInvalidUtf8OwnershipDoNotDiscardReadableRecords()
+    {
+        TestImage baseline = await CreateAsync(Archive(
+            ("site/example-1.dist-info/RECORD", Encoding.UTF8.GetBytes("good,,")),
+            ("bad/example-1.dist-info/RECORD", Encoding.UTF8.GetBytes("\"unterminated,,\nfabricated,,")),
+            ("invalid/example-1.dist-info/RECORD", [0xff]),
+            ("site/good", Encoding.UTF8.GetBytes("old"))));
+        TestImage target = await CreateAsync();
+        PackageFilesContent result = await Host(baseline).PackageFilesAsync(await CompareAsync(baseline, target),
+            new(InstalledPackageEcosystem.Pip, "example", "1", null), Token);
+
+        Assert.Equal(("site/good", Change.Removed), Assert.Single(result.Files!));
+        Assert.Equal(2, result.Warnings!.Count);
+        Assert.All(result.Warnings, warning => Assert.StartsWith("Baseline /", warning));
+    }
+
+    [Fact]
+    public async Task UnsupportedNuGetOwnershipIsExplicitlyUnavailable()
+    {
+        TestImage baseline = await CreateAsync();
+        PackageFilesContent result = await Host(baseline).PackageFilesAsync(await CompareAsync(baseline, baseline),
+            new(InstalledPackageEcosystem.NuGet, "example", "1", "2"), Token);
+
+        Assert.Null(result.Files);
+        Assert.Contains("unavailable", result.Message);
+        Assert.All(result.Warnings!, warning => Assert.Contains("does not establish deployed file ownership", warning));
+    }
+
+    [Fact]
+    public async Task OwnershipCancellationIsNotReturnedAsPartialSuccess()
+    {
+        TestImage baseline = await CreateAsync(Blob(("var/lib/dpkg/info/example.list", "/file")));
+        baseline.Client.Setup(c => c.Blobs.GetRangeAsync(Image.Repo, It.IsAny<string>(),
+            0, It.IsAny<long?>(), It.IsAny<CancellationToken>())).ThrowsAsync(new OperationCanceledException());
+        ExplorerComparison comparison = new(baseline.Session, baseline.Session, 0, [], []);
+
+        await Assert.ThrowsAsync<OperationCanceledException>(() => Host(baseline).PackageFilesAsync(comparison,
+            new(InstalledPackageEcosystem.Dpkg, "example", "1", null), Token));
+    }
+
     [Theory]
     [InlineData("1", "2", 2)]
     [InlineData("1", null, 1)]
@@ -68,7 +139,9 @@ public sealed class ExplorerDefenseHostTests : IAsyncDisposable
         Assert.Same(metadata, image.Session.Packages);
     }
 
-    private async Task<TestImage> CreateAsync(params byte[][] blobs)
+    private Task<TestImage> CreateAsync(params byte[][] blobs) => CreateAsync(blobs, null);
+
+    private async Task<TestImage> CreateAsync(byte[][] blobs, Action<Dictionary<int, StoredLayerIndex>>? customize)
     {
         LayerStore store = new(Path.Combine(cachePath, stores.Count.ToString()));
         stores.Add(store);
@@ -85,6 +158,7 @@ public sealed class ExplorerDefenseHostTests : IAsyncDisposable
                 It.IsAny<long?>(), It.IsAny<CancellationToken>()))
                 .ReturnsAsync(() => new BlobDownloadResult(new MemoryStream(blob), false, null, null, blob.Length));
         }
+        customize?.Invoke(indexes);
         OciImageManifest manifest = new()
         {
             Config = new OciDescriptor { Digest = "sha256:config" },

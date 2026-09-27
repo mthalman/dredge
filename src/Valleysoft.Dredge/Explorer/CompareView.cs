@@ -12,7 +12,8 @@ internal sealed record TextDiffContent(
     string Path, IReadOnlyList<DiffLine>? Lines, string? Message);
 
 internal sealed record PackageFilesContent(
-    ExplorerPackageDifference Package, IReadOnlyList<(string Path, Change Change)>? Files, string? Message, int Total);
+    ExplorerPackageDifference Package, IReadOnlyList<(string Path, Change Change)>? Files, string? Message, int Total,
+    IReadOnlyList<string>? Warnings = null);
 
 internal sealed class CompareState
 {

@@ -375,6 +375,7 @@ internal sealed class ExplorerApp : IAsyncDisposable
 // The real host: the registry, the layer store, and the loaded session.
 internal sealed class ExplorerHost : IExplorerHost, IAsyncDisposable
 {
+    internal const long MaxPackageOwnershipBytes = 64 * 1024 * 1024;
     private readonly IDockerRegistryClient client;
     private readonly IDockerRegistryClientFactory factory;
     private readonly ExplorerSource source;
@@ -619,6 +620,7 @@ internal sealed class ExplorerHost : IExplorerHost, IAsyncDisposable
         ExplorerComparison comparison, ExplorerPackageDifference package, CancellationToken cancellationToken)
     {
         HashSet<string> owned = new(StringComparer.Ordinal);
+        List<string> warnings = [];
         foreach (ExplorerSession side in new[]
         {
             package.BaselineVersion is null ? null : comparison.Baseline,
@@ -626,21 +628,34 @@ internal sealed class ExplorerHost : IExplorerHost, IAsyncDisposable
         }.OfType<ExplorerSession>())
         {
             HashSet<string> all = side.Entries.Select(entry => entry.Path).ToHashSet(StringComparer.Ordinal);
-            owned.UnionWith(await PackageFileLister.ListAsync(package.Ecosystem, package.Name, all,
-                async (path, token) =>
-                {
-                    if (!all.Contains(path))
+            string label = ReferenceEquals(side, comparison.Baseline) ? "Baseline" : "Target";
+            try
+            {
+                owned.UnionWith(await PackageFileLister.ListAsync(package.Ecosystem, package.Name, all,
+                    async (path, token) =>
                     {
+                        await foreach (var result in side.Files.ReadFilesAsync([(path, MaxPackageOwnershipBytes)], token))
+                        {
+                            if (result.Error is not null)
+                            {
+                                throw result.Error;
+                            }
+                            return new UTF8Encoding(false, true).GetString(result.Content!);
+                        }
                         return null;
-                    }
-                    using MemoryStream stream = new();
-                    await side.Files.CopyFileToAsync(path, stream, token);
-                    return Encoding.UTF8.GetString(stream.ToArray());
-                }, cancellationToken));
+                    }, cancellationToken,
+                    (path, error) => warnings.Add($"{label} /{path}: {error.Message}")));
+            }
+            catch (NotSupportedException exception)
+            {
+                warnings.Add($"{label}: {exception.Message}");
+            }
         }
         if (owned.Count == 0)
         {
-            return new PackageFilesContent(package, null, "The package manager doesn't list this package's files.", 0);
+            return new PackageFilesContent(package, null, warnings.Count == 0
+                ? "The package manager doesn't list this package's files."
+                : "Package file ownership is unavailable.", 0, warnings);
         }
         Dictionary<string, ExplorerFileDifference> changed = comparison.Files.ToDictionary(file => file.Path, StringComparer.Ordinal);
         List<(string Path, Change Change)> files = owned
@@ -649,7 +664,8 @@ internal sealed class ExplorerHost : IExplorerHost, IAsyncDisposable
             .Select(path => (path, ExplorerImage.ToChange(changed[path].Kind)))
             .ToList();
         return new PackageFilesContent(package, files,
-            files.Count == 0 ? "None of its files changed." : null, owned.Count);
+            warnings.Count > 0 ? "Ownership is incomplete; showing changed files from readable metadata."
+                : files.Count == 0 ? "None of its files changed." : null, owned.Count, warnings);
     }
 
     public async Task<string> ExtractAsync(string path, string destination, CancellationToken cancellationToken)
