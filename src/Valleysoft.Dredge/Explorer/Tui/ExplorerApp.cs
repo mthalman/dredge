@@ -65,7 +65,9 @@ internal sealed class ExplorerApp : IAsyncDisposable
         ExplorerState state = Start();
         while (true)
         {
+            cts.Token.ThrowIfCancellationRequested();
             ExplorerExit exit = RunScreen(state);
+            cts.Token.ThrowIfCancellationRequested();
             if (exit.Kind != ExplorerExitKind.Viewer || exit.ViewerFile is null)
             {
                 cts.Cancel();

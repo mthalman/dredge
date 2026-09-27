@@ -18,6 +18,9 @@ internal sealed class ExplorerWindow : Window
     private readonly ExplorerPresenter ex;
     private readonly ExplorerState s;
     private readonly CancellationToken lifetime;
+    private CancellationTokenRegistration lifetimeRegistration;
+    private bool lifetimeRegistered;
+    private bool windowDisposed;
     private readonly Action<string>? openWindowedViewer;
     private readonly HeaderView header;
     private readonly PaneView layers, details, right;
@@ -130,6 +133,19 @@ internal sealed class ExplorerWindow : Window
     // Puts Terminal.Gui focus where the state says it is.
     public void SyncFocus()
     {
+        if (!lifetimeRegistered && App is IApplication application)
+        {
+            lifetimeRegistered = true;
+            lifetimeRegistration = lifetime.Register(() => application.Invoke(() =>
+            {
+                if (!windowDisposed)
+                {
+                    focusSynced = false;
+                    application.RequestStop();
+                    RequestStop();
+                }
+            }));
+        }
         focusSynced = true;
         if (s.View == RightView.Command)
         {
@@ -283,6 +299,8 @@ internal sealed class ExplorerWindow : Window
     {
         if (disposing)
         {
+            windowDisposed = true;
+            lifetimeRegistration.Dispose();
             CancelComparison();
         }
         if (disposing && watched is not null)

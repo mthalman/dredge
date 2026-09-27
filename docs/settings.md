@@ -42,6 +42,10 @@ platform options take precedence over the corresponding settings. See
 or `null` to disable the timeout. Zero and negative values also disable the
 timeout. Positive values are limited to about 24.8 days by the runtime.
 
+For `image explore`, this limit covers the entire interactive session. On
+timeout, the explorer closes and reports the timeout. Disable or increase the
+limit before starting a longer exploration.
+
 ## Configure the layer cache
 
 Dredge shares compressed layer blobs, filesystem indexes, and merged filesystem
