@@ -20,12 +20,17 @@ internal enum InstalledPackageMetadataAvailability
 
 internal sealed record InstalledPackage(string Name, string Version);
 
+internal sealed record InstalledPackageDiagnostic(string Path, string Message);
+
 internal sealed record InstalledPackageEcosystemMetadata(
     InstalledPackageMetadataAvailability Availability,
     IReadOnlyDictionary<string, IReadOnlyList<string>> Packages);
 
 internal sealed record InstalledPackageMetadata(
-    IReadOnlyDictionary<InstalledPackageEcosystem, InstalledPackageEcosystemMetadata> Ecosystems);
+    IReadOnlyDictionary<InstalledPackageEcosystem, InstalledPackageEcosystemMetadata> Ecosystems)
+{
+    public IReadOnlyList<InstalledPackageDiagnostic> Diagnostics { get; init; } = [];
+}
 
 internal static class InstalledPackageReader
 {
@@ -64,6 +69,7 @@ internal static class InstalledPackageReader
         List<InstalledPackage> pipPackages = [];
         List<InstalledPackage> nugetPackages = [];
         bool nugetAvailable = false;
+        List<InstalledPackageDiagnostic> diagnostics = [];
         IReadOnlyList<InstalledPackage>? dpkgPackages = null;
         IReadOnlyList<InstalledPackage>? apkPackages = null;
         IEnumerable<(string Path, long MaximumBytes)> requests = npmManifests.Concat(pipManifests)
@@ -75,7 +81,7 @@ internal static class InstalledPackageReader
         {
             if (result.Error is not null)
             {
-                Console.Error.WriteLine($"Skipping installed-package metadata '{result.Path}': {result.Error.Message}");
+                diagnostics.Add(new(result.Path, result.Error.Message));
                 continue;
             }
             string content;
@@ -85,22 +91,22 @@ internal static class InstalledPackageReader
             }
             catch (DecoderFallbackException exception)
             {
-                Console.Error.WriteLine($"Skipping installed-package metadata '{result.Path}': {exception.Message}");
+                diagnostics.Add(new(result.Path, exception.Message));
                 continue;
             }
             switch (result.Path)
             {
                 case DpkgStatusPath:
-                    dpkgPackages = TryParse(() => ParseDpkgStatus(content));
+                    dpkgPackages = TryParse(() => ParseDpkgStatus(content), result.Path, diagnostics);
                     break;
                 case ApkInstalledPath:
-                    apkPackages = TryParse(() => ParseApkInstalled(content));
+                    apkPackages = TryParse(() => ParseApkInstalled(content), result.Path, diagnostics);
                     break;
                 default:
                     if (IsNuGetDepsPath(result.Path))
                     {
                         IReadOnlyList<InstalledPackage>? dependencies =
-                            TryParse(() => ParseNuGetDepsJson(content, result.Path));
+                            TryParse(() => ParseNuGetDepsJson(content, result.Path), result.Path, diagnostics);
                         if (dependencies is not null)
                         {
                             nugetAvailable = true;
@@ -110,7 +116,8 @@ internal static class InstalledPackageReader
                     }
                     bool npm = IsNpmPackageManifestPath(result.Path);
                     InstalledPackage? package = TryParse(() => npm
-                        ? ParseNpmPackageJson(content, result.Path) : ParsePipMetadata(content, result.Path));
+                        ? ParseNpmPackageJson(content, result.Path) : ParsePipMetadata(content, result.Path),
+                        result.Path, diagnostics);
                     if (package is not null)
                     {
                         (npm ? npmPackages : pipPackages).Add(package);
@@ -128,17 +135,18 @@ internal static class InstalledPackageReader
             [InstalledPackageEcosystem.NuGet] = CreateMetadata(nugetAvailable, nugetPackages)
         };
 
-        return new InstalledPackageMetadata(ecosystems);
+        return new InstalledPackageMetadata(ecosystems) { Diagnostics = diagnostics };
     }
 
-    private static T? TryParse<T>(Func<T> parse) where T : class
+    private static T? TryParse<T>(Func<T> parse, string path, List<InstalledPackageDiagnostic> diagnostics) where T : class
     {
         try
         {
             return parse();
         }
-        catch (InvalidDataException)
+        catch (InvalidDataException exception)
         {
+            diagnostics.Add(new(path, exception.Message));
             return null;
         }
     }
