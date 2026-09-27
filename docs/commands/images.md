@@ -115,6 +115,10 @@ dredge image explore <image> [--layer <n>] [--compare <image-or-tag>] [--base-im
 Images with no layers open with an empty filesystem; layer navigation and retry
 actions have no effect.
 
+If an annotated base image cannot be verified, its warning appears at startup
+unless another startup notice takes priority. The warning also remains in
+Insights so that missing base boundaries can be diagnosed.
+
 The explorer opens as soon as the manifest and configuration load. Layers are
 indexed in the background, with focus in the Layers pane and the selected layer
 indexed first. A layer

@@ -51,6 +51,11 @@ internal sealed class ExplorerWindow : Window
         this.lifetime = lifetime;
         this.openWindowedViewer = openWindowedViewer;
         s = state;
+        if (s.Notice is null && img.BaseWarning is not null)
+        {
+            s.Notice = img.BaseWarning;
+            s.NoticeIsError = true;
+        }
         ex = new ExplorerPresenter(img, 150, 42, host.Keys) { Copies = host.ClipboardEnabled, MultiPlatform = host.Platforms.Count > 1 };
         BorderStyle = LineStyle.None;
         SetScheme(new Scheme(Paint.Attr(Theme.Foam)));

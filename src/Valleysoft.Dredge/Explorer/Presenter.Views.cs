@@ -37,6 +37,12 @@ internal sealed partial class ExplorerPresenter
         int w = RightInner;
         bool focused = s.Focus == FocusPane.Right;
         List<Line> items = [];
+        if (img.BaseWarning is string warning)
+        {
+            items.AddRange(Syntax.Wrap([("Base verification: " + warning, new Sty(Theme.Ochre))],
+                w, Math.Max(1, RightInnerHeight - 2)));
+            items.Add(Line.Blank);
+        }
         if (!img.Complete)
         {
             items.Add(Line.Blank);

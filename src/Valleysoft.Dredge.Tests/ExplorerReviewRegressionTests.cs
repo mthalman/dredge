@@ -7,6 +7,27 @@ namespace Valleysoft.Dredge.Tests;
 [Collection(ExplorerUiCollection.Name)]
 public sealed class ExplorerReviewRegressionTests
 {
+    [Theory]
+    [InlineData(null)]
+    [InlineData("Could not open the requested platform.")]
+    public void BaseVerificationWarningRemainsVisibleWithoutReplacingStartupNotice(string? notice)
+    {
+        const string warning = "Annotated base could not be verified: connection refused";
+        ExplorerImage image = new(ExplorerSamples.Reference, "linux/amd64", "sha256:m",
+            ["sha256:a"], [100], null, null, null, baseWarning: warning);
+        using ExplorerUiHarness ui = ExplorerWindowTests.Open(image, new ExplorerState { Notice = notice },
+            session => new FakeExplorerHost { Baseline = session }, out _);
+        Assert.Equal(notice ?? warning, ui.State.Notice);
+        if (notice is null)
+        {
+            Assert.True(ui.Shows(warning), ui.Screen());
+        }
+        ui.Window.Apply(new ShowView(RightView.Insights));
+        ui.Pump();
+        Assert.True(ui.Shows("Base verification:"), ui.Screen());
+        Assert.True(ui.Shows("connection refused"), ui.Screen());
+    }
+
     [Fact]
     public void NormalSearchRestoresItsQueryAfterComparison()
     {
