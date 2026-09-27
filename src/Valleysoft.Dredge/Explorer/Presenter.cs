@@ -371,12 +371,8 @@ internal sealed partial class ExplorerPresenter
         Hint compare = new(K(KeyAction.Compare), "Compare…", new PickTag());
         Hint search = new(K(KeyAction.Search), "Search", new ShowView(RightView.Search));
         Hint insights = new(K(KeyAction.Insights), "Insights", new ShowView(RightView.Insights));
-        if (img.LayerCount == 0)
-        {
-            return [compare, insights, search, keys, back, quit];
-        }
         Hint step = new($"{K(KeyAction.PreviousLayer)} {K(KeyAction.NextLayer)}", "Step layer");
-        List<Hint> retry = img.States[s.Layer] == ExplorerLayerState.Failed
+        List<Hint> retry = img.LayerCount > 0 && img.States[s.Layer] == ExplorerLayerState.Failed
             ? [new(K(KeyAction.Retry), "Retry layer", new RetryLayer(s.Layer))] : [];
         Hint page = new("PgUp PgDn", "Page", ShowInFooter: false);
         Hint ends = new("Home End", "First or last", ShowInFooter: false);
@@ -390,14 +386,15 @@ internal sealed partial class ExplorerPresenter
             RightView.Search =>
             [
                 new("↑↓", "Select"), new("Enter", "Open", new Activate()), page,
-                new("Alt+L", s.SearchLayerOnly ? "Whole image" : $"Layer {s.Layer} only", new SetSearchScope(!s.SearchLayerOnly)),
+                .. img.LayerCount > 0 ? new Hint[] { new("Alt+L", s.SearchLayerOnly ? "Whole image" : $"Layer {s.Layer} only", new SetSearchScope(!s.SearchLayerOnly)) } : [],
                 new("Alt+D", s.SearchIncludeDeleted ? "Hide deleted" : "Include deleted", new ToggleIncludeDeleted()),
                 new("Alt+C", s.SearchExactCase ? "Ignore case" : "Exact case", new ToggleExactCase()),
                 new("Esc", "Close", new Back()),
             ],
             RightView.Insights =>
             [
-                new("↑↓", "Finding"), new("Enter", "Show files", new Activate()), new("Tab", "Layers", new FocusOn(FocusPane.Layers)), back,
+                new("↑↓", "Finding"), new("Enter", "Show files", new Activate()),
+                .. img.LayerCount > 0 ? new Hint[] { new("Tab", "Layers", new FocusOn(FocusPane.Layers)) } : [], back,
                 ends, search, keys, quit,
             ],
             RightView.Inspector =>
@@ -409,6 +406,7 @@ internal sealed partial class ExplorerPresenter
             ],
             RightView.Keys => [new("↑↓", "Scroll"), page, ends, back, quit],
             RightView.Command => [new("←→", "Scroll"), new("Ctrl+A", "Select all"), ends, back, keys, quit],
+            _ when img.LayerCount == 0 => [compare, insights, search, .. platform, keys, back, quit],
             _ when s.Focus == FocusPane.Layers =>
             [
                 .. retry, new("Tab", "Files", new FocusOn(FocusPane.Right)), new("↑↓", "Layer"), whole, compare, search, insights,

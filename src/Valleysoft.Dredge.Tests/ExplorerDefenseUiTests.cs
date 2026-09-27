@@ -6,6 +6,43 @@ namespace Valleysoft.Dredge.Tests;
 [Collection(ExplorerUiCollection.Name)]
 public sealed class ExplorerDefenseUiTests
 {
+    [Fact]
+    public void EmptyImageAuxiliaryKeysAreDispatched()
+    {
+        ExplorerImage image = ExplorerSamples.Custom([]);
+        using ExplorerUiHarness ui = ExplorerWindowTests.Open(image, new ExplorerState(),
+            session => new FakeExplorerHost { Baseline = session }, out _, width: 80, height: 24);
+        ui.Press(new Key('?'));
+        Assert.Equal(RightView.Keys, ui.State.View);
+        ui.Press(Key.CursorDown);
+        Assert.True(ui.State.KeysScroll > 0);
+        ui.Press(Key.End);
+        Assert.True(ui.State.KeysScroll > 1);
+        ui.Press(Key.Esc);
+        ui.Press(new Key('/'));
+        bool deleted = ui.State.SearchIncludeDeleted;
+        bool exact = ui.State.SearchExactCase;
+        ui.Press(new Key('d').WithAlt);
+        ui.Press(new Key('c').WithAlt);
+        Assert.Equal(!deleted, ui.State.SearchIncludeDeleted);
+        Assert.Equal(!exact, ui.State.SearchExactCase);
+        Assert.DoesNotContain(ui.Window.Presenter.Hints(ui.State), hint => hint.Cmd is SetSearchScope);
+    }
+
+    [Fact]
+    public void EmptyImageRetainsPlatformPickerHint()
+    {
+        ExplorerPresenter presenter = new(ExplorerSamples.Custom([]), 80, 24) { MultiPlatform = true };
+        Assert.Contains(presenter.Hints(new()), hint => hint.Cmd is PickPlatform);
+        Assert.DoesNotContain(presenter.Hints(new()), hint => hint.Cmd is SetWhole or FirstUserLayer or RetryLayer);
+        ExplorerPlatform amd = new("linux", "amd64", null, null);
+        ExplorerPlatform arm = new("linux", "arm64", null, null);
+        using ExplorerUiHarness ui = ExplorerWindowTests.Open(ExplorerSamples.Custom([]), new ExplorerState(),
+            session => new FakeExplorerHost { Baseline = session, Platforms = [amd, arm], Platform = amd }, out _);
+        char key = KeyMap.Default.Label(KeyAction.Platform)[0];
+        Assert.True(ui.AnswerDialog(() => ui.Press(new Key(key)), Key.Esc));
+    }
+
     [Theory]
     [InlineData("""{"key":"escaped \" quote","slash":"\\"}""")]
     [InlineData("""{"escaped \" key":true,"n":-1.25e+3}""")]
