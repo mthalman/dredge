@@ -8,6 +8,24 @@ namespace Valleysoft.Dredge.Tests;
 public sealed class ExplorerUxTests
 {
     [Fact]
+    public void ComparisonProgressSurvivesNavigationAndCanBeCanceled()
+    {
+        TaskCompletionSource<ExplorerComparison> completion = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        using ExplorerUiHarness ui = ExplorerWindowTests.Open(ExplorerSamples.Image(), new ExplorerState { Layer = 2 },
+            s => new FakeExplorerHost { Baseline = s, CompareWork = () => completion.Task }, out FakeExplorerHost host);
+        ui.Window.StartCompare("2.0");
+        ui.Until(() => ui.State.ComparisonStatus?.EndsWith("reading packages") == true, "packages");
+        ui.Press(Key.CursorDown);
+        Assert.True(ui.Shows("reading packages"));
+        ui.Press(Key.Esc);
+        Assert.Null(ui.State.ComparisonStatus);
+        Assert.Equal("Comparison canceled.", ui.State.Notice);
+        completion.SetResult(ExplorerSession.Compare(host.Baseline!, ExplorerSamples.Target()));
+        ui.Pump();
+        Assert.Null(ui.State.Compare);
+    }
+
+    [Fact]
     public void ExactTagWinsOverSubstringMatches()
     {
         using ExplorerUiHarness ui = ExplorerWindowTests.Open(ExplorerSamples.Image(), new ExplorerState { Layer = 2 },

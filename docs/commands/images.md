@@ -149,6 +149,8 @@ files. The picker accepts a full image reference or a tag and selects an exact
 tag match before substring suggestions. Package metadata is read only when a comparison starts; loading an
 image for browsing or insights does not scan packages. Press `Enter` on a
 changed text file to see a diff, and `s` to swap the two sides.
+Comparison progress stays visible while you browse. Press `Esc` to cancel a
+pending comparison without leaving the explorer.
 
 Press `x` to extract the selected file or directory, and `y` to copy the
 equivalent `dredge image` command. Press `p` to choose another Linux platform,

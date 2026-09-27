@@ -35,6 +35,7 @@ internal sealed class ExplorerWindow : Window
     private bool clearedThisFrame;
     private CancellationTokenSource? previewLoad;
     private int compareGeneration;
+    private CancellationTokenSource? compareLoad;
 
     public ExplorerWindow(ExplorerImage img, ExplorerState state, IExplorerHost host, CancellationToken lifetime,
         Action<string>? openWindowedViewer = null)
@@ -265,6 +266,10 @@ internal sealed class ExplorerWindow : Window
 
     protected override void Dispose(bool disposing)
     {
+        if (disposing)
+        {
+            CancelComparison();
+        }
         if (disposing && watched is not null)
         {
             watched.ClearedContents -= ForgetShown;
@@ -359,7 +364,7 @@ internal sealed class ExplorerWindow : Window
             }
         }
         string? note = extracting ? "Enter extract · Esc cancel" : ex.TooSmall ? null
-            : s.Notice ?? (Comparing ? (s.Compare!.Busy ? "Loading…" : null) : ex.Status(s));
+            : s.Notice ?? s.ComparisonStatus ?? (Comparing ? (s.Compare!.Busy ? "Loading…" : null) : ex.Status(s));
         string status = note is null ? "" : Fmt.Fit(note, Math.Max(10, Viewport.Width / 2)) + " ";
 
         // Searching, the field and match count own the left of the row; extracting, the prompt owns all but the note.
@@ -388,7 +393,12 @@ internal sealed class ExplorerWindow : Window
 
     private static bool IsTab(Key key) => key.NoShift.KeyCode == KeyCode.Tab && !key.IsCtrl && !key.IsAlt;
 
-    private List<Hint> ContextHints() => Comparing && s.View != RightView.Keys ? Compare.Hints() : ex.Hints(s);
+    private List<Hint> ContextHints()
+    {
+        List<Hint> hints = Comparing && s.View != RightView.Keys ? Compare.Hints() : ex.Hints(s);
+        return compareLoad is null ? hints
+            : [new("Esc", "Cancel comparison", new Back()), .. hints.Where(h => h.Key != "Esc")];
+    }
 
     // A key acts only when the current context lists it; hints trimmed from a narrow footer still count.
     private bool Listed(Key key)
@@ -550,6 +560,13 @@ internal sealed class ExplorerWindow : Window
             s.Notice = null;
             s.NoticeIsError = false;
             ex.Invalidate();
+        }
+        if (cmd is Back && compareLoad is not null)
+        {
+            CancelComparison();
+            Notice("Comparison canceled.");
+            Refresh();
+            return;
         }
         if (Comparing && ApplyCompare(cmd))
         {
@@ -1049,7 +1066,10 @@ internal sealed class ExplorerWindow : Window
             Notice("Compare works once every layer is indexed.");
             return;
         }
-        Notice($"Comparing with {tag}… reading its layers");
+        CancelComparison();
+        compareLoad = CancellationTokenSource.CreateLinkedTokenSource(lifetime);
+        s.ComparisonStatus = $"Comparing with {tag}… reading its layers";
+        Notice(s.ComparisonStatus);
         if (s.Compare is not null)
         {
             s.Compare.Busy = true;
@@ -1060,7 +1080,8 @@ internal sealed class ExplorerWindow : Window
         {
             if (compareGeneration == generation)
             {
-                Notice($"Comparing with {tag}… reading packages");
+                s.ComparisonStatus = $"Comparing with {tag}… reading packages";
+                Notice(s.ComparisonStatus);
                 ex.Invalidate();
                 Refresh();
             }
@@ -1071,6 +1092,7 @@ internal sealed class ExplorerWindow : Window
                 return;
             }
             compareGeneration++;
+            CompleteComparison();
             s.Compare = new CompareState(comparison, ExplorerTags.Label(img.Reference), tag);
             s.View = RightView.Files;
             s.Notice = null;
@@ -1082,12 +1104,31 @@ internal sealed class ExplorerWindow : Window
                 return;
             }
             compareGeneration++;
+            CompleteComparison();
             if (s.Compare is not null)
             {
                 s.Compare.Busy = false;
             }
             Notice($"Could not compare with {tag}: {error.Message}", error: true);
-        });
+        }, compareLoad.Token);
+    }
+
+    private void CompleteComparison()
+    {
+        compareLoad?.Dispose();
+        compareLoad = null;
+        s.ComparisonStatus = null;
+        if (s.Compare is not null)
+        {
+            s.Compare.Busy = false;
+        }
+    }
+
+    private void CancelComparison()
+    {
+        compareGeneration++;
+        compareLoad?.Cancel();
+        CompleteComparison();
     }
 
     // ───────────────────────────── compare ─────────────────────────────

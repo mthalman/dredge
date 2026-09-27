@@ -25,6 +25,7 @@ internal sealed class ExplorerState
     public bool FindingsOnly { get; set; }
     public string? Notice { get; set; }
     public bool NoticeIsError { get; set; }
+    public string? ComparisonStatus { get; set; }
     public int PreviewScroll { get; set; }
     public string InspectPath { get; set; } = "";
     public PreviewContent? Preview { get; set; }
