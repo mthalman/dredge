@@ -17,6 +17,49 @@ public sealed class ExplorerDefenseBackendTests : IAsyncDisposable
     private static readonly ImageName Image = ImageName.Parse("registry.test/repo:tag");
 
     [Theory]
+    [InlineData("old", "new")]
+    [InlineData("same", "same")]
+    public void LastHardLinkReplacementDoesNotClaimIdenticalPayloadShipment(
+        string originalHash, string replacementHash)
+    {
+        ImageAnalysisResult analysis = ImageAnalysis.Analyze(
+        [
+            Layer(File("original", 7, originalHash), HardLink("saved", "original")),
+            Layer(File("original", 7, replacementHash)),
+            Layer(HardLink("saved", "original"))
+        ]);
+
+        HiddenFile hidden = Assert.Single(analysis.HiddenFiles);
+        Assert.Equal("original", hidden.Path);
+        Assert.Equal("saved", hidden.ReplacedByHardLink);
+        Assert.Equal(0, hidden.Layer);
+        Assert.Equal(2, hidden.HiddenBy);
+        Assert.Equal(7, hidden.Size);
+        Assert.Equal(LayerChangeKind.Modified, hidden.Reason);
+        Assert.Equal(originalHash == replacementHash ? LayerChangeKind.Identical : LayerChangeKind.Modified,
+            Assert.Single(analysis.Layers[2].Changes).Kind);
+        ExplorerFinding finding = Assert.Single(ExplorerInsights.Build(analysis, ["RUN create", "RUN replace", "RUN ln"], null).Findings);
+        Assert.Equal(ExplorerFindingKind.Replaced, finding.Kind);
+        Assert.Contains("not new file payload", finding.Why);
+        Assert.DoesNotContain("same bytes", finding.Why);
+        Assert.Contains("/saved", string.Join("\n", finding.Explain));
+        Assert.Contains("original content", finding.Fix);
+    }
+
+    [Fact]
+    public void RefreshingHardLinkToSameContentDoesNotHideItsPayload()
+    {
+        ImageAnalysisResult analysis = ImageAnalysis.Analyze(
+        [
+            Layer(File("original", 7, "hash"), HardLink("saved", "original")),
+            Layer(HardLink("saved", "original"))
+        ]);
+        Assert.Empty(analysis.HiddenFiles);
+        Assert.Equal(0, analysis.HiddenBytes);
+        Assert.Equal(LayerChangeKind.Identical, Assert.Single(analysis.Layers[1].Changes).Kind);
+    }
+
+    [Theory]
     [InlineData(false)]
     [InlineData(true)]
     public async Task MetadataTransportFailureIsAdvisoryAndOtherLayersRemainReadable(bool responseBody)
@@ -110,6 +153,14 @@ public sealed class ExplorerDefenseBackendTests : IAsyncDisposable
             requireLayerIndexes: true, layerIndexes: indexes);
         return (files, client, resolved);
     }
+
+    private static LayerChanges Layer(params ScannedEntry[] entries) => new(entries, [], []);
+
+    private static ScannedEntry File(string path, long size, string hash) =>
+        new(path, ImageFileType.File, 0x1A4, 0, 0, size, DateTime.UnixEpoch, null, 0, 0, 0, hash);
+
+    private static ScannedEntry HardLink(string path, string target) =>
+        File(path, 0, "") with { Type = ImageFileType.HardLink, LinkTarget = target };
 
     private static byte[] Blob(params (string Path, string Content)[] files)
     {

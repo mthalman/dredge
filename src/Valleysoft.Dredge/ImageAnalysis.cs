@@ -12,7 +12,8 @@ internal sealed record ImageLayerAnalysis(
 
 // Attribution stays with the shipped content even when a hard link is its last surviving name.
 internal sealed record HiddenFile(
-    string Path, int Layer, int HiddenBy, LayerChangeKind Reason, long Size);
+    string Path, int Layer, int HiddenBy, LayerChangeKind Reason, long Size,
+    string? ReplacedByHardLink = null);
 
 internal sealed record ImageAnalysisResult(
     long FileBytes, long HiddenBytes, IReadOnlyList<ImageLayerAnalysis> Layers)
@@ -135,12 +136,13 @@ internal static class ImageAnalysis
                 }
             }
 
-            void Charge(LiveEntry old, LayerChangeKind reason)
+            void Charge(LiveEntry old, LayerChangeKind reason, string? replacedByHardLink = null)
             {
                 if (old.Content is FileContent content && --content.References == 0)
                 {
                     hidden[content.Layer] += content.Entry.Size;
-                    hiddenFiles.Add(new(content.Entry.Path, content.Layer, index, reason, content.Entry.Size));
+                    hiddenFiles.Add(new(content.Entry.Path, content.Layer, index, reason, content.Entry.Size,
+                        replacedByHardLink));
                 }
             }
 
@@ -180,9 +182,11 @@ internal static class ImageAnalysis
                 }
                 if (live.TryGetValue(entry.Path, out LiveEntry? previous))
                 {
-                    kind = Same(previous.Entry, entry)
+                    kind = Same(previous.Entry, entry) &&
+                        (entry.Type != ImageFileType.HardLink || SameContent(previous.Content, content))
                         ? LayerChangeKind.Identical : LayerChangeKind.Modified;
-                    Charge(previous, kind);
+                    Charge(previous, entry.Type == ImageFileType.HardLink ? LayerChangeKind.Modified : kind,
+                        entry.Type == ImageFileType.HardLink ? entry.Path : null);
                 }
                 live[entry.Path] = new(entry, index, content);
                 paths.Add(entry.Path);
@@ -239,6 +243,9 @@ internal static class ImageAnalysis
         }
         throw new InvalidDataException($"Link resolution for '/{entry.Path}' exceeded 40 hops.");
     }
+
+    private static bool SameContent(FileContent? a, FileContent? b) =>
+        ReferenceEquals(a, b) || (a is not null && b is not null && Same(a.Entry, b.Entry));
 
     private static bool Same(ScannedEntry a, ScannedEntry b) =>
         a.Type == b.Type &&

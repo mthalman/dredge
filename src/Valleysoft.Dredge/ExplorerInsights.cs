@@ -62,10 +62,10 @@ internal static class ExplorerInsights
         long churn = 0;
         List<HiddenFile> small = [];
 
-        foreach (IGrouping<(int Layer, int HiddenBy, LayerChangeKind Reason), HiddenFile> group in analysis.HiddenFiles
-            .GroupBy(file => (file.Layer, file.HiddenBy, file.Reason)))
+        foreach (var group in analysis.HiddenFiles
+            .GroupBy(file => (file.Layer, file.HiddenBy, file.Reason, LinkReplacement: file.ReplacedByHardLink is not null)))
         {
-            (int layer, int hiddenBy, LayerChangeKind reason) = group.Key;
+            (int layer, int hiddenBy, LayerChangeKind reason, bool linkReplacement) = group.Key;
             HiddenFile[] files = group.ToArray();
             long bytes = files.Sum(file => file.Size);
             if (bytes == 0)
@@ -89,7 +89,7 @@ internal static class ExplorerInsights
                     findings.Add(Create(ExplorerFindingKind.BaseReplaced, files, instructions));
                 }
             }
-            else if (bytes < SmallGroupThreshold)
+            else if (bytes < SmallGroupThreshold && !linkReplacement)
             {
                 small.AddRange(files);
             }
@@ -140,6 +140,7 @@ internal static class ExplorerInsights
         string hider = Instruction(instructions, hiddenBy);
         string count = N(files.Length);
         string noun = files.Length == 1 ? "file" : "files";
+        bool linkReplacement = files[0].ReplacedByHardLink is not null;
         (string title, string category) = kind switch
         {
             ExplorerFindingKind.Identical => ("Files rewritten with identical bytes", "Replaced by later layers"),
@@ -177,6 +178,18 @@ internal static class ExplorerInsights
         if (kind == ExplorerFindingKind.Deleted)
         {
             explain[1] = $"Layer {hiddenBy} deleted {(files.Length == 1 ? "it" : "them")}, hiding {Size(bytes)}.";
+        }
+        if (linkReplacement)
+        {
+            title = kind is ExplorerFindingKind.BaseReplaced or ExplorerFindingKind.FromBase
+                ? title : "Content hidden by hard-link replacement";
+            why = $"Layer {hiddenBy} replaced the last references to content from layer {layer} with hard links, not new file payload.";
+            explain[1] = $"Layer {hiddenBy} replaced {string.Join(", ", files.Select(file => "/" + file.ReplacedByHardLink))} with hard links, hiding {Size(bytes)}.";
+            if (kind is not (ExplorerFindingKind.BaseReplaced or ExplorerFindingKind.FromBase))
+            {
+                (fixLabel, fix, dockerfile) = ("Avoid shipping the unused content",
+                    "Omit the original content from COPY, or remove it in the same RUN that creates it.", false);
+            }
         }
         return new(kind, title, category, bytes, files.Length, [layer, hiddenBy], roots, where,
             why, fixLabel, fix, dockerfile, explain);
