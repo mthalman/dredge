@@ -58,6 +58,26 @@ public sealed class ExplorerDefenseUiTests
         Assert.DoesNotContain("on disk", header);
     }
 
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void EmptyFindingsDistinguishBaseChurnFromNoHiddenBytes(bool churn)
+    {
+        ExplorerImage image = ExplorerSamples.Custom(churn
+            ? [ExplorerSamples.Layer([ExplorerSamples.File("etc/passwd", 100, "a")]),
+                ExplorerSamples.Layer([ExplorerSamples.File("etc/passwd", 120, "b")])]
+            : [ExplorerSamples.Layer([ExplorerSamples.File("etc/passwd", 100, "a")])], baseLayerCount: 1);
+        Assert.Empty(image.Findings);
+        ExplorerPresenter presenter = new(image, 80, 24) { FullWidthContent = true };
+        string text = string.Join("\n", presenter.InsightsPane(new()).Lines);
+        Assert.Contains(churn ? "No actionable findings" : "No hidden bytes.", text);
+        if (churn)
+        {
+            Assert.Contains("100 B", text);
+            Assert.DoesNotContain("Every shipped file is visible", text);
+        }
+    }
+
     [Fact]
     public void EmptyImageAuxiliaryKeysAreDispatched()
     {

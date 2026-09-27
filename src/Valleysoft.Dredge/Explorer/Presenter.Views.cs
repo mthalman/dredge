@@ -91,7 +91,9 @@ internal sealed partial class ExplorerPresenter
         List<ExplorerFinding?> findings = VisibleFindings(s);
         if (findings.Count == 0)
         {
-            items.Add(new Line().Add("✓ ", Theme.Kelp).Add("No hidden bytes. Every shipped file is visible in the final image.", Theme.Foam));
+            items.Add(total == 0
+                ? new Line().Add("✓ ", Theme.Kelp).Add("No hidden bytes. Every shipped file is visible in the final image.", Theme.Foam)
+                : Line.Of("No actionable findings. Hidden bytes include routine base-file churn.", Theme.Silt));
             return Pane(items, "Insights", focused, "0 findings");
         }
         s.Finding = Math.Clamp(s.Finding, 0, findings.Count - 1);
