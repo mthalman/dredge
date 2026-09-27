@@ -1328,6 +1328,10 @@ internal sealed class ExplorerWindow : Window
                 s.Compare = null;
                 right.SetFocus();
                 return true;
+            case SelectLayer when c.LayerCount == 0:
+            case Move { } or Jump { } when c.LayerCount == 0 && c.FocusLayers:
+                Notice("Neither image has layers.");
+                return true;
             case SelectLayer l:
                 c.Layer = Math.Clamp(l.Layer, 0, c.LayerCount - 1);
                 return true;

@@ -212,6 +212,27 @@ public sealed class ExplorerReviewRegressionTests
         Assert.True(ui.Window.StopRequested);
     }
 
+    [Fact]
+    public void EmptyImageComparisonHasNoLayerNavigation()
+    {
+        ExplorerImage image = ExplorerSamples.Custom([]);
+        ExplorerState state = new()
+        {
+            Compare = new CompareState(ExplorerSession.Compare(image.Session!, image.Session!), "a", "b")
+            {
+                FocusLayers = true
+            }
+        };
+        using ExplorerUiHarness ui = ExplorerWindowTests.Open(image, state,
+            session => new FakeExplorerHost { Baseline = session }, out _);
+        foreach (Cmd command in new Cmd[] { new SelectLayer(0), new Move(1), new Jump(true), new Move(-1) })
+        {
+            ui.Window.Apply(command);
+            ui.Pump();
+            Assert.Equal(0, state.Compare!.Layer);
+        }
+    }
+
     [Theory]
     [InlineData(false)]
     [InlineData(true)]
