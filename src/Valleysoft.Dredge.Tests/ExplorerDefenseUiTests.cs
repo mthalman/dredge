@@ -7,6 +7,25 @@ namespace Valleysoft.Dredge.Tests;
 public sealed class ExplorerDefenseUiTests
 {
     [Theory]
+    [InlineData("""{"key":"escaped \" quote","slash":"\\"}""")]
+    [InlineData("""{"escaped \" key":true,"n":-1.25e+3}""")]
+    [InlineData("""{"key": "unfinished\""")]
+    [InlineData("\"")]
+    [InlineData("\"abc\\")]
+    [InlineData(" \t{\"a\":null} trailing \"")]
+    [InlineData("{\"emoji\":\"\ud83d\udc1f\",\"wide\":\"\u754c\"}")]
+    public void JsonHighlightingPreservesEverySourceCharacter(string source) =>
+        Assert.Equal(source, Syntax.Json(source).ToString());
+
+    [Theory]
+    [InlineData("RUN echo \"unterminated")]
+    [InlineData("RUN echo 'unterminated")]
+    [InlineData("RUN echo \"escaped \\\" quote\" && echo \ud83d\udc1f")]
+    [InlineData("RUN  --mount=type=cache,target=/cache \t echo [x]; a | b \\\n next")]
+    public void DockerfileHighlightingPreservesEverySourceCharacter(string source) =>
+        Assert.Equal(source, string.Concat(Syntax.Dockerfile(source, Theme.Foam).Select(token => token.Text)));
+
+    [Theory]
     [InlineData(false)]
     [InlineData(true)]
     public void FilteredReplacementRetainsVisibleRemovedDescendants(bool whole)
