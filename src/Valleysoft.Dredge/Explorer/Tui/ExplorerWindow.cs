@@ -114,7 +114,8 @@ internal sealed class ExplorerWindow : Window
     private List<Line> HeaderLines() =>
         ex.TooSmall ? ex.TooSmallMessage() : Comparing ? Compare.Header() : ex.Header(s);
 
-    private bool Typing() => pendingExtract is not null || (s.View == RightView.Search && !Comparing);
+    private bool Searching => Comparing ? s.Compare!.Searching && s.View != RightView.Keys : s.View == RightView.Search;
+    private bool Typing() => pendingExtract is not null || Searching;
 
     // Puts Terminal.Gui focus where the state says it is.
     public void SyncFocus()
@@ -124,7 +125,7 @@ internal sealed class ExplorerWindow : Window
         {
             extractField.SetFocus();
         }
-        else if (s.View == RightView.Search && !Comparing)
+        else if (Searching)
         {
             search.SetFocus();
         }
@@ -351,12 +352,12 @@ internal sealed class ExplorerWindow : Window
         }
         compareView = null;
         bool extracting = pendingExtract is not null;
-        bool searching = s.View == RightView.Search && !Comparing && !ex.TooSmall && !extracting;
+        bool searching = Searching && !ex.TooSmall && !extracting;
         searchKey.Visible = search.Visible = matches.Visible = searching;
         extractLabel.Visible = extractField.Visible = extracting;
         if (searching)
         {
-            int n = ex.SearchResults(s).Total;
+            int n = Comparing ? Compare.Rows().Count : ex.SearchResults(s).Total;
             string count = n == 1 ? "1 match" : $"{Fmt.N(n)} matches";
             if (matches.Text != count)
             {
@@ -1170,6 +1171,11 @@ internal sealed class ExplorerWindow : Window
         }
         List<CompareRow> rows = Compare.Rows();
         CompareRow? row = c.Cursor >= 0 && c.Cursor < rows.Count ? rows[c.Cursor] : null;
+        if (cmd is Activate && c.Searching)
+        {
+            c.Searching = false;
+            right.SetFocus();
+        }
         switch (cmd)
         {
             case Quit or Redraw or Notify or PickTag or CompareWith:
@@ -1177,11 +1183,32 @@ internal sealed class ExplorerWindow : Window
             case ShowView { View: RightView.Keys }:
                 s.View = RightView.Keys;
                 return true;
+            case ShowView { View: RightView.Search }:
+                c.Searching = true;
+                c.FocusLayers = false;
+                search.Visible = true;
+                search.Text = c.SearchQuery;
+                search.SetFocus();
+                search.MoveEnd();
+                return true;
+            case SetQuery query:
+                c.SearchQuery = query.Text;
+                c.Cursor = c.Scroll = 0;
+                return true;
+            case Back when c.Searching:
+                c.Searching = false;
+                right.SetFocus();
+                return true;
             case Back when c.Diff is not null:
                 c.Diff = null;
                 return true;
+            case Back when c.SearchQuery.Length > 0:
+                c.SearchQuery = "";
+                c.Cursor = c.Scroll = 0;
+                return true;
             case Back when c.PackageFiles is not null:
                 c.PackageFiles = null;
+                (c.Cursor, c.Scroll, c.SearchQuery) = c.PackageReturn;
                 return true;
             case Back:
                 s.Compare = null;
@@ -1275,13 +1302,23 @@ internal sealed class ExplorerWindow : Window
                 });
                 return true;
             case Activate when row.Kind == CompareRowKind.Package && row.Package is ExplorerPackageDifference package:
-                c.PackageFiles = new PackageFilesContent(package, null, "Reading package files…", 0);
+                PackageFilesContent pending = new(package, null, "Reading package files…", 0);
+                c.PackageFiles = pending;
+                c.PackageReturn = (c.Cursor, c.Scroll, c.SearchQuery);
+                c.Cursor = c.Scroll = 0;
+                c.SearchQuery = "";
                 ExplorerComparison current = c.Comparison;
                 RunAsync(ct => host.PackageFilesAsync(current, package, ct), files =>
                 {
-                    if (s.Compare?.Comparison == current)
+                    if (s.Compare?.PackageFiles == pending)
                     {
                         s.Compare.PackageFiles = files;
+                    }
+                }, error =>
+                {
+                    if (s.Compare?.PackageFiles == pending)
+                    {
+                        s.Compare.PackageFiles = pending with { Message = "Could not read package files: " + error.Message };
                     }
                 });
                 return true;

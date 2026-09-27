@@ -1132,7 +1132,7 @@ public sealed class ExplorerFeatureTests
         AssertHides(ui, "1 packages");
         Assert.Contains("same", ui.Row(ui.Find("  0   1.0 KB").Y));
         Assert.Contains("gone", ui.Row(ui.Find("Layer 3").Y));
-        foreach (string hint in new[] { "[ ]  Next difference", "s  Swap sides", "Enter  Diff a file", "c  Change tag…", "Esc  Leave compare" })
+        foreach (string hint in new[] { "[ ]  Next difference", "s  Swap sides", "Enter  Collapse group", "c  Change tag…", "Esc  Leave compare" })
         {
             Assert.Contains(hint, Footer(ui));
         }
@@ -1246,7 +1246,7 @@ public sealed class ExplorerFeatureTests
         Assert.NotNull(s.Compare);
 
         AssertShows(ui, "Differences  1.0 → 2.0");
-        foreach (char key in "ia/+x")
+        foreach (char key in "ia+x")
         {
             ui.Press(new Key(key));
             Assert.Null(s.Notice);

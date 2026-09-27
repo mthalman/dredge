@@ -154,6 +154,10 @@ Text diffs retain available content when a size limit is reached and show a
 notice identifying the partial preview.
 Comparison progress stays visible while you browse. Press `Esc` to cancel a
 pending comparison without leaving the explorer.
+Within comparison, `/` searches changed package names and paths, including
+collapsed folders. Select a package and press `Enter` to browse all its changed
+files, then `Enter` on a file to open its diff. `Esc` closes search, clears an
+active filter, or returns from package files before leaving comparison.
 
 Press `x` to extract the selected file or directory, and `y` to copy the
 equivalent `dredge image` command. Press `p` to choose another Linux platform,

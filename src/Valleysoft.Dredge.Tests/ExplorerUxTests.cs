@@ -7,6 +7,47 @@ namespace Valleysoft.Dredge.Tests;
 [Collection(ExplorerUiCollection.Name)]
 public sealed class ExplorerUxTests
 {
+    [Fact]
+    public void ComparisonSearchFindsCollapsedFilesAndPackages()
+    {
+        using ExplorerUiHarness ui = ExplorerWindowTests.Open(out FakeExplorerHost host);
+        ui.Window.StartCompare("2.0");
+        ui.Until(() => ui.State.Compare is not null, "comparison");
+        ui.Press(new Key('/'));
+        ui.Type("package.json");
+        Assert.Single(new CompareView(ui.Window.Presenter, ui.State.Compare!).Rows());
+        ui.Press(Key.Enter);
+        ui.Until(() => ui.State.Compare!.Diff is not null, "diff");
+        Assert.Equal(["app/package.json"], host.Diffed);
+        ui.Press(Key.Esc);
+        ui.Press(Key.Esc);
+        ui.Press(new Key('/'));
+        ui.Type("left-pad");
+        ui.Press(Key.Enter);
+        ui.Until(() => ui.State.Compare!.PackageFiles?.Files is not null, "package files");
+        Assert.True(ui.Shows("app/node_modules/left-pad/index.js"));
+        ui.Press(Key.Enter);
+        ui.Until(() => ui.State.Compare!.Diff is not null, "package file diff");
+        Assert.Equal("app/node_modules/left-pad/index.js", host.Diffed[^1]);
+    }
+
+    [Fact]
+    public void AllPackageFilesCanBeNavigated()
+    {
+        using ExplorerUiHarness ui = ExplorerWindowTests.Open(out FakeExplorerHost host);
+        ui.Window.StartCompare("2.0");
+        ui.Until(() => ui.State.Compare is not null, "comparison");
+        CompareState c = ui.State.Compare!;
+        c.PackageFiles = new PackageFilesContent(c.Comparison.Packages[0],
+            Enumerable.Range(0, 50).Select(i => ($"app/file-{i:D2}", Change.Modified)).ToArray(), null, 50);
+        ui.Window.ImageChanged();
+        ui.Press(Key.End);
+        Assert.True(ui.Shows("app/file-49"));
+        ui.Press(Key.Enter);
+        ui.Until(() => c.Diff is not null, "last file diff");
+        Assert.Equal(["app/file-49"], host.Diffed);
+    }
+
     [Theory]
     [InlineData(119)]
     [InlineData(120)]

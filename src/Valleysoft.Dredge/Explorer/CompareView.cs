@@ -36,6 +36,9 @@ internal sealed class CompareState
     public int DiffScroll { get; set; }
     public PackageFilesContent? PackageFiles { get; set; }
     public bool Busy { get; set; }
+    public bool Searching { get; set; }
+    public string SearchQuery { get; set; } = "";
+    public (int Cursor, int Scroll, string Query) PackageReturn { get; set; } = (0, 0, "");
 
     public int LayerCount => Math.Max(Comparison.Baseline.Resolved.Manifest.Layers.Length, Comparison.Target.Resolved.Manifest.Layers.Length);
 
@@ -84,7 +87,7 @@ internal sealed class CompareView
     private int RightInner => presenter.RightInner;
     private int RightInnerHeight => presenter.RightInnerHeight;
     private int LeftInner => Narrow ? width - 4 : ExplorerPresenter.LeftWidth - 4;
-    public int DiffRows => Math.Max(1, RightInnerHeight - (c.PackageFiles is null ? 5 : 12));
+    public int DiffRows => Math.Max(1, RightInnerHeight - 5);
 
     public List<Line> Header()
     {
@@ -264,13 +267,27 @@ internal sealed class CompareView
 
     // ───────────────────────────── right pane ─────────────────────────────
 
-    public List<CompareRow> Rows() => rows ??= BuildRows();
+    public List<CompareRow> Rows()
+    {
+        if (rows is not null)
+        {
+            return rows;
+        }
+        List<CompareRow> all = c.PackageFiles is { } package
+            ? (package.Files ?? []).Select(file => new CompareRow("file:" + file.Path,
+                CompareRowKind.File, "", file.Path, file.Change, Path: file.Path)).ToList()
+            : BuildRows();
+        rows = c.SearchQuery.Length == 0 ? all : all
+            .Where(row => row.Kind is CompareRowKind.File or CompareRowKind.Package &&
+                (row.Path ?? row.Name).Contains(c.SearchQuery, StringComparison.OrdinalIgnoreCase)).ToList();
+        return rows;
+    }
 
     private List<CompareRow> BuildRows()
     {
         List<CompareRow> list = [];
         IReadOnlyList<ExplorerPackageDifference> packages = c.Comparison.Packages;
-        bool packagesOpen = c.Expanded.Contains("section:packages");
+        bool packagesOpen = c.SearchQuery.Length > 0 || c.Expanded.Contains("section:packages");
         list.Add(new("section:packages", CompareRowKind.Section, "", "Installed packages", Change.None,
             Expandable: true, Expanded: packagesOpen, Files: packages.Count));
         if (packagesOpen)
@@ -301,7 +318,7 @@ internal sealed class CompareView
                     if (items.Count > 1 || (items.Count == 1 && items[0].Name != key))
                     {
                         string scopeKey = $"scope:{ecosystem}:{key}";
-                        bool open = c.Expanded.Contains(scopeKey);
+                        bool open = c.SearchQuery.Length > 0 || c.Expanded.Contains(scopeKey);
                         Change change = items.All(i => i.BaselineVersion is null) ? Change.Added
                             : items.All(i => i.TargetVersion is null) ? Change.Removed : Change.Modified;
                         list.Add(new(scopeKey, CompareRowKind.Scope, branch, key + "/", change,
@@ -331,7 +348,7 @@ internal sealed class CompareView
             }
         }
 
-        bool filesOpen = c.Expanded.Contains("section:files");
+        bool filesOpen = c.SearchQuery.Length > 0 || c.Expanded.Contains("section:files");
         list.Add(new("section:files", CompareRowKind.Section, "", "Files", Change.None,
             Expandable: true, Expanded: filesOpen, Files: c.Comparison.Files.Count));
         if (filesOpen)
@@ -345,9 +362,9 @@ internal sealed class CompareView
                     bool last = i == nodes.Count - 1;
                     string key = "file:" + n.Path;
                     bool expandable = n.Children.Count > 0;
-                    bool open = expandable && c.Expanded.Contains(key);
+                    bool open = expandable && (c.SearchQuery.Length > 0 || c.Expanded.Contains(key));
                     list.Add(new(key, expandable || n.Dir ? CompareRowKind.Dir : CompareRowKind.File,
-                        guide + (last ? "└─ " : "├─ "), n.Name, n.Change, n.Before, n.After,
+                        guide + (last ? "└─ " : "├─ "), c.SearchQuery.Length > 0 ? n.Path : n.Name, n.Change, n.Before, n.After,
                         Expandable: expandable, Expanded: open, Files: expandable ? n.FileCount : null, Path: n.Path));
                     if (open)
                     {
@@ -398,10 +415,13 @@ internal sealed class CompareView
         List<CompareRow> list = Rows();
         c.Cursor = Math.Clamp(c.Cursor, 0, Math.Max(0, list.Count - 1));
 
-        List<Line> lines = [Chips(w), Line.Blank,
+        List<Line> lines = [c.PackageFiles is { } package
+                ? Line.Of(package.Message ?? $"{Fmt.Count(package.Total, "file")}, {Fmt.N(package.Files?.Count ?? 0)} changed", Theme.Silt)
+                : Chips(w), c.SearchQuery.Length == 0 ? Line.Blank : Line.Of($"Filter: {c.SearchQuery} · {list.Count} matches", Theme.Silt),
             new Line().Add("   ").Add(Fmt.Fit(c.BaselineLabel, 8).PadLeft(8), Theme.Shale).Add("    ").Add(Fmt.Fit(c.TargetLabel, 8).PadLeft(8), Theme.Shale).Add("  ")
                 .Add("change".PadLeft(9), Theme.Shale).Add("  ").Add("name".PadRight(28), Theme.Shale).Add("version", Theme.Shale).Truncate(w)];
-        PaneContent pane = ExplorerPresenter.Pane(lines, "Differences", !c.FocusLayers, $"{c.BaselineLabel} → {c.TargetLabel}");
+        PaneContent pane = ExplorerPresenter.Pane(lines, c.PackageFiles?.Package.Name ?? "Differences",
+            !c.FocusLayers, $"{c.BaselineLabel} → {c.TargetLabel}");
 
         int visible = DiffRows;
         int scroll = Math.Clamp(c.Scroll, 0, Math.Max(0, list.Count - visible));
@@ -419,45 +439,17 @@ internal sealed class CompareView
             pane.On(lines.Count, new SetCursor(i));
             lines.Add(Row(list[i], i == c.Cursor, w));
         }
+        if (list.Count == 0 && c.SearchQuery.Length > 0)
+        {
+            lines.Add(Line.Of("No matching packages or paths. Esc clears the filter.", Theme.Silt));
+        }
         while (lines.Count < 3 + visible)
         {
             lines.Add(Line.Blank);
         }
 
-        if (c.PackageFiles is PackageFilesContent pf)
-        {
-            lines.Add(Line.Of($"── {pf.Package.Name} ", Theme.Shale).Add(new string('─', Math.Max(0, w - pf.Package.Name.Length - 4)), Theme.Shale));
-            Line summary = new();
-            if (pf.Package.BaselineVersion is not null && pf.Package.TargetVersion is not null)
-            {
-                summary.Add(pf.Package.BaselineVersion, Theme.Silt).Add(" → ", Theme.Shale).Add(pf.Package.TargetVersion, Theme.Foam);
-            }
-            else
-            {
-                summary.Add(pf.Package.TargetVersion ?? pf.Package.BaselineVersion ?? "", Theme.Foam);
-            }
-            if (pf.Files is not null)
-            {
-                summary.Add($"   {Fmt.Count(pf.Total, "file")}, {Fmt.N(pf.Files.Count)} changed", Theme.Silt);
-            }
-            lines.Add(summary.Truncate(w));
-            if (pf.Message is not null)
-            {
-                lines.Add(Line.Of("  " + pf.Message, Theme.Silt).Truncate(w));
-            }
-            foreach ((string path, Change change) in (pf.Files ?? []).Take(4))
-            {
-                var (glyph, color) = ExplorerPresenter.Glyph(change);
-                lines.Add(new Line().Add($"  {glyph} ", Theme.S(color, null, Deco.Bold)).Add("/" + path, Theme.Foam).Truncate(w));
-            }
-            if (pf.Files is { Count: > 4 })
-            {
-                lines.Add(Line.Of($"  … {Fmt.N(pf.Files.Count - 4)} more", Theme.Shale));
-            }
-        }
-
         lines.Add(Line.Blank);
-        lines.Add(new Line().Append(ExplorerPresenter.Keycap("Enter")).Add(" Diff a file   ", Theme.Silt)
+        lines.Add(new Line().Append(ExplorerPresenter.Keycap("Enter")).Add(" " + ActivateLabel() + "   ", Theme.Silt)
             .Append(ExplorerPresenter.Keycap(presenter.Keys.Label(KeyAction.CopyCommand))).Add($" {presenter.CopyVerb} ", Theme.Silt)
             .Add("dredge image compare files", Theme.Foam).Truncate(w));
         return pane;
@@ -506,7 +498,7 @@ internal sealed class CompareView
             return sel ? line.WithBackground(Theme.ChannelDeep) : line;
         }
         line.Add(glyph + " ", Theme.S(color, null, Deco.Bold));
-        bool sizes = r.Kind is CompareRowKind.Dir or CompareRowKind.File;
+        bool sizes = r.Kind is CompareRowKind.Dir or CompareRowKind.File && (r.Before is not null || r.After is not null);
         // Package rows have no sizes, so their names start at the size columns and
         // the version change gets the room.
         if (sizes)
@@ -538,7 +530,10 @@ internal sealed class CompareView
         {
             name.Add($"  {Fmt.N(files)}", Theme.Shale);
         }
-        name.Truncate(28).Pad(28);
+        if (r.Versions is not null)
+        {
+            name.Truncate(28).Pad(28);
+        }
         if (r.Versions is not null)
         {
             string[] parts = r.Versions.Split(" → ");
@@ -628,6 +623,11 @@ internal sealed class CompareView
     public List<Hint> Hints()
     {
         KeyMap k = presenter.Keys;
+        if (c.Searching)
+        {
+            return [new("↑↓", "Select"), new("PgUp PgDn", "Page", ShowInFooter: false),
+                new("Enter", "Open", new Activate()), new("Esc", "Close search", new Back())];
+        }
         if (c.Diff is not null)
         {
             return [new("↑↓", "Scroll"), new("PgUp PgDn", "Page", ShowInFooter: false), new("Home End", "Top or bottom", ShowInFooter: false), new("Esc", "Back to differences", new Back()),
@@ -638,12 +638,22 @@ internal sealed class CompareView
             new("Tab", c.FocusLayers ? "Differences" : "Layers", new FocusOn(c.FocusLayers ? FocusPane.Right : FocusPane.Layers)), new("↑↓", "Move", ShowInFooter: false),
             new($"{k.Label(KeyAction.PreviousLayer)} {k.Label(KeyAction.NextLayer)}", "Next difference"),
             new(k.Label(KeyAction.SwapSides), "Swap sides", new SwapSides()),
-            new("Enter", "Diff a file", new Activate()),
-            new(k.Label(KeyAction.Compare), "Change tag…", new PickTag()), new("Esc", "Leave compare", new Back()), new("←→", "Fold", ShowInFooter: false),
+            new("Enter", ActivateLabel(), new Activate()),
+            new(k.Label(KeyAction.Compare), "Change tag…", new PickTag()),
+            new("Esc", c.SearchQuery.Length > 0 ? "Clear filter" : c.PackageFiles is not null ? "Back to differences" : "Leave compare", new Back()),
+            new(k.Label(KeyAction.Search), "Search", new ShowView(RightView.Search)), new("←→", "Fold", ShowInFooter: false),
             new(k.Label(KeyAction.CopyCommand), $"{presenter.CopyVerb} command", new CopyCommand()),
             new("PgUp PgDn", "Page", ShowInFooter: false), new("Home End", "First or last", ShowInFooter: false),
             new(k.Label(KeyAction.Help), "Keys", new ShowView(RightView.Keys)), new(k.Label(KeyAction.Quit), "Quit", new Quit()),
         ];
+    }
+
+    private string ActivateLabel()
+    {
+        List<CompareRow> list = Rows();
+        CompareRow? row = list.ElementAtOrDefault(c.Cursor);
+        return row?.Expandable == true ? row.Expanded ? "Collapse group" : "Expand group"
+            : row?.Kind == CompareRowKind.Package ? "Show package files" : "Diff a file";
     }
 
     private sealed class FileTree
