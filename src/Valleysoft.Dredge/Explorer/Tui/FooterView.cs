@@ -39,8 +39,9 @@ internal sealed class FooterView : View
                 regions.Add((start, line.Length, cmd));
             }
         }
-        line.Truncate(Math.Max(0, width - status.Length));
-        line.Pad(width - status.Length, Theme.S(Theme.Silt));
+        int statusWidth = DisplayText.Width(status);
+        line.Truncate(Math.Max(0, width - statusWidth));
+        line.Pad(width - statusWidth, Theme.S(Theme.Silt));
         line.Add(status, error ? Theme.Garnet : Theme.Silt);
         hits = regions;
         if (!line.SameAs(row))

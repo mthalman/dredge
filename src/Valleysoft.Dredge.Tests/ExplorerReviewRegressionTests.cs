@@ -8,6 +8,52 @@ namespace Valleysoft.Dredge.Tests;
 public sealed class ExplorerReviewRegressionTests
 {
     [Theory]
+    [InlineData("\u754c\u754cTAIL")]
+    [InlineData("e\u0301TAIL")]
+    [InlineData("\U0001F469\u200d\U0001F4BBTAIL")]
+    public void UnicodePreviewPreservesTrailingText(string text)
+    {
+        using ExplorerUiHarness ui = ExplorerWindowTests.Open(ExplorerSamples.Image(), new ExplorerState
+        {
+            Layer = 2, View = RightView.Inspector, InspectPath = "app/package.json", Focus = FocusPane.Right
+        }, session => new FakeExplorerHost
+        {
+            Baseline = session, Preview = path => new PreviewContent(path, null, [text], null, 20)
+        }, out _);
+        ui.Until(() => ui.State.Preview is not null, "Unicode preview");
+        Assert.True(ui.Shows("TAIL"), ui.Screen());
+    }
+
+    [Fact]
+    public void StyledLinesMeasureAndSliceDisplayCellsWithoutSplittingGraphemes()
+    {
+        Assert.Equal(8, Line.Of("\u754c\u754cTAIL").Length);
+        Assert.Equal(" \u754cTA\u2026", Line.Of("\u754c\u754cTAIL").Slice(1, 6).ToString());
+        Assert.Equal("e\u0301T\u2026", Line.Of("e\u0301TAIL").Truncate(3).ToString());
+        Assert.Equal("", Line.Of("\u754c").Truncate(0).ToString());
+        Assert.Equal(2, new Line().Add("\U0001F469\u200d").Add("\U0001F4BB").Length);
+        Assert.Equal("\u754c  ", Line.Of("\u754c").Pad(4).ToString());
+    }
+
+    [Fact]
+    public void WidePreviewCanPanAllTheWayToItsEnd()
+    {
+        string text = new string('\u754c', 100) + "TAIL";
+        using ExplorerUiHarness ui = ExplorerWindowTests.Open(ExplorerSamples.Image(), new ExplorerState
+        {
+            Layer = 2, View = RightView.Inspector, InspectPath = "app/package.json", Focus = FocusPane.Right
+        }, session => new FakeExplorerHost
+        {
+            Baseline = session, Preview = path => new PreviewContent(path, null, [text], null, 304)
+        }, out _, width: 80, height: 24);
+        ui.Until(() => ui.State.Preview is not null, "wide preview");
+        ui.Window.Apply(new PanText(1000));
+        ui.Pump();
+        Assert.Equal(204 - (ui.Window.Presenter.RightInner - 6), ui.State.PreviewColumn);
+        Assert.True(ui.Shows("TAIL"), ui.Screen());
+    }
+
+    [Theory]
     [InlineData(false)]
     [InlineData(true)]
     public void DirectoryReplacementFileCanBeInspectedWithoutLosingDeletedChildren(bool whole)

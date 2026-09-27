@@ -252,7 +252,7 @@ internal sealed partial class ExplorerPresenter
         PreviewContent? preview = s.Preview is { } p && p.Path == path ? p : null;
         List<string> previewLines = preview?.Lines ?? [];
         int textWidth = Math.Max(1, w - 6);
-        int maxColumn = Math.Max(0, previewLines.Select(line => line.Length).DefaultIfEmpty(0).Max() - textWidth);
+        int maxColumn = Math.Max(0, previewLines.Select(DisplayText.Width).DefaultIfEmpty(0).Max() - textWidth);
         s.PreviewColumn = Math.Clamp(s.PreviewColumn, 0, maxColumn);
         string ruleText = node.Kind == Kind.Dir ? "  directory "
             : preview is null ? (img.Complete ? "  loading… " : "  available once every layer is indexed ")

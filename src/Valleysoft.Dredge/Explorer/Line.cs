@@ -1,15 +1,15 @@
 using System.Globalization;
+using Terminal.Gui.Text;
 
 namespace Valleysoft.Dredge.Explorer;
 
-// A single styled terminal row, independent of any rendering library. Building
-// rows from spans gives exact column control for padding, truncation, and
-// full-row selection highlights.
+// Keep styles attached to text while measuring it with the driver's display-cell rules.
 internal sealed class Line
 {
     private readonly List<(string Text, Sty Sty)> parts = [];
 
-    public int Length { get; private set; }
+    private int? length;
+    public int Length => length ??= DisplayText.Width(ToString());
 
     public Line Add(string text, Sty? style = null)
     {
@@ -18,7 +18,7 @@ internal sealed class Line
             return this;
         }
         parts.Add((text, style ?? Sty.Plain));
-        Length += text.Length;
+        length = null;
         return this;
     }
 
@@ -58,28 +58,32 @@ internal sealed class Line
 
     public Line Truncate(int width)
     {
+        width = Math.Max(0, width);
         if (Length <= width)
         {
             return this;
         }
+        int take = DisplayText.PrefixLength(ToString(), Math.Max(0, width - 1));
         List<(string, Sty)> kept = [];
-        int used = 0;
+        Sty ending = parts.Count > 0 ? parts[0].Sty : Sty.Plain;
         foreach (var (text, style) in parts)
         {
-            if (used + text.Length < width)
+            if (take == 0)
             {
-                kept.Add((text, style));
-                used += text.Length;
-                continue;
+                break;
             }
-            int take = Math.Max(0, width - used - 1);
-            kept.Add((text[..take] + "…", style));
-            used += take + 1;
-            break;
+            int count = Math.Min(take, text.Length);
+            kept.Add((text[..count], style));
+            ending = style;
+            take -= count;
+        }
+        if (width > 0)
+        {
+            kept.Add(("…", ending));
         }
         parts.Clear();
         parts.AddRange(kept);
-        Length = used;
+        length = null;
         return this;
     }
 
@@ -96,15 +100,29 @@ internal sealed class Line
     public Line Slice(int start, int width)
     {
         Line line = new();
+        string full = ToString();
+        int skip = 0;
+        int columns = 0;
+        TextElementEnumerator elements = StringInfo.GetTextElementEnumerator(full);
+        while (columns < start && elements.MoveNext())
+        {
+            string text = elements.GetTextElement();
+            columns += DisplayText.Width(text);
+            skip += text.Length;
+        }
+        if (columns > start)
+        {
+            line.Add(new string(' ', columns - start));
+        }
         foreach (var (text, style) in parts)
         {
-            if (start >= text.Length)
+            if (skip >= text.Length)
             {
-                start -= text.Length;
+                skip -= text.Length;
                 continue;
             }
-            line.Add(text[start..], style);
-            start = 0;
+            line.Add(text[skip..], style);
+            skip = 0;
         }
         return line.Truncate(width);
     }
@@ -148,6 +166,40 @@ internal sealed class Line
     public static Line Blank => new();
 }
 
+internal static class DisplayText
+{
+    public static int Width(string text)
+    {
+        foreach (char c in text)
+        {
+            if (c < ' ' || c > '~')
+            {
+                return text.GetColumns();
+            }
+        }
+        return text.Length;
+    }
+
+    public static int PrefixLength(string text, int columns)
+    {
+        int count = 0;
+        int used = 0;
+        TextElementEnumerator elements = StringInfo.GetTextElementEnumerator(text);
+        while (elements.MoveNext())
+        {
+            string element = elements.GetTextElement();
+            int width = Width(element);
+            if (used + width > columns)
+            {
+                break;
+            }
+            count += element.Length;
+            used += width;
+        }
+        return count;
+    }
+}
+
 internal static class Fmt
 {
     public static string Size(long bytes)
@@ -182,8 +234,7 @@ internal static class Fmt
     public static string Count(int n, string singular, string? plural = null) =>
         $"{N(n)} {(n == 1 ? singular : plural ?? singular + "s")}";
 
-    public static string Fit(string s, int width) =>
-        s.Length <= width ? s : width <= 1 ? "…" : s[..(width - 1)] + "…";
+    public static string Fit(string s, int width) => Line.Of(s).Truncate(width).ToString();
 
     public static long MB(double mb) => (long)(mb * 1_000_000);
     public static long KB(double kb) => (long)(kb * 1_000);

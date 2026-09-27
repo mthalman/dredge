@@ -559,7 +559,7 @@ internal sealed class CompareView
         int w = RightInner;
         List<Line> lines = [];
         int half = (w - 3) / 2;
-        int maxColumn = Math.Max(0, (diff.Lines ?? []).Select(line => line.Text.Length).DefaultIfEmpty(0).Max() - Math.Max(1, half - 5));
+        int maxColumn = Math.Max(0, (diff.Lines ?? []).Select(line => DisplayText.Width(line.Text)).DefaultIfEmpty(0).Max() - Math.Max(1, half - 5));
         c.DiffColumn = Math.Clamp(c.DiffColumn, 0, maxColumn);
         lines.Add(new Line().Add(Fmt.Fit(c.BaselineLabel, half).PadRight(half), Theme.S(Theme.Silt, null, Deco.Bold)).Add(" │ ", Theme.Shale)
             .Add(Fmt.Fit(c.TargetLabel, half), Theme.S(Theme.Foam, null, Deco.Bold)));

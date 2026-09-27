@@ -400,9 +400,10 @@ internal sealed class ExplorerWindow : Window
         string? note = extracting ? "Enter extract · Esc cancel" : ex.TooSmall ? null
             : s.Notice ?? s.ComparisonStatus ?? (Comparing ? (s.Compare!.Busy ? "Loading…" : null) : ex.Status(s));
         string status = note is null ? "" : Fmt.Fit(note, Math.Max(10, Viewport.Width / 2)) + " ";
+        int statusWidth = DisplayText.Width(status);
 
         // Searching, the field and match count own the left of the row; extracting, the prompt owns all but the note.
-        int left = searching ? 46 : extracting ? Math.Max(0, Viewport.Width - status.Length) : 0;
+        int left = searching ? 46 : extracting ? Math.Max(0, Viewport.Width - statusWidth) : 0;
         if (footerLeft != left)
         {
             footerLeft = left;
@@ -411,9 +412,10 @@ internal sealed class ExplorerWindow : Window
         List<Hint> hints = [];
         if (!extracting)
         {
-            int room = Math.Max(0, Viewport.Width - left - status.Length - 1);
+            int room = Math.Max(0, Viewport.Width - left - statusWidth - 1);
             List<Hint> source = ex.TooSmall ? [new(host.Keys.Label(KeyAction.Quit), "Quit", new Quit())] : ContextHints();
-            hints = ex.Fit(source.Where(h => h.ShowInFooter).ToList(), room, h => h.Key.Length + h.Label.Length + 5);
+            hints = ex.Fit(source.Where(h => h.ShowInFooter).ToList(), room,
+                h => DisplayText.Width(h.Key) + DisplayText.Width(h.Label) + 5);
         }
         footer.Show(hints, status, s.NoticeIsError && s.Notice is not null, Math.Max(0, Viewport.Width - left));
 

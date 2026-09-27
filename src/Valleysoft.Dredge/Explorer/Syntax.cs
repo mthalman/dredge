@@ -53,7 +53,7 @@ internal static partial class Syntax
         {
             Line current = lines[^1];
             bool isSpace = string.IsNullOrWhiteSpace(text);
-            if (current.Length + text.Length > width && !isSpace)
+            if (current.Length + DisplayText.Width(text) > width && !isSpace)
             {
                 if (lines.Count == maxLines)
                 {

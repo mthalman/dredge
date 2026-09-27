@@ -1,5 +1,8 @@
 using Terminal.Gui.Drawing;
 using Terminal.Gui.ViewBase;
+using Terminal.Gui.Text;
+using System.Text;
+using System.Globalization;
 using Attribute = Terminal.Gui.Drawing.Attribute;
 
 namespace Valleysoft.Dredge.Explorer.Tui;
@@ -44,21 +47,47 @@ internal static class Paint
         }
     }
 
-    public static void Draw(View v, int col, int row, Line line, int width)
+    public static int Draw(View v, int col, int row, Line line, int width)
     {
         v.Move(col, row);
-        int used = 0;
-        foreach (var (text, sty) in line.Parts)
+        Line visible = line.Length > width ? line.Slice(0, width) : line;
+        if (Simple(visible))
         {
-            if (used >= width)
+            foreach (var (text, sty) in visible.Parts)
             {
-                break;
+                v.SetAttribute(sty.ToAttribute());
+                v.AddStr(text);
             }
-            string t = used + text.Length > width ? text[..(width - used)] : text;
-            v.SetAttribute(sty.ToAttribute());
-            v.AddStr(t);
-            used += t.Length;
         }
+        else
+        {
+            TextElementEnumerator elements = StringInfo.GetTextElementEnumerator(visible.ToString());
+            int part = 0, end = visible.Parts.Count > 0 ? visible.Parts[0].Text.Length : 0;
+            Sty? style = null;
+            StringBuilder run = new();
+            while (elements.MoveNext())
+            {
+                while (elements.ElementIndex >= end && part < visible.Parts.Count - 1)
+                {
+                    end += visible.Parts[++part].Text.Length;
+                }
+                Sty next = visible.Parts[part].Sty;
+                if (style is not null && style != next)
+                {
+                    v.SetAttribute(style.ToAttribute());
+                    v.AddStr(run.ToString());
+                    run.Clear();
+                }
+                style = next;
+                run.Append(elements.GetTextElement());
+            }
+            if (style is not null)
+            {
+                v.SetAttribute(style.ToAttribute());
+                v.AddStr(run.ToString());
+            }
+        }
+        return visible.Length;
     }
 
     // Draws the line and blanks the rest of the width, so a view can paint every
@@ -68,8 +97,7 @@ internal static class Paint
         int used = 0;
         if (line is not null)
         {
-            Draw(v, col, row, line, width);
-            used = Math.Min(line.Length, width);
+            used = Draw(v, col, row, line, width);
         }
         if (used < width)
         {
@@ -144,8 +172,7 @@ internal static class Paint
         {
             foreach (char c in text)
             {
-                // Everything the explorer draws itself sits below U+2E80; CJK, emoji and surrogates don't.
-                if (c >= '\u2E80' || char.IsSurrogate(c) || (c >= '\u0300' && c < '\u0370') || c < ' ')
+                if (char.IsSurrogate(c) || new Rune(c).GetColumns() != 1)
                 {
                     return false;
                 }
