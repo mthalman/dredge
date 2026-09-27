@@ -1580,6 +1580,32 @@ public sealed class ExplorerThemeTests : IDisposable
     }
 
     [Fact]
+    public void InformationalTextAndSelectedSecondaryTextHaveReadableContrast()
+    {
+        foreach (ThemeKind kind in new[] { ThemeKind.Dark, ThemeKind.Light })
+        {
+            Theme.Apply(kind);
+            Assert.True(ContrastRatio(Theme.Silt, Theme.Ground) >= 4.5);
+            Assert.True(ContrastRatio(Theme.Silt, Theme.Graphite) >= 4.5);
+            foreach (Line line in new[]
+            {
+                Line.Of("secondary", Theme.Silt).WithBackground(Theme.ChannelDeep),
+                Line.Of("secondary", Theme.Silt).UnderBackground(Theme.ChannelDeep),
+            })
+            {
+                Sty style = Assert.Single(line.Parts).Sty;
+                Assert.Equal(Theme.Foam, style.Foreground);
+                Assert.True(ContrastRatio(style.Foreground!.Value, style.Background!.Value) >= 4.5);
+            }
+            ExplorerPresenter presenter = new(ExplorerSamples.Image(), 150, 42);
+            Line header = presenter.FilesPane(new ExplorerState { Layer = 2 }).Lines
+                .Single(line => line.ToString().Contains("uid:gid", StringComparison.Ordinal));
+            Assert.All(header.Parts.Where(part => !string.IsNullOrWhiteSpace(part.Text)),
+                part => Assert.Equal(Theme.Silt, part.Sty.Foreground));
+        }
+    }
+
+    [Fact]
     public void ExplorerRendersInEveryTheme()
     {
         foreach (ThemeKind kind in Enum.GetValues<ThemeKind>())

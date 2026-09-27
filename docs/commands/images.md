@@ -204,6 +204,8 @@ double-click a row to open it. The wheel scrolls the pane under the pointer.
 You can remap the single-character keys and configure the theme, mouse, and
 text viewer through the
 [`explore` settings](../settings.md#configure-the-explorer).
+Column headers, line numbers, and counts use readable secondary text; selected
+rows promote secondary text to the primary foreground in both color themes.
 
 The explorer needs an interactive terminal of at least 80 × 24. If standard
 input or output is redirected, it exits with code 1; use `image ls` or the

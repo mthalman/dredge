@@ -548,7 +548,7 @@ internal sealed partial class ExplorerPresenter
             }
             else if (state == ExplorerLayerState.Waiting)
             {
-                line.Add("waiting".PadLeft(GaugeWidth), Theme.Shale);
+                line.Add("waiting".PadLeft(GaugeWidth), Theme.Silt);
             }
             else if (state == ExplorerLayerState.Failed)
             {

@@ -200,7 +200,7 @@ internal sealed partial class ExplorerPresenter
         }
         if (node.Target is not null)
         {
-            meta.Add("   ").Add(node.HardLink ? "hard link to " : "→ ", Theme.Shale).Add(node.Target, Theme.Foam);
+            meta.Add("   ").Add(node.HardLink ? "hard link to " : "→ ", Theme.Silt).Add(node.Target, Theme.Foam);
         }
         items.Add(meta.Truncate(w));
         items.Add(Line.Blank);
@@ -211,7 +211,7 @@ internal sealed partial class ExplorerPresenter
         IEnumerable<(int Layer, Change Change)> shown = history.Count > maxHistory ? history.Skip(history.Count - maxHistory) : history;
         if (history.Count > maxHistory)
         {
-            items.Add(Line.Of($"  … {history.Count - maxHistory} earlier layers", Theme.Shale));
+            items.Add(Line.Of($"  … {history.Count - maxHistory} earlier layers", Theme.Silt));
         }
         List<(int Layer, Change Change)> shownList = shown.ToList();
         for (int i = 0; i < shownList.Count; i++)
@@ -282,7 +282,7 @@ internal sealed partial class ExplorerPresenter
         foreach (var (text, i) in previewLines.Skip(s.PreviewScroll).Take(room).Select((t, i) => (t, i + s.PreviewScroll)))
         {
             Line body = json ? Syntax.Json(text) : Line.Of(text.Replace('\t', ' '), Theme.Foam);
-            items.Add(new Line().Add($"{i + 1,4}  ", Theme.Shale).Append(body.Slice(s.PreviewColumn, textWidth)));
+            items.Add(new Line().Add($"{i + 1,4}  ", Theme.Silt).Append(body.Slice(s.PreviewColumn, textWidth)));
             shownLines++;
         }
         for (int i = shownLines; i < room; i++)
@@ -383,7 +383,7 @@ internal sealed partial class ExplorerPresenter
         items.Add(img.Loading
             ? new Line().Add(SpinnerGlyph(s) + " ", Theme.Channel).Add($"Searching {img.ReadyCount} of {img.LayerCount} indexed layers; results grow as layers load.", Theme.Silt)
             : Line.Blank);
-        items.Add(new Line().Add("   ").Add("layers".PadRight(12), Theme.Shale).Add("size".PadLeft(8), Theme.Shale).Add("  ").Add("path", Theme.Shale));
+        items.Add(new Line().Add("   ").Add("layers".PadRight(12), Theme.Silt).Add("size".PadLeft(8), Theme.Silt).Add("  ").Add("path", Theme.Silt));
         List<(int Line, int Hit)> clickable = [];
 
         int visible = SearchRows;
@@ -473,7 +473,7 @@ internal sealed partial class ExplorerPresenter
             {
                 items.Add(Line.Blank);
             }
-            items.Add(Line.Of("── Selected ", Theme.Shale).Add(new string('─', Math.Max(0, w - 12)), Theme.Shale));
+            items.Add(Line.Of("── Selected ", Theme.Silt).Add(new string('─', Math.Max(0, w - 12)), Theme.Shale));
             SearchHit sel = hits[s.SearchCursor];
             items.Add(new Line().Add("/" + sel.Path + (sel.Dir ? "/" : ""), Theme.S(sel.Dir ? Theme.DirName : Theme.Foam, null, Deco.Bold)).Truncate(w));
             items.Add(new Line().Add("layers ", Theme.Silt).Append(Badges(sel.Layers)).Truncate(w));

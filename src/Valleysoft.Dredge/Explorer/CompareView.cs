@@ -174,8 +174,8 @@ internal sealed class CompareView
         int w = LeftInner;
         List<Line> lines =
         [
-            new Line().Add("    ").Add(Fmt.Fit(c.TargetLabel, 8).PadLeft(8), Theme.Shale).Add("   ")
-                .Add(("vs " + Fmt.Fit(c.BaselineLabel, 6)).PadLeft(9), Theme.Shale),
+            new Line().Add("    ").Add(Fmt.Fit(c.TargetLabel, 8).PadLeft(8), Theme.Silt).Add("   ")
+                .Add(("vs " + Fmt.Fit(c.BaselineLabel, 6)).PadLeft(9), Theme.Silt),
         ];
         int visible = Narrow ? ExplorerPresenter.NarrowLayersHeight - 3 : height - ExplorerPresenter.HeaderHeight - 1 - ExplorerPresenter.DetailsHeight - 3;
         int start = c.LayerCount <= visible ? 0 : Math.Clamp(c.Layer - visible / 2, 0, c.LayerCount - visible);
@@ -190,7 +190,7 @@ internal sealed class CompareView
                 .Add(same ? " = " : " ≠ ", same ? Theme.S(Theme.Shale) : Theme.S(Theme.Ochre, null, Deco.Bold));
             if (same)
             {
-                line.Add("same".PadLeft(9), Theme.Shale);
+                line.Add("same".PadLeft(9), Theme.Silt);
             }
             else if (c.BaselineSize(layer) is null)
             {
@@ -230,7 +230,7 @@ internal sealed class CompareView
             Line line = new Line().Add(Fmt.Fit(label, labelWidth - 2).PadRight(labelWidth), Theme.Silt);
             if (digest is null)
             {
-                line.Add("no layer at this position", Theme.Shale);
+                line.Add("no layer at this position", Theme.Silt);
             }
             else
             {
@@ -419,8 +419,8 @@ internal sealed class CompareView
         List<Line> lines = [c.PackageFiles is { } package
                 ? Line.Of(package.Message ?? $"{Fmt.Count(package.Total, "file")}, {Fmt.N(package.Files?.Count ?? 0)} changed", Theme.Silt)
                 : Chips(w), c.SearchQuery.Length == 0 ? Line.Blank : Line.Of($"Filter: {c.SearchQuery} · {list.Count} matches", Theme.Silt),
-            new Line().Add("   ").Add(Fmt.Fit(c.BaselineLabel, 8).PadLeft(8), Theme.Shale).Add("    ").Add(Fmt.Fit(c.TargetLabel, 8).PadLeft(8), Theme.Shale).Add("  ")
-                .Add("change".PadLeft(9), Theme.Shale).Add("  ").Add("name".PadRight(28), Theme.Shale).Add("version", Theme.Shale).Truncate(w)];
+            new Line().Add("   ").Add(Fmt.Fit(c.BaselineLabel, 8).PadLeft(8), Theme.Silt).Add("    ").Add(Fmt.Fit(c.TargetLabel, 8).PadLeft(8), Theme.Silt).Add("  ")
+                .Add("change".PadLeft(9), Theme.Silt).Add("  ").Add("name".PadRight(28), Theme.Silt).Add("version", Theme.Silt).Truncate(w)];
         PaneContent pane = ExplorerPresenter.Pane(lines, c.PackageFiles?.Package.Name ?? "Differences",
             !c.FocusLayers, $"{c.BaselineLabel} → {c.TargetLabel}");
 
@@ -474,7 +474,7 @@ internal sealed class CompareView
             .Select(EcosystemName).ToList();
         Line right = unavailable.Count > 0
             ? Line.Of($"▲ {string.Join(", ", unavailable)} metadata unavailable", Theme.Ochre)
-            : Line.Of($"{Fmt.Count(c.Comparison.Files.Count, "path")} {(c.Comparison.Files.Count == 1 ? "differs" : "differ")}", Theme.Shale);
+            : Line.Of($"{Fmt.Count(c.Comparison.Files.Count, "path")} {(c.Comparison.Files.Count == 1 ? "differs" : "differ")}", Theme.Silt);
         return line.PadRight(w, right);
     }
 
@@ -493,7 +493,7 @@ internal sealed class CompareView
             line.Add(r.Name, Theme.S(top ? Theme.Foam : Theme.Silt, null, Deco.Bold));
             if (r.Files is int n)
             {
-                line.Add($"  {Fmt.Count(n, r.Key == "section:files" ? "path" : "package")} {(n == 1 ? "differs" : "differ")}", Theme.Shale);
+                line.Add($"  {Fmt.Count(n, r.Key == "section:files" ? "path" : "package")} {(n == 1 ? "differs" : "differ")}", Theme.Silt);
             }
             line.Truncate(w).Pad(w);
             return sel ? line.WithBackground(Theme.ChannelDeep) : line;
@@ -529,7 +529,7 @@ internal sealed class CompareView
         name.Add(r.Kind == CompareRowKind.Dir ? r.Name + "/" : r.Name, style);
         if (r.Files is int files && !r.Expanded)
         {
-            name.Add($"  {Fmt.N(files)}", Theme.Shale);
+            name.Add($"  {Fmt.N(files)}", Theme.Silt);
         }
         if (r.Versions is not null)
         {
@@ -595,7 +595,7 @@ internal sealed class CompareView
         {
             return result.Pad(width);
         }
-        result.Add($"{number,4} ", Theme.Shale).Append(Line.Of(line.Text.Replace('\t', ' '), new Sty(fg, bg))
+        result.Add($"{number,4} ", Theme.Silt).Append(Line.Of(line.Text.Replace('\t', ' '), new Sty(fg, bg))
             .Slice(c.DiffColumn, Math.Max(1, width - 5)));
         result.Truncate(width).Pad(width, bg is null ? null : new Sty(fg, bg));
         return result;

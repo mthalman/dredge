@@ -88,7 +88,7 @@ internal sealed class Line
         Line line = new();
         foreach (var (text, style) in parts)
         {
-            line.Add(text, new Sty(style.Foreground, bg, style.Deco));
+            line.Add(text, new Sty(bg == Theme.ChannelDeep && style.Foreground == Theme.Silt ? Theme.Foam : style.Foreground, bg, style.Deco));
         }
         return line;
     }
@@ -115,7 +115,8 @@ internal sealed class Line
         Line line = new();
         foreach (var (text, style) in parts)
         {
-            line.Add(text, style.Background is null ? new Sty(style.Foreground, bg, style.Deco) : style);
+            Rgb? foreground = bg == Theme.ChannelDeep && style.Foreground == Theme.Silt ? Theme.Foam : style.Foreground;
+            line.Add(text, style.Background is null ? new Sty(foreground, bg, style.Deco) : style);
         }
         return line;
     }

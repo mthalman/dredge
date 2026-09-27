@@ -259,13 +259,13 @@ internal sealed partial class ExplorerPresenter
             if (s.Hidden.Contains(change))
             {
                 ranges.Add((start, start + label.Length + 4, change));
-                line.Add($" {glyph} {label} ", Theme.S(Theme.Shale, null, Deco.Strikethrough));
+                line.Add($" {glyph} {label} ", Theme.S(Theme.Silt, null, Deco.Strikethrough));
                 continue;
             }
             bool zero = n == 0;
             line.Add($" {glyph}", Theme.S(zero ? Theme.Shale : color, Theme.Graphite, Deco.Bold))
-                .Add($" {Fmt.N(n)}", Theme.S(zero ? Theme.Shale : Theme.Foam, Theme.Graphite))
-                .Add($" {label} ", Theme.S(zero ? Theme.Shale : Theme.Silt, Theme.Graphite));
+                .Add($" {Fmt.N(n)}", Theme.S(zero ? Theme.Silt : Theme.Foam, Theme.Graphite))
+                .Add($" {label} ", Theme.S(Theme.Silt, Theme.Graphite));
             ranges.Add((start, line.Length, change));
         }
         return line;
@@ -276,10 +276,10 @@ internal sealed partial class ExplorerPresenter
         Line line = new Line().Add("   ");
         if (!compact)
         {
-            line.Add("mode".PadRight(10), Theme.Shale).Add("  ")
-                .Add("uid:gid".PadLeft(9), Theme.Shale).Add("  ");
+            line.Add("mode".PadRight(10), Theme.Silt).Add("  ")
+                .Add("uid:gid".PadLeft(9), Theme.Silt).Add("  ");
         }
-        return line.Add("size".PadLeft(8), Theme.Shale).Add("  ").Add("name", Theme.Shale);
+        return line.Add("size".PadLeft(8), Theme.Silt).Add("  ").Add("name", Theme.Silt);
     }
 
     private static Line TreeRow(FlatRow r, bool selected, bool focused, int w, bool compact)
@@ -320,7 +320,7 @@ internal sealed partial class ExplorerPresenter
         }
         if (n.Kind == Kind.Dir && !r.Expanded && n.Children.Count > 0)
         {
-            name.Add($"  {Fmt.Count(n.FileCount, "file")}", Theme.Shale);
+            name.Add($"  {Fmt.Count(n.FileCount, "file")}", Theme.Silt);
         }
         if (n.Note is not null)
         {
