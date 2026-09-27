@@ -152,7 +152,7 @@ internal static class ExplorerInsights
         string why = kind switch
         {
             ExplorerFindingKind.Deleted =>
-                $"Layer {hiddenBy} hides them, but layer {layer} still downloads them.",
+                $"Layer {hiddenBy} hides them, but their payload remains in layer {layer}.",
             ExplorerFindingKind.Identical =>
                 $"Layer {hiddenBy} wrote the same bytes layer {layer} already shipped.",
             ExplorerFindingKind.BaseReplaced =>
@@ -173,7 +173,8 @@ internal static class ExplorerInsights
             $"Layer {layer} shipped {count} {noun} under {where}.",
             $"Layer {hiddenBy} {verb} {(files.Length == 1 ? "it" : "them")} again, so {Size(bytes)} is hidden.",
             "",
-            $"The older copies are hidden, but every pull still downloads them as part of layer {layer}.",
+            $"The hidden content remains in layer {layer}; {Size(bytes)} measures uncompressed file payload, not exact transfer savings.",
+            "Pulls download compressed layers only when they are not already cached.",
         ];
         if (kind == ExplorerFindingKind.Deleted)
         {
@@ -207,7 +208,8 @@ internal static class ExplorerInsights
             "Write each file in one layer", "Combine the steps that touch these files", false,
             [
                 $"{Count(files.Count, "file")} {(files.Count == 1 ? "is" : "are")} hidden in groups under {Size(SmallGroupThreshold)} each.",
-                $"Together they add {Size(bytes)} to every pull.",
+                $"Together they contain {Size(bytes)} of hidden uncompressed file payload.",
+                "Transfer savings depend on layer compression and the layers already cached.",
             ]);
     }
 

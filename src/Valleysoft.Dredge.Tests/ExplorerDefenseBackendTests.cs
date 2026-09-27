@@ -17,6 +17,27 @@ public sealed class ExplorerDefenseBackendTests : IAsyncDisposable
     private static readonly ImageName Image = ImageName.Parse("registry.test/repo:tag");
 
     [Theory]
+    [InlineData(10, false)]
+    [InlineData(2_000_000, false)]
+    [InlineData(2_000_000, true)]
+    public void InsightsDistinguishHiddenPayloadFromPullTransfer(long bytes, bool deleted)
+    {
+        ImageAnalysisResult analysis = ImageAnalysis.Analyze(
+        [
+            Layer(File("app/data", bytes, "same")),
+            deleted ? new LayerChanges([], ["app/data"], []) : Layer(File("app/data", bytes, "same"))
+        ]);
+        ExplorerFinding finding = Assert.Single(ExplorerInsights.Build(analysis, ["COPY", "RUN"], null).Findings);
+        string explanation = finding.Why + "\n" + string.Join("\n", finding.Explain);
+
+        Assert.Equal(bytes, finding.Bytes);
+        Assert.Contains("uncompressed file payload", explanation);
+        Assert.Contains("cached", explanation);
+        Assert.DoesNotContain("every pull", explanation);
+        Assert.DoesNotContain("still downloads", explanation);
+    }
+
+    [Theory]
     [InlineData(false)]
     [InlineData(true)]
     public void PotentialAdviceRequiresBaseChangesForInheritedFiles(bool mixed)
