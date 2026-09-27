@@ -24,8 +24,13 @@ public sealed class ExplorerReviewRegressionTests
         }
         ui.Window.Apply(new ShowView(RightView.Insights));
         ui.Pump();
-        Assert.True(ui.Shows("Base verification:"), ui.Screen());
+        Assert.True(ui.Shows("Base verification warning - Alt+W for full details"), ui.Screen());
+        ui.Press(new Key('w').WithAlt);
+        Assert.Equal(RightView.Warning, ui.State.View);
+        Assert.Equal(warning, ui.State.WarningText);
         Assert.True(ui.Shows("connection refused"), ui.Screen());
+        ui.Press(Key.Esc);
+        Assert.Equal(RightView.Insights, ui.State.View);
     }
 
     [Fact]
@@ -56,7 +61,7 @@ public sealed class ExplorerReviewRegressionTests
     public void CopiedPathsWithSpacesAreSingleQuoted(bool directory)
     {
         ExplorerPresenter presenter = new(ExplorerSamples.Image(), 150, 42);
-        Assert.Equal($"dredge image {(directory ? "ls" : "cat")} {ExplorerSamples.Reference} '/app/a file.txt'" +
+        Assert.Equal($"dredge image {(directory ? "ls" : "cat")} {presenter.Image.ResolvedReference} '/app/a file.txt'" +
             (directory ? " --recursive" : ""), presenter.CopyCommandText(new ExplorerState(), "app/a file.txt", directory));
     }
 
