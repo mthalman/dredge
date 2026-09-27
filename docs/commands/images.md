@@ -112,6 +112,9 @@ dredge image explore <image> [--layer <n>] [--compare <image-or-tag>] [--base-im
 - `--no-mouse` leaves the mouse to the terminal, so you can select text without
   a modifier key.
 
+Images with no layers open with an empty filesystem; layer navigation and retry
+actions have no effect.
+
 The explorer opens as soon as the manifest and configuration load. Layers are
 indexed in the background, with focus in the Layers pane and the selected layer
 indexed first. A layer

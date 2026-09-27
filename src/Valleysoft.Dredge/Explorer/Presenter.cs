@@ -371,6 +371,10 @@ internal sealed partial class ExplorerPresenter
         Hint compare = new(K(KeyAction.Compare), "Compare…", new PickTag());
         Hint search = new(K(KeyAction.Search), "Search", new ShowView(RightView.Search));
         Hint insights = new(K(KeyAction.Insights), "Insights", new ShowView(RightView.Insights));
+        if (img.LayerCount == 0)
+        {
+            return [compare, insights, search, keys, back, quit];
+        }
         Hint step = new($"{K(KeyAction.PreviousLayer)} {K(KeyAction.NextLayer)}", "Step layer");
         List<Hint> retry = img.States[s.Layer] == ExplorerLayerState.Failed
             ? [new(K(KeyAction.Retry), "Retry layer", new RetryLayer(s.Layer))] : [];
@@ -463,6 +467,10 @@ internal sealed partial class ExplorerPresenter
     public PaneContent LayersPane(ExplorerState s)
     {
         bool focused = s.Focus == FocusPane.Layers;
+        if (img.LayerCount == 0)
+        {
+            return Pane([Line.Of("No filesystem layers.", Theme.Silt)], "Layers", focused);
+        }
         // The selection marker takes the pane's left padding, leaving more room for instructions.
         int w = LeftInner + 1;
         long max = Math.Max(1, img.LayerIndexes.Select(img.LayerSize).DefaultIfEmpty(0).Max());
@@ -639,6 +647,10 @@ internal sealed partial class ExplorerPresenter
 
     public PaneContent DetailsPane(ExplorerState s)
     {
+        if (img.LayerCount == 0)
+        {
+            return Pane([Line.Of("This image has no layers.", Theme.Silt)], "Image", false);
+        }
         if (s.View == RightView.Insights && SelectedFinding(s) is ExplorerFinding selected)
         {
             return FindingDetails(selected);

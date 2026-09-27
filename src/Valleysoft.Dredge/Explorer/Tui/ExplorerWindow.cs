@@ -601,6 +601,11 @@ internal sealed class ExplorerWindow : Window
 
     private void SelectLayerCore(int layer)
     {
+        if (img.LayerCount == 0)
+        {
+            Notice("This image has no layers.");
+            return;
+        }
         s.Layer = Math.Clamp(layer, 0, img.LayerCount - 1);
         s.Cursor = s.Scroll = 0;
         s.PreviewScroll = 0;
@@ -715,7 +720,7 @@ internal sealed class ExplorerWindow : Window
             case FirstUserLayer:
                 Notice(img.BaseLayerCount is null ? "No verified base image, so every layer is shown as yours." : "Every layer is part of the base image.");
                 break;
-            case RetryLayer r when img.States[r.Layer] == ExplorerLayerState.Failed:
+            case RetryLayer r when r.Layer >= 0 && r.Layer < img.LayerCount && img.States[r.Layer] == ExplorerLayerState.Failed:
                 host.Retry(r.Layer);
                 img.States[r.Layer] = ExplorerLayerState.Waiting;
                 img.Errors[r.Layer] = null;

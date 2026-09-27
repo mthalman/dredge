@@ -68,6 +68,10 @@ internal sealed partial class ExplorerPresenter
     {
         bool focused = s.Focus == FocusPane.Right;
         int w = RightInner;
+        if (img.LayerCount == 0)
+        {
+            return Pane([Line.Of("This image has an empty filesystem.", Theme.Silt)], "Filesystem", focused);
+        }
         if (!img.IsIndexed(s.Layer))
         {
             return NotIndexedPane(s, focused, w);
