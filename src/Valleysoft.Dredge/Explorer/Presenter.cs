@@ -156,7 +156,7 @@ internal sealed partial class ExplorerPresenter
             }
             else
             {
-                right.Add(SpinnerGlyph(s) + " ", Theme.Channel).Add("reading packages", Theme.Silt);
+                right.Add(SpinnerGlyph(s) + " ", Theme.Channel).Add("preparing insights", Theme.Silt);
             }
         }
         else

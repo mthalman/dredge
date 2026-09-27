@@ -94,6 +94,7 @@ public sealed class ExplorerIntegrationTests
             Assert.Null(img.SessionError);
             Assert.Equal(1, ui.State.Layer);
             Assert.True(ui.Shows("COPY . /app"), ui.Screen());
+            Assert.Throws<InvalidOperationException>(() => explorer.Host.Session!.Packages);
             img.States[1] = ExplorerLayerState.Indexing;
             img.Progress[1] = 1;
             ui.Until(() => img.States[1] == ExplorerLayerState.Ready,
@@ -138,6 +139,7 @@ public sealed class ExplorerIntegrationTests
             Assert.True(picked, "the tag picker opened");
             ui.Until(() => ui.State.Compare is not null, "the comparison");
             ExplorerComparison comparison = ui.State.Compare!.Comparison;
+            Assert.Same(explorer.Host.Session!.Packages, comparison.Baseline.Packages);
             Assert.Contains(comparison.Packages, package =>
                 package.Name == "left-pad" && package.BaselineVersion == "1.0.0" && package.TargetVersion == "1.1.0");
             Assert.Contains(comparison.Files, file => file.Path == "app/package.json");

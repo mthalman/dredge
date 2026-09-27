@@ -499,6 +499,8 @@ internal sealed class ExplorerHost : IExplorerHost, IAsyncDisposable
                     store, baseImages: null, cancellationToken, exactPlatform: source.Platform);
                 targets[tag] = target;
             }
+            await baseline.EnsurePackagesAsync(cancellationToken);
+            await target.EnsurePackagesAsync(cancellationToken);
             return ExplorerSession.Compare(baseline, target);
         }
         finally

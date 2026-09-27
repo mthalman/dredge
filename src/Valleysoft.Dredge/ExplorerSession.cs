@@ -21,13 +21,20 @@ internal sealed record ExplorerComparison(
 
 internal sealed class ExplorerSession
 {
+    private readonly SemaphoreSlim packageGate = new(1, 1);
+    private InstalledPackageMetadata? packages;
+
     public required ImageName Image { get; init; }
     public required ResolvedManifest Resolved { get; init; }
     public required Image Config { get; init; }
     public required ImageFileSystem Files { get; init; }
     public required ImageAnalysisResult Analysis { get; init; }
     public required IReadOnlyList<ImageFileSystemEntry> Entries { get; init; }
-    public required InstalledPackageMetadata Packages { get; init; }
+    public InstalledPackageMetadata Packages
+    {
+        get => packages ?? throw new InvalidOperationException("Package metadata has not been loaded for comparison.");
+        init => packages = value;
+    }
     public int? BaseLayerCount { get; init; }
     public string? BaseWarning { get; init; }
     public Func<string, CancellationToken, Task<ExplorerComparison>>? CompareAsync { get; set; }
@@ -61,7 +68,6 @@ internal sealed class ExplorerSession
         try
         {
             ImageAnalysisResult analysis = files.Analyze();
-            InstalledPackageMetadata packages = await InstalledPackageReader.ReadAsync(files, cancellationToken);
             return new ExplorerSession
             {
                 Image = source.Image,
@@ -70,7 +76,6 @@ internal sealed class ExplorerSession
                 Files = files,
                 Analysis = analysis,
                 Entries = files.List(null, true, false),
-                Packages = packages,
                 BaseLayerCount = source.BaseLayerCount,
                 BaseWarning = source.BaseWarning,
                 BaseName = source.BaseName,
@@ -85,6 +90,24 @@ internal sealed class ExplorerSession
             throw;
         }
     }
+
+    public async Task EnsurePackagesAsync(CancellationToken cancellationToken)
+    {
+        if (packages is not null)
+        {
+            return;
+        }
+        await packageGate.WaitAsync(cancellationToken);
+        try
+        {
+            packages ??= await InstalledPackageReader.ReadAsync(Files, cancellationToken);
+        }
+        finally
+        {
+            packageGate.Release();
+        }
+    }
+
     internal static ExplorerComparison Compare(ExplorerSession baseline, ExplorerSession target)
     {
         if (!string.Equals(baseline.Config.Os, target.Config.Os, StringComparison.OrdinalIgnoreCase) ||
