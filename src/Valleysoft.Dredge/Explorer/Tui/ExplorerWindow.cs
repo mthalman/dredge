@@ -1464,7 +1464,10 @@ internal sealed class ExplorerWindow : Window
                 return true;
             case CopyCommand:
                 string platform = img.PlatformArguments.Length > 0 ? " " + img.PlatformArguments : "";
-                Copy($"dredge image compare files {ShellCommand.Quote(c.Comparison.Baseline.Image.ToString())} {ShellCommand.Quote(c.Comparison.Target.Image.ToString())}{platform}");
+                ExplorerSession baseline = c.Comparison.Baseline, target = c.Comparison.Target;
+                string before = ExplorerImage.DigestReference(baseline.Image, baseline.Resolved.ManifestInfo.DockerContentDigest);
+                string after = ExplorerImage.DigestReference(target.Image, target.Resolved.ManifestInfo.DockerContentDigest);
+                Copy($"dredge image compare files {ShellCommand.Quote(before)} {ShellCommand.Quote(after)}{platform}");
                 return true;
             case FocusOn f:
                 (f.Pane == FocusPane.Layers ? layers : right).SetFocus();

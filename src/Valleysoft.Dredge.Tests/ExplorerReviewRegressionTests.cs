@@ -101,7 +101,7 @@ public sealed class ExplorerReviewRegressionTests
         await process.WaitForExitAsync(TestContext.Current.CancellationToken);
         Assert.Equal(0, process.ExitCode);
         Assert.Empty(await errors);
-        Assert.Equal(["image", "cat", ExplorerSamples.Reference, "/" + path, ""], (await output).Split('\0'));
+        Assert.Equal(["image", "cat", presenter.Image.ResolvedReference, "/" + path, ""], (await output).Split('\0'));
     }
 
     [Theory]
@@ -114,11 +114,14 @@ public sealed class ExplorerReviewRegressionTests
         using ExplorerUiHarness ui = ExplorerWindowTests.Open(out FakeExplorerHost host, clipboard: true);
         ui.Window.StartCompare(input);
         ui.Until(() => ui.State.Compare is not null, "comparison");
+        ExplorerComparison comparison = ui.State.Compare!.Comparison;
+        string before = ExplorerImage.DigestReference(comparison.Baseline.Image, comparison.Baseline.Resolved.ManifestInfo.DockerContentDigest);
+        string after = ExplorerImage.DigestReference(ImageName.Parse(target), comparison.Target.Resolved.ManifestInfo.DockerContentDigest);
         ui.Press(new Key('y'));
-        Assert.Equal($"dredge image compare files {ExplorerSamples.Reference} {target}", host.Clipboard[0]);
+        Assert.Equal($"dredge image compare files {before} {after}", host.Clipboard[0]);
         ui.Window.Apply(new SwapSides());
         ui.Press(new Key('y'));
-        Assert.Equal($"dredge image compare files {target} {ExplorerSamples.Reference}", host.Clipboard[1]);
+        Assert.Equal($"dredge image compare files {after} {before}", host.Clipboard[1]);
     }
 
     [Theory]

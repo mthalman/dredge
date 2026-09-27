@@ -16,7 +16,7 @@ public sealed class ExplorerUxTests
         ui.Until(() => ui.State.Preview is not null, "preview");
         ui.Press(new Key('y'));
         Assert.Equal(RightView.Command, ui.State.View);
-        Assert.Equal("dredge image cat registry.test/shop/storefront:1.0 /app/package.json", ui.Window.CommandText.Text);
+        Assert.Equal("dredge image cat registry.test/shop/storefront@sha256:manifest /app/package.json", ui.Window.CommandText.Text);
         Assert.True(ui.Window.CommandText.ReadOnly);
         Assert.True(ui.Window.CommandText.HasFocus);
         ui.Press(Key.A.WithCtrl);

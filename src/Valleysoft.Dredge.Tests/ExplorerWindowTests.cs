@@ -438,7 +438,7 @@ public sealed class ExplorerWindowTests
         Assert.True(ui.Shows("\"storefront\""), ui.Screen());
 
         ui.Press(new Key('y'));
-        Assert.Equal("$ dredge image cat registry.test/shop/storefront:1.0 /app/package.json", s.Notice);
+        Assert.Equal("$ dredge image cat registry.test/shop/storefront@sha256:manifest /app/package.json", s.Notice);
         Assert.Empty(host.Clipboard);
         ui.Press(Key.Esc);
         Assert.Equal(RightView.Inspector, s.View);
@@ -453,7 +453,7 @@ public sealed class ExplorerWindowTests
         ui.Window.Apply(new SetCursor(RowOf(ui, "app")));
         ui.Window.Apply(new CopyCommand());
         string copied = Assert.Single(host.Clipboard);
-        Assert.StartsWith("dredge image ls registry.test/shop/storefront:1.0 /app", copied);
+        Assert.StartsWith("dredge image ls registry.test/shop/storefront@sha256:manifest /app", copied);
         Assert.StartsWith("Copied: ", ui.State.Notice);
     }
 
@@ -474,7 +474,7 @@ public sealed class ExplorerWindowTests
         ui.Window.Apply(new SetCursor(RowOf(ui, "app")));
         ui.Window.Apply(new CopyCommand());
         Assert.Single(host.Clipboard);
-        Assert.StartsWith("Couldn't reach the clipboard. $ dredge image ls registry.test/shop/storefront:1.0 /app", ui.State.Notice);
+        Assert.StartsWith("Couldn't reach the clipboard. $ dredge image ls registry.test/shop/storefront@sha256:manifest /app", ui.State.Notice);
     }
 
     [Fact]
@@ -659,7 +659,8 @@ public sealed class ExplorerWindowTests
         ui.Press(new Key('s'));
         Assert.Equal(("2.0", "1.0"), (s.Compare!.BaselineLabel, s.Compare.TargetLabel));
         ui.Press(new Key('y'));
-        Assert.Equal("$ dredge image compare files registry.test/shop/storefront:2.0 registry.test/shop/storefront:1.0", s.Notice);
+        ExplorerSession baseline = s.Compare.Comparison.Baseline, target = s.Compare.Comparison.Target;
+        Assert.Equal($"$ dredge image compare files {ExplorerImage.DigestReference(baseline.Image, baseline.Resolved.ManifestInfo.DockerContentDigest)} {ExplorerImage.DigestReference(target.Image, target.Resolved.ManifestInfo.DockerContentDigest)}", s.Notice);
         ui.Press(new Key('w'));
         Assert.False(s.FindingsOnly);
         Assert.StartsWith("$ dredge image compare files", s.Notice);

@@ -1416,7 +1416,7 @@ public sealed class ExplorerFeatureTests
             case "identical": Assert.Contains(Change.Identical, s.Hidden); break;
             case "deleted": Assert.Contains(Change.Removed, s.Hidden); break;
             case "extract": Assert.True(ui.Window.ExtractField.Visible); break;
-            case "copy": Assert.Equal("$ dredge image cat registry.test/shop/storefront:1.0 /app/package.json", s.Notice); break;
+            case "copy": Assert.Equal("$ dredge image cat registry.test/shop/storefront@sha256:manifest /app/package.json", s.Notice); break;
             case "viewer": ui.Until(() => ui.Window.StopRequested, "the viewer"); Assert.Equal(ExplorerExitKind.Viewer, ui.Window.Exit.Kind); break;
             case "quit": Assert.True(ui.Window.StopRequested); break;
         }

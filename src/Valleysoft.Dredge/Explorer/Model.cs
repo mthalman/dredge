@@ -145,6 +145,10 @@ internal sealed class ExplorerImage
     public string PlatformArguments { get; init; } = "";
 
     public string Reference { get; }
+    public string ResolvedReference => DigestReference(ImageName.Parse(Reference), Digest);
+
+    internal static string DigestReference(ImageName image, string digest) =>
+        new ImageName(image.Registry, image.Repo, tag: null, digest).ToString();
     public string Platform { get; }
     public string Digest { get; }
     public string RepoName { get; }

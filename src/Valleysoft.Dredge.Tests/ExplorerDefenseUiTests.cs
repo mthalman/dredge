@@ -7,6 +7,41 @@ namespace Valleysoft.Dredge.Tests;
 public sealed class ExplorerDefenseUiTests
 {
     [Fact]
+    public void CopiedFileCommandsUseResolvedManifestIdentity()
+    {
+        ExplorerImage image = ExplorerSamples.Image(digest: "sha256:resolvedarmv7");
+        ExplorerPresenter presenter = new(image, 150, 42);
+        foreach (bool directory in new[] { false, true })
+        {
+            string command = presenter.CopyCommandText(new(), "app/item", directory);
+            Assert.Contains("registry.test/shop/storefront@sha256:resolvedarmv7", command);
+            Assert.DoesNotContain("storefront:1.0", command);
+        }
+    }
+
+    [Fact]
+    public void CopiedComparisonCommandsPreserveBothResolvedRepositoriesAfterSwap()
+    {
+        ExplorerImage image = ExplorerSamples.Image();
+        ExplorerSession target = ExplorerSamples.Target("other.test/team/app:rolling");
+        ExplorerComparison comparison = ExplorerSession.Compare(image.Session!, target);
+        ExplorerState state = new() { Compare = new CompareState(comparison, "before", "after") };
+        using ExplorerUiHarness ui = ExplorerWindowTests.Open(image, state,
+            session => new FakeExplorerHost { Baseline = session }, out _);
+        string before = new ImageName(image.Session!.Image.Registry, image.Session.Image.Repo, null,
+            image.Session.Resolved.ManifestInfo.DockerContentDigest).ToString();
+        string after = new ImageName(target.Image.Registry, target.Image.Repo, null,
+            target.Resolved.ManifestInfo.DockerContentDigest).ToString();
+
+        ui.Window.Apply(new CopyCommand());
+        Assert.Equal($"dredge image compare files {before} {after}", ui.Window.CommandText.Text);
+        ui.Press(Key.Esc);
+        ui.Window.Apply(new SwapSides());
+        ui.Window.Apply(new CopyCommand());
+        Assert.Equal($"dredge image compare files {after} {before}", ui.Window.CommandText.Text);
+    }
+
+    [Fact]
     public void LongBaseWarningLeavesFindingsVisibleAndCompleteDetailsAccessible()
     {
         ExplorerImage sample = ExplorerSamples.Image();
