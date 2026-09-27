@@ -34,6 +34,10 @@ internal sealed class ExplorerApp : IAsyncDisposable
     private readonly CancellationTokenSource cts;
     private readonly double[] progress;
     private readonly List<Action> pending = [];
+    private readonly ExplorerOperationLifetime lifetime = new();
+    private bool stopping;
+    private int attachment;
+    private Task? disposal;
     private IApplication? app;
     private ExplorerWindow? window;
     private ExplorerInsightsResult? completedInsights;
@@ -87,6 +91,10 @@ internal sealed class ExplorerApp : IAsyncDisposable
     {
         indexer.Progress += (layer, bytes) =>
         {
+            if (Volatile.Read(ref stopping))
+            {
+                return;
+            }
             long total = img.LayerDownloads[layer];
             Volatile.Write(ref progress[layer], total <= 0 ? 0 : Math.Clamp((double)bytes / total, 0, 1));
         };
@@ -103,7 +111,7 @@ internal sealed class ExplorerApp : IAsyncDisposable
             img.Errors[layer] = error.Message;
             window?.ImageChanged();
         });
-        indexer.Completed += indexes => _ = Task.Run(() => CreateSessionAsync(indexes));
+        indexer.Completed += indexes => RunBackground(token => CreateSessionAsync(indexes, token));
 
         int layer = options.Layer ?? Math.Max(0, img.LayerCount - 1);
         indexer.Prioritize(layer);
@@ -144,25 +152,22 @@ internal sealed class ExplorerApp : IAsyncDisposable
     {
         ExplorerWindow w = new(img, state, host, cts.Token,
             options.ViewerUsesTerminal ? null : OpenWindowedViewer);
-        List<Action> queued;
+        int generation;
         lock (sync)
         {
+            ObjectDisposedException.ThrowIf(stopping, this);
             app = application;
             window = w;
-            queued = [.. pending];
-            pending.Clear();
+            generation = ++attachment;
         }
-        foreach (Action action in queued)
-        {
-            application.Invoke(action);
-        }
-        application.AddTimeout(TimeSpan.Zero, () =>
+        application.Invoke(() => DrainPending(application, generation));
+        application.AddTimeout(TimeSpan.Zero, () => WhileAttached(application, generation, () =>
         {
             w.SyncFocus();
             StartPendingCompare();
             return false;
-        });
-        application.AddTimeout(TimeSpan.FromMilliseconds(100), () =>
+        }));
+        application.AddTimeout(TimeSpan.FromMilliseconds(100), () => WhileAttached(application, generation, () =>
         {
             bool indexed = img.ReconcileIndexes(indexer.Snapshot());
             if (indexed)
@@ -192,7 +197,7 @@ internal sealed class ExplorerApp : IAsyncDisposable
                 w.Tick();
             }
             return true;
-        });
+        }));
         return w;
     }
 
@@ -202,6 +207,7 @@ internal sealed class ExplorerApp : IAsyncDisposable
         {
             app = null;
             window = null;
+            attachment++;
         }
     }
 
@@ -210,12 +216,38 @@ internal sealed class ExplorerApp : IAsyncDisposable
     {
         lock (sync)
         {
-            if (app is null)
+            if (stopping)
             {
-                pending.Add(action);
                 return;
             }
-            app.Invoke(action);
+            pending.Add(action);
+            if (app is { } application)
+            {
+                int generation = attachment;
+                application.Invoke(() => DrainPending(application, generation));
+            }
+        }
+    }
+
+    private void DrainPending(IApplication application, int generation)
+    {
+        WhileAttached(application, generation, () =>
+        {
+            Action[] actions = pending.ToArray();
+            pending.Clear();
+            foreach (Action action in actions)
+            {
+                action();
+            }
+            return true;
+        });
+    }
+
+    private bool WhileAttached(IApplication application, int generation, Func<bool> action)
+    {
+        lock (sync)
+        {
+            return !stopping && ReferenceEquals(app, application) && attachment == generation && action();
         }
     }
 
@@ -230,6 +262,7 @@ internal sealed class ExplorerApp : IAsyncDisposable
 
     private void OpenWindowedViewer(string file)
     {
+        // Windowed viewers own only their staged file and may outlive the explorer.
         _ = Task.Run(() =>
         {
             string? error = RunViewer(file, options.ViewerExePath, options.ViewerArgs);
@@ -258,35 +291,80 @@ internal sealed class ExplorerApp : IAsyncDisposable
             return;
         }
         analyzing = true;
-        Task.Run(() =>
+        RunBackground(token =>
         {
+            token.ThrowIfCancellationRequested();
             ImageAnalysisResult analysis = ImageAnalysis.Analyze(prefix);
-            return (analysis, ExplorerInsights.Build(analysis, img.Instructions, img.BaseLayerCount, includePotential: false));
-        }).ContinueWith(task => Post(() =>
-        {
-            analyzing = false;
-            if (task.IsCompletedSuccessfully && !img.Complete)
+            ExplorerInsightsResult insights = ExplorerInsights.Build(analysis, img.Instructions, img.BaseLayerCount, includePotential: false);
+            token.ThrowIfCancellationRequested();
+            Post(() =>
             {
-                img.SetAnalysis(task.Result.analysis, task.Result.Item2);
-                window?.ImageChanged();
-            }
-            if (analysisDirty)
-            {
-                analysisDirty = false;
-                ScheduleAnalysis();
-            }
-        }), TaskScheduler.Default);
+                analyzing = false;
+                if (!img.Complete)
+                {
+                    img.SetAnalysis(analysis, insights);
+                    window?.ImageChanged();
+                }
+                if (analysisDirty)
+                {
+                    analysisDirty = false;
+                    ScheduleAnalysis();
+                }
+            });
+            return Task.CompletedTask;
+        });
     }
 
-    private async Task CreateSessionAsync(IReadOnlyDictionary<int, StoredLayerIndex> indexes)
+    private void RunBackground(Func<CancellationToken, Task> action)
+    {
+        lock (sync)
+        {
+            if (stopping || cts.IsCancellationRequested)
+            {
+                return;
+            }
+            ExplorerOperationLifetime.Operation operation = lifetime.Enter(cts.Token);
+            _ = Task.Run(async () =>
+            {
+                using (operation)
+                {
+                    try
+                    {
+                        await action(operation.Token);
+                    }
+                    catch (OperationCanceledException) when (operation.Token.IsCancellationRequested)
+                    {
+                    }
+                    catch (Exception exception)
+                    {
+                        Post(() =>
+                        {
+                            analyzing = false;
+                            img.SessionError = exception.Message;
+                            window?.ImageChanged();
+                        });
+                    }
+                }
+            });
+        }
+    }
+
+    private async Task CreateSessionAsync(IReadOnlyDictionary<int, StoredLayerIndex> indexes, CancellationToken token)
     {
         try
         {
-            ExplorerSession session = await ExplorerSession.CreateAsync(client, source, store, indexes, cts.Token);
+            ExplorerSession session = await ExplorerSession.CreateAsync(client, source, store, indexes, token);
             ExplorerInsightsResult insights = ExplorerInsights.Build(
                 session.Analysis, img.Instructions, img.BaseLayerCount, includePotential: true);
-            host.Session = session;
-            Volatile.Write(ref completedInsights, insights);
+            lock (sync)
+            {
+                if (stopping || token.IsCancellationRequested)
+                {
+                    return;
+                }
+                host.Session = session;
+                Volatile.Write(ref completedInsights, insights);
+            }
             Post(() =>
             {
                 if (!img.Complete)
@@ -297,7 +375,7 @@ internal sealed class ExplorerApp : IAsyncDisposable
                 }
             });
         }
-        catch (OperationCanceledException) when (cts.IsCancellationRequested)
+        catch (OperationCanceledException) when (token.IsCancellationRequested)
         {
         }
         catch (Exception exception)
@@ -364,11 +442,39 @@ internal sealed class ExplorerApp : IAsyncDisposable
         }
     }
 
-    public async ValueTask DisposeAsync()
+    public ValueTask DisposeAsync()
     {
-        cts.Cancel();
-        await host.DisposeAsync();
-        cts.Dispose();
+        lock (sync)
+        {
+            stopping = true;
+            app = null;
+            window = null;
+            pending.Clear();
+            attachment++;
+            return new(disposal ??= DisposeCoreAsync());
+        }
+    }
+
+    private async Task DisposeCoreAsync()
+    {
+        Task indexDrain = indexer.StopAsync();
+        Task backgroundDrain = lifetime.DisposeAsync().AsTask();
+        Task hostDrain = host.DisposeAsync().AsTask();
+        try
+        {
+            await cts.CancelAsync();
+        }
+        finally
+        {
+            try
+            {
+                await Task.WhenAll(indexDrain, backgroundDrain, hostDrain);
+            }
+            finally
+            {
+                cts.Dispose();
+            }
+        }
     }
 }
 
@@ -384,6 +490,9 @@ internal sealed class ExplorerHost : IExplorerHost, IAsyncDisposable
     private readonly ExplorerLayerIndexer indexer;
     private readonly ExplorerOptions options;
     private readonly SemaphoreSlim compareGate = new(1, 1);
+    private readonly ExplorerOperationLifetime lifetime = new();
+    private readonly object disposalSync = new();
+    private Task? disposal;
     private readonly string viewerRoot;
     private readonly Dictionary<string, ExplorerSession> targets = new(StringComparer.Ordinal);
     private readonly List<IDockerRegistryClient> ownedClients = [];
@@ -417,12 +526,22 @@ internal sealed class ExplorerHost : IExplorerHost, IAsyncDisposable
         ? ExplorerSource.ForPlatform(platform)
         : new() { Os = source.Config.Os, Architecture = source.Config.Architecture, OsVersion = source.Config.OsVersion };
 
-    public void Prioritize(int layer) => indexer.Prioritize(layer);
+    public void Prioritize(int layer)
+    {
+        using var operation = lifetime.Enter(CancellationToken.None);
+        indexer.Prioritize(layer);
+    }
 
-    public void Retry(int layer) => indexer.Retry(layer);
+    public void Retry(int layer)
+    {
+        using var operation = lifetime.Enter(CancellationToken.None);
+        indexer.Retry(layer);
+    }
 
     public async Task<IReadOnlyList<string>> ListTagsAsync(CancellationToken cancellationToken)
     {
+        using var operation = lifetime.Enter(cancellationToken);
+        cancellationToken = operation.Token;
         if (tags is not null)
         {
             return tags;
@@ -435,11 +554,14 @@ internal sealed class ExplorerHost : IExplorerHost, IAsyncDisposable
             page = await client.Tags.GetNextAsync(page.NextPageLink, cancellationToken);
             result.AddRange(page.Value.Tags);
         }
+        cancellationToken.ThrowIfCancellationRequested();
         return tags = result.Distinct(StringComparer.Ordinal).ToArray();
     }
 
     public async Task DescribeTagAsync(TagChoice choice, CancellationToken cancellationToken)
     {
+        using var operation = lifetime.Enter(cancellationToken);
+        cancellationToken = operation.Token;
         if (choice.Tag == ExplorerTags.Label(img.Reference))
         {
             choice.Digest = img.Digest;
@@ -456,6 +578,7 @@ internal sealed class ExplorerHost : IExplorerHost, IAsyncDisposable
             ResolvedManifest resolved = cached ? target!.Resolved :
                 (await ExplorerSource.ResolveAsync(
                     client, name, PlatformOptions, source.Platform, cancellationToken)).Resolved;
+            cancellationToken.ThrowIfCancellationRequested();
             choice.Digest = resolved.ManifestInfo.DockerContentDigest;
             string[] digests = resolved.Manifest.Layers.Select(layer => layer.Digest ?? "").ToArray();
             (choice.Shared, choice.AdditionalDownload) = Describe(img.LayerDigests, digests,
@@ -505,6 +628,8 @@ internal sealed class ExplorerHost : IExplorerHost, IAsyncDisposable
 
     public async Task<ExplorerComparison> CompareAsync(string tag, Action readingPackages, CancellationToken cancellationToken)
     {
+        using var operation = lifetime.Enter(cancellationToken);
+        cancellationToken = operation.Token;
         ExplorerSession baseline = Loaded;
         ImageName name = ExploreCommand.ResolveCompareImage(source.Image, tag);
         string key = name.ToString();
@@ -521,12 +646,14 @@ internal sealed class ExplorerHost : IExplorerHost, IAsyncDisposable
                 }
                 target = await ExplorerSession.LoadAsync(targetClient, factory, name, PlatformOptions,
                     store, baseImages: null, cancellationToken, exactPlatform: source.Platform);
+                cancellationToken.ThrowIfCancellationRequested();
                 targets[key] = target;
             }
             cancellationToken.ThrowIfCancellationRequested();
             readingPackages();
             await baseline.EnsurePackagesAsync(cancellationToken);
             await target.EnsurePackagesAsync(cancellationToken);
+            cancellationToken.ThrowIfCancellationRequested();
             return ExplorerSession.Compare(baseline, target);
         }
         finally
@@ -537,6 +664,8 @@ internal sealed class ExplorerHost : IExplorerHost, IAsyncDisposable
 
     public async Task<PreviewContent> PreviewAsync(string path, int layer, CancellationToken cancellationToken)
     {
+        using var operation = lifetime.Enter(cancellationToken);
+        cancellationToken = operation.Token;
         ExplorerSession session = Loaded;
         if (!session.Analysis.LiveLayers.TryGetValue(path, out int live))
         {
@@ -564,7 +693,7 @@ internal sealed class ExplorerHost : IExplorerHost, IAsyncDisposable
         {
             await files.CopyFileToAsync(path, stream, cancellationToken);
         }
-        catch (Exception) when (stream.Truncated)
+        catch (Exception exception) when (stream.Truncated && exception is not OperationCanceledException)
         {
             // Stopping the copy at the limit surfaces as an error from the extractor.
         }
@@ -611,6 +740,8 @@ internal sealed class ExplorerHost : IExplorerHost, IAsyncDisposable
     public async Task<TextDiffContent> DiffAsync(
         ExplorerComparison comparison, string path, CancellationToken cancellationToken)
     {
+        using var operation = lifetime.Enter(cancellationToken);
+        cancellationToken = operation.Token;
         ExplorerFileDifference? difference = comparison.Files.FirstOrDefault(file => file.Path == path);
         if (difference is null)
         {
@@ -640,6 +771,8 @@ internal sealed class ExplorerHost : IExplorerHost, IAsyncDisposable
     public async Task<PackageFilesContent> PackageFilesAsync(
         ExplorerComparison comparison, ExplorerPackageDifference package, CancellationToken cancellationToken)
     {
+        using var operation = lifetime.Enter(cancellationToken);
+        cancellationToken = operation.Token;
         HashSet<string> owned = new(StringComparer.Ordinal);
         List<string> warnings = [];
         foreach (ExplorerSession side in new[]
@@ -691,6 +824,8 @@ internal sealed class ExplorerHost : IExplorerHost, IAsyncDisposable
 
     public async Task<string> ExtractAsync(string path, string destination, CancellationToken cancellationToken)
     {
+        using var operation = lifetime.Enter(cancellationToken);
+        cancellationToken = operation.Token;
         string full = Path.GetFullPath(destination);
         await Loaded.Files.ExtractAsync(path, full, cancellationToken);
         return $"Extracted /{path} to {full}";
@@ -698,6 +833,8 @@ internal sealed class ExplorerHost : IExplorerHost, IAsyncDisposable
 
     public async Task<string> PrepareForViewerAsync(string path, CancellationToken cancellationToken)
     {
+        using var operation = lifetime.Enter(cancellationToken);
+        cancellationToken = operation.Token;
         string directory = Path.Combine(viewerRoot, "dredge-" + Guid.NewGuid().ToString("N"));
         CacheFileSystem.CreateDirectory(directory);
         string file = Path.Combine(directory, StagedFileName(path));
@@ -705,6 +842,7 @@ internal sealed class ExplorerHost : IExplorerHost, IAsyncDisposable
         {
             await using FileStream stream = CacheFileSystem.CreateFile(file);
             await Loaded.Files.CopyFileToAsync(path, stream, cancellationToken);
+            cancellationToken.ThrowIfCancellationRequested();
         }
         catch
         {
@@ -738,24 +876,118 @@ internal sealed class ExplorerHost : IExplorerHost, IAsyncDisposable
         return name;
     }
 
-    public bool WriteClipboard(string text) => Clipboard.Write(options.Clipboard, text);
-
-    public async ValueTask DisposeAsync()
+    public bool WriteClipboard(string text)
     {
-        foreach (ExplorerSession target in targets.Values)
+        using var operation = lifetime.Enter(CancellationToken.None);
+        return Clipboard.Write(options.Clipboard, text);
+    }
+
+    public ValueTask DisposeAsync()
+    {
+        lock (disposalSync)
         {
-            await target.Files.DisposeAsync();
+            return new(disposal ??= DisposeCoreAsync());
         }
-        targets.Clear();
-        foreach (IDockerRegistryClient owned in ownedClients)
+    }
+
+    private async Task DisposeCoreAsync()
+    {
+        try
         {
-            owned.Dispose();
+            await lifetime.DisposeAsync();
         }
-        if (Session is not null)
+        finally
         {
-            await Session.Files.DisposeAsync();
+            foreach (ExplorerSession target in targets.Values)
+            {
+                await target.Files.DisposeAsync();
+            }
+            targets.Clear();
+            foreach (IDockerRegistryClient owned in ownedClients)
+            {
+                owned.Dispose();
+            }
+            if (Session is not null)
+            {
+                await Session.Files.DisposeAsync();
+            }
+            compareGate.Dispose();
         }
-        compareGate.Dispose();
+    }
+}
+
+internal sealed class ExplorerOperationLifetime : IAsyncDisposable
+{
+    private readonly object sync = new();
+    private readonly CancellationTokenSource cancellation = new();
+    private readonly TaskCompletionSource drained = new(TaskCreationOptions.RunContinuationsAsynchronously);
+    private int active;
+    private bool stopping;
+    private Task? disposal;
+
+    public Operation Enter(CancellationToken token)
+    {
+        lock (sync)
+        {
+            ObjectDisposedException.ThrowIf(stopping, this);
+            token.ThrowIfCancellationRequested();
+            CancellationTokenSource linked = CancellationTokenSource.CreateLinkedTokenSource(token, cancellation.Token);
+            active++;
+            return new(this, linked);
+        }
+    }
+
+    private void Exit()
+    {
+        lock (sync)
+        {
+            if (--active == 0 && stopping)
+            {
+                drained.TrySetResult();
+            }
+        }
+    }
+
+    public ValueTask DisposeAsync()
+    {
+        lock (sync)
+        {
+            stopping = true;
+            if (active == 0)
+            {
+                drained.TrySetResult();
+            }
+            return new(disposal ??= DisposeCoreAsync());
+        }
+    }
+
+    private async Task DisposeCoreAsync()
+    {
+        try
+        {
+            await cancellation.CancelAsync();
+        }
+        finally
+        {
+            await drained.Task;
+            cancellation.Dispose();
+        }
+    }
+
+    internal sealed class Operation(ExplorerOperationLifetime owner, CancellationTokenSource cancellation) : IDisposable
+    {
+        private ExplorerOperationLifetime? owner = owner;
+        public CancellationToken Token => cancellation.Token;
+
+        public void Dispose()
+        {
+            ExplorerOperationLifetime? previous = Interlocked.Exchange(ref owner, null);
+            if (previous is not null)
+            {
+                cancellation.Dispose();
+                previous.Exit();
+            }
+        }
     }
 }
 

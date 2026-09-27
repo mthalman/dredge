@@ -22,6 +22,120 @@ public sealed class ExplorerDefenseHostTests : IAsyncDisposable
     private static CancellationToken Token => TestContext.Current.CancellationToken;
 
     [Fact]
+    public async Task IndexerStopDrainsIgnoredCancellationWithoutPublishingLateResults()
+    {
+        TaskCompletionSource entered = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        TaskCompletionSource release = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        int publications = 0;
+        ExplorerLayerIndexer indexer = new(1, async (_, progress, _) =>
+        {
+            entered.SetResult();
+            await release.Task;
+            progress.Report(1);
+            return new("sha256:index", 1, new([], [], []));
+        });
+        indexer.Indexed += (_, _) => publications++;
+        indexer.Completed += _ => publications++;
+        indexer.Progress += (_, _) => publications++;
+        indexer.Start(Token);
+        await entered.Task.WaitAsync(TimeSpan.FromSeconds(10), Token);
+
+        Task stop = indexer.StopAsync();
+        Assert.False(stop.IsCompleted);
+        Assert.False(indexer.Retry(0));
+        release.SetResult();
+        await stop.WaitAsync(TimeSpan.FromSeconds(10), Token);
+
+        Assert.Equal(0, publications);
+        Assert.Empty(indexer.Snapshot());
+        Assert.Same(stop, indexer.StopAsync());
+    }
+
+    [Fact]
+    public async Task EmptyIndexerStopDrainsItsCompletionCallback()
+    {
+        TaskCompletionSource entered = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        using ManualResetEventSlim release = new(false);
+        ExplorerLayerIndexer indexer = new(0, (_, _, _) => throw new InvalidOperationException());
+        indexer.Completed += _ =>
+        {
+            entered.SetResult();
+            Assert.True(release.Wait(TimeSpan.FromSeconds(10), Token));
+        };
+        indexer.Start(Token);
+        await entered.Task.WaitAsync(TimeSpan.FromSeconds(10), Token);
+        Task stop = indexer.StopAsync();
+        Assert.False(stop.IsCompleted);
+        release.Set();
+        await stop.WaitAsync(TimeSpan.FromSeconds(10), Token);
+    }
+
+    [Fact]
+    public async Task HostDisposalDrainsComparisonAndGateWaitersBeforeDisposingClients()
+    {
+        TestImage baseline = await CreateAsync();
+        TaskCompletionSource entered = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        TaskCompletionSource<ManifestInfo> release = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        Mock<IDockerRegistryClient> other = new() { DefaultValue = DefaultValue.Mock };
+        other.Setup(c => c.Manifests.GetAsync("repo", "previous", It.IsAny<CancellationToken>()))
+            .Returns(() =>
+            {
+                entered.TrySetResult();
+                return release.Task;
+            });
+        other.Setup(c => c.Blobs.GetAsync("repo", "sha256:config", It.IsAny<CancellationToken>()))
+            .ReturnsAsync(() => new MemoryStream(Encoding.UTF8.GetBytes("""{"os":"linux","architecture":"amd64"}""")));
+        Mock<IDockerRegistryClientFactory> factory = new();
+        factory.Setup(f => f.GetClientAsync("other.test", It.IsAny<CancellationToken>())).ReturnsAsync(other.Object);
+        ExplorerHost host = Host(baseline, factory.Object);
+        Task<ExplorerComparison> first = host.CompareAsync("other.test/repo:previous", () => { }, Token);
+        await entered.Task.WaitAsync(TimeSpan.FromSeconds(10), Token);
+        Task<ExplorerComparison> waiting = host.CompareAsync("waiting", () => { }, Token);
+
+        Task disposal = host.DisposeAsync().AsTask();
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(() => waiting);
+        Assert.False(disposal.IsCompleted);
+        other.Verify(c => c.Dispose(), Times.Never);
+        release.SetResult(baseline.Source.Resolved.ManifestInfo);
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(() => first);
+        await disposal.WaitAsync(TimeSpan.FromSeconds(10), Token);
+
+        other.Verify(c => c.Dispose(), Times.Once);
+        await Assert.ThrowsAsync<ObjectDisposedException>(() => host.ListTagsAsync(Token));
+        await host.DisposeAsync();
+        other.Verify(c => c.Dispose(), Times.Once);
+    }
+
+    [Fact]
+    public async Task AppDisposalWaitsForIndexerAndDiscardsItsPendingUpdates()
+    {
+        byte[] blob = Blob(("file", "value"));
+        TestImage image = await CreateAsync(blob);
+        TaskCompletionSource entered = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        TaskCompletionSource release = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        image.Client.Setup(c => c.Blobs.GetRangeAsync(Image.Repo, LayerCacheTestContext.Digest(blob),
+            0, It.IsAny<long?>(), It.IsAny<CancellationToken>()))
+            .Returns(async () =>
+            {
+                entered.SetResult();
+                await release.Task;
+                return new BlobDownloadResult(new MemoryStream(blob), false, null, null, blob.Length);
+            });
+        await using ExplorerApp app = new(image.Client.Object, Mock.Of<IDockerRegistryClientFactory>(),
+            image.Source, image.Store, new(null, null, false, ClipboardMode.Off, KeyMap.Default, "", ""), Token);
+        app.Start();
+        await entered.Task.WaitAsync(TimeSpan.FromSeconds(10), Token);
+
+        Task disposal = app.DisposeAsync().AsTask();
+        Assert.False(disposal.IsCompleted);
+        release.SetResult();
+        await disposal.WaitAsync(TimeSpan.FromSeconds(10), Token);
+
+        Assert.Null(app.Host.Session);
+        Assert.All(app.Image.States, state => Assert.Equal(ExplorerLayerState.Waiting, state));
+    }
+
+    [Fact]
     public async Task ViewerStagingUsesPrivateDirectoryAndPreservesContent()
     {
         TestImage image = await CreateAsync(Blob(("private.txt", "private image bytes")));

@@ -191,6 +191,11 @@ internal sealed class ExplorerLayerIndexer
     private readonly ExplorerLayerState[] states;
     private readonly Dictionary<int, StoredLayerIndex> indexes = [];
     private readonly Exception?[] errors;
+    private readonly List<Task> workers = [];
+    private readonly CancellationTokenSource stopSource = new();
+    private CancellationTokenSource? linkedSource;
+    private Task? stoppingTask;
+    private bool stopping;
     private int running;
     private CancellationToken cancellationToken;
     private bool started;
@@ -257,15 +262,23 @@ internal sealed class ExplorerLayerIndexer
     {
         lock (sync)
         {
+            ObjectDisposedException.ThrowIf(stopping, this);
             if (started)
             {
                 throw new InvalidOperationException("The indexer has already started.");
             }
             started = true;
-            cancellationToken = token;
+            linkedSource = CancellationTokenSource.CreateLinkedTokenSource(token, stopSource.Token);
+            cancellationToken = linkedSource.Token;
             if (layerCount == 0)
             {
-                ThreadPool.QueueUserWorkItem(_ => Completed?.Invoke(indexes));
+                workers.Add(Task.Run(() =>
+                {
+                    if (!Volatile.Read(ref stopping) && !cancellationToken.IsCancellationRequested)
+                    {
+                        Completed?.Invoke(new Dictionary<int, StoredLayerIndex>());
+                    }
+                }));
                 return;
             }
             FillWorkers();
@@ -276,6 +289,10 @@ internal sealed class ExplorerLayerIndexer
     {
         lock (sync)
         {
+            if (stopping)
+            {
+                return;
+            }
             if (pending.Remove(layer))
             {
                 pending.Insert(0, layer);
@@ -287,7 +304,7 @@ internal sealed class ExplorerLayerIndexer
     {
         lock (sync)
         {
-            if (states[layer] != ExplorerLayerState.Failed)
+            if (stopping || states[layer] != ExplorerLayerState.Failed)
             {
                 return false;
             }
@@ -304,10 +321,10 @@ internal sealed class ExplorerLayerIndexer
 
     private void FillWorkers()
     {
-        while (running < concurrency && pending.Count > 0)
+        while (!stopping && !cancellationToken.IsCancellationRequested && running < concurrency && pending.Count > 0)
         {
             running++;
-            _ = Task.Run(WorkAsync, CancellationToken.None);
+            workers.Add(Task.Run(WorkAsync, CancellationToken.None));
         }
     }
 
@@ -328,14 +345,29 @@ internal sealed class ExplorerLayerIndexer
                 states[layer] = ExplorerLayerState.Indexing;
             }
 
-            Started?.Invoke(layer);
             try
             {
+                cancellationToken.ThrowIfCancellationRequested();
+                Started?.Invoke(layer);
                 StoredLayerIndex index = await indexAsync(layer,
-                    new InlineProgress<long>(bytes => Progress?.Invoke(layer, bytes)), cancellationToken);
+                    new InlineProgress<long>(bytes =>
+                    {
+                        if (!Volatile.Read(ref stopping) && !cancellationToken.IsCancellationRequested)
+                        {
+                            Progress?.Invoke(layer, bytes);
+                        }
+                    }), cancellationToken);
+                cancellationToken.ThrowIfCancellationRequested();
                 IReadOnlyDictionary<int, StoredLayerIndex>? complete = null;
                 lock (sync)
                 {
+                    if (stopping)
+                    {
+                        states[layer] = ExplorerLayerState.Waiting;
+                        running--;
+                        return;
+                    }
+                    cancellationToken.ThrowIfCancellationRequested();
                     indexes[layer] = index;
                     states[layer] = ExplorerLayerState.Ready;
                     if (indexes.Count == layerCount)
@@ -362,10 +394,49 @@ internal sealed class ExplorerLayerIndexer
             {
                 lock (sync)
                 {
+                    if (stopping)
+                    {
+                        states[layer] = ExplorerLayerState.Waiting;
+                        running--;
+                        return;
+                    }
                     states[layer] = ExplorerLayerState.Failed;
                     errors[layer] = exception;
                 }
-                Failed?.Invoke(layer, exception);
+                if (!cancellationToken.IsCancellationRequested)
+                {
+                    Failed?.Invoke(layer, exception);
+                }
+            }
+        }
+    }
+
+    public Task StopAsync()
+    {
+        lock (sync)
+        {
+            stopping = true;
+            pending.Clear();
+            return stoppingTask ??= StopCoreAsync(workers.ToArray());
+        }
+    }
+
+    private async Task StopCoreAsync(Task[] activeWorkers)
+    {
+        try
+        {
+            await stopSource.CancelAsync();
+        }
+        finally
+        {
+            try
+            {
+                await Task.WhenAll(activeWorkers);
+            }
+            finally
+            {
+                linkedSource?.Dispose();
+                stopSource.Dispose();
             }
         }
     }

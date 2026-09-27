@@ -100,7 +100,12 @@ internal sealed class ExplorerSession
         await packageGate.WaitAsync(cancellationToken);
         try
         {
-            packages ??= await InstalledPackageReader.ReadAsync(Files, cancellationToken);
+            if (packages is null)
+            {
+                InstalledPackageMetadata metadata = await InstalledPackageReader.ReadAsync(Files, cancellationToken);
+                cancellationToken.ThrowIfCancellationRequested();
+                packages = metadata;
+            }
         }
         finally
         {
