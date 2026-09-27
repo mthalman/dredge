@@ -251,12 +251,32 @@ internal static class TagPicker
 // `p`: choose another platform from a multi-platform image. The explorer restarts on it.
 internal static class PlatformPicker
 {
-    public static ExplorerPlatform? Show(IApplication app, IReadOnlyList<ExplorerPlatform> platforms, ExplorerPlatform? current)
+    public static ExplorerPlatform? ShowInitial(IReadOnlyList<ExplorerPlatform> platforms, bool mouse,
+        CancellationToken cancellationToken)
     {
-        Dialog dialog = Create(platforms, current, out Func<ExplorerPlatform?> chosen);
+        cancellationToken.ThrowIfCancellationRequested();
+        using ResponsiveLoop loop = new();
+        using IApplication app = Application.Create();
+        app.Init();
+        if (!mouse)
+        {
+            app.Mouse.IsMouseDisabled = true;
+            app.Driver?.WriteRaw(EscSeqUtils.CSI_DisableMouseEvents);
+        }
+        app.Iteration += (_, _) => ResponsiveLoop.QuietCursor(app);
+        return Show(app, platforms, null, cancellationToken);
+    }
+
+    public static ExplorerPlatform? Show(IApplication app, IReadOnlyList<ExplorerPlatform> platforms,
+        ExplorerPlatform? current, CancellationToken cancellationToken = default)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        using Dialog dialog = Create(platforms, current, out Func<ExplorerPlatform?> chosen);
+        using CancellationTokenRegistration registration = cancellationToken.Register(() =>
+            app.Invoke(() => app.RequestStop()));
         app.Run(dialog);
+        cancellationToken.ThrowIfCancellationRequested();
         ExplorerPlatform? result = !dialog.Canceled && dialog.Result == Dialogs.PrimaryButton ? chosen() : null;
-        dialog.Dispose();
         return result;
     }
 

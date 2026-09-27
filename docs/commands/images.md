@@ -182,6 +182,9 @@ active filter, or returns from package files before leaving comparison.
 Press `x` to extract the selected file or directory, and `y` to copy the
 equivalent `dredge image` command. Press `p` to choose another Linux platform,
 including an architecture variant such as `arm/v7`, of a multi-platform image.
+If the initial image has multiple matching Linux platforms after applying flags
+and settings, the same platform picker opens before layer indexing starts.
+This also resolves variant-only ambiguity, such as `arm/v6` versus `arm/v7`.
 Compare mode opens the other tag on the same platform. Press `?` for all keys,
 and `q` to quit. Help uses the full screen body and supports scrolling with
 arrows, `PgUp`/`PgDn`, and `Home`/`End`. On narrow terminals, search and insights

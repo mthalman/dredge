@@ -8,6 +8,24 @@ using DockerManifestReference = Valleysoft.DockerRegistryClient.Models.Manifests
 public class ExplorerSourceTests
 {
     [Fact]
+    public async Task ResolveAsync_InitialChooserDistinguishesOtherwiseIdenticalVariants()
+    {
+        Mock<IDockerRegistryClient> client = CreateClient(out DockerManifest v7);
+        IReadOnlyList<ExplorerPlatform>? offered = null;
+
+        (ResolvedManifest resolved, _, ExplorerPlatform? platform) = await ExplorerSource.ResolveAsync(
+            client.Object, ImageName.Parse("image"),
+            new PlatformOptionsBase { Os = "linux", Architecture = "arm" }, null,
+            TestContext.Current.CancellationToken,
+            choosePlatform: choices => (offered = choices).Single(choice => choice.Variant == "v7"),
+            settingsStore: new TestAppSettingsStore(new AppSettings()));
+
+        Assert.Same(v7, resolved.Manifest);
+        Assert.Equal("v7", platform!.Variant);
+        Assert.Equal(["v6", "v7"], offered!.Select(choice => choice.Variant));
+    }
+
+    [Fact]
     public async Task ResolveAsync_ExactPlatformDistinguishesVariants()
     {
         Mock<IDockerRegistryClient> client = CreateClient(out DockerManifest v7);

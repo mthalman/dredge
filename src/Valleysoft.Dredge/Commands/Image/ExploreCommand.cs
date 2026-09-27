@@ -32,11 +32,12 @@ public sealed class ExploreCommand : RegistryCommandBase<ExploreOptions>
             using IDockerRegistryClient client =
                 await DockerRegistryClientFactory.GetClientAsync(image.Registry, ct);
             await using LayerStore store = LayerStore.Create();
+            Theme.Apply(theme);
             ExplorerSource source = await ExplorerSource.OpenAsync(
-                client, DockerRegistryClientFactory, image, Options, Options.BaseImages, ct);
+                client, DockerRegistryClientFactory, image, Options, Options.BaseImages, ct,
+                choosePlatform: platforms => PlatformPicker.ShowInitial(platforms, explorerOptions.Mouse, ct));
             ValidateLayer(Options.Layer, source.LayerCount);
 
-            Theme.Apply(theme);
             while (true)
             {
                 ExplorerExit exit;
