@@ -130,7 +130,8 @@ The screen has four parts:
   matches the layer's color in the strata bar; space wasted by later layers
   stays coral even when selected. The selected row has a teal marker.
 - **Files pane.** Shows the files changed by the selected layer. Press `a` to
-  show the whole filesystem instead.
+  show the whole filesystem instead. Permission and ownership columns are
+  hidden when they would crowd filenames; finding annotations use spare space.
 - **Details pane.** Describes the selected layer or file. Press `Enter` to
   inspect a file in a full-width preview; use `Esc` to return to the Layers and
   Files panes. Layer stepping is unavailable while previewing. Press `o` to

@@ -7,6 +7,20 @@ namespace Valleysoft.Dredge.Tests;
 [Collection(ExplorerUiCollection.Name)]
 public sealed class ExplorerUxTests
 {
+    [Theory]
+    [InlineData(119)]
+    [InlineData(120)]
+    [InlineData(150)]
+    public void FilenameTakesPriorityOverMetadataAndFindingAnnotation(int width)
+    {
+        using ExplorerUiHarness ui = ExplorerWindowTests.Open(out _, width: width, height: 30);
+        Assert.True(ui.Shows("package.json"), ui.Screen());
+        if (width == 120)
+        {
+            Assert.False(ui.Shows("uid:gid"));
+        }
+    }
+
     [Fact]
     public void PartialDiffShowsBothNoticeAndAvailableLines()
     {

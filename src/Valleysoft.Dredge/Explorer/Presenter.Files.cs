@@ -82,7 +82,10 @@ internal sealed partial class ExplorerPresenter
         }
 
         List<(int Start, int End, Change Change)> chips = [];
-        List<Line> lines = [ModeToggle(s, w, tree, counts, whole), Chips(s, counts, chips, whole), ColumnHeader(Narrow)];
+        const int MetadataColumns = 35;
+        const int MinimumNameColumns = 32;
+        bool compact = Narrow || w - 2 - MetadataColumns < MinimumNameColumns;
+        List<Line> lines = [ModeToggle(s, w, tree, counts, whole), Chips(s, counts, chips, whole), ColumnHeader(compact)];
         List<(int Line, int Row)> clickable = [];
 
         int visible = TreeRows;
@@ -115,7 +118,7 @@ internal sealed partial class ExplorerPresenter
             Line line;
             if (r < rows.Count)
             {
-                line = TreeRow(rows[r], r == s.Cursor, focused, w - 2, Narrow);
+                line = TreeRow(rows[r], r == s.Cursor, focused, w - 2, compact);
                 clickable.Add((lines.Count, r));
             }
             else if (rows.Count == 0 && i == 1)
@@ -321,8 +324,15 @@ internal sealed partial class ExplorerPresenter
         }
         if (n.Note is not null)
         {
-            Line note = Line.Of("▲ " + n.Note, Theme.Garnet);
-            name.Truncate(Math.Max(0, nameWidth - note.Length - 1)).PadRight(nameWidth, note);
+            int noteWidth = nameWidth - name.Length - 1;
+            if (noteWidth >= 3)
+            {
+                name.PadRight(nameWidth, Line.Of("▲ " + n.Note, Theme.Garnet).Truncate(noteWidth));
+            }
+            else
+            {
+                name.Add(" ▲", Theme.Garnet);
+            }
         }
         name.Truncate(nameWidth).Pad(nameWidth);
         line.Append(name);
