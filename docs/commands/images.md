@@ -172,6 +172,9 @@ and `q` to quit. Help uses the full screen body and supports scrolling with
 arrows, `PgUp`/`PgDn`, and `Home`/`End`. On narrow terminals, search and insights
 also use the full body rather than competing with the Layers pane.
 Closing help returns to the view, selection, and scroll position you came from.
+Copied commands quote paths for PowerShell on Windows and POSIX shells on
+Linux/macOS, preserving spaces, quotes, and shell-special characters.
+
 When clipboard copying is unavailable or fails, `y` opens the complete command
 in a read-only text field. Use `Left`/`Right` or `Home`/`End` to scroll the
 complete command. Select text with the mouse or `Ctrl+A`;

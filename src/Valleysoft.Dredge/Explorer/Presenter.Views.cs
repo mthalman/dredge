@@ -301,8 +301,8 @@ internal sealed partial class ExplorerPresenter
     {
         string platform = img.PlatformArguments.Length > 0 ? " " + img.PlatformArguments : "";
         return dir
-            ? $"dredge image ls {img.Reference} /{path} --recursive{platform}"
-            : $"dredge image cat {img.Reference} /{path}{platform}";
+            ? $"dredge image ls {ShellCommand.Quote(img.Reference)} {ShellCommand.Quote("/" + path)} --recursive{platform}"
+            : $"dredge image cat {ShellCommand.Quote(img.Reference)} {ShellCommand.Quote("/" + path)}{platform}";
     }
 
     // ───────────────────────────── search ─────────────────────────────

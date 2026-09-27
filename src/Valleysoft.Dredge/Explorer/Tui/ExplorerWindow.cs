@@ -1439,7 +1439,7 @@ internal sealed class ExplorerWindow : Window
                 return true;
             case CopyCommand:
                 string platform = img.PlatformArguments.Length > 0 ? " " + img.PlatformArguments : "";
-                Copy($"dredge image compare files {c.Comparison.Baseline.Image} {c.Comparison.Target.Image}{platform}");
+                Copy($"dredge image compare files {ShellCommand.Quote(c.Comparison.Baseline.Image.ToString())} {ShellCommand.Quote(c.Comparison.Target.Image.ToString())}{platform}");
                 return true;
             case FocusOn f:
                 (f.Pane == FocusPane.Layers ? layers : right).SetFocus();

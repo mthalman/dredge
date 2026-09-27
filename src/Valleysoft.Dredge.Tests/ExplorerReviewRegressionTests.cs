@@ -8,6 +8,60 @@ namespace Valleysoft.Dredge.Tests;
 public sealed class ExplorerReviewRegressionTests
 {
     [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void CopiedPathsWithSpacesAreSingleQuoted(bool directory)
+    {
+        ExplorerPresenter presenter = new(ExplorerSamples.Image(), 150, 42);
+        Assert.Equal($"dredge image {(directory ? "ls" : "cat")} {ExplorerSamples.Reference} '/app/a file.txt'" +
+            (directory ? " --recursive" : ""), presenter.CopyCommandText(new ExplorerState(), "app/a file.txt", directory));
+    }
+
+    [Theory]
+    [InlineData("/app/file", true, "/app/file")]
+    [InlineData("/app/file", false, "/app/file")]
+    [InlineData("", true, "''")]
+    [InlineData("a'b", true, "'a''b'")]
+    [InlineData("a'b", false, "'a'\\''b'")]
+    [InlineData("$HOME; & `echo` \"x\"", true, "'$HOME; & `echo` \"x\"'")]
+    [InlineData("$HOME; & `echo` \"x\"", false, "'$HOME; & `echo` \"x\"'")]
+    public void ShellQuotingPreservesLiteralArguments(string value, bool powerShell, string expected) =>
+        Assert.Equal(expected, ShellCommand.Quote(value, powerShell));
+
+    [Fact]
+    public async Task CopiedCommandRoundTripsThroughTheSupportedShell()
+    {
+        const string path = "app/a 'file' \"$HOME\"; & `text`.txt";
+        ExplorerPresenter presenter = new(ExplorerSamples.Image(), 150, 42);
+        string command = presenter.CopyCommandText(new ExplorerState(), path, false);
+        bool windows = OperatingSystem.IsWindows();
+        System.Diagnostics.ProcessStartInfo start = new(windows ? "powershell.exe" : "/bin/sh")
+        {
+            UseShellExecute = false, RedirectStandardOutput = true, RedirectStandardError = true
+        };
+        if (windows)
+        {
+            start.ArgumentList.Add("-NoProfile");
+            start.ArgumentList.Add("-NonInteractive");
+            start.ArgumentList.Add("-EncodedCommand");
+            start.ArgumentList.Add(Convert.ToBase64String(System.Text.Encoding.Unicode.GetBytes(
+                "function dredge { foreach ($arg in $args) { [Console]::Write($arg); [Console]::Write([char]0) } }; " + command)));
+        }
+        else
+        {
+            start.ArgumentList.Add("-c");
+            start.ArgumentList.Add("dredge() { printf '%s\\000' \"$@\"; }; " + command);
+        }
+        using System.Diagnostics.Process process = System.Diagnostics.Process.Start(start)!;
+        Task<string> output = process.StandardOutput.ReadToEndAsync(TestContext.Current.CancellationToken);
+        Task<string> errors = process.StandardError.ReadToEndAsync(TestContext.Current.CancellationToken);
+        await process.WaitForExitAsync(TestContext.Current.CancellationToken);
+        Assert.Equal(0, process.ExitCode);
+        Assert.Empty(await errors);
+        Assert.Equal(["image", "cat", ExplorerSamples.Reference, "/" + path, ""], (await output).Split('\0'));
+    }
+
+    [Theory]
     [InlineData("2.0", "registry.test/shop/storefront:2.0")]
     [InlineData("other.test/team/app:2", "other.test/team/app:2")]
     [InlineData("other.test:5000/team/app@sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",

@@ -134,10 +134,10 @@ internal sealed class ExplorerImage
     // The flags that select this platform on other dredge commands.
     internal static string PlatformArgumentsFor(ExplorerPlatform platform)
     {
-        string text = $"--os {platform.Os} --arch {platform.Architecture}";
+        string text = $"--os {ShellCommand.Quote(platform.Os)} --arch {ShellCommand.Quote(platform.Architecture)}";
         if (!string.IsNullOrEmpty(platform.OsVersion))
         {
-            text += $" --os-version {platform.OsVersion}";
+            text += $" --os-version {ShellCommand.Quote(platform.OsVersion)}";
         }
         return text;
     }
