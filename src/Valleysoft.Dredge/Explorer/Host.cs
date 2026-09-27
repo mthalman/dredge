@@ -27,7 +27,7 @@ internal interface IExplorerHost
 
     Task<IReadOnlyList<string>> ListTagsAsync(CancellationToken cancellationToken);
     Task DescribeTagAsync(TagChoice choice, CancellationToken cancellationToken);
-    Task<ExplorerComparison> CompareAsync(string tag, CancellationToken cancellationToken);
+    Task<ExplorerComparison> CompareAsync(string tag, Action readingPackages, CancellationToken cancellationToken);
     Task<PreviewContent> PreviewAsync(string path, int layer, CancellationToken cancellationToken);
     Task<TextDiffContent> DiffAsync(ExplorerComparison comparison, string path, CancellationToken cancellationToken);
     Task<PackageFilesContent> PackageFilesAsync(

@@ -34,6 +34,7 @@ internal sealed class ExplorerWindow : Window
     private IDriver? watched;
     private bool clearedThisFrame;
     private CancellationTokenSource? previewLoad;
+    private int compareGeneration;
 
     public ExplorerWindow(ExplorerImage img, ExplorerState state, IExplorerHost host, CancellationToken lifetime,
         Action<string>? openWindowedViewer = null)
@@ -1053,14 +1054,34 @@ internal sealed class ExplorerWindow : Window
         {
             s.Compare.Busy = true;
         }
-        RunAsync(ct => host.CompareAsync(tag, ct), comparison =>
+        int generation = ++compareGeneration;
+        IApplication? app = App;
+        RunAsync(ct => host.CompareAsync(tag, () => app?.Invoke(() =>
         {
+            if (compareGeneration == generation)
+            {
+                Notice($"Comparing with {tag}… reading packages");
+                ex.Invalidate();
+                Refresh();
+            }
+        }), ct), comparison =>
+        {
+            if (compareGeneration != generation)
+            {
+                return;
+            }
+            compareGeneration++;
             s.Compare = new CompareState(comparison, ExplorerTags.Label(img.Reference), tag);
             s.View = RightView.Files;
             s.Notice = null;
             right.SetFocus();
         }, error =>
         {
+            if (compareGeneration != generation)
+            {
+                return;
+            }
+            compareGeneration++;
             if (s.Compare is not null)
             {
                 s.Compare.Busy = false;

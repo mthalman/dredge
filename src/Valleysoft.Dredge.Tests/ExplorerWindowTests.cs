@@ -150,6 +150,7 @@ internal sealed class FakeExplorerHost : IExplorerHost
     public Func<string, PreviewContent>? Preview { get; init; }
     public Func<string, ExplorerSession>? Target { get; init; }
     public Exception? CompareError { get; init; }
+    public Func<Task<ExplorerComparison>>? CompareWork { get; init; }
     public Exception? TagsError { get; init; }
 
     public List<int> Prioritized { get; } = [];
@@ -180,12 +181,17 @@ internal sealed class FakeExplorerHost : IExplorerHost
         return Task.CompletedTask;
     }
 
-    public Task<ExplorerComparison> CompareAsync(string tag, CancellationToken cancellationToken)
+    public Task<ExplorerComparison> CompareAsync(string tag, Action readingPackages, CancellationToken cancellationToken)
     {
         Compared.Add(tag);
         if (CompareError is not null)
         {
             return Task.FromException<ExplorerComparison>(CompareError);
+        }
+        readingPackages();
+        if (CompareWork is not null)
+        {
+            return CompareWork();
         }
         return Task.FromResult(ExplorerSession.Compare(Baseline!, Target?.Invoke(tag) ?? ExplorerSamples.Target()));
     }

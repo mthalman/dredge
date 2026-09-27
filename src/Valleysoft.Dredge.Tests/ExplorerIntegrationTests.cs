@@ -138,6 +138,7 @@ public sealed class ExplorerIntegrationTests
                 new Key('2'), new Key('.'), new Key('0'), Key.Enter);
             Assert.True(picked, "the tag picker opened");
             ui.Until(() => ui.State.Compare is not null, "the comparison");
+            Assert.Null(ui.State.Notice);
             ExplorerComparison comparison = ui.State.Compare!.Comparison;
             Assert.Same(explorer.Host.Session!.Packages, comparison.Baseline.Packages);
             Assert.Contains(comparison.Packages, package =>

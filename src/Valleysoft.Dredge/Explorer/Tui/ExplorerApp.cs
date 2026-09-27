@@ -480,7 +480,7 @@ internal sealed class ExplorerHost : IExplorerHost, IAsyncDisposable
         return (shared, download);
     }
 
-    public async Task<ExplorerComparison> CompareAsync(string tag, CancellationToken cancellationToken)
+    public async Task<ExplorerComparison> CompareAsync(string tag, Action readingPackages, CancellationToken cancellationToken)
     {
         ExplorerSession baseline = Loaded;
         await compareGate.WaitAsync(cancellationToken);
@@ -499,6 +499,8 @@ internal sealed class ExplorerHost : IExplorerHost, IAsyncDisposable
                     store, baseImages: null, cancellationToken, exactPlatform: source.Platform);
                 targets[tag] = target;
             }
+            cancellationToken.ThrowIfCancellationRequested();
+            readingPackages();
             await baseline.EnsurePackagesAsync(cancellationToken);
             await target.EnsurePackagesAsync(cancellationToken);
             return ExplorerSession.Compare(baseline, target);

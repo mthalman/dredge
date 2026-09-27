@@ -1261,6 +1261,43 @@ public sealed class ExplorerFeatureTests
     }
 
     [Fact]
+    public void CompareNoticeTransitionsToPackagesAndClearsOnCompletion()
+    {
+        TaskCompletionSource<ExplorerComparison> completion = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        using ExplorerUiHarness ui = ExplorerWindowTests.Open(ExplorerSamples.Image(), new ExplorerState { Layer = 2 },
+            session => new FakeExplorerHost
+            {
+                Baseline = session,
+                CompareWork = () => completion.Task,
+            }, out FakeExplorerHost host);
+
+        ui.Window.StartCompare("2.0");
+        Assert.Equal("Comparing with 2.0… reading its layers", ui.State.Notice);
+        ui.Until(() => ui.State.Notice == "Comparing with 2.0… reading packages", "the package scan notice");
+        Assert.Null(ui.State.Compare);
+
+        completion.SetResult(ExplorerSession.Compare(host.Baseline!, ExplorerSamples.Target()));
+        ui.Until(() => ui.State.Compare is not null, "the comparison");
+        Assert.Null(ui.State.Notice);
+    }
+
+    [Fact]
+    public void FailedPackageScanReplacesProgressWithError()
+    {
+        TaskCompletionSource<ExplorerComparison> completion = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        using ExplorerUiHarness ui = ExplorerWindowTests.Open(ExplorerSamples.Image(), new ExplorerState { Layer = 2 },
+            session => new FakeExplorerHost { Baseline = session, CompareWork = () => completion.Task }, out _);
+
+        ui.Window.StartCompare("2.0");
+        ui.Until(() => ui.State.Notice == "Comparing with 2.0… reading packages", "the package scan notice");
+        completion.SetException(new InvalidOperationException("package scan failed"));
+        ui.Until(() => ui.State.NoticeIsError, "the comparison error");
+        ui.Pump();
+        Assert.Equal("Could not compare with 2.0: package scan failed", ui.State.Notice);
+        Assert.Null(ui.State.Compare);
+    }
+
+    [Fact]
     public void FailedCompareShowsAnError()
     {
         using ExplorerUiHarness ui = ExplorerWindowTests.Open(ExplorerSamples.Image(), new ExplorerState { Layer = 2 },
