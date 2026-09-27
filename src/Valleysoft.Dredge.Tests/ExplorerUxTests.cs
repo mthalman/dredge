@@ -8,6 +8,44 @@ namespace Valleysoft.Dredge.Tests;
 public sealed class ExplorerUxTests
 {
     [Fact]
+    public void HelpRestoresPreviewAndItsScrollPosition()
+    {
+        using ExplorerUiHarness ui = ExplorerWindowTests.Open(ExplorerSamples.Image(), new ExplorerState
+        {
+            Layer = 2, View = RightView.Inspector, InspectPath = "app/package.json", Focus = FocusPane.Right,
+        }, s => new FakeExplorerHost
+        {
+            Baseline = s, Preview = path => new PreviewContent(path, null,
+                Enumerable.Range(0, 100).Select(i => new string('x', 200) + i).ToList(), null, 20100),
+        }, out _);
+        ui.Until(() => ui.State.Preview is not null, "preview");
+        ui.Press(Key.PageDown);
+        ui.Press(Key.CursorRight);
+        int scroll = ui.State.PreviewScroll, column = ui.State.PreviewColumn;
+        ui.Press(new Key('?'));
+        ui.Press(Key.End);
+        ui.Press(Key.Esc);
+        Assert.Equal(RightView.Inspector, ui.State.View);
+        Assert.Equal(scroll, ui.State.PreviewScroll);
+        Assert.Equal(column, ui.State.PreviewColumn);
+        Assert.False(ui.Window.Layers.Visible);
+        Assert.True(ui.Window.Right.HasFocus);
+    }
+
+    [Fact]
+    public void HelpRestoresInsightSelection()
+    {
+        using ExplorerUiHarness ui = ExplorerWindowTests.Open(out _);
+        ui.Press(new Key('i'));
+        ui.Press(Key.CursorDown);
+        int finding = ui.State.Finding;
+        ui.Press(new Key('?'));
+        ui.Press(Key.Esc);
+        Assert.Equal(RightView.Insights, ui.State.View);
+        Assert.Equal(finding, ui.State.Finding);
+    }
+
+    [Fact]
     public void PreviewAndDiffExposeTheEndsOfLongLines()
     {
         using ExplorerUiHarness ui = ExplorerWindowTests.Open(ExplorerSamples.Image(), new ExplorerState

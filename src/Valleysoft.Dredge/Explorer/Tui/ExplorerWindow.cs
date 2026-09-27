@@ -36,6 +36,7 @@ internal sealed class ExplorerWindow : Window
     private CancellationTokenSource? previewLoad;
     private int compareGeneration;
     private CancellationTokenSource? compareLoad;
+    private (RightView View, FocusPane Focus, bool CompareLayers)? helpReturn;
 
     public ExplorerWindow(ExplorerImage img, ExplorerState state, IExplorerHost host, CancellationToken lifetime,
         Action<string>? openWindowedViewer = null)
@@ -569,6 +570,26 @@ internal sealed class ExplorerWindow : Window
             s.NoticeIsError = false;
             ex.Invalidate();
         }
+        if (cmd is ShowView { View: RightView.Keys } && s.View != RightView.Keys)
+        {
+            helpReturn = (s.View, s.Focus, s.Compare?.FocusLayers ?? false);
+        }
+        if (cmd is Back && s.View == RightView.Keys)
+        {
+            (RightView View, FocusPane Focus, bool CompareLayers) previous =
+                helpReturn ?? (RightView.Files, FocusPane.Right, false);
+            s.View = previous.View;
+            s.Focus = previous.Focus;
+            if (s.Compare is not null)
+            {
+                s.Compare.FocusLayers = previous.CompareLayers;
+            }
+            helpReturn = null;
+            Relayout();
+            SyncFocus();
+            Refresh();
+            return;
+        }
         if (cmd is Back && compareLoad is not null)
         {
             CancelComparison();
@@ -596,10 +617,6 @@ internal sealed class ExplorerWindow : Window
                 s.FindingsOnly = false;
                 s.Hidden.Clear();
                 s.Cursor = s.Scroll = 0;
-                break;
-            case Back when s.View == RightView.Keys && Comparing:
-                s.View = RightView.Files;
-                right.SetFocus();
                 break;
             case Back:
                 s.View = RightView.Files;
