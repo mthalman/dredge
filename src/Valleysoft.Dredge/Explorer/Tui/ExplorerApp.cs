@@ -618,19 +618,26 @@ internal sealed class ExplorerHost : IExplorerHost, IAsyncDisposable
     public async Task<PackageFilesContent> PackageFilesAsync(
         ExplorerComparison comparison, ExplorerPackageDifference package, CancellationToken cancellationToken)
     {
-        ExplorerSession side = package.TargetVersion is null ? comparison.Baseline : comparison.Target;
-        HashSet<string> all = side.Entries.Select(entry => entry.Path).ToHashSet(StringComparer.Ordinal);
-        IReadOnlyList<string> owned = await PackageFileLister.ListAsync(package.Ecosystem, package.Name, all,
-            async (path, token) =>
-            {
-                if (!all.Contains(path))
+        HashSet<string> owned = new(StringComparer.Ordinal);
+        foreach (ExplorerSession side in new[]
+        {
+            package.BaselineVersion is null ? null : comparison.Baseline,
+            package.TargetVersion is null ? null : comparison.Target
+        }.OfType<ExplorerSession>())
+        {
+            HashSet<string> all = side.Entries.Select(entry => entry.Path).ToHashSet(StringComparer.Ordinal);
+            owned.UnionWith(await PackageFileLister.ListAsync(package.Ecosystem, package.Name, all,
+                async (path, token) =>
                 {
-                    return null;
-                }
-                using MemoryStream stream = new();
-                await side.Files.CopyFileToAsync(path, stream, token);
-                return Encoding.UTF8.GetString(stream.ToArray());
-            }, cancellationToken);
+                    if (!all.Contains(path))
+                    {
+                        return null;
+                    }
+                    using MemoryStream stream = new();
+                    await side.Files.CopyFileToAsync(path, stream, token);
+                    return Encoding.UTF8.GetString(stream.ToArray());
+                }, cancellationToken));
+        }
         if (owned.Count == 0)
         {
             return new PackageFilesContent(package, null, "The package manager doesn't list this package's files.", 0);
@@ -638,6 +645,7 @@ internal sealed class ExplorerHost : IExplorerHost, IAsyncDisposable
         Dictionary<string, ExplorerFileDifference> changed = comparison.Files.ToDictionary(file => file.Path, StringComparer.Ordinal);
         List<(string Path, Change Change)> files = owned
             .Where(changed.ContainsKey)
+            .Order(StringComparer.Ordinal)
             .Select(path => (path, ExplorerImage.ToChange(changed[path].Kind)))
             .ToList();
         return new PackageFilesContent(package, files,

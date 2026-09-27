@@ -21,6 +21,34 @@ public sealed class ExplorerDefenseHostTests : IAsyncDisposable
     private static readonly ImageName Image = ImageName.Parse("registry.test/repo:current");
     private static CancellationToken Token => TestContext.Current.CancellationToken;
 
+    [Theory]
+    [InlineData("1", "2", 2)]
+    [InlineData("1", null, 1)]
+    [InlineData(null, "2", 1)]
+    public async Task PackageOwnershipIncludesApplicableBaselineAndTargetFiles(
+        string? baselineVersion, string? targetVersion, int expectedCount)
+    {
+        TestImage baseline = await CreateAsync(Blob(("var/lib/dpkg/info/example.list", "/old\n/shared\n"),
+            ("old", "old"), ("shared", "same")));
+        TestImage target = await CreateAsync(Blob(("var/lib/dpkg/info/example.list", "/new\n/shared\n"),
+            ("new", "new"), ("shared", "same")));
+        ExplorerComparison comparison = await CompareAsync(baseline, target);
+
+        PackageFilesContent result = await Host(baseline).PackageFilesAsync(comparison,
+            new(InstalledPackageEcosystem.Dpkg, "example", baselineVersion, targetVersion), Token);
+
+        Assert.Equal(expectedCount, result.Files!.Count);
+        Assert.Equal(expectedCount + 1, result.Total);
+        if (baselineVersion is not null)
+        {
+            Assert.Contains(("old", Change.Removed), result.Files);
+        }
+        if (targetVersion is not null)
+        {
+            Assert.Contains(("new", Change.Added), result.Files);
+        }
+    }
+
     [Fact]
     public async Task PackageDiagnosticsAreStructuredAndRetainedAcrossCachedReads()
     {
@@ -90,6 +118,13 @@ public sealed class ExplorerDefenseHostTests : IAsyncDisposable
         host.Session = image.Session;
         hosts.Add(host);
         return host;
+    }
+
+    private static async Task<ExplorerComparison> CompareAsync(TestImage baseline, TestImage target)
+    {
+        await baseline.Session.EnsurePackagesAsync(Token);
+        await target.Session.EnsurePackagesAsync(Token);
+        return ExplorerSession.Compare(baseline.Session, target.Session);
     }
 
     private static byte[] Blob(params (string Path, string Content)[] files) =>
