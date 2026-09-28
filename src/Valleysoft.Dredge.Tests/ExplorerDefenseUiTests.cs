@@ -441,10 +441,8 @@ public sealed class ExplorerDefenseUiTests
         ExplorerPresenter presenter = new(ExplorerSamples.Custom([]), 80, 24);
         Assert.Contains(presenter.Hints(new()), hint => hint.Key == "p" && hint.Cmd is ShowView { View: RightView.Packages });
         Assert.DoesNotContain(presenter.Hints(new()), hint => hint.Cmd is SetWhole or RetryLayer);
-        ExplorerPlatform amd = new("linux", "amd64", null, null);
-        ExplorerPlatform arm = new("linux", "arm64", null, null);
         using ExplorerUiHarness ui = ExplorerWindowTests.Open(ExplorerSamples.Custom([]), new ExplorerState(),
-            session => new FakeExplorerHost { Baseline = session, Platforms = [amd, arm], Platform = amd }, out _);
+            session => new FakeExplorerHost { Baseline = session }, out _);
         ui.Press(new Key('p'));
         Assert.Equal(RightView.Packages, ui.State.View);
         Assert.False(ui.Window.StopRequested);

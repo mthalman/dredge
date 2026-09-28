@@ -1,5 +1,6 @@
 using System.Text;
 using System.Text.Json;
+using System.Text.RegularExpressions;
 
 namespace Valleysoft.Dredge;
 
@@ -421,25 +422,8 @@ internal static class InstalledPackageReader
             GetRequiredField(metadata, "Version", $"pip metadata '{sourcePath}'"));
     }
 
-    internal static string NormalizePipName(string name)
-    {
-        StringBuilder normalized = new();
-        foreach (char value in name)
-        {
-            if (value is '-' or '_' or '.')
-            {
-                if (normalized.Length == 0 || normalized[^1] != '-')
-                {
-                    normalized.Append('-');
-                }
-            }
-            else
-            {
-                normalized.Append(char.ToLowerInvariant(value));
-            }
-        }
-        return normalized.ToString();
-    }
+    internal static string NormalizePipName(string name) =>
+        Regex.Replace(name, "[-_.]+", "-").ToLowerInvariant();
 
     internal static void ValidateManifestSize(string path, long size, long maximumBytes)
     {

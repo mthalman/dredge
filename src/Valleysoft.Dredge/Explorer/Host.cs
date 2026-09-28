@@ -19,8 +19,6 @@ internal interface IExplorerHost
 {
     KeyMap Keys { get; }
     bool ClipboardEnabled { get; }
-    IReadOnlyList<ExplorerPlatform> Platforms { get; }
-    ExplorerPlatform? Platform { get; }
 
     void Prioritize(int layer);
     void Retry(int layer);

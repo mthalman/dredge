@@ -7,14 +7,22 @@ namespace Valleysoft.Dredge;
 // which of a package's files changed between two images.
 internal static class PackageFileLister
 {
+    public static IReadOnlyList<string> ListNpm(IReadOnlyList<string> roots, IEnumerable<string> allPaths)
+    {
+        string[] prefixes = roots.Select(root => root + "/").ToArray();
+        return allPaths.Where(path => prefixes.Any(prefix =>
+            path.StartsWith(prefix, StringComparison.Ordinal) &&
+            !path[prefix.Length..].Contains("node_modules/", StringComparison.Ordinal)))
+            .Order(StringComparer.Ordinal).ToArray();
+    }
+
     public static async Task<IReadOnlyList<string>> ListAsync(
         InstalledPackageEcosystem ecosystem,
         string name,
         IReadOnlyCollection<string> allPaths,
         Func<string, CancellationToken, Task<string?>> readText,
         CancellationToken cancellationToken,
-        Action<string, Exception>? onError = null,
-        IReadOnlyList<string>? npmRoots = null)
+        Action<string, Exception>? onError = null)
     {
         async Task<IReadOnlyList<string>> ReadListAsync(string path, Func<string, IReadOnlyList<string>> parse)
         {
@@ -42,13 +50,6 @@ internal static class PackageFileLister
             case InstalledPackageEcosystem.NuGet:
                 throw new NotSupportedException(
                     "NuGet dependency metadata identifies packages but does not establish deployed file ownership.");
-            case InstalledPackageEcosystem.Npm:
-                ArgumentNullException.ThrowIfNull(npmRoots);
-                string[] prefixes = npmRoots.Select(root => root + "/").ToArray();
-                return allPaths.Where(path => prefixes.Any(prefix =>
-                    path.StartsWith(prefix, StringComparison.Ordinal) &&
-                    !path[prefix.Length..].Contains("node_modules/", StringComparison.Ordinal)))
-                    .Order(StringComparer.Ordinal).ToArray();
             case InstalledPackageEcosystem.Dpkg:
                 string[] lists = allPaths
                     .Where(path => path.StartsWith("var/lib/dpkg/info/", StringComparison.Ordinal) &&
@@ -90,7 +91,8 @@ internal static class PackageFileLister
                 }
                 return pipFiles.Order(StringComparer.Ordinal).ToArray();
             default:
-                return [];
+                throw new ArgumentOutOfRangeException(nameof(ecosystem), ecosystem,
+                    "The ecosystem does not provide supported file ownership metadata.");
         }
     }
 

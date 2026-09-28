@@ -547,8 +547,6 @@ internal sealed class ExplorerHost : IExplorerHost, IAsyncDisposable
     public ExplorerSession? Session { get; set; }
     public KeyMap Keys => options.Keys;
     public bool ClipboardEnabled => options.Clipboard != ClipboardMode.Off;
-    public IReadOnlyList<ExplorerPlatform> Platforms => source.Platforms;
-    public ExplorerPlatform? Platform => source.Platform;
 
     private ExplorerSession Loaded => Session ??
         throw new InvalidOperationException("Every layer must be indexed first.");
@@ -856,12 +854,13 @@ internal sealed class ExplorerHost : IExplorerHost, IAsyncDisposable
             package.TargetVersion is null ? null : comparison.Target
         }.OfType<ExplorerSession>())
         {
-            Dictionary<string, ImageFileSystemEntry> entries = side.Entries.ToDictionary(entry => entry.Path, StringComparer.Ordinal);
-            ImagePathResolver resolver = new(entries);
             string label = ReferenceEquals(side, comparison.Baseline) ? "Baseline" : "Target";
             try
             {
-                IReadOnlyList<string> paths = await PackageFileLister.ListAsync(package.Ecosystem, package.Name, entries.Keys,
+                string[] allPaths = side.Entries.Select(entry => entry.Path).ToArray();
+                IReadOnlyList<string> paths = package.Ecosystem == InstalledPackageEcosystem.Npm
+                    ? PackageFileLister.ListNpm(side.Packages.NpmPackageRoots.GetValueOrDefault(package.Name) ?? [], allPaths)
+                    : await PackageFileLister.ListAsync(package.Ecosystem, package.Name, allPaths,
                     async (path, token) =>
                     {
                         await foreach (var result in side.Files.ReadFilesAsync([(path, MaxPackageOwnershipBytes)], token))
@@ -874,16 +873,13 @@ internal sealed class ExplorerHost : IExplorerHost, IAsyncDisposable
                         }
                         return null;
                     }, cancellationToken,
-                    (path, error) => warnings.Add($"{label} /{path}: {error.Message}"),
-                    npmRoots: package.Ecosystem == InstalledPackageEcosystem.Npm
-                        ? side.Packages.NpmPackageRoots.GetValueOrDefault(package.Name) ?? []
-                        : null);
+                    (path, error) => warnings.Add($"{label} /{path}: {error.Message}"));
                 foreach (string path in paths)
                 {
                     cancellationToken.ThrowIfCancellationRequested();
                     try
                     {
-                        owned.Add(resolver.ResolveParentComponents(ImagePath.NormalizeRequested(path)));
+                        owned.Add(side.Files.ResolveParentComponents(ImagePath.NormalizeRequested(path)));
                     }
                     catch (Exception exception) when (exception is IOException or InvalidDataException)
                     {

@@ -340,7 +340,7 @@ internal sealed class ImageFileSystem : IAsyncDisposable
     private ImageFileSystemEntry ResolveContentEntry(string requestedPath) =>
         pathResolver.ResolveContentEntry(requestedPath, entries);
 
-    private string ResolveParentComponents(string path) =>
+    public string ResolveParentComponents(string path) =>
         pathResolver.ResolveParentComponents(path);
 
     public ValueTask DisposeAsync() => ownsStore ? store.DisposeAsync() : ValueTask.CompletedTask;

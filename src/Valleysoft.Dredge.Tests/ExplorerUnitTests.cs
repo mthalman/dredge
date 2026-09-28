@@ -281,17 +281,26 @@ public sealed class PackageFileListerTests
             (path, _) => Task.FromResult(files?.GetValueOrDefault(path)), CancellationToken.None);
 
     [Fact]
-    public async Task NpmExcludesNestedPackages()
+    public void NpmExcludesNestedPackages()
     {
-        IReadOnlyList<string> files = await PackageFileLister.ListAsync(InstalledPackageEcosystem.Npm, "left-pad",
+        IReadOnlyList<string> files = PackageFileLister.ListNpm(
+        ["app/node_modules/left-pad", "app/node_modules/other/node_modules/left-pad"],
         [
             "app/node_modules/left-pad/index.js",
             "app/node_modules/left-pad/node_modules/other/index.js",
             "app/node_modules/other/node_modules/left-pad/package.json",
             "app/node_modules/left-padding/index.js",
-        ], (_, _) => Task.FromResult<string?>(null), CancellationToken.None,
-            npmRoots: ["app/node_modules/left-pad", "app/node_modules/other/node_modules/left-pad"]);
+        ]);
         Assert.Equal(["app/node_modules/left-pad/index.js", "app/node_modules/other/node_modules/left-pad/package.json"], files);
+    }
+
+    [Fact]
+    public async Task NpmOwnershipRequiresInstallationRootsInsteadOfMetadataReads()
+    {
+        await Assert.ThrowsAsync<ArgumentOutOfRangeException>(() =>
+            PackageFileLister.ListAsync(InstalledPackageEcosystem.Npm, "left-pad", [],
+                (_, _) => throw new InvalidOperationException("npm ownership must use cached installation roots."),
+                CancellationToken.None));
     }
 
     [Fact]

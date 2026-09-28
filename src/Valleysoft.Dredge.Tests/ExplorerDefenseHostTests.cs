@@ -1,6 +1,5 @@
 using System.Formats.Tar;
 using System.IO.Compression;
-using System.Reflection;
 using System.Text;
 using System.Text.Json;
 using Terminal.Gui.App;
@@ -101,6 +100,7 @@ public sealed class ExplorerDefenseHostTests : IAsyncDisposable
             image.Source, image.Store, new(null, null, false, ClipboardMode.Off, KeyMap.Default, "", ""), Token);
         TaskCompletionSource<bool> observed = new(TaskCreationOptions.RunContinuationsAsynchronously);
         Mock<IApplication> application = new();
+        using ExplorerWindow window = app.Attach(application.Object, new());
         application.Setup(value => value.Invoke(It.IsAny<Action>())).Callback(() =>
         {
             ManualResetEventSlim detached = new(false);
@@ -113,9 +113,6 @@ public sealed class ExplorerDefenseHostTests : IAsyncDisposable
             _ = detach.ContinueWith(_ => detached.Dispose(), TaskScheduler.Default);
             observed.TrySetResult(completed);
         });
-        typeof(ExplorerApp).GetField("app", BindingFlags.Instance | BindingFlags.NonPublic)!
-            .SetValue(app, application.Object);
-
         app.Start();
 
         Assert.True(await observed.Task.WaitAsync(TimeSpan.FromSeconds(10), Token),

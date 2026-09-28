@@ -35,8 +35,7 @@ internal static class ExplorerSamples
         new() { CreatedBy = "RUN /bin/sh -c rm -rf /app/cache && npm run build # buildkit" },
     ];
 
-    public static ExplorerImage Image(bool complete = true, IReadOnlyList<ExplorerPlatform>? platforms = null,
-        string digest = "sha256:manifest")
+    public static ExplorerImage Image(bool complete = true, string digest = "sha256:manifest")
     {
         LayerChanges[] layers = Layers();
         ExplorerImage img = new(Reference, "linux/amd64", digest, Digests, [100, 400, 900, 300],
@@ -144,8 +143,6 @@ internal sealed class FakeExplorerHost : IExplorerHost
 {
     public KeyMap Keys { get; init; } = KeyMap.Default;
     public bool ClipboardEnabled { get; init; }
-    public IReadOnlyList<ExplorerPlatform> Platforms { get; init; } = [];
-    public ExplorerPlatform? Platform { get; init; }
     public ExplorerSession? Baseline { get; init; }
     public IReadOnlyList<string> Tags { get; init; } = ["1.0", "2.0"];
     public Func<string, PreviewContent>? Preview { get; init; }
@@ -258,7 +255,7 @@ public sealed class ExplorerWindowTests
 {
     internal static ExplorerUiHarness Open(
         out FakeExplorerHost host, int width = 150, int height = 42, bool complete = true,
-        KeyMap? keys = null, bool clipboard = false, IReadOnlyList<ExplorerPlatform>? platforms = null, bool clipboardWorks = true)
+        KeyMap? keys = null, bool clipboard = false, bool clipboardWorks = true)
     {
         ExplorerImage img = ExplorerSamples.Image(complete);
         FakeExplorerHost fake = new()
@@ -266,8 +263,6 @@ public sealed class ExplorerWindowTests
             Keys = keys ?? KeyMap.Default,
             ClipboardEnabled = clipboard,
             ClipboardWorks = clipboardWorks,
-            Platforms = platforms ?? [],
-            Platform = platforms?.FirstOrDefault(),
             Baseline = img.Session,
         };
         host = fake;
@@ -720,10 +715,9 @@ public sealed class ExplorerWindowTests
     }
 
     [Fact]
-    public void PackagesKeyOpensInventoryForMultiPlatformImages()
+    public void PackagesKeyOpensInventoryWithoutPlatformSwitching()
     {
-        ExplorerPlatform amd = new("linux", "amd64", null, null), arm = new("linux", "arm64", "v8", null);
-        using ExplorerUiHarness ui = Open(out _, platforms: [amd, arm]);
+        using ExplorerUiHarness ui = Open(out _);
         Assert.Contains(ui.Window.Presenter.Hints(ui.State), h => h.Key == "p" && h.Label == "Packages");
         Assert.DoesNotContain(ui.Window.Presenter.Hints(ui.State), h => h.Label == "Platform…");
         Assert.Null(KeyMap.Default.Lookup('k'));
