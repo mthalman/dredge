@@ -136,6 +136,9 @@ The screen has four parts:
   layer on a square-root scale, so smaller layers stay distinguishable. The shading
   matches the layer's color in the strata bar; space wasted by later layers
   stays coral even when selected. The selected row has a teal marker.
+  In narrow terminals shorter than 32 rows, focusing Files reduces Layers to a
+  one-line instruction summary. Press `Tab` or click the summary to expand
+  Layers; `Tab` back restores the file selection and viewport.
 - **Files pane.** Shows the files changed by the selected layer. Press `a` to
   show the whole filesystem instead. Permission and ownership columns are
   hidden when they would crowd filenames; finding annotations use spare space.

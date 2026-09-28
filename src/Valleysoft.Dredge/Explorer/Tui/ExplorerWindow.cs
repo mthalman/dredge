@@ -72,7 +72,7 @@ internal sealed class ExplorerWindow : Window
         {
             X = 0, Y = 0, Width = Dim.Fill(), Height = ExplorerPresenter.HeaderHeight,
         };
-        layers = new PaneView(() => Comparing ? Compare.Layers() : ex.LayersPane(s), focusable: true) { KeepsFocusAway = Typing, BufferIntact = BufferIntact };
+        layers = new PaneView(() => Comparing ? Compare.Layers() : ex.CompactLayers ? ex.LayerContext(s) : ex.LayersPane(s), focusable: true) { KeepsFocusAway = Typing, BufferIntact = BufferIntact };
         details = new PaneView(() => Comparing ? Compare.Details() : ex.DetailsPane(s), focusable: false) { BufferIntact = BufferIntact };
         right = new PaneView(() => Comparing && s.View is not (RightView.Keys or RightView.Command or RightView.Warning) ? Compare.Diff() : ex.RightPane(s), focusable: true) { ActivateOnDoubleClick = true, KeepsFocusAway = Typing, BufferIntact = BufferIntact };
         header.Command += Apply;
@@ -349,6 +349,8 @@ internal sealed class ExplorerWindow : Window
         int w = Math.Max(Viewport.Width, 1), h = Math.Max(Viewport.Height, 1);
         ex.Width = w;
         ex.Height = h;
+        bool compactChanged = ex.CompactLayers != UseCompactLayers();
+        ex.CompactLayers = UseCompactLayers();
         bool inspector = UsesFullWidth();
         ex.FullWidthContent = inspector;
         compareView = null;
@@ -360,7 +362,7 @@ internal sealed class ExplorerWindow : Window
             narrow = null;
             inspecting = null;
         }
-        if (!ex.TooSmall && (narrow != ex.Narrow || inspecting != inspector))
+        if (!ex.TooSmall && (narrow != ex.Narrow || inspecting != inspector || compactChanged))
         {
             narrow = ex.Narrow;
             inspecting = inspector;
@@ -376,7 +378,7 @@ internal sealed class ExplorerWindow : Window
                 layers.X = 0;
                 layers.Y = ExplorerPresenter.HeaderHeight;
                 layers.Width = Dim.Fill();
-                layers.Height = ExplorerPresenter.NarrowLayersHeight;
+                layers.Height = ex.LayerPanelHeight;
                 details.Visible = false;
                 right.X = 0;
                 right.Y = Pos.Bottom(layers);
@@ -409,7 +411,7 @@ internal sealed class ExplorerWindow : Window
     private void Refresh()
     {
         EnsurePackages();
-        if (!ex.TooSmall && inspecting != UsesFullWidth())
+        if (!ex.TooSmall && (inspecting != UsesFullWidth() || ex.CompactLayers != UseCompactLayers()))
         {
             Relayout();
             return;
@@ -472,6 +474,9 @@ internal sealed class ExplorerWindow : Window
         return compareLoad is null ? hints
             : [new("Esc", "Cancel comparison", new Back()), .. hints.Where(h => h.Key != "Esc")];
     }
+
+    private bool UseCompactLayers() => !Comparing && s.View == RightView.Files &&
+        s.Focus == FocusPane.Right && ex.Narrow && ex.Height < 32;
 
     private bool UsesFullWidth() => s.View is RightView.Keys or RightView.Command or RightView.Warning || s.Compare?.Diff is not null ||
         !Comparing && (s.View == RightView.Inspector || ex.Narrow && s.View is RightView.Search or RightView.Insights);

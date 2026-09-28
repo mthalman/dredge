@@ -8,6 +8,37 @@ namespace Valleysoft.Dredge.Tests;
 public sealed class ExplorerNavigationTests
 {
     [Fact]
+    public void ShortTerminalGivesFilesRoomAndRestoresTheViewportAfterTabbing()
+    {
+        ExplorerImage image = Custom([Layer(Enumerable.Range(0, 50)
+            .Select(i => File($"file{i:D2}", i, $"h{i}")).ToArray())]);
+        using ExplorerUiHarness ui = ExplorerWindowTests.Open(image, new(),
+            session => new FakeExplorerHost { Baseline = session }, out _, width: 80, height: 24);
+        Assert.True(ui.Window.Presenter.TreeRows >= 10);
+        Assert.Equal(1, ui.Window.Layers.Frame.Height);
+        Assert.True(ui.Shows("Layer 0"), ui.Screen());
+        ui.Window.Apply(new SetCursor(20));
+        ui.Pump();
+        int scroll = ui.State.Scroll;
+        ui.Press(Key.Tab);
+        Assert.True(ui.Window.Layers.HasFocus);
+        Assert.Equal(9, ui.Window.Layers.Frame.Height);
+        ui.Press(Key.Tab);
+        Assert.True(ui.Window.Right.HasFocus);
+        Assert.Equal(20, ui.State.Cursor);
+        Assert.Equal(scroll, ui.State.Scroll);
+        Assert.Equal(1, ui.Window.Layers.Frame.Height);
+        ui.Resize(100, 40);
+        Assert.Equal(9, ui.Window.Layers.Frame.Height);
+        ui.Resize(80, 24);
+        Assert.Equal(1, ui.Window.Layers.Frame.Height);
+        var frame = ui.Window.Layers.FrameToScreen();
+        ui.Click(5, frame.Y);
+        Assert.True(ui.Window.Layers.HasFocus);
+        Assert.Equal(9, ui.Window.Layers.Frame.Height);
+    }
+
+    [Fact]
     public void LargestFirstSortsEveryExpandedDirectoryWithoutMovingSelection()
     {
         ExplorerImage image = Custom([Layer([

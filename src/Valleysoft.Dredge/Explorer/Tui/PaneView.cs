@@ -76,6 +76,11 @@ internal sealed class PaneView : View
         fresh = false;
         bool partial = before is not null && before.Inset == c.Inset && frame == drawnFrame && BufferIntact?.Invoke() == true;
         drawnFrame = frame;
+        if (Viewport.Height == 1)
+        {
+            Paint.Fill(this, 0, 0, c.Lines.FirstOrDefault(), Viewport.Width);
+            return true;
+        }
         if (Viewport.Width < 4 || Viewport.Height < 2)
         {
             Paint.Clear(this);
@@ -118,6 +123,11 @@ internal sealed class PaneView : View
 
     protected override bool OnMouseEvent(Mouse mouse)
     {
+        if (Viewport.Height == 1 && MousePress.Is(mouse))
+        {
+            TakeFocus();
+            return true;
+        }
         if (mouse.Flags.HasFlag(MouseFlags.WheeledDown) || mouse.Flags.HasFlag(MouseFlags.WheeledUp))
         {
             // The wheel scrolls the pane under the pointer, so it takes focus first.

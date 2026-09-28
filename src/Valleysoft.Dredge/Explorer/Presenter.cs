@@ -114,6 +114,8 @@ internal sealed partial class ExplorerPresenter
     public int Width { get; set; }
     public int Height { get; set; }
     public bool FullWidthContent { get; set; }
+    public bool CompactLayers { get; set; }
+    public int LayerPanelHeight => CompactLayers ? 1 : NarrowLayersHeight;
 
     public bool TooSmall => Width < MinimumWidth || Height < MinimumHeight;
     public bool Narrow => Width < 120;
@@ -121,7 +123,7 @@ internal sealed partial class ExplorerPresenter
     private int RightWidth => FullWidthContent || Narrow ? Width : Width - LeftWidth;
     public int RightInner => RightWidth - 4;
     private int LeftInner => Narrow ? Width - 4 : LeftWidth - 4;
-    public int RightInnerHeight => Narrow && !FullWidthContent ? BodyHeight - NarrowLayersHeight - 2 : BodyHeight - 2;
+    public int RightInnerHeight => Narrow && !FullWidthContent ? BodyHeight - LayerPanelHeight - 2 : BodyHeight - 2;
     private int LayersInnerHeight => Narrow ? NarrowLayersHeight - 2 : BodyHeight - DetailsHeight - 2;
     public int TreeRows => Math.Max(1, RightInnerHeight - 5);
     public int SearchRows => Math.Max(1, RightInnerHeight - 9);
@@ -500,6 +502,14 @@ internal sealed partial class ExplorerPresenter
     }
 
     // ───────────────────────────── layers ─────────────────────────────
+
+    public PaneContent LayerContext(ExplorerState s)
+    {
+        Line context = new Line().Add($" Layer {s.Layer} ", Theme.Channel)
+            .Add(img.LayerCount == 0 ? "Empty filesystem" : img.Row(s.Layer).Instruction, Theme.Foam);
+        context.PadRight(Width, Line.Of(" Tab Layers ", Theme.Silt));
+        return Pane([context], "Layers", false);
+    }
 
     public PaneContent LayersPane(ExplorerState s)
     {

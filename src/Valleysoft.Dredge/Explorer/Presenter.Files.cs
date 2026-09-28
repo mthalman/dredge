@@ -119,7 +119,10 @@ internal sealed partial class ExplorerPresenter
         {
             scroll = s.Cursor - visible + 1;
         }
-        s.Scroll = scroll;
+        if (focused)
+        {
+            s.Scroll = scroll;
+        }
 
         bool scrollbar = rows.Count > visible;
         int thumbSize = scrollbar ? Math.Max(1, visible * visible / rows.Count) : 0;
