@@ -31,8 +31,9 @@ public abstract class RegistryCommandBase<TOptions> :
     protected Task ExecuteCommandAsync(
         string? registry,
         CancellationToken cancellationToken,
-        Func<CancellationToken, Task> execute) =>
-        CommandHelper.ExecuteCommandAsync(registry, cancellationToken, execute, Error, Exit);
+        Func<CancellationToken, Task> execute,
+        TimeSpan? operationTimeout = null) =>
+        CommandHelper.ExecuteCommandAsync(registry, cancellationToken, execute, Error, Exit, operationTimeout);
 
     protected virtual TextWriter Error => Console.Error;
 

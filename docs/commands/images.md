@@ -234,6 +234,7 @@ and `q` to quit. Help uses the full screen body and supports scrolling with
 arrows, `PgUp`/`PgDn`, and `Home`/`End`. On narrow terminals, search and insights
 also use the full body rather than competing with the Layers pane.
 Closing help returns to the view, selection, and scroll position you came from.
+The explorer has no command timeout; `operations.timeout` does not apply.
 Copied commands quote paths for PowerShell 7.3 or later on Windows, using
 `Standard` or `Windows` native argument passing, and POSIX shells on
 Linux/macOS. These modes preserve spaces, quotes, and shell-special characters

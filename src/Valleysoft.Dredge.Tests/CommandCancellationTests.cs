@@ -108,6 +108,29 @@ public class CommandCancellationTests
     }
 
     [Fact]
+    public async Task InfiniteOperationTimeoutPreservesCallerCancellationWithoutAddingADeadline()
+    {
+        using CancellationTokenSource cancellation = new();
+        using StringWriter error = new();
+
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(() =>
+            CommandHelper.ExecuteCommandAsync(
+                registry: null,
+                cancellation.Token,
+                ct =>
+                {
+                    Assert.Equal(cancellation.Token, ct);
+                    cancellation.Cancel();
+                    ct.ThrowIfCancellationRequested();
+                    return Task.CompletedTask;
+                },
+                error,
+                operationTimeout: Timeout.InfiniteTimeSpan));
+
+        Assert.Empty(error.ToString());
+    }
+
+    [Fact]
     public async Task InvocationTokenIsPassedToCommand()
     {
         using CancellationTokenSource cancellationTokenSource = new();

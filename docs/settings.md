@@ -21,7 +21,7 @@ Setting names use dot notation with `dredge settings get` and
 |---------|---------|---------|
 | `fileCompareTool.exePath` | Empty | Executable that `image compare files` starts |
 | `fileCompareTool.args` | Empty | Arguments passed to the comparison executable |
-| `operations.timeout` | `00:30:00` | Maximum duration of a Dredge operation |
+| `operations.timeout` | `00:30:00` | Maximum duration of a Dredge operation, except `image explore` |
 | `platform.os` | Empty | Operating system used for platform resolution |
 | `platform.osVersion` | Empty | Operating system version used for platform resolution |
 | `platform.arch` | Empty | Architecture used for platform resolution |
@@ -42,13 +42,8 @@ platform options take precedence over the corresponding settings. See
 or `null` to disable the timeout. Zero and negative values also disable the
 timeout. Positive values are limited to about 24.8 days by the runtime.
 
-For `image explore`, this limit covers the entire interactive session. On
-timeout, an active explorer screen closes and reports the timeout. While a
-terminal viewer owns the screen, timeout observation is deferred until that
-viewer exits and any "Press Enter to return" pause completes. Dredge does not
-terminate the viewer to enforce the deadline. A configured windowed viewer
-does not delay the explorer's timeout and is not terminated when the explorer
-closes. Disable or increase the limit before starting a longer exploration.
+`image explore` ignores `operations.timeout`. Its interactive session has no
+command deadline and stays open until you quit or cancel it.
 
 ## Configure the layer cache
 

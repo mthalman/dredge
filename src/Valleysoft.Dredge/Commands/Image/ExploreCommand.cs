@@ -40,7 +40,7 @@ public sealed class ExploreCommand : RegistryCommandBase<ExploreOptions>
 
             await using ExplorerApp app = new(client, DockerRegistryClientFactory, source, store, explorerOptions, ct);
             app.Run();
-        });
+        }, operationTimeout: Timeout.InfiniteTimeSpan);
     }
 
     // Command-line flags win over settings: --no-mouse turns the mouse off even
