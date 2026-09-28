@@ -283,13 +283,14 @@ public sealed class PackageFileListerTests
     [Fact]
     public async Task NpmExcludesNestedPackages()
     {
-        IReadOnlyList<string> files = await List(InstalledPackageEcosystem.Npm, "left-pad",
+        IReadOnlyList<string> files = await PackageFileLister.ListAsync(InstalledPackageEcosystem.Npm, "left-pad",
         [
             "app/node_modules/left-pad/index.js",
             "app/node_modules/left-pad/node_modules/other/index.js",
             "app/node_modules/other/node_modules/left-pad/package.json",
             "app/node_modules/left-padding/index.js",
-        ]);
+        ], (_, _) => Task.FromResult<string?>(null), CancellationToken.None,
+            npmRoots: ["app/node_modules/left-pad", "app/node_modules/other/node_modules/left-pad"]);
         Assert.Equal(["app/node_modules/left-pad/index.js", "app/node_modules/other/node_modules/left-pad/package.json"], files);
     }
 
@@ -342,6 +343,15 @@ public sealed class PackageFileListerTests
             ["usr/lib/python3/site-packages/requests-2.0.dist-info/RECORD"],
             new() { ["usr/lib/python3/site-packages/requests-2.0.dist-info/RECORD"] = record });
         Assert.Equal(["usr/bin/req", "usr/lib/python3/site-packages/requests/__init__.py", "usr/lib/python3/site-packages/requests/a,b.py"], files);
+    }
+
+    [Fact]
+    public async Task PipOwnershipUsesCanonicalPackageNames()
+    {
+        const string record = "site/friendly__bard-1.dist-info/RECORD";
+        Assert.Equal(["site/friendly_bard/__init__.py"],
+            await List(InstalledPackageEcosystem.Pip, "Friendly-._.Bard", [record],
+                new() { [record] = "friendly_bard/__init__.py,,\n" }));
     }
 }
 

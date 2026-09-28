@@ -38,12 +38,15 @@ public sealed class ExplorerDefenseHostTests : IAsyncDisposable
         InstalledPackageMetadata second = await host.PackagesAsync(1, Token);
         Assert.Equal(["1.0"], first.Ecosystems[InstalledPackageEcosystem.Npm].Packages["example"]);
         Assert.Equal(["2.0"], second.Ecosystems[InstalledPackageEcosystem.Npm].Packages["example"]);
+        Assert.Equal(["app/node_modules/example"], first.NpmPackageRoots["example"]);
+        Assert.Equal(first.NpmPackageRoots["example"], second.NpmPackageRoots["example"]);
         Assert.Throws<InvalidOperationException>(() => image.Session.Packages);
         Assert.Same(first, await host.PackagesAsync(0, Token));
         Assert.Same(second, await host.PackagesAsync(1, Token));
 
         InstalledPackageMetadata final = await host.PackagesAsync(2, Token);
         Assert.Empty(final.Ecosystems[InstalledPackageEcosystem.Npm].Packages);
+        Assert.Empty(final.NpmPackageRoots);
         await image.Session.EnsurePackagesAsync(Token);
         Assert.Same(final, image.Session.Packages);
         using CancellationTokenSource canceled = new();
@@ -471,6 +474,7 @@ public sealed class ExplorerDefenseHostTests : IAsyncDisposable
         await image.Session.EnsurePackagesAsync(Token);
         InstalledPackageMetadata metadata = image.Session.Packages;
         Assert.Equal(["good"], metadata.Ecosystems[InstalledPackageEcosystem.Npm].Packages.Keys);
+        Assert.Equal("good", Assert.Single(metadata.NpmPackageRoots).Key);
         Assert.Equal(["node_modules/bad/package.json", "node_modules/invalid/package.json", "node_modules/large/package.json"],
             metadata.Diagnostics.Select(item => item.Path).Order(StringComparer.Ordinal));
         Assert.All(metadata.Diagnostics, item => Assert.NotEmpty(item.Message));
@@ -495,6 +499,195 @@ public sealed class ExplorerDefenseHostTests : IAsyncDisposable
             await host.DescribeTagAsync(choice, Token);
         }
         return (ExplorerImage.FromSource(baseline.Source), choices);
+    }
+
+    [Fact]
+    public async Task ChangedSymbolicLinksDiffTheirTargetsWithoutDereferencing()
+    {
+        TestImage baseline = await CreateAsync(ArchiveEntries(
+            new PaxTarEntry(TarEntryType.SymbolicLink, "current") { LinkName = "old-target" }));
+        TestImage target = await CreateAsync(ArchiveEntries(
+            new PaxTarEntry(TarEntryType.SymbolicLink, "current") { LinkName = "new-target" }));
+
+        TextDiffContent diff = await Host(baseline).DiffAsync(await CompareAsync(baseline, target), "current", Token);
+
+        Assert.Equal([new DiffLine(DiffOp.Delete, 1, null, "old-target"),
+            new DiffLine(DiffOp.Insert, null, 1, "new-target")], diff.Lines);
+        Assert.Contains("Symbolic link target", diff.Message);
+    }
+
+    [Theory]
+    [InlineData(TarEntryType.RegularFile)]
+    [InlineData(TarEntryType.SymbolicLink)]
+    public async Task ChangedHardLinksDiffTheirCapturedContents(TarEntryType originalType)
+    {
+        byte[] Layer(string value) => ArchiveEntries(
+            originalType == TarEntryType.RegularFile
+                ? new PaxTarEntry(originalType, "original") { DataStream = new MemoryStream(Encoding.UTF8.GetBytes(value)) }
+                : new PaxTarEntry(originalType, "original") { LinkName = value },
+            new PaxTarEntry(TarEntryType.HardLink, "saved") { LinkName = "original" });
+        TestImage baseline = await CreateAsync(Layer("old"), Blob((".wh.original", "")));
+        TestImage target = await CreateAsync(Layer("new"), Blob((".wh.original", "")));
+        ExplorerComparison comparison = await CompareAsync(baseline, target);
+        Assert.Equal("saved", Assert.Single(comparison.Files).Path);
+
+        TextDiffContent diff = await Host(baseline).DiffAsync(comparison, "saved", Token);
+
+        Assert.Equal([new DiffLine(DiffOp.Delete, 1, null, "old"),
+            new DiffLine(DiffOp.Insert, null, 1, "new")], diff.Lines);
+    }
+
+    [Fact]
+    public async Task DiffExplainsFileTypeChangesEvenWhenTextMatches()
+    {
+        TestImage baseline = await CreateAsync(Blob(("current", "target")));
+        TestImage target = await CreateAsync(ArchiveEntries(
+            new PaxTarEntry(TarEntryType.SymbolicLink, "current") { LinkName = "target" }));
+
+        TextDiffContent diff = await Host(baseline).DiffAsync(await CompareAsync(baseline, target), "current", Token);
+
+        Assert.Equal(DiffOp.Same, Assert.Single(diff.Lines!).Op);
+        Assert.Contains("File -> SymbolicLink", diff.Message);
+    }
+
+    [Fact]
+    public async Task DiffExplainsHardLinkTargetChangesWithIdenticalContents()
+    {
+        byte[] files = Blob(("first", "same"), ("second", "same"));
+        TestImage baseline = await CreateAsync(files, ArchiveEntries(
+            new PaxTarEntry(TarEntryType.HardLink, "saved") { LinkName = "first" }));
+        TestImage target = await CreateAsync(files, ArchiveEntries(
+            new PaxTarEntry(TarEntryType.HardLink, "saved") { LinkName = "second" }));
+
+        TextDiffContent diff = await Host(baseline).DiffAsync(await CompareAsync(baseline, target), "saved", Token);
+
+        Assert.Equal(DiffOp.Same, Assert.Single(diff.Lines!).Op);
+        Assert.Contains("first -> second", diff.Message);
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task FileDirectoryReplacementDiffRetainsTheFileContents(bool reverse)
+    {
+        TestImage baseline = await CreateAsync(Blob(("item", "old")));
+        TestImage target = await CreateAsync(ArchiveEntries(
+            new PaxTarEntry(TarEntryType.Directory, "item"),
+            new PaxTarEntry(TarEntryType.RegularFile, "item/child") { DataStream = new MemoryStream("new"u8.ToArray()) }));
+        if (reverse)
+        {
+            (baseline, target) = (target, baseline);
+        }
+
+        TextDiffContent diff = await Host(baseline).DiffAsync(await CompareAsync(baseline, target), "item", Token);
+
+        DiffLine line = Assert.Single(diff.Lines!);
+        Assert.Equal("old", line.Text);
+        Assert.Equal(reverse ? DiffOp.Insert : DiffOp.Delete, line.Op);
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task PackageOwnershipResolvesEachSidesParentsButPreservesFinalLinks(bool moved)
+    {
+        byte[] Layer(string root, string text, string link) => ArchiveEntries(
+            new PaxTarEntry(TarEntryType.RegularFile, "var/lib/dpkg/info/bash.list")
+                { DataStream = new MemoryStream("/bin/bash\n/bin/bash-link\n"u8.ToArray()) },
+            new PaxTarEntry(TarEntryType.SymbolicLink, "bin") { LinkName = root },
+            new PaxTarEntry(TarEntryType.RegularFile, root + "/bash")
+                { DataStream = new MemoryStream(Encoding.UTF8.GetBytes(text)) },
+            new PaxTarEntry(TarEntryType.SymbolicLink, root + "/bash-link") { LinkName = link });
+        TestImage baseline = await CreateAsync(Layer("usr/bin", "old", "bash"));
+        TestImage target = await CreateAsync(Layer(moved ? "opt/bin" : "usr/bin", "new", "other"));
+
+        PackageFilesContent result = await Host(baseline).PackageFilesAsync(await CompareAsync(baseline, target),
+            new(InstalledPackageEcosystem.Dpkg, "bash", "1", "2"), Token);
+
+        Assert.Empty(result.Warnings!);
+        Assert.Equal(moved ? 4 : 2, result.Total);
+        Assert.Equal(result.Total, result.Files!.Count);
+        Assert.Contains(("usr/bin/bash", moved ? Change.Removed : Change.Modified), result.Files);
+        Assert.Contains(("usr/bin/bash-link", moved ? Change.Removed : Change.Modified), result.Files);
+        if (moved)
+        {
+            Assert.Contains(("opt/bin/bash", Change.Added), result.Files);
+            Assert.Contains(("opt/bin/bash-link", Change.Added), result.Files);
+        }
+    }
+
+    [Fact]
+    public async Task UnresolvableOwnershipParentsWarnWithoutDiscardingReadableFiles()
+    {
+        TestImage baseline = await CreateAsync(ArchiveEntries(
+            new PaxTarEntry(TarEntryType.RegularFile, "var/lib/dpkg/info/example.list")
+                { DataStream = new MemoryStream("/bin/tool\n/good\n"u8.ToArray()) },
+            new PaxTarEntry(TarEntryType.SymbolicLink, "bin") { LinkName = "bin" },
+            new PaxTarEntry(TarEntryType.RegularFile, "good") { DataStream = new MemoryStream("old"u8.ToArray()) }));
+        TestImage target = await CreateAsync();
+
+        PackageFilesContent result = await Host(baseline).PackageFilesAsync(await CompareAsync(baseline, target),
+            new(InstalledPackageEcosystem.Dpkg, "example", "1", null), Token);
+
+        Assert.Equal(("good", Change.Removed), Assert.Single(result.Files!));
+        Assert.Contains("Baseline /bin/tool", Assert.Single(result.Warnings!));
+        Assert.Contains("incomplete", result.Message);
+    }
+
+    [Theory]
+    [InlineData("react")]
+    [InlineData("@scope/react")]
+    public async Task NpmOwnershipUsesAllManifestInstallationRootsIncludingAliases(string name)
+    {
+        byte[] Layer(string version) => Blob(
+            ("app/node_modules/alias/package.json", JsonSerializer.Serialize(new { name, version })),
+            ("app/node_modules/alias/index.js", version),
+            ("app/node_modules/@aliases/second/package.json", JsonSerializer.Serialize(new { name, version })),
+            ("app/node_modules/@aliases/second/index.js", version),
+            ("app/node_modules/alias/node_modules/nested/package.json", """{"name":"nested","version":"1"}"""),
+            ("app/node_modules/alias/node_modules/nested/index.js", version),
+            ("app/node_modules/react/package.json", """{"name":"unrelated","version":"1"}"""),
+            ("app/node_modules/react/index.js", version));
+        TestImage baseline = await CreateAsync(Layer("1"));
+        TestImage target = await CreateAsync(Layer("2"));
+        ExplorerComparison comparison = await CompareAsync(baseline, target);
+        ExplorerPackageDifference package = Assert.Single(comparison.Packages, package => package.Name == name);
+
+        PackageFilesContent result = await Host(baseline).PackageFilesAsync(comparison, package, Token);
+
+        Assert.Empty(result.Warnings!);
+        Assert.NotNull(result.Files);
+        Assert.Equal(new[] { "app/node_modules/@aliases/second/index.js", "app/node_modules/@aliases/second/package.json",
+            "app/node_modules/alias/index.js", "app/node_modules/alias/package.json" },
+            result.Files!.Select(file => file.Path));
+        Assert.All(result.Files, file => Assert.Equal(Change.Modified, file.Change));
+    }
+
+    [Theory]
+    [InlineData("1")]
+    [InlineData("2")]
+    public async Task PythonInventoryAndComparisonUseCanonicalIdentities(string targetVersion)
+    {
+        TestImage baseline = await CreateAsync(Blob(
+            ("site/friendly_bard-1.dist-info/METADATA", "Name: Friendly_Bard\nVersion: 1\n"),
+            ("venv/friendly_bard-1.dist-info/METADATA", "Name: FRIENDLY..BARD\nVersion: 1\n")));
+        TestImage target = await CreateAsync(Blob(
+            ("site/friendly_bard-1.dist-info/METADATA", $"Name: friendly-bard\nVersion: {targetVersion}\n")));
+
+        ExplorerComparison comparison = await CompareAsync(baseline, target);
+
+        var inventory = baseline.Session.Packages.Ecosystems[InstalledPackageEcosystem.Pip].Packages;
+        Assert.Equal("friendly-bard", Assert.Single(inventory).Key);
+        Assert.Equal(["1"], inventory["friendly-bard"]);
+        if (targetVersion == "1")
+        {
+            Assert.Empty(comparison.Packages);
+        }
+        else
+        {
+            Assert.Equal(new(InstalledPackageEcosystem.Pip, "friendly-bard", "1", "2"),
+                Assert.Single(comparison.Packages));
+        }
     }
 
     private Task<TestImage> CreateAsync(params byte[][] blobs) => CreateAsync(blobs, null);
@@ -564,16 +757,20 @@ public sealed class ExplorerDefenseHostTests : IAsyncDisposable
     private static byte[] Blob(params (string Path, string Content)[] files) =>
         Archive(files.Select(file => (file.Path, Encoding.UTF8.GetBytes(file.Content))).ToArray());
 
-    private static byte[] Archive(params (string Path, byte[] Content)[] files)
+    private static byte[] Archive(params (string Path, byte[] Content)[] files) =>
+        ArchiveEntries(files.Select(file => new PaxTarEntry(TarEntryType.RegularFile, file.Path)
+            { DataStream = new MemoryStream(file.Content) }).ToArray());
+
+    private static byte[] ArchiveEntries(params TarEntry[] entries)
     {
         using MemoryStream result = new();
         using (GZipStream gzip = new(result, CompressionMode.Compress, leaveOpen: true))
         using (TarWriter writer = new(gzip, leaveOpen: true))
         {
-            foreach ((string path, byte[] content) in files)
+            foreach (TarEntry entry in entries)
             {
-                using MemoryStream data = new(content);
-                writer.WriteEntry(new PaxTarEntry(TarEntryType.RegularFile, path) { DataStream = data });
+                using Stream? data = entry.DataStream;
+                writer.WriteEntry(entry);
             }
         }
         return result.ToArray();

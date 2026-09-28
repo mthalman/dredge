@@ -237,7 +237,7 @@ public class InstalledPackageReaderTests
             Content,
             "site-packages/requests-2.32.3.dist-info/METADATA");
 
-        Assert.Equal(new InstalledPackage("Requests", "2.32.3"), package);
+        Assert.Equal(new InstalledPackage("requests", "2.32.3"), package);
     }
 
     [Theory]
@@ -263,8 +263,20 @@ public class InstalledPackageReaderTests
             "Project-URL: Documentation, https://example.test\nProject-URL: Source, https://example.test/source\n" +
             "\nDescription: includes arbitrary text\nName: not-a-header\n";
 
-        Assert.Equal(new InstalledPackage("Requests", "2.32.3"),
+        Assert.Equal(new InstalledPackage("requests", "2.32.3"),
             InstalledPackageReader.ParsePipMetadata(content, "requests.dist-info/METADATA"));
+    }
+
+    [Theory]
+    [InlineData("Friendly_Bard")]
+    [InlineData("friendly.bard")]
+    [InlineData("FRIENDLY--BARD")]
+    [InlineData("FrIeNdLy-._.-bArD")]
+    public void ParsePipMetadata_NormalizesEquivalentNames(string name)
+    {
+        Assert.Equal(new InstalledPackage("friendly-bard", "1"),
+            InstalledPackageReader.ParsePipMetadata($"Name: {name}\nVersion: 1\n",
+                "friendly_bard-1.dist-info/METADATA"));
     }
 
     [Theory]

@@ -142,7 +142,7 @@ public sealed class ExplorerIntegrationTests
             Assert.Contains(ui.State.Preview!.Lines!, line => line.Contains("debug", StringComparison.Ordinal));
             Assert.True(ui.Shows("\"debug\""), ui.Screen());
 
-            ui.Press(new Key('y'));
+            ui.Press(Key.C.WithCtrl);
             Assert.StartsWith("$ dredge image cat", ui.State.Notice);
             Assert.Contains("/app/config.json", ui.State.Notice);
             ui.Press(Key.Esc);

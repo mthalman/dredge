@@ -716,13 +716,10 @@ internal sealed class CompareView
                 FileTree node = Get(file.Path);
                 node.HasEntry = true;
                 node.Change = ExplorerImage.ToChange(file.Kind);
-                ImageFileSystemEntry? entry = file.Target ?? file.Baseline;
-                node.Dir = entry?.Type == ImageFileType.Directory;
-                if (entry?.Type != ImageFileType.Directory)
-                {
-                    node.Before = file.Baseline?.Size;
-                    node.After = file.Target?.Size;
-                }
+                node.Dir = (file.Baseline is null or { Type: ImageFileType.Directory }) &&
+                    (file.Target is null or { Type: ImageFileType.Directory });
+                node.Before = file.Baseline is { Type: not ImageFileType.Directory } before ? before.Size : null;
+                node.After = file.Target is { Type: not ImageFileType.Directory } after ? after.Size : null;
             }
             Finish(root);
             return root;

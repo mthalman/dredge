@@ -488,12 +488,20 @@ public sealed class ExplorerDefenseUiTests
         Assert.Equal(2, replacement.Size);
     }
 
-    [Fact]
-    public void ComparisonReplacementKeepsOwnIdentitySearchAndDiffAlongsideHistoricalChildren()
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void ComparisonReplacementKeepsOwnIdentitySearchAndDiffAlongsideHistoricalChildren(bool fileToDirectory)
     {
         ExplorerImage baseline = ExplorerSamples.Custom(
-            [ExplorerSamples.Layer([ExplorerSamples.File("app/item/old", 7, "old")])]);
+            [ExplorerSamples.Layer([
+                ExplorerSamples.File("app/item", 0, "") with { Type = ImageFileType.Directory, ContentHash = null },
+                ExplorerSamples.File("app/item/old", 7, "old")])]);
         ExplorerImage target = ReplacementImage();
+        if (fileToDirectory)
+        {
+            (baseline, target) = (target, baseline);
+        }
         ExplorerComparison comparison = ExplorerSession.Compare(baseline.Session!, target.Session!);
         ExplorerState state = new() { Compare = new CompareState(comparison, "before", "after") };
         CompareState compare = state.Compare;
@@ -506,18 +514,19 @@ public sealed class ExplorerDefenseUiTests
         ExplorerFileDifference difference = Assert.Single(comparison.Files, file => file.Path == "app/item");
         Assert.Equal(CompareRowKind.File, replacement.Kind);
         Assert.Equal(ExplorerImage.ToChange(difference.Kind), replacement.Change);
-        Assert.Equal(difference.Baseline?.Size, replacement.Before);
-        Assert.Equal(2, replacement.After);
+        Assert.Equal(fileToDirectory ? 2L : (long?)null, replacement.Before);
+        Assert.Equal(fileToDirectory ? (long?)null : 2L, replacement.After);
         Assert.True(replacement.Expandable);
         compare.Cursor = rows.IndexOf(replacement);
 
         ui.Press(Key.CursorRight);
         Assert.Contains("file:app/item", compare.Expanded);
         rows = new CompareView(ui.Window.Presenter, compare).Rows();
-        Assert.Contains(rows, row => row.Path == "app/item/old" && row.Change == Change.Removed);
+        Assert.Contains(rows, row => row.Path == "app/item/old" &&
+            row.Change == (fileToDirectory ? Change.Added : Change.Removed));
         CompareRow parent = Assert.Single(rows, row => row.Path == "app");
-        Assert.Equal(7, parent.Before);
-        Assert.Equal(2, parent.After);
+        Assert.Equal(fileToDirectory ? 2 : 7, parent.Before);
+        Assert.Equal(fileToDirectory ? 7 : 2, parent.After);
         ui.Press(Key.Enter);
         ui.Until(() => compare.Diff is not null, "replacement file diff");
         Assert.Equal("app/item", Assert.Single(host.Diffed));

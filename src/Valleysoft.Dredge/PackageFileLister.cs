@@ -13,7 +13,8 @@ internal static class PackageFileLister
         IReadOnlyCollection<string> allPaths,
         Func<string, CancellationToken, Task<string?>> readText,
         CancellationToken cancellationToken,
-        Action<string, Exception>? onError = null)
+        Action<string, Exception>? onError = null,
+        IReadOnlyList<string>? npmRoots = null)
     {
         async Task<IReadOnlyList<string>> ReadListAsync(string path, Func<string, IReadOnlyList<string>> parse)
         {
@@ -42,12 +43,11 @@ internal static class PackageFileLister
                 throw new NotSupportedException(
                     "NuGet dependency metadata identifies packages but does not establish deployed file ownership.");
             case InstalledPackageEcosystem.Npm:
-                string marker = "node_modules/" + name + "/";
-                return allPaths.Where(path =>
-                    (path.StartsWith(marker, StringComparison.Ordinal) ||
-                        path.Contains("/" + marker, StringComparison.Ordinal)) &&
-                    !path[(path.LastIndexOf(marker, StringComparison.Ordinal) + marker.Length)..]
-                        .Contains("node_modules/", StringComparison.Ordinal))
+                ArgumentNullException.ThrowIfNull(npmRoots);
+                string[] prefixes = npmRoots.Select(root => root + "/").ToArray();
+                return allPaths.Where(path => prefixes.Any(prefix =>
+                    path.StartsWith(prefix, StringComparison.Ordinal) &&
+                    !path[prefix.Length..].Contains("node_modules/", StringComparison.Ordinal)))
                     .Order(StringComparer.Ordinal).ToArray();
             case InstalledPackageEcosystem.Dpkg:
                 string[] lists = allPaths
@@ -69,7 +69,7 @@ internal static class PackageFileLister
             case InstalledPackageEcosystem.Apk:
                 return await ReadListAsync("lib/apk/db/installed", content => ParseApkInstalled(content, name));
             case InstalledPackageEcosystem.Pip:
-                string normalized = NormalizePip(name);
+                string normalized = InstalledPackageReader.NormalizePipName(name);
                 IEnumerable<string> records = allPaths.Where(path =>
                 {
                     if (!path.EndsWith(".dist-info/RECORD", StringComparison.OrdinalIgnoreCase))
@@ -79,7 +79,7 @@ internal static class PackageFileLister
                     string directory = ImagePath.GetDirectoryName(path);
                     string folder = directory[(directory.LastIndexOf('/') + 1)..^".dist-info".Length];
                     int dash = folder.IndexOf('-');
-                    return NormalizePip(dash < 0 ? folder : folder[..dash]) == normalized;
+                    return InstalledPackageReader.NormalizePipName(dash < 0 ? folder : folder[..dash]) == normalized;
                 });
                 HashSet<string> pipFiles = new(StringComparer.Ordinal);
                 foreach (string record in records.Order(StringComparer.Ordinal))
@@ -235,8 +235,6 @@ internal static class PackageFileLister
         }
     }
 
-    private static string NormalizePip(string name) =>
-        name.Replace('-', '_').Replace('.', '_').ToLowerInvariant();
 }
 
 internal enum DiffOp { Same, Delete, Insert }

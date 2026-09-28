@@ -790,23 +790,57 @@ internal sealed class ExplorerHost : IExplorerHost, IAsyncDisposable
         }
         async Task<(List<string>? Lines, string? Message)> SideAsync(ExplorerSession session, ImageFileSystemEntry? entry)
         {
-            if (entry is null || entry.Type != ImageFileType.File)
+            if (entry is null || entry.Type == ImageFileType.Directory)
             {
                 return ([], null);
+            }
+            if (entry.Type == ImageFileType.SymbolicLink)
+            {
+                return ([entry.LinkTarget ?? throw new InvalidDataException($"Link '/{path}' has no target.")],
+                    "Symbolic link target.");
+            }
+            if (entry.Type == ImageFileType.HardLink && entry.ContentLinkTarget is string linkTarget)
+            {
+                return ([linkTarget], "Symbolic link target captured by a hard link.");
+            }
+            if (entry.Type is not (ImageFileType.File or ImageFileType.HardLink))
+            {
+                return (null, $"No text preview for file type '{entry.Type}'.");
             }
             (List<string>? lines, string? message, _) = await ReadTextAsync(session.Files, path, cancellationToken);
             return (lines, message);
         }
         (List<string>? before, string? beforeMessage) = await SideAsync(comparison.Baseline, difference.Baseline);
         (List<string>? after, string? afterMessage) = await SideAsync(comparison.Target, difference.Target);
+        List<string> messages = [];
+        if (difference.Baseline?.Type != difference.Target?.Type)
+        {
+            messages.Add($"Entry type: {difference.Baseline?.Type.ToString() ?? "missing"} -> " +
+                $"{difference.Target?.Type.ToString() ?? "missing"}.");
+        }
+        if (difference.Baseline is { Type: ImageFileType.HardLink } oldLink &&
+            difference.Target is { Type: ImageFileType.HardLink } newLink &&
+            oldLink.LinkTarget != newLink.LinkTarget)
+        {
+            messages.Add($"Hard link target: {oldLink.LinkTarget} -> {newLink.LinkTarget}.");
+        }
+        if (beforeMessage is not null)
+        {
+            messages.Add("Baseline: " + beforeMessage);
+        }
+        if (afterMessage is not null)
+        {
+            messages.Add("Target: " + afterMessage);
+        }
+        string? message = messages.Count > 0 ? string.Join(" ", messages) : null;
         if (before is null || after is null)
         {
-            return new TextDiffContent(path, null, beforeMessage ?? afterMessage);
+            return new TextDiffContent(path, null, message);
         }
         IReadOnlyList<DiffLine>? lines = TextDiff.Diff(before, after);
         return lines is null
             ? new TextDiffContent(path, null, "Too many changes to show side by side.")
-            : new TextDiffContent(path, lines, beforeMessage ?? afterMessage);
+            : new TextDiffContent(path, lines, message);
     }
 
     public async Task<PackageFilesContent> PackageFilesAsync(
@@ -822,11 +856,12 @@ internal sealed class ExplorerHost : IExplorerHost, IAsyncDisposable
             package.TargetVersion is null ? null : comparison.Target
         }.OfType<ExplorerSession>())
         {
-            HashSet<string> all = side.Entries.Select(entry => entry.Path).ToHashSet(StringComparer.Ordinal);
+            Dictionary<string, ImageFileSystemEntry> entries = side.Entries.ToDictionary(entry => entry.Path, StringComparer.Ordinal);
+            ImagePathResolver resolver = new(entries);
             string label = ReferenceEquals(side, comparison.Baseline) ? "Baseline" : "Target";
             try
             {
-                owned.UnionWith(await PackageFileLister.ListAsync(package.Ecosystem, package.Name, all,
+                IReadOnlyList<string> paths = await PackageFileLister.ListAsync(package.Ecosystem, package.Name, entries.Keys,
                     async (path, token) =>
                     {
                         await foreach (var result in side.Files.ReadFilesAsync([(path, MaxPackageOwnershipBytes)], token))
@@ -839,7 +874,22 @@ internal sealed class ExplorerHost : IExplorerHost, IAsyncDisposable
                         }
                         return null;
                     }, cancellationToken,
-                    (path, error) => warnings.Add($"{label} /{path}: {error.Message}")));
+                    (path, error) => warnings.Add($"{label} /{path}: {error.Message}"),
+                    npmRoots: package.Ecosystem == InstalledPackageEcosystem.Npm
+                        ? side.Packages.NpmPackageRoots.GetValueOrDefault(package.Name) ?? []
+                        : null);
+                foreach (string path in paths)
+                {
+                    cancellationToken.ThrowIfCancellationRequested();
+                    try
+                    {
+                        owned.Add(resolver.ResolveParentComponents(ImagePath.NormalizeRequested(path)));
+                    }
+                    catch (Exception exception) when (exception is IOException or InvalidDataException)
+                    {
+                        warnings.Add($"{label} /{path}: {exception.Message}");
+                    }
+                }
             }
             catch (NotSupportedException exception)
             {

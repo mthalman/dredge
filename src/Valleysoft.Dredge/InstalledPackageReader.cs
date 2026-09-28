@@ -30,6 +30,8 @@ internal sealed record InstalledPackageMetadata(
     IReadOnlyDictionary<InstalledPackageEcosystem, InstalledPackageEcosystemMetadata> Ecosystems)
 {
     public IReadOnlyList<InstalledPackageDiagnostic> Diagnostics { get; init; } = [];
+    public IReadOnlyDictionary<string, IReadOnlyList<string>> NpmPackageRoots { get; init; } =
+        new Dictionary<string, IReadOnlyList<string>>(StringComparer.Ordinal);
 }
 
 internal static class InstalledPackageReader
@@ -72,6 +74,7 @@ internal static class InstalledPackageReader
         // Package metadata is advisory: a malformed per-package manifest is skipped,
         // and an unreadable database marks only its ecosystem unavailable.
         List<InstalledPackage> npmPackages = [];
+        List<(string Name, string Root)> npmRoots = [];
         List<InstalledPackage> pipPackages = [];
         List<InstalledPackage> nugetPackages = [];
         bool nugetAvailable = false;
@@ -127,6 +130,10 @@ internal static class InstalledPackageReader
                     if (package is not null)
                     {
                         (npm ? npmPackages : pipPackages).Add(package);
+                        if (npm)
+                        {
+                            npmRoots.Add((package.Name, ImagePath.GetDirectoryName(result.Path)));
+                        }
                     }
                     break;
             }
@@ -141,7 +148,15 @@ internal static class InstalledPackageReader
             [InstalledPackageEcosystem.NuGet] = CreateMetadata(nugetAvailable, nugetPackages)
         };
 
-        return new InstalledPackageMetadata(ecosystems) { Diagnostics = diagnostics };
+        return new InstalledPackageMetadata(ecosystems)
+        {
+            Diagnostics = diagnostics,
+            NpmPackageRoots = npmRoots.GroupBy(item => item.Name, StringComparer.Ordinal)
+                .ToDictionary(group => group.Key,
+                    group => (IReadOnlyList<string>)group.Select(item => item.Root)
+                        .Distinct(StringComparer.Ordinal).Order(StringComparer.Ordinal).ToArray(),
+                    StringComparer.Ordinal)
+        };
     }
 
     private static T? TryParse<T>(Func<T> parse, string path, List<InstalledPackageDiagnostic> diagnostics) where T : class
@@ -402,8 +417,28 @@ internal static class InstalledPackageReader
             }
         }
         return new InstalledPackage(
-            GetRequiredField(metadata, "Name", $"pip metadata '{sourcePath}'"),
+            NormalizePipName(GetRequiredField(metadata, "Name", $"pip metadata '{sourcePath}'")),
             GetRequiredField(metadata, "Version", $"pip metadata '{sourcePath}'"));
+    }
+
+    internal static string NormalizePipName(string name)
+    {
+        StringBuilder normalized = new();
+        foreach (char value in name)
+        {
+            if (value is '-' or '_' or '.')
+            {
+                if (normalized.Length == 0 || normalized[^1] != '-')
+                {
+                    normalized.Append('-');
+                }
+            }
+            else
+            {
+                normalized.Append(char.ToLowerInvariant(value));
+            }
+        }
+        return normalized.ToString();
     }
 
     internal static void ValidateManifestSize(string path, long size, long maximumBytes)

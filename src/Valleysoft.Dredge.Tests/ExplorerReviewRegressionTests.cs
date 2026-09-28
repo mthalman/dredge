@@ -122,10 +122,10 @@ public sealed class ExplorerReviewRegressionTests
         ExplorerComparison comparison = ui.State.Compare!.Comparison;
         string before = ExplorerImage.DigestReference(comparison.Baseline.Image, comparison.Baseline.Resolved.ManifestInfo.DockerContentDigest);
         string after = ExplorerImage.DigestReference(ImageName.Parse(target), comparison.Target.Resolved.ManifestInfo.DockerContentDigest);
-        ui.Press(new Key('y'));
+        ui.Press(Key.C.WithCtrl);
         Assert.Equal($"dredge image compare files {before} {after}", host.Clipboard[0]);
         ui.Window.Apply(new SwapSides());
-        ui.Press(new Key('y'));
+        ui.Press(Key.C.WithCtrl);
         Assert.Equal($"dredge image compare files {after} {before}", host.Clipboard[1]);
     }
 

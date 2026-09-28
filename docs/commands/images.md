@@ -200,6 +200,10 @@ Images that omit `.deps.json` files (for example, some single-file or Native AOT
 deployments) cannot be inventoried this way. NuGet package-file drill-down is
 unavailable because dependency metadata does not reliably establish deployed
 file ownership.
+Python package names use their canonical lowercase form, with runs of `.`, `_`,
+and `-` treated as the same separator. npm ownership follows discovered
+installation locations, including aliases and multiple installations, without
+including nested dependencies.
 Text diffs retain available content when a size limit is reached and show a
 notice identifying the partial preview. Text diffs and file previews use the
 full body width. In a file diff, `Alt+V` switches between split (old/new
@@ -210,6 +214,11 @@ Very long or heavily rewritten lines retain line-level highlighting without
 word-level analysis. `NO_COLOR` retains the markers and emphasizes changed words
 with bold/underline instead of color. Use `Left`/`Right` to pan long lines; the preview indicates
 the current column when content extends beyond the viewport.
+Hard-link diffs read the captured file contents. Symbolic links, including hard
+links to symbolic links, compare their target text without following it. Type
+changes and changed hard-link targets are identified in the diff notice.
+File-to-directory replacements retain the original file's size and diff access;
+use `Right` to expand their children.
 Comparison progress stays visible while you browse. Press `Esc` to cancel a
 pending comparison without leaving the explorer.
 Within comparison, `/` searches changed package names and paths, including
@@ -217,7 +226,9 @@ collapsed folders. Select a package and press `Enter` to browse all its changed
 files, then `Enter` on a file to open its diff. `Esc` closes search, clears an
 active filter, or returns from package files before leaving comparison.
 Ownership is considered on both sides of an upgrade, so files no longer owned
-by the newer version can still appear as removed. Each ownership metadata file
+by the newer version can still appear as removed. Ownership paths are matched
+through parent-directory symlinks, such as `/bin` to `/usr/bin`,
+without following the final file's symbolic link. Each ownership metadata file
 is limited to 64 MiB. If some ownership metadata is unreadable, malformed, or
 oversized, the explorer retains readable results and displays a warning that
 the list may be incomplete. In comparison, `Alt+W` opens full metadata and
