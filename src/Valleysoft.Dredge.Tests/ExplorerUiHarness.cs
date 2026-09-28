@@ -40,12 +40,20 @@ internal sealed class ExplorerUiHarness : IDisposable
         Input = App.GetInputInjector();
     }
 
-    public int Width { get; }
-    public int Height { get; }
+    public int Width { get; private set; }
+    public int Height { get; private set; }
     public IApplication App { get; }
     public ExplorerWindow Window { get; }
     public IInputInjector Input { get; }
     public ExplorerState State => Window.State;
+
+    public void Resize(int width, int height)
+    {
+        Width = width;
+        Height = height;
+        App.Driver!.SetScreenSize(width, height);
+        App.LayoutAndDraw(true);
+    }
 
     public void Pump()
     {

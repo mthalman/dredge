@@ -24,6 +24,181 @@ public class ImageFileSystemTests : IAsyncDisposable
     private const string ConfigDigest = "sha256:config";
     private static readonly ImageName ImageName = ImageName.Parse("registry.test/repo:tag");
 
+    [Theory]
+    [Trait("Upstream", "wagoodman/dive#511")]
+    [Trait("Upstream", "wagoodman/dive#526")]
+    [Trait("Upstream", "wagoodman/dive#76")]
+    [InlineData("empty")]
+    [InlineData("directory")]
+    [InlineData("zero-byte")]
+    [InlineData("content")]
+    public async Task SubKilobyteGzipLayersAreIndexedAndRemainReadable(string contents)
+    {
+        byte[] layer = contents switch
+        {
+            "empty" => Compress(new byte[1024]),
+            "directory" => CreateLayer(Entry.Directory("empty")),
+            "zero-byte" => CreateLayer(Entry.File("./empty", "")),
+            _ => CreateLayer(Entry.File("./value", "small layer")),
+        };
+        Assert.InRange(layer.Length, 1, 1023);
+        using IDockerRegistryClient client = CreateClient([layer]).Object;
+        await using ImageFileSystem files = await ImageFileSystem.CreateAsync(client, ImageName,
+            new PlatformOptionsBase(), TestContext.Current.CancellationToken, cache.Store, requireLayerIndexes: true);
+        ImageAnalysisResult analysis = files.Analyze();
+
+        Assert.Equal(contents == "content" ? 11 : 0, analysis.FileBytes);
+        Assert.Equal(0, analysis.HiddenBytes);
+        Assert.Equal(1, analysis.Efficiency);
+        if (contents == "empty")
+        {
+            Assert.Empty(files.List(null, true, true));
+        }
+        else
+        {
+            ImageFileSystemEntry entry = Assert.Single(files.List(null, true, true));
+            Assert.Equal(contents == "directory" ? ImageFileType.Directory : ImageFileType.File, entry.Type);
+            Assert.Equal(contents == "content" ? "value" : "empty", entry.Path);
+            if (entry.Type == ImageFileType.File)
+            {
+                using MemoryStream output = new();
+                await files.CopyFileToAsync(entry.Path, output, TestContext.Current.CancellationToken);
+                Assert.Equal(contents == "content" ? "small layer" : "", Encoding.UTF8.GetString(output.ToArray()));
+            }
+        }
+    }
+
+    [Theory]
+    [Trait("Upstream", "wagoodman/dive#258")]
+    [Trait("Upstream", "wagoodman/dive#715")]
+    [InlineData(".wh.missing")]
+    [InlineData("missing-parent/.wh.missing")]
+    public async Task DanglingWhiteoutsDoNotAbortSubsequentContentOrWasteAnalysis(string whiteout)
+    {
+        byte[][] layers =
+        [
+            CreateLayer(Entry.File("app/data", "same")),
+            CreateLayer(Entry.File(whiteout, ""), Entry.File("app/data", "same"),
+                Entry.File("app/later", "still indexed"))
+        ];
+        using IDockerRegistryClient client = CreateClient(layers).Object;
+        await using ImageFileSystem files = await ImageFileSystem.CreateAsync(client, ImageName,
+            new PlatformOptionsBase(), TestContext.Current.CancellationToken, cache.Store, requireLayerIndexes: true);
+
+        ImageAnalysisResult analysis = files.Analyze();
+        Assert.Equal(21, analysis.FileBytes);
+        Assert.Equal(4, analysis.HiddenBytes);
+        Assert.Equal(17d / 21, analysis.Efficiency, 10);
+        Assert.Equal(new HiddenFile("app/data", 0, 1, LayerChangeKind.Identical, 4), Assert.Single(analysis.HiddenFiles));
+        Assert.DoesNotContain(files.List(null, true, true), entry => entry.Path.Contains(".wh.", StringComparison.Ordinal));
+        Assert.DoesNotContain(analysis.Layers.SelectMany(layer => layer.Changes),
+            change => change.Kind == LayerChangeKind.Deleted);
+        using MemoryStream output = new();
+        await files.CopyFileToAsync("app/later", output, TestContext.Current.CancellationToken);
+        Assert.Equal("still indexed", Encoding.UTF8.GetString(output.ToArray()));
+    }
+
+    [Theory]
+    [Trait("Upstream", "wagoodman/dive#391")]
+    [InlineData(false, false)]
+    [InlineData(false, true)]
+    [InlineData(true, false)]
+    [InlineData(true, true)]
+    public async Task WhiteoutsOnlyHideLowerLayersRegardlessOfArchiveOrder(bool opaque, bool markerLast)
+    {
+        Entry marker = Entry.File(opaque ? "tree/.wh..wh..opq" : "tree/.wh.value", "");
+        Entry replacement = Entry.File("tree/value", "new");
+        using IDockerRegistryClient client = CreateClient(
+        [
+            CreateLayer(Entry.File("tree/value", "old"), Entry.File("tree/sibling", "kept"),
+                Entry.File("tree-other/value", "outside")),
+            CreateLayer(markerLast ? [replacement, marker] : [marker, replacement])
+        ]).Object;
+        await using ImageFileSystem files = await ImageFileSystem.CreateAsync(client, ImageName,
+            new PlatformOptionsBase(), TestContext.Current.CancellationToken, cache.Store, requireLayerIndexes: true);
+
+        ImageAnalysisResult analysis = files.Analyze();
+        Assert.Equal(opaque ? 7 : 3, analysis.HiddenBytes);
+        Assert.Equal(!opaque, analysis.LiveEntries.ContainsKey("tree/sibling"));
+        Assert.Contains("tree-other/value", analysis.LiveEntries.Keys);
+        Assert.Equal(3, analysis.LiveContents["tree/value"].Size);
+        using MemoryStream output = new();
+        await files.CopyFileToAsync("tree/value", output, TestContext.Current.CancellationToken);
+        Assert.Equal("new", Encoding.UTF8.GetString(output.ToArray()));
+        Assert.Equal(opaque,
+            files.List(null, true, true).Any(entry => entry.Path == "tree/sibling" && entry.DeletedLayer is not null));
+    }
+
+    [Fact]
+    [Trait("Upstream", "wagoodman/dive#722")]
+    [Trait("Upstream", "wagoodman/dive#723")]
+    public async Task ExtractSelectsPathComponentsRatherThanStringPrefixes()
+    {
+        using IDockerRegistryClient client = CreateClient(
+        [
+            CreateLayer(Entry.File("tree/value", "wanted"), Entry.File("tree-other/value", "unrelated"),
+                Entry.File("tree2/value", "also unrelated"), Entry.File("file", "exact"),
+                Entry.File("file-extra", "prefix"))
+        ]).Object;
+        await using ImageFileSystem files = await CreateFileSystemAsync(client, ImageName,
+            new PlatformOptionsBase(), TestContext.Current.CancellationToken);
+        string directory = Path.Combine(cache.Root, "selected-tree");
+        string file = Path.Combine(cache.Root, "selected-file");
+
+        await files.ExtractAsync("tree", directory, TestContext.Current.CancellationToken);
+        Assert.Equal("wanted", File.ReadAllText(Assert.Single(Directory.GetFiles(directory, "*", SearchOption.AllDirectories))));
+        await files.ExtractAsync("file", file, TestContext.Current.CancellationToken);
+        Assert.Equal("exact", File.ReadAllText(file));
+        Assert.False(Directory.Exists(Path.Combine(cache.Root, "tree-other")));
+        Assert.False(File.Exists(Path.Combine(cache.Root, "file-extra")));
+    }
+
+    [Theory]
+    [Trait("Upstream", "wagoodman/dive#9")]
+    [Trait("Upstream", "wagoodman/dive#128")]
+    [InlineData(100)]
+    [InlineData(600)]
+    public async Task TruncatedTarInsideValidGzipReportsLayerIdentity(int length)
+    {
+        byte[] complete = CreateLayer(TarEntryFormat.Gnu, Entry.File("file", new byte[2048]));
+        using MemoryStream tar = new();
+        using (GZipStream gzip = new(new MemoryStream(complete), CompressionMode.Decompress))
+        {
+            gzip.CopyTo(tar);
+        }
+        byte[] layer = Compress(tar.ToArray()[..length]);
+        using IDockerRegistryClient client = CreateClient([layer]).Object;
+
+        InvalidDataException exception = await Assert.ThrowsAsync<InvalidDataException>(() =>
+            ImageFileSystem.CreateAsync(client, ImageName, new PlatformOptionsBase(),
+                TestContext.Current.CancellationToken, cache.Store, requireLayerIndexes: true));
+
+        Assert.Contains("Layer 0", exception.Message);
+        Assert.Contains(LayerCacheTestContext.Digest(layer), exception.Message);
+        if (length < 512)
+        {
+            Assert.IsType<EndOfStreamException>(exception.InnerException);
+        }
+    }
+
+    [Theory]
+    [Trait("Upstream", "wagoodman/dive#562")]
+    [Trait("Upstream", "wagoodman/dive#583")]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task UnsupportedLayerCompressionFailsWithContext(bool zstd)
+    {
+        byte[] layer = zstd ? [0x28, 0xB5, 0x2F, 0xFD, 0x20, 0x00, 0x01, 0x00, 0x00] : new byte[1024];
+        using IDockerRegistryClient client = CreateClient([layer]).Object;
+
+        InvalidDataException exception = await Assert.ThrowsAsync<InvalidDataException>(() =>
+            ImageFileSystem.CreateAsync(client, ImageName, new PlatformOptionsBase(),
+                TestContext.Current.CancellationToken, cache.Store, requireLayerIndexes: true));
+
+        Assert.Contains("supported gzip-compressed Linux tar layer", exception.Message);
+        Assert.Contains(LayerCacheTestContext.Digest(layer), exception.Message);
+    }
+
     [Fact]
     public async Task LayerPackageSnapshotsPreserveLinksAndOpaqueDirectorySemantics()
     {
@@ -592,7 +767,12 @@ public class ImageFileSystemTests : IAsyncDisposable
     }
 
     [Theory]
+    [Trait("Upstream", "wagoodman/dive#722")]
+    [Trait("Upstream", "wagoodman/dive#723")]
     [InlineData("../escape")]
+    [InlineData("etc/motd/../../../escape")]
+    [InlineData("nested/../../escape")]
+    [InlineData("nested/../sibling")]
     [InlineData("/absolute")]
     [InlineData(@"windows\path")]
     public async Task Index_RejectsUnsafeArchivePaths(string path)
@@ -1315,6 +1495,16 @@ public class ImageFileSystemTests : IAsyncDisposable
                     new MemoryStream(layers[captured]), false, null, null, layers[captured].Length));
         }
         return client;
+    }
+
+    private static byte[] Compress(byte[] bytes)
+    {
+        using MemoryStream result = new();
+        using (GZipStream gzip = new(result, CompressionMode.Compress, leaveOpen: true))
+        {
+            gzip.Write(bytes);
+        }
+        return result.ToArray();
     }
 
     private static byte[] CreateLayer(params Entry[] entries)

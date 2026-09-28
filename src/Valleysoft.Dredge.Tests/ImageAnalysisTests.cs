@@ -2,6 +2,61 @@ namespace Valleysoft.Dredge.Tests;
 
 public class ImageAnalysisTests
 {
+    [Theory]
+    [Trait("Upstream", "wagoodman/dive#684")]
+    [Trait("Upstream", "wagoodman/dive#696")]
+    [InlineData(1, false)]
+    [InlineData(2, false)]
+    [InlineData(10, false)]
+    [InlineData(100, false)]
+    [InlineData(1, true)]
+    [InlineData(2, true)]
+    [InlineData(10, true)]
+    [InlineData(100, true)]
+    public void RepeatedCopiesCountOnlyHiddenPayload(int copies, bool deleted)
+    {
+        const long size = 4_000_000;
+        List<LayerChanges> layers = Enumerable.Range(0, copies)
+            .Select(_ => Layer([File("app/data", size, "same")])).ToList();
+        if (deleted)
+        {
+            layers.Add(Layer([], whiteouts: ["app/data"]));
+        }
+
+        ImageAnalysisResult result = ImageAnalysis.Analyze(layers);
+        long hidden = (deleted ? copies : copies - 1) * size;
+        Assert.Equal(copies * size, result.FileBytes);
+        Assert.Equal(hidden, result.HiddenBytes);
+        Assert.Equal(hidden, result.HiddenFiles.Sum(file => file.Size));
+        Assert.Equal(hidden, result.Layers.Sum(layer => layer.HiddenBytes));
+        Assert.Equal(deleted ? 0 : 1d / copies, result.Efficiency, 10);
+        Assert.Equal(!deleted, result.LiveEntries.ContainsKey("app/data"));
+    }
+
+    [Theory]
+    [Trait("Upstream", "wagoodman/dive#685")]
+    [Trait("Upstream", "wagoodman/dive#604")]
+    [InlineData(0L, 0L)]
+    [InlineData(0L, 5L)]
+    [InlineData(5L, 0L)]
+    [InlineData(9L, 3L)]
+    [InlineData(3L, 9L)]
+    [InlineData(3_000_000_000L, 4_000_000_000L)]
+    public void WasteRetainsFinalVersionRatherThanSmallestCopy(long before, long after)
+    {
+        ImageAnalysisResult result = ImageAnalysis.Analyze(
+        [
+            Layer([File("app/data", before, "before")]),
+            Layer([File("app/data", after, "after")])
+        ]);
+
+        Assert.Equal(before + after, result.FileBytes);
+        Assert.Equal(before, result.HiddenBytes);
+        Assert.Equal(after, result.LiveContents["app/data"].Size);
+        Assert.Equal(before + after == 0 ? 1 : (double)after / (before + after), result.Efficiency, 10);
+        Assert.InRange(result.Efficiency, 0, 1);
+    }
+
     [Fact]
     public void CountsHiddenFilesOnceAndAttributesThemToTheShippingLayer()
     {
