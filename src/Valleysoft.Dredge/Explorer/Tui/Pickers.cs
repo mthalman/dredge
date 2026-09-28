@@ -72,47 +72,133 @@ internal static class TagPicker
 
     public static string? Show(IApplication app, IExplorerHost host, ExplorerImage img, string? filter, CancellationToken lifetime)
     {
-        using CancellationTokenSource cts = CancellationTokenSource.CreateLinkedTokenSource(lifetime);
+        lifetime.ThrowIfCancellationRequested();
         (Dialog dialog, Func<string?> chosen, Action<IReadOnlyList<TagChoice>?, string?> fill, Action redraw) =
             Create(img, filter ?? "");
-        Task.Run(async () =>
+        Loading loading = new(host, img, lifetime, app.Invoke, fill, redraw);
+        try
         {
-            IReadOnlyList<string> tags;
+            using CancellationTokenRegistration registration = lifetime.Register(() =>
+                loading.Post(() => dialog.RequestStop(), allowCancellation: true));
+            app.Run(dialog);
+            lifetime.ThrowIfCancellationRequested();
+            return !dialog.Canceled && dialog.Result == Dialogs.PrimaryButton ? chosen() : null;
+        }
+        finally
+        {
             try
             {
-                tags = await host.ListTagsAsync(cts.Token);
+                // Loading never captures the UI context; draining it needs no further modal iterations.
+                loading.StopAsync().GetAwaiter().GetResult();
             }
-            catch (Exception exception) when (!cts.IsCancellationRequested)
+            finally
             {
-                app.Invoke(() => fill(null, exception.Message));
-                return;
+                dialog.Dispose();
             }
-            List<TagChoice> choices = Order(tags, ExplorerTags.Label(img.Reference)).Select(tag => new TagChoice(tag)).ToList();
-            app.Invoke(() => fill(choices, null));
-            using SemaphoreSlim gate = new(StatsConcurrency);
-            await Task.WhenAll(choices.Select(async choice =>
+        }
+    }
+
+    internal sealed class Loading
+    {
+        private readonly CancellationTokenSource source;
+        private readonly CancellationToken token;
+        private readonly Action<Action> enqueue;
+        private readonly Task work;
+        private Task? stopping;
+        private int closed;
+
+        public Loading(IExplorerHost host, ExplorerImage img, CancellationToken lifetime, Action<Action> enqueue,
+            Action<IReadOnlyList<TagChoice>?, string?> fill, Action redraw)
+        {
+            source = CancellationTokenSource.CreateLinkedTokenSource(lifetime);
+            token = source.Token;
+            this.enqueue = enqueue;
+            work = Task.Run(async () =>
             {
-                await gate.WaitAsync(cts.Token);
+                IReadOnlyList<string> tags;
                 try
                 {
-                    await host.DescribeTagAsync(choice, cts.Token);
+                    tags = await host.ListTagsAsync(token).ConfigureAwait(false);
                 }
-                catch (Exception) when (!cts.IsCancellationRequested)
+                catch (Exception exception) when (!token.IsCancellationRequested)
                 {
-                    choice.Failed = true;
+                    Post(() => fill(null, exception.Message));
+                    return;
+                }
+                token.ThrowIfCancellationRequested();
+                List<TagChoice> choices = Order(tags, ExplorerTags.Label(img.Reference)).Select(tag => new TagChoice(tag)).ToList();
+                Post(() => fill(choices, null));
+                using SemaphoreSlim gate = new(StatsConcurrency);
+                await Task.WhenAll(choices.Select(async choice =>
+                {
+                    await gate.WaitAsync(token).ConfigureAwait(false);
+                    try
+                    {
+                        await host.DescribeTagAsync(choice, token).ConfigureAwait(false);
+                    }
+                    catch (Exception exception) when (!token.IsCancellationRequested)
+                    {
+                        choice.Failed = true;
+                        choice.Note = "could not read this tag: " + exception.Message;
+                    }
+                    finally
+                    {
+                        gate.Release();
+                    }
+                    Post(redraw);
+                })).ConfigureAwait(false);
+            }, token);
+        }
+
+        public void Post(Action action, bool allowCancellation = false)
+        {
+            bool Active() => Volatile.Read(ref closed) == 0 && (allowCancellation || !token.IsCancellationRequested);
+            if (!Active())
+            {
+                return;
+            }
+            try
+            {
+                enqueue(() =>
+                {
+                    if (Active())
+                    {
+                        action();
+                    }
+                });
+            }
+            catch (ObjectDisposedException) when (!Active())
+            {
+            }
+        }
+
+        public Task StopAsync() => stopping ??= StopCoreAsync();
+
+        private async Task StopCoreAsync()
+        {
+            Interlocked.Exchange(ref closed, 1);
+            try
+            {
+                try
+                {
+                    source.Cancel();
                 }
                 finally
                 {
-                    gate.Release();
+                    try
+                    {
+                        await work.ConfigureAwait(false);
+                    }
+                    catch (OperationCanceledException) when (token.IsCancellationRequested)
+                    {
+                    }
                 }
-                app.Invoke(redraw);
-            }));
-        }, cts.Token);
-        app.Run(dialog);
-        string? tag = !dialog.Canceled && dialog.Result == Dialogs.PrimaryButton ? chosen() : null;
-        cts.Cancel();
-        dialog.Dispose();
-        return tag;
+            }
+            finally
+            {
+                source.Dispose();
+            }
+        }
     }
 
     // The explored tag first, then by name.

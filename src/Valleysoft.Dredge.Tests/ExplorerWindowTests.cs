@@ -154,6 +154,8 @@ internal sealed class FakeExplorerHost : IExplorerHost
     public Func<Task<ExplorerComparison>>? CompareWork { get; init; }
     public Func<ExplorerComparison, string, CancellationToken, Task<TextDiffContent>>? DiffWork { get; init; }
     public Exception? TagsError { get; init; }
+    public Func<CancellationToken, Task<IReadOnlyList<string>>>? ListTagsWork { get; init; }
+    public Func<TagChoice, CancellationToken, Task>? DescribeTagWork { get; init; }
 
     public List<int> Prioritized { get; } = [];
     public List<int> Retried { get; } = [];
@@ -167,10 +169,15 @@ internal sealed class FakeExplorerHost : IExplorerHost
     public void Retry(int layer) => Retried.Add(layer);
 
     public Task<IReadOnlyList<string>> ListTagsAsync(CancellationToken cancellationToken) =>
-        TagsError is null ? Task.FromResult(Tags) : Task.FromException<IReadOnlyList<string>>(TagsError);
+        ListTagsWork?.Invoke(cancellationToken) ??
+            (TagsError is null ? Task.FromResult(Tags) : Task.FromException<IReadOnlyList<string>>(TagsError));
 
     public Task DescribeTagAsync(TagChoice choice, CancellationToken cancellationToken)
     {
+        if (DescribeTagWork is not null)
+        {
+            return DescribeTagWork(choice, cancellationToken);
+        }
         if (choice.Tag == "broken")
         {
             throw new InvalidOperationException("manifest unknown");
