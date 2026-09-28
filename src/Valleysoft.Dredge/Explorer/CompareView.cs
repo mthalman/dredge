@@ -32,7 +32,9 @@ internal sealed class CompareState
     public bool FocusLayers { get; set; }
     public int Cursor { get; set; }
     public int Scroll { get; set; }
-    public HashSet<string> Expanded { get; } = new(StringComparer.Ordinal) { "section:packages", "section:files" };
+    public HashSet<string> Expanded { get; } = new(
+        ["section:packages", "section:files", .. Enum.GetValues<InstalledPackageEcosystem>().Select(e => $"eco:{e}")],
+        StringComparer.Ordinal);
     public TextDiffContent? Diff { get; set; }
     public int DiffScroll { get; set; }
     public int DiffColumn { get; set; }
@@ -331,7 +333,14 @@ internal sealed class CompareView
                     .Select(g => (g.Key, g.ToList())).ToList();
                 int count = groups.Count + (unchanged > 0 ? 1 : 0);
                 int index = 0;
-                list.Add(new($"eco:{ecosystem}", CompareRowKind.Section, "   ", EcosystemName(ecosystem), Change.None));
+                string ecosystemKey = $"eco:{ecosystem}";
+                bool ecosystemOpen = c.SearchQuery.Length > 0 || c.Expanded.Contains(ecosystemKey);
+                list.Add(new(ecosystemKey, CompareRowKind.Section, "   ", EcosystemName(ecosystem), Change.None,
+                    Expandable: true, Expanded: ecosystemOpen, Files: changes.Count));
+                if (!ecosystemOpen)
+                {
+                    continue;
+                }
                 foreach ((string key, List<ExplorerPackageDifference> items) in groups)
                 {
                     string branch = "   " + (++index == count ? "└─ " : "├─ ");
@@ -405,7 +414,7 @@ internal sealed class CompareView
         c.Comparison.Baseline.Packages.Ecosystems[ecosystem].Availability == InstalledPackageMetadataAvailability.Available &&
         c.Comparison.Target.Packages.Ecosystems[ecosystem].Availability == InstalledPackageMetadataAvailability.Available;
 
-    private static string EcosystemName(InstalledPackageEcosystem ecosystem) => ecosystem switch
+    internal static string EcosystemName(InstalledPackageEcosystem ecosystem) => ecosystem switch
     {
         InstalledPackageEcosystem.Npm => "npm",
         InstalledPackageEcosystem.Dpkg => "dpkg",
@@ -448,6 +457,9 @@ internal sealed class CompareView
             !c.FocusLayers, $"{c.BaselineLabel} → {c.TargetLabel}");
 
         int visible = DiffRows;
+        int versionWidth = Math.Min(list.Select(row => row.Versions is null ? 0 : DisplayText.Width(row.Versions)).DefaultIfEmpty().Max(),
+            Math.Max(1, (w - 4) / 3));
+        int packageNameWidth = Math.Max(1, w - 4 - versionWidth - 2);
         int scroll = Math.Clamp(c.Scroll, 0, Math.Max(0, list.Count - visible));
         if (c.Cursor < scroll)
         {
@@ -461,7 +473,7 @@ internal sealed class CompareView
         for (int i = scroll; i < Math.Min(list.Count, scroll + visible); i++)
         {
             pane.On(lines.Count, new SetCursor(i));
-            lines.Add(Row(list[i], i == c.Cursor, w));
+            lines.Add(Row(list[i], i == c.Cursor, w, packageNameWidth));
         }
         if (list.Count == 0 && c.SearchQuery.Length > 0)
         {
@@ -501,7 +513,7 @@ internal sealed class CompareView
         return line.PadRight(w, right);
     }
 
-    private static Line Row(CompareRow r, bool sel, int w)
+    private static Line Row(CompareRow r, bool sel, int w, int packageNameWidth)
     {
         var (glyph, color) = ExplorerPresenter.Glyph(r.Change);
         Line line = new Line().Add(sel ? "▌" : " ", Theme.Channel);
@@ -509,7 +521,7 @@ internal sealed class CompareView
         {
             bool top = r.Branch.Length == 0;
             line.Add(r.Branch, Theme.Shale);
-            if (top)
+            if (r.Expandable)
             {
                 line.Add(r.Expanded ? "▾ " : "▸ ", Theme.Silt);
             }
@@ -556,7 +568,7 @@ internal sealed class CompareView
         }
         if (r.Versions is not null)
         {
-            name.Truncate(28).Pad(28);
+            name.Truncate(packageNameWidth).Pad(packageNameWidth);
         }
         if (r.Versions is not null)
         {

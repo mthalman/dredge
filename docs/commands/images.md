@@ -165,6 +165,9 @@ explorer to obtain fresh snapshots.
 Package metadata is read only when a comparison starts; loading an
 image for browsing or insights does not scan packages. Press `Enter` on a
 changed text file to see a diff, and `s` to swap the two sides.
+Package-type headings can be collapsed with `Enter` or `Left` and expanded
+with `Enter` or `Right`. Search includes packages inside collapsed groups.
+Package names use the available pane width alongside the version column.
 Detected ecosystems include npm, dpkg, apk, pip, and NuGet. NuGet inventory
 comes from deployed `.deps.json` files: only libraries marked `package` in the
 selected runtime target are counted, not project references or restore-cache

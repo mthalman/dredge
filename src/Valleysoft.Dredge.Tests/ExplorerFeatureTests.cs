@@ -1200,6 +1200,22 @@ public sealed class ExplorerFeatureTests
         CompareRow scope = Rows().First(row => row.Kind == CompareRowKind.Scope);
         Assert.DoesNotContain(Rows(), row => row.Package?.Name == "@babel/core");
 
+        ui.Window.Apply(new SetCursor(Rows().FindIndex(row => row.Key == "eco:Npm")));
+        ui.Press(Key.Enter);
+        Assert.DoesNotContain(Rows(), row => row.Kind is CompareRowKind.Package or CompareRowKind.Scope);
+        ui.Press(Key.CursorRight);
+        Assert.Contains(Rows(), row => row.Kind == CompareRowKind.Scope);
+        ui.Press(Key.CursorLeft);
+        Assert.DoesNotContain(Rows(), row => row.Kind is CompareRowKind.Package or CompareRowKind.Scope);
+        ui.Press(new Key('/'));
+        ui.Type("@babel/core");
+        Assert.Contains(Rows(), row => row.Package?.Name == "@babel/core");
+        ui.Press(Key.Esc);
+        ui.Press(Key.Esc);
+        Assert.DoesNotContain(Rows(), row => row.Kind is CompareRowKind.Package or CompareRowKind.Scope);
+        ui.Window.Apply(new SetCursor(Rows().FindIndex(row => row.Key == "eco:Npm")));
+        ui.Press(Key.Enter);
+
         ui.Window.Apply(new SetCursor(Rows().IndexOf(scope)));
         ui.Press(Key.CursorRight);
         Assert.Contains(Rows(), row => row.Package?.Name == "@babel/core");
@@ -1230,6 +1246,24 @@ public sealed class ExplorerFeatureTests
 
         AssertShows(ui, "unavailable");
         AssertHides(ui, "left-pad");
+    }
+
+    [Theory]
+    [InlineData(80)]
+    [InlineData(150)]
+    [InlineData(200)]
+    public void PackageNamesUseAvailableWidthAlongsideVersions(int width)
+    {
+        const string name = "Microsoft.Extensions.Configuration.Binder";
+        ExplorerSession before = Session(["sha256:a"], [Layer([])], new() { [name] = "1.0.0" });
+        ExplorerSession after = Session(["sha256:b"], [Layer([])], new() { [name] = "2.0.0" });
+        CompareState state = new(ExplorerSession.Compare(before, after), "before", "after");
+        ExplorerPresenter presenter = new(Image(), width, 42);
+
+        PaneContent pane = new CompareView(presenter, state).Diff();
+
+        Assert.Contains(pane.Lines, line => line.ToString().Contains(name) && line.ToString().Contains("1.0.0 → 2.0.0"));
+        Assert.All(pane.Lines, line => Assert.True(line.Length <= presenter.RightInner));
     }
 
     [Fact]
