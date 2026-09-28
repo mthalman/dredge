@@ -1132,7 +1132,7 @@ public sealed class ExplorerFeatureTests
         AssertHides(ui, "1 packages");
         Assert.Contains("same", ui.Row(ui.Find("  0   1.0 KB").Y));
         Assert.Contains("gone", ui.Row(ui.Find("Layer 3").Y));
-        foreach (string hint in new[] { "[ ]  Next difference", "s  Swap sides", "Enter  Collapse group", "c  Change tag…", "Esc  Leave compare" })
+        foreach (string hint in new[] { "[ ]  Next difference", "s  Swap sides", "Enter  Collapse group", "Esc  Leave compare" })
         {
             Assert.Contains(hint, Footer(ui));
         }
@@ -1140,6 +1140,11 @@ public sealed class ExplorerFeatureTests
         Assert.DoesNotContain("←→  Fold", Footer(ui));
         Assert.DoesNotContain("PgUp PgDn  Page", Footer(ui));
         Assert.DoesNotContain("Home End  First or last", Footer(ui));
+        CompareState comparison = ui.State.Compare!;
+        Assert.Contains(new CompareView(ui.Window.Presenter, comparison).Hints(),
+            hint => hint.Key == "c" && hint.Cmd is PickTag);
+        Assert.True(ui.AnswerDialog(() => ui.Press(new Key('c')), Key.Esc));
+        Assert.Same(comparison, ui.State.Compare);
     }
 
     [Fact]
