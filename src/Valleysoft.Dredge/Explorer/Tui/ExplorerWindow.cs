@@ -1060,10 +1060,11 @@ internal sealed class ExplorerWindow : Window
 
     // ───────────────────────────── actions ─────────────────────────────
 
-    private void Post(IApplication? app, Action action, CancellationToken token)
+    private void Post(IApplication? app, Action action, CancellationToken token, Action? rejected = null)
     {
         if (app is null || windowDisposed || windowStopped || lifetime.IsCancellationRequested || token.IsCancellationRequested)
         {
+            rejected?.Invoke();
             return;
         }
         try
@@ -1074,23 +1075,39 @@ internal sealed class ExplorerWindow : Window
                 {
                     action();
                 }
+                else
+                {
+                    rejected?.Invoke();
+                }
             });
         }
         catch (ObjectDisposedException) when (windowDisposed || windowStopped || token.IsCancellationRequested)
         {
+            rejected?.Invoke();
         }
     }
 
     internal Task RunAsync<T>(Func<CancellationToken, Task<T>> work, Action<T> done, Action<Exception>? failed = null,
-        CancellationToken token = default)
+        CancellationToken token = default, Action<T>? abandoned = null)
     {
         IApplication? app = App;
         CancellationToken ct = token == default ? lifetime : token;
         return Task.Run(() => work(ct), ct).ContinueWith(task =>
         {
             Exception? error = task.Exception?.GetBaseException();
+            CancellationTokenRegistration registration = task.IsCompletedSuccessfully && abandoned is not null
+                ? ct.Register(() => abandoned(task.Result)) : default;
+            void Abandon()
+            {
+                registration.Dispose();
+                if (task.IsCompletedSuccessfully)
+                {
+                    abandoned?.Invoke(task.Result);
+                }
+            }
             Post(app, () =>
             {
+                registration.Dispose();
                 if (task.IsCompletedSuccessfully)
                 {
                     done(task.Result);
@@ -1112,7 +1129,7 @@ internal sealed class ExplorerWindow : Window
                     ex.Invalidate();
                     Refresh();
                 }
-            }, ct);
+            }, ct, Abandon);
         }, TaskScheduler.Default);
     }
 
@@ -1239,18 +1256,33 @@ internal sealed class ExplorerWindow : Window
             return;
         }
         Notice($"Opening /{path}…");
-        RunAsync(ct => host.PrepareForViewerAsync(path, ct), file =>
+        RunAsync(async ct => new StagedViewerFile(await host.PrepareForViewerAsync(path, ct)), staged =>
         {
-            if (openWindowedViewer is null)
+            if (staged.TryTake() is not string file)
             {
-                Stop(new(ExplorerExitKind.Viewer, file));
+                return;
             }
-            else
+            try
             {
-                openWindowedViewer(file);
+                if (openWindowedViewer is null)
+                {
+                    Stop(new(ExplorerExitKind.Viewer, file));
+                }
+                else
+                {
+                    openWindowedViewer(file);
+                }
+            }
+            catch
+            {
+                ExplorerApp.TryDelete(file);
+                throw;
+            }
+            if (openWindowedViewer is not null)
+            {
                 Notice($"Starting viewer for /{path}…");
             }
-        });
+        }, abandoned: staged => staged.Dispose());
     }
 
     private void ChoosePlatform()

@@ -64,21 +64,24 @@ internal sealed class ExplorerApp : IAsyncDisposable
     public ExplorerImage Image => img;
     internal ExplorerHost Host => host;
 
-    public ExplorerExit Run()
+    public ExplorerExit Run() => Run(RunScreen, file => RunTerminalViewer(file,
+        options.ViewerExePath, options.ViewerArgs, options.PauseAfterViewer, Console.In, Console.Out));
+
+    internal ExplorerExit Run(Func<ExplorerState, ExplorerExit> runScreen, Func<string, string?> runViewer)
     {
         ExplorerState state = Start();
         while (true)
         {
             cts.Token.ThrowIfCancellationRequested();
-            ExplorerExit exit = RunScreen(state);
+            ExplorerExit exit = runScreen(state);
+            using StagedViewerFile? staged = exit.ViewerFile is null ? null : new(exit.ViewerFile);
             cts.Token.ThrowIfCancellationRequested();
             if (exit.Kind != ExplorerExitKind.Viewer || exit.ViewerFile is null)
             {
                 cts.Cancel();
                 return exit;
             }
-            if (RunTerminalViewer(exit.ViewerFile, options.ViewerExePath, options.ViewerArgs,
-                options.PauseAfterViewer, Console.In, Console.Out) is string error)
+            if (runViewer(exit.ViewerFile) is string error)
             {
                 state.Notice = error;
                 state.NoticeIsError = true;
@@ -433,7 +436,7 @@ internal sealed class ExplorerApp : IAsyncDisposable
         }
     }
 
-    private static void TryDelete(string file)
+    internal static void TryDelete(string file)
     {
         try
         {
@@ -484,6 +487,22 @@ internal sealed class ExplorerApp : IAsyncDisposable
             {
                 cts.Dispose();
             }
+        }
+    }
+}
+
+internal sealed class StagedViewerFile(string path, Action<string>? cleanup = null) : IDisposable
+{
+    private int owned = 1;
+    private readonly Action<string> cleanup = cleanup ?? ExplorerApp.TryDelete;
+
+    public string? TryTake() => Interlocked.Exchange(ref owned, 0) == 1 ? path : null;
+
+    public void Dispose()
+    {
+        if (TryTake() is string file)
+        {
+            cleanup(file);
         }
     }
 }

@@ -24,6 +24,32 @@ public sealed class ExplorerDefenseHostTests : IAsyncDisposable
     private static CancellationToken Token => TestContext.Current.CancellationToken;
 
     [Fact]
+    public async Task TerminalViewerExitCanceledBeforeLaunchDeletesItsStagedFile()
+    {
+        TestImage image = await CreateAsync(Blob(("file", "private bytes")));
+        string file = await Host(image).PrepareForViewerAsync("file", Token);
+        using CancellationTokenSource cancellation = CancellationTokenSource.CreateLinkedTokenSource(Token);
+        await using ExplorerApp app = new(image.Client.Object, Mock.Of<IDockerRegistryClientFactory>(),
+            image.Source, image.Store, new(null, null, false, ClipboardMode.Off, KeyMap.Default, "", ""),
+            cancellation.Token);
+        bool launched = false;
+
+        Assert.ThrowsAny<OperationCanceledException>(() => app.Run(_ =>
+        {
+            cancellation.Cancel();
+            return new(ExplorerExitKind.Viewer, file);
+        }, _ =>
+        {
+            launched = true;
+            return null;
+        }));
+
+        Assert.False(launched);
+        Assert.False(System.IO.File.Exists(file));
+        Assert.False(Directory.Exists(Path.GetDirectoryName(file)));
+    }
+
+    [Fact]
     public async Task BackgroundDispatchDoesNotHoldExplorerLockWhileInvokingUi()
     {
         TestImage image = await CreateAsync(Blob(("file", "value")));
@@ -467,4 +493,93 @@ public sealed class ExplorerDefenseHostTests : IAsyncDisposable
 
     private sealed record TestImage(ExplorerSession Session, ExplorerSource Source,
         Mock<IDockerRegistryClient> Client, LayerStore Store);
+}
+
+[Collection(ExplorerUiCollection.Name)]
+public sealed class ExplorerViewerHandoffTests
+{
+    [Theory]
+    [InlineData(false, false)]
+    [InlineData(false, true)]
+    [InlineData(true, false)]
+    [InlineData(true, true)]
+    public void AbandonedViewerResultsAreDeletedEvenWithoutDispatchingQueuedCallbacks(bool queued, bool dispose)
+    {
+        string file = CreateStage();
+        try
+        {
+            using ExplorerUiHarness ui = ExplorerWindowTests.Open(out _);
+            TaskCompletionSource<StagedViewerFile> pending = new(TaskCreationOptions.RunContinuationsAsynchronously);
+            TaskCompletionSource started = new(TaskCreationOptions.RunContinuationsAsynchronously);
+            bool delivered = false;
+            Task work = ui.Window.RunAsync(_ =>
+            {
+                started.SetResult();
+                return pending.Task;
+            }, _ => delivered = true, abandoned: staged => staged.Dispose());
+            Assert.True(SpinWait.SpinUntil(() => started.Task.IsCompleted, TimeSpan.FromSeconds(10)));
+            if (queued)
+            {
+                pending.SetResult(new(file));
+                Assert.True(SpinWait.SpinUntil(() => work.IsCompleted, TimeSpan.FromSeconds(10)));
+            }
+            if (dispose)
+            {
+                ui.Window.Dispose();
+            }
+            else
+            {
+                ui.Window.Apply(new Quit());
+            }
+            if (!queued)
+            {
+                pending.SetResult(new(file));
+                Assert.True(SpinWait.SpinUntil(() => work.IsCompleted, TimeSpan.FromSeconds(10)));
+            }
+
+            Assert.False(delivered);
+            Assert.False(File.Exists(file));
+            Assert.False(Directory.Exists(Path.GetDirectoryName(file)));
+        }
+        finally
+        {
+            ExplorerApp.TryDelete(file);
+        }
+    }
+
+    [Fact]
+    public void AcceptedWindowedViewerRetainsItsFileWhenExplorerCloses()
+    {
+        string file = CreateStage();
+        try
+        {
+            using ExplorerUiHarness ui = ExplorerWindowTests.Open(out _);
+            string? accepted = null;
+            ui.Window.RunAsync(_ => Task.FromResult(new StagedViewerFile(file)),
+                staged => accepted = staged.TryTake(), abandoned: staged => staged.Dispose());
+            ui.Until(() => accepted is not null, "the viewer handoff");
+
+            ui.Window.Apply(new Quit());
+            ui.Window.Dispose();
+
+            Assert.Equal(file, accepted);
+            Assert.True(File.Exists(file));
+            ExplorerApp.TryDelete(accepted!);
+            Assert.False(File.Exists(file));
+        }
+        finally
+        {
+            ExplorerApp.TryDelete(file);
+        }
+    }
+
+    private static string CreateStage()
+    {
+        string directory = Path.Combine(Directory.GetCurrentDirectory(), "viewer-handoff-" + Guid.NewGuid().ToString("N"));
+        CacheFileSystem.CreateDirectory(directory);
+        string file = Path.Combine(directory, "image.txt");
+        using FileStream output = CacheFileSystem.CreateFile(file);
+        output.Write("private bytes"u8);
+        return file;
+    }
 }
