@@ -550,7 +550,7 @@ internal sealed partial class ExplorerPresenter
         ];
         (string Group, (string Keys, string What)[] Items)[] right =
         [
-            ("Views", [(K(KeyAction.Packages), "Packages at this layer"), (K(KeyAction.Insights), "Insights"), (K(KeyAction.Search), "Search"), (K(KeyAction.Help), "This screen"), ("Esc", "Back")]),
+            ("Views", [(K(KeyAction.Packages), "Packages at this layer"), (K(KeyAction.Insights), "Insights"), (K(KeyAction.Search), "Search"), (K(KeyAction.Help), "Help"), ("Esc", "Back")]),
             ("Search", [("Alt+L", "Whole image or this layer"), ("Alt+D", "Include deleted paths"), ("Alt+C", "Match exact case")]),
             ("Actions", [(K(KeyAction.Extract), "Extract file or folder…"), (K(KeyAction.CopyCommand), $"{CopyVerb} as dredge command"),
                 (K(KeyAction.Viewer), "Open file in text viewer"), (K(KeyAction.Quit), "Quit")]),
@@ -618,7 +618,7 @@ internal sealed partial class ExplorerPresenter
                 .Add("$ ", Theme.Shale).Add(cmd, Theme.Foam).Parts.ToList(), RightInner, int.MaxValue));
         }
         s.KeysScroll = Math.Clamp(s.KeysScroll, 0, Math.Max(0, rows.Count - RightInnerHeight));
-        return Pane(rows.Skip(s.KeysScroll).Take(RightInnerHeight).ToList(), "Keys", true,
+        return Pane(rows.Skip(s.KeysScroll).Take(RightInnerHeight).ToList(), "Help", true,
             $"{s.KeysScroll + 1}–{Math.Min(rows.Count, s.KeysScroll + RightInnerHeight)} of {rows.Count} lines");
     }
 }

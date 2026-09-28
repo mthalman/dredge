@@ -652,7 +652,7 @@ internal sealed class CompareView
         {
             return [new("Alt+V", c.UnifiedDiff ? "Split diff" : "Unified diff", new ToggleDiffLayout()),
                 new("↑↓", "Scroll", ShowInFooter: false), new("←→", "Pan text", ShowInFooter: false), new("PgUp PgDn", "Page", ShowInFooter: false), new("Home End", "Top or bottom", ShowInFooter: false), new("Esc", "Back to differences", new Back()),
-                new(k.Label(KeyAction.Help), "Keys", new ShowView(RightView.Keys)), new(k.Label(KeyAction.Quit), "Quit", new Quit())];
+                new(k.Label(KeyAction.Help), "Help", new ShowView(RightView.Keys)), new(k.Label(KeyAction.Quit), "Quit", new Quit())];
         }
         return
         [
@@ -667,7 +667,7 @@ internal sealed class CompareView
             new(k.Label(KeyAction.Search), "Search", new ShowView(RightView.Search)), new("←→", "Fold", ShowInFooter: false),
             new(k.Label(KeyAction.CopyCommand), $"{presenter.CopyVerb} command", new CopyCommand()),
             new("PgUp PgDn", "Page", ShowInFooter: false), new("Home End", "First or last", ShowInFooter: false),
-            new(k.Label(KeyAction.Help), "Keys", new ShowView(RightView.Keys)), new(k.Label(KeyAction.Quit), "Quit", new Quit()),
+            new(k.Label(KeyAction.Help), "Help", new ShowView(RightView.Keys)), new(k.Label(KeyAction.Quit), "Quit", new Quit()),
         ];
     }
 

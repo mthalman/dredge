@@ -377,7 +377,7 @@ internal sealed partial class ExplorerPresenter
         string K(KeyAction action) => Keys.Label(action);
         Hint whole = new(K(KeyAction.WholeFilesystem), s.WholeFilesystem ? "This layer" : "Whole filesystem",
             new SetWhole(!s.WholeFilesystem));
-        Hint keys = new(K(KeyAction.Help), "Keys", new ShowView(RightView.Keys));
+        Hint keys = new(K(KeyAction.Help), "Help", new ShowView(RightView.Keys));
         Hint quit = new(K(KeyAction.Quit), "Quit", new Quit());
         Hint back = new("Esc", "Back", new Back());
         Hint compare = new(K(KeyAction.Compare), "Compare…", new PickTag());
@@ -421,7 +421,7 @@ internal sealed partial class ExplorerPresenter
             _ when img.LayerCount == 0 => [packages, compare, insights, search, keys, back, quit],
             _ when s.Focus == FocusPane.Layers =>
             [
-                .. retry, new("Tab", "Files", new FocusOn(FocusPane.Right)), packages, new("↑↓", "Layer"), whole, compare, search, insights,
+                .. retry, new("Tab", "Files", new FocusOn(FocusPane.Right)), packages, new("↑↓", "Layer", ShowInFooter: false), whole, compare, search, insights,
                 ends, keys, quit,
             ],
             _ =>

@@ -139,7 +139,7 @@ internal sealed partial class ExplorerPresenter
             new("Enter", "Details / fold", new Activate()),
             new("↑↓", "Move", ShowInFooter: false), new("←→", "Fold", ShowInFooter: false),
             new("PgUp PgDn", "Page", ShowInFooter: false), new("Home End", "First or last", ShowInFooter: false),
-            new("Esc", "Back", new Back()), new(Keys.Label(KeyAction.Help), "Keys", new ShowView(RightView.Keys)),
+            new("Esc", "Back", new Back()), new(Keys.Label(KeyAction.Help), "Help", new ShowView(RightView.Keys)),
             new(Keys.Label(KeyAction.Quit), "Quit", new Quit()),
         ];
     }

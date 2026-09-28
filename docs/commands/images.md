@@ -228,7 +228,7 @@ equivalent `dredge image` command.
 If the initial image has multiple matching Linux platforms after applying flags
 and settings, a platform picker opens before layer indexing starts.
 This also resolves variant-only ambiguity, such as `arm/v6` versus `arm/v7`.
-Compare mode opens the other tag on the same platform. Press `?` for all keys,
+Compare mode opens the other tag on the same platform. Press `?` for help,
 and `q` to quit. Help uses the full screen body and supports scrolling with
 arrows, `PgUp`/`PgDn`, and `Home`/`End`. On narrow terminals, search and insights
 also use the full body rather than competing with the Layers pane.
@@ -261,7 +261,7 @@ active commands.
 | `+` `~` `=` `-` | Show or hide added, modified, identical, or deleted files; `Esc` clears the filters |
 | `w` | Show only paths with findings |
 | `Enter` | Inspect a file, open a finding, fold a package type, show package details, or diff a compared file |
-| `i` `/` `?` | Insights, search, or keys |
+| `i` `/` `?` | Insights, search, or help |
 | `p` | Packages at the selected layer; `/` filters names, versions, and types |
 | `Alt+W` | Full metadata warnings in Packages or comparison; base warning in Insights |
 | `Alt+L` `Alt+D` `Alt+C` | In search: this layer only, include deleted paths, exact case |

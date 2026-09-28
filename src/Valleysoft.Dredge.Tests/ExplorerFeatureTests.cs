@@ -287,7 +287,7 @@ public sealed class ExplorerFeatureTests
         using ExplorerUiHarness ui = Open(out _);
         string footer = Footer(ui);
         foreach (string hint in new[] { "Tab  Layers", "[ ]  Step layer", "a  Whole filesystem", "+ ~ = -  Filter",
-            "Enter  Inspect", "/  Search", "i  Insights", "?  Keys", "q  Quit" })
+            "Enter  Inspect", "/  Search", "i  Insights", "?  Help", "q  Quit" })
         {
             Assert.Contains(hint, footer);
         }
@@ -299,7 +299,7 @@ public sealed class ExplorerFeatureTests
         ui.Click(footer.IndexOf("i  Insights", StringComparison.Ordinal) + 3, ui.Height - 1);
         Assert.Equal(RightView.Insights, ui.State.View);
         ui.Press(Key.Esc);
-        ui.Click(Footer(ui).IndexOf("?  Keys", StringComparison.Ordinal) + 3, ui.Height - 1);
+        ui.Click(Footer(ui).IndexOf("?  Help", StringComparison.Ordinal) + 3, ui.Height - 1);
         Assert.Equal(RightView.Keys, ui.State.View);
         ui.Press(Key.Esc);
         ui.Click(Footer(ui).IndexOf("Tab  Layers", StringComparison.Ordinal) + 2, ui.Height - 1);
@@ -630,8 +630,12 @@ public sealed class ExplorerFeatureTests
         ui.Press(Key.Tab);
         ui.Press(Key.End);
         Assert.Equal(3, ui.State.Layer);
+        Assert.False(Assert.Single(ui.Window.Presenter.Hints(ui.State), hint => hint.Label == "Layer").ShowInFooter);
+        Assert.DoesNotContain("↑↓", ui.Row(ui.Height - 1));
         ui.Press(Key.CursorUp);
         Assert.Equal(2, ui.State.Layer);
+        ui.Press(Key.CursorDown);
+        Assert.Equal(3, ui.State.Layer);
     }
 
     // ───────────────────────────── tour 2: loading ─────────────────────────────
@@ -1443,7 +1447,7 @@ public sealed class ExplorerFeatureTests
         using ExplorerUiHarness ui = Open(out _);
         ui.Press(new Key('?'));
 
-        AssertShows(ui, "Move", "Views", "Layers", "Search", "Files", "Actions", "Compare", "Change markers", "Tips",
+        AssertShows(ui, "Help", "Move", "Views", "Layers", "Search", "Files", "Actions", "Compare", "Change markers", "Tips",
             "Toggle whole filesystem", "Compare with a tag…",
             "Retry a failed layer", "Only paths with findings", "Swap sides", "Open file in text viewer");
         ui.Press(Key.Esc);
