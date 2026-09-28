@@ -227,21 +227,11 @@ public sealed class ExplorerTagTests
         Assert.Equal(["2.0", "1.0", "latest"], TagPicker.Order(["latest", "2.0", "1.0", "2.0"], "2.0"));
 
     [Theory]
-    [InlineData("registry.test/app:1.0", "1.0", "registry.test/app")]
-    [InlineData("localhost:5000/app", "latest", "localhost:5000/app")]
-    [InlineData("app@sha256:0123456789abcdef0123", "sha256:0123456789ab", "app")]
-    public void LabelsReferences(string reference, string label, string repository)
-    {
+    [InlineData("registry.test/app:1.0", "1.0")]
+    [InlineData("localhost:5000/app", "latest")]
+    [InlineData("app@sha256:0123456789abcdef0123", "sha256:0123456789ab")]
+    public void LabelsReferences(string reference, string label) =>
         Assert.Equal(label, ExplorerTags.Label(reference));
-        Assert.Equal(repository, ExplorerTags.Repository(reference));
-    }
-
-    [Fact]
-    public void RebuildsReferencesForATag()
-    {
-        Assert.Equal("localhost:5000/app:2.0", ExplorerTags.WithTag("localhost:5000/app:1.0", "2.0"));
-        Assert.Equal("app@sha256:abc", ExplorerTags.WithTag("app@sha256:abc", "sha256:abc"));
-    }
 }
 
 public sealed class TextDiffTests
@@ -493,7 +483,7 @@ public sealed class ExplorerLayerIndexerTests
 
         IReadOnlyDictionary<int, StoredLayerIndex> indexes = await done.Task.WaitAsync(TimeSpan.FromSeconds(10));
         Assert.Equal([0, 1, 2], indexes.Keys.Order());
-        Assert.All(Enumerable.Range(0, 3), layer => Assert.Equal(ExplorerLayerState.Ready, indexer.GetState(layer)));
+        Assert.Equal(["sha256:0", "sha256:1", "sha256:2"], indexes.OrderBy(item => item.Key).Select(item => item.Value.Digest));
         Assert.Throws<InvalidOperationException>(() => indexer.Start(CancellationToken.None));
     }
 
@@ -537,17 +527,19 @@ public sealed class ExplorerLayerIndexerTests
                 : Task.FromResult(Index(layer)));
         TaskCompletionSource<Exception> failed = new();
         TaskCompletionSource done = new();
+        TaskCompletionSource<StoredLayerIndex> indexed = new();
         indexer.Failed += (_, error) => failed.TrySetResult(error);
         indexer.Completed += _ => done.TrySetResult();
+        indexer.Indexed += (_, index) => indexed.TrySetResult(index);
         indexer.Start(CancellationToken.None);
 
         Assert.Equal("network", (await failed.Task.WaitAsync(TimeSpan.FromSeconds(10))).Message);
-        Assert.Equal(ExplorerLayerState.Failed, indexer.GetState(0));
-        Assert.NotNull(indexer.GetError(0));
+        Assert.False(indexed.Task.IsCompleted);
 
         Assert.True(indexer.Retry(0));
         await done.Task.WaitAsync(TimeSpan.FromSeconds(10));
-        Assert.Equal(ExplorerLayerState.Ready, indexer.GetState(0));
+        Assert.Equal("sha256:0", (await indexed.Task.WaitAsync(TimeSpan.FromSeconds(10))).Digest);
+        Assert.Equal(2, attempts);
         Assert.False(indexer.Retry(0));
     }
 
@@ -566,6 +558,18 @@ public sealed class ExplorerImageModelTests
 {
     private static readonly DateTime Now = new(2026, 1, 10, 0, 0, 0, DateTimeKind.Utc);
 
+    [Theory]
+    [InlineData("app")]
+    [InlineData("team/app:stable")]
+    [InlineData("localhost:5000/team/app:stable")]
+    [InlineData("[::1]:5000/team/app:stable")]
+    [InlineData("registry.test/team/app@sha256:0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef")]
+    public void RepositoryLabelExcludesRegistryTagAndDigest(string reference)
+    {
+        ExplorerImage img = new(reference, null, "", [], [], null);
+        Assert.Equal("app", img.RepoName);
+    }
+
     [Fact]
     public void MapsHistoryToLayersSkippingEmptyInstructions()
     {
@@ -576,7 +580,7 @@ public sealed class ExplorerImageModelTests
             new() { CreatedBy = "COPY . /app # buildkit", Created = Now.AddHours(-2) },
         ];
         ExplorerImage img = new("registry.test/group/app:1.0", "linux/amd64", "sha256:m", ["l0", "l1"], [10, 20],
-            history, baseLayerCount: 1, baseName: "base:1", now: Now);
+            history, baseImages: [new("base:1", 1)], now: Now);
 
         Assert.Equal("app", img.RepoName);
         Assert.Equal(["ADD file:x /", "COPY . /app"], img.Instructions);
@@ -593,7 +597,7 @@ public sealed class ExplorerImageModelTests
     public void FallsBackWhenHistoryDoesNotMatchLayers()
     {
         ExplorerImage img = new("app", null, "sha256:m", ["l0", "l1"], [1, 2],
-            [new LayerHistory { CreatedBy = "RUN x" }], null, null, now: Now);
+            [new LayerHistory { CreatedBy = "RUN x" }], now: Now);
         Assert.Equal(["Layer 0", "Layer 1"], img.Instructions);
         Assert.All(img.History, row => Assert.Equal("(no history for this layer)", row.Instruction));
         Assert.Equal("linux", img.Platform);
@@ -602,7 +606,7 @@ public sealed class ExplorerImageModelTests
     [Fact]
     public void BuildsLayerAndWholeTreesFromAnalysis()
     {
-        ExplorerImage img = new("app:1", null, "sha256:m", ["l0", "l1"], [1, 1], null, null, null, now: Now);
+        ExplorerImage img = new("app:1", null, "sha256:m", ["l0", "l1"], [1, 1], null, now: Now);
         LayerChanges first = ExplorerInsightsTests.Layer(ExplorerInsightsTests.File("app/a", 5, "a"), ExplorerInsightsTests.File("app/b", 6, "b"));
         LayerChanges second = ExplorerInsightsTests.Layer([ExplorerInsightsTests.File("app/a", 7, "c")], ["app/b"]);
         img.SetIndexed(0, first);
@@ -626,7 +630,7 @@ public sealed class ExplorerImageModelTests
     public void ReconcilesIndexedLayersWhenAUiNotificationWasMissed()
     {
         ExplorerImage img = new("app:1", null, "sha256:m", ["l0", "l1"], [10, 20],
-            null, null, null, now: Now);
+            null, now: Now);
         LayerChanges first = ExplorerInsightsTests.Layer(ExplorerInsightsTests.File("a", 5, "a"));
         LayerChanges second = ExplorerInsightsTests.Layer(ExplorerInsightsTests.File("b", 6, "b"));
         img.SetIndexed(0, first);

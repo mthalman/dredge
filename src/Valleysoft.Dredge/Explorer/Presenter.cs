@@ -94,7 +94,6 @@ internal sealed partial class ExplorerPresenter
     private int LayersInnerHeight => Narrow ? NarrowLayersHeight - 2 : BodyHeight - DetailsHeight - 2;
     public int TreeRows => Math.Max(1, RightInnerHeight - 5);
     public int SearchRows => Math.Max(1, RightInnerHeight - 9);
-    public int InsightRows => Math.Max(4, RightInnerHeight - 6);
 
     // Every state change bumps the version so cached rows are rebuilt once.
     public void Invalidate() => version++;
@@ -307,12 +306,6 @@ internal sealed partial class ExplorerPresenter
             Bracket(groupStart, end - groupStart, img.BaseLabel(baseImage.Name));
             groupStart = end;
             previousLayer = baseImage.LayerCount;
-        }
-        if (img.BaseImages.Count == 0 && img.BaseLayerCount is int baseCount)
-        {
-            groupStart = cells.Take(baseCount).Sum();
-            Bracket(0, groupStart, img.BaseName is string baseName ? img.BaseLabel(baseName) : "base image");
-            previousLayer = baseCount;
         }
         Bracket(groupStart, cells.Skip(previousLayer).Sum(), img.RepoName);
         for (int i = selStart; i >= 0 && i < selStart + selLen && i < width; i++)

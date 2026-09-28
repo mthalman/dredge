@@ -1760,16 +1760,4 @@ internal static class ExplorerTags
         int colon = reference.LastIndexOf(':');
         return colon > slash ? reference[(colon + 1)..] : "latest";
     }
-
-    public static string Repository(string reference)
-    {
-        int at = reference.IndexOf('@');
-        string name = at >= 0 ? reference[..at] : reference;
-        int slash = name.LastIndexOf('/');
-        int colon = name.LastIndexOf(':');
-        return colon > slash ? name[..colon] : name;
-    }
-
-    public static string WithTag(string reference, string label) =>
-        label.StartsWith("sha256:", StringComparison.Ordinal) ? reference : $"{Repository(reference)}:{label}";
 }

@@ -347,7 +347,7 @@ public sealed class ExplorerDefenseUiTests
         string warning = string.Concat(Enumerable.Repeat("base verification failed; ", 80)) +
             new string('x', 350) + " COMPLETE-WARNING-END";
         ExplorerImage image = new(sample.Reference, sample.Platform, sample.Digest, sample.LayerDigests,
-            sample.LayerDownloads, ExplorerSamples.History(), sample.BaseLayerCount, sample.BaseName, warning);
+            sample.LayerDownloads, ExplorerSamples.History(), sample.BaseImages, warning);
         LayerChanges[] layers = ExplorerSamples.Layers();
         for (int i = 0; i < layers.Length; i++)
         {

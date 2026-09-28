@@ -39,7 +39,7 @@ internal static class ExplorerSamples
     {
         LayerChanges[] layers = Layers();
         ExplorerImage img = new(Reference, "linux/amd64", digest, Digests, [100, 400, 900, 300],
-            History(), baseLayerCount: 1, baseName: "registry.test/base:1", now: new DateTime(2026, 1, 1));
+            History(), baseImages: [new("registry.test/base:1", 1)], now: new DateTime(2026, 1, 1));
         return Load(img, layers, complete, npm: new() { ["left-pad"] = "1.0.0" });
     }
 
@@ -52,8 +52,9 @@ internal static class ExplorerSamples
             CreatedBy = instructions?[i] ?? $"RUN /bin/sh -c step {i} # buildkit"
         }).ToArray();
         ExplorerImage img = new(Reference, "linux/amd64", "sha256:custom", digests,
-            layers.Select(_ => 100L).ToArray(), history, baseLayerCount: baseLayerCount,
-            baseName: baseLayerCount is null ? null : "registry.test/base:1", now: new DateTime(2026, 1, 1));
+            layers.Select(_ => 100L).ToArray(), history,
+            baseImages: baseLayerCount is int count ? [new("registry.test/base:1", count)] : [],
+            now: new DateTime(2026, 1, 1));
         return Load(img, layers, complete: true, npm: []);
     }
 
@@ -125,7 +126,6 @@ internal static class ExplorerSamples
                 IntroducedLayer = new(analysis.LiveLayers[entry.Path], digests[analysis.LiveLayers[entry.Path]]),
             }).ToArray(),
             Packages = new InstalledPackageMetadata(ecosystems) { Diagnostics = diagnostics ?? [] },
-            BaseLayerCount = 1,
         };
     }
 

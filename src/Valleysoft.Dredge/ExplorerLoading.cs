@@ -34,8 +34,6 @@ internal sealed class ExplorerSource
     public required Image Config { get; init; }
     public required IReadOnlyList<ExplorerPlatform> Platforms { get; init; }
     public ExplorerPlatform? Platform { get; init; }
-    public int? BaseLayerCount { get; init; }
-    public string? BaseName { get; init; }
     public IReadOnlyList<ExplorerBaseImage> BaseImages { get; init; } = [];
     public string? BaseWarning { get; init; }
 
@@ -73,8 +71,6 @@ internal sealed class ExplorerSource
             Config = config,
             Platforms = platforms,
             Platform = platform,
-            BaseLayerCount = verifiedBases.LastOrDefault()?.LayerCount,
-            BaseName = verifiedBases.LastOrDefault()?.Name,
             BaseImages = verifiedBases,
             BaseWarning = warning
         };
@@ -98,7 +94,7 @@ internal sealed class ExplorerSource
         }
         if (info.Manifest is IManifestList exactList && exactPlatform is not null)
         {
-            platform = platforms.FirstOrDefault(candidate => Same(candidate, exactPlatform)) ??
+            platform = platforms.FirstOrDefault(candidate => candidate == exactPlatform) ??
                 throw new InvalidOperationException(
                     $"'{image}' has no {exactPlatform} platform. Available platforms: " +
                     string.Join(", ", platforms.Select(item => item.ToString())));
@@ -146,7 +142,7 @@ internal sealed class ExplorerSource
         IManifestList list, ExplorerPlatform platform, CancellationToken cancellationToken)
     {
         IManifestReference reference = list.Manifests.First(manifest =>
-            manifest.Platform is { } value && Same(ToPlatform(value), platform));
+            manifest.Platform is { } value && ToPlatform(value) == platform);
         return client.Manifests.GetAsync(image.Repo,
             reference.Digest ?? throw new InvalidDataException("Manifest digest is missing."),
             cancellationToken);
@@ -174,8 +170,6 @@ internal sealed class ExplorerSource
             string.IsNullOrEmpty(platform.Variant) ? null : platform.Variant,
             string.IsNullOrEmpty(platform.OsVersion) ? null : platform.OsVersion);
 
-    private static bool Same(ExplorerPlatform left, ExplorerPlatform right) => left == right;
-
     private static string? Coalesce(string? option, string? setting) =>
         !string.IsNullOrEmpty(option) ? option : string.IsNullOrEmpty(setting) ? null : setting;
 }
@@ -193,7 +187,6 @@ internal sealed class ExplorerLayerIndexer
     private readonly List<int> pending;
     private readonly ExplorerLayerState[] states;
     private readonly Dictionary<int, StoredLayerIndex> indexes = [];
-    private readonly Exception?[] errors;
     private readonly List<Task> workers = [];
     private readonly CancellationTokenSource stopSource = new();
     private CancellationTokenSource? linkedSource;
@@ -215,7 +208,6 @@ internal sealed class ExplorerLayerIndexer
         this.concurrency = concurrency;
         pending = Enumerable.Range(0, layerCount).ToList();
         states = new ExplorerLayerState[layerCount];
-        errors = new Exception?[layerCount];
     }
 
     public static ExplorerLayerIndexer Create(
@@ -236,22 +228,6 @@ internal sealed class ExplorerLayerIndexer
     public event Action<int, StoredLayerIndex>? Indexed;
     public event Action<int, Exception>? Failed;
     public event Action<IReadOnlyDictionary<int, StoredLayerIndex>>? Completed;
-
-    public ExplorerLayerState GetState(int layer)
-    {
-        lock (sync)
-        {
-            return states[layer];
-        }
-    }
-
-    public Exception? GetError(int layer)
-    {
-        lock (sync)
-        {
-            return errors[layer];
-        }
-    }
 
     public IReadOnlyDictionary<int, StoredLayerIndex> Snapshot()
     {
@@ -312,7 +288,6 @@ internal sealed class ExplorerLayerIndexer
                 return false;
             }
             states[layer] = ExplorerLayerState.Waiting;
-            errors[layer] = null;
             pending.Insert(0, layer);
             if (started)
             {
@@ -404,7 +379,6 @@ internal sealed class ExplorerLayerIndexer
                         return;
                     }
                     states[layer] = ExplorerLayerState.Failed;
-                    errors[layer] = exception;
                 }
                 if (!cancellationToken.IsCancellationRequested)
                 {

@@ -342,11 +342,16 @@ public class ExplorerBaseVerificationTests
             .ReturnsAsync(new ManifestInfo("application/vnd.oci.image.manifest.v1+json", digest, manifest));
     }
 
-    private static Task<(int? Count, string? Name, string? Warning)> Verify(
+    private static async Task<(int? Count, string? Name, string? Warning)> Verify(
         Mock<IDockerRegistryClient> client, ResolvedManifest target, string? explicitBase,
-        IDockerRegistryClientFactory? factory = null, ExplorerPlatform? platform = null) =>
-        ExplorerSession.VerifyBaseAsync(client.Object, factory ?? Mock.Of<IDockerRegistryClientFactory>(), Image, target,
-            new PlatformOptionsBase(), explicitBase, TestContext.Current.CancellationToken, platform);
+        IDockerRegistryClientFactory? factory = null, ExplorerPlatform? platform = null)
+    {
+        (IReadOnlyList<ExplorerBaseImage> bases, string? warning) = await ExplorerSession.VerifyBasesAsync(
+            client.Object, factory ?? Mock.Of<IDockerRegistryClientFactory>(), Image, target,
+            new PlatformOptionsBase(), explicitBase is null ? null : [explicitBase],
+            TestContext.Current.CancellationToken, platform);
+        return (bases.LastOrDefault()?.LayerCount, bases.LastOrDefault()?.Name, warning);
+    }
 
     private static Task<(IReadOnlyList<ExplorerBaseImage> Bases, string? Warning)> VerifyChain(
         Mock<IDockerRegistryClient> client, ResolvedManifest target, params string[] bases) =>

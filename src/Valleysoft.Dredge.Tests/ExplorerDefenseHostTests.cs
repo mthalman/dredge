@@ -726,7 +726,7 @@ public sealed class ExplorerDefenseHostTests : IAsyncDisposable
         {
             Image = Image, Resolved = new(info, manifest),
             Config = new Image { Os = "linux", Architecture = "amd64" },
-            BaseLayerCount = baseLayerCount,
+            BaseImages = baseLayerCount is int count ? [new("registry.test/base:1", count)] : [],
             Platforms = [], Platform = new("linux", "amd64", null, null)
         };
         ExplorerSession session = await ExplorerSession.CreateAsync(client.Object, source, store, indexes, Token);

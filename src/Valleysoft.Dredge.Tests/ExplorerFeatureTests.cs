@@ -49,7 +49,7 @@ public sealed class ExplorerFeatureTests
     {
         ExplorerImage img = new(Reference, "linux/amd64", "sha256:app",
             ["sha256:0", "sha256:1", "sha256:2", "sha256:3"],
-            [100, 100, 100, 100], null, 3, "base:new",
+            [100, 100, 100, 100], null,
             baseImages: [new("base:old", 1), new("base:new", 3)]);
         ExplorerPresenter presenter = new(img, 150, 42);
         ExplorerState state = new() { Focus = FocusPane.Layers };
@@ -80,7 +80,7 @@ public sealed class ExplorerFeatureTests
     {
         ExplorerImage img = new("mcr.microsoft.com/dotnet/sdk:10.0", "linux/amd64", "sha256:app",
             ["sha256:0", "sha256:1", "sha256:2", "sha256:3", "sha256:4"],
-            [100, 100, 100, 100, 100], null, 4, "mcr.microsoft.com/dotnet/aspnet:10.0",
+            [100, 100, 100, 100, 100], null,
             baseImages:
             [
                 new("ubuntu.azurecr.io/ubuntu:noble", 1),
@@ -116,8 +116,8 @@ public sealed class ExplorerFeatureTests
     public void DuplicateRepositoryNamesKeepFullReferencesToDistinguishGroups()
     {
         ExplorerImage img = new("registry.test/shop/app:1", "linux/amd64", "sha256:app",
-            ["sha256:0", "sha256:1", "sha256:2"], [100, 100, 100], null, 2,
-            "second.test/base:2", baseImages: [new("first.test/base:1", 1), new("second.test/base:2", 2)]);
+            ["sha256:0", "sha256:1", "sha256:2"], [100, 100, 100], null,
+            baseImages: [new("first.test/base:1", 1), new("second.test/base:2", 2)]);
 
         Assert.Equal("first.test/base:1", img.GroupAt(0));
         Assert.Equal("second.test/base:2", img.GroupAt(1));
@@ -431,7 +431,7 @@ public sealed class ExplorerFeatureTests
             new() { CreatedBy = "RUN /bin/sh -c step 1 # buildkit" },
         ];
         ExplorerImage img = new("registry.test/group/app:1.0", "linux/amd64", "sha256:m", ["sha256:c0", "sha256:c1"], [100, 200],
-            history, baseLayerCount: null, baseName: null, now: new DateTime(2026, 1, 1));
+            history, now: new DateTime(2026, 1, 1));
         using ExplorerUiHarness ui = OpenCustom(img, out _);
         PaneContent pane = ui.Window.Presenter.LayersPane(ui.State);
         // The marker sits in the pane's padding column, and the index is only as wide as it needs to be.

@@ -3,8 +3,6 @@ namespace Valleysoft.Dredge.Explorer;
 // Renderer-agnostic styling mapped to Terminal.Gui by Paint.
 internal readonly record struct Rgb(int R, int G, int B)
 {
-    public string ToHex() => $"{R:X2}{G:X2}{B:X2}";
-
     public static Rgb Hex(int value) => new((value >> 16) & 0xFF, (value >> 8) & 0xFF, value & 0xFF);
 }
 

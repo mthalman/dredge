@@ -36,16 +36,6 @@ internal sealed class ExplorerSession
         get => packages ?? throw new InvalidOperationException("Package metadata has not been loaded.");
         init => packages = value;
     }
-    public int? BaseLayerCount { get; init; }
-    public string? BaseWarning { get; init; }
-    public Func<string, CancellationToken, Task<ExplorerComparison>>? CompareAsync { get; set; }
-    public Func<CancellationToken, Task<IReadOnlyList<string>>>? TagsAsync { get; set; }
-
-    public string? BaseName { get; init; }
-    public IReadOnlyList<ExplorerBaseImage> BaseImages { get; init; } = [];
-    public ExplorerPlatform? Platform { get; init; }
-    public IReadOnlyList<ExplorerPlatform> Platforms { get; init; } = [];
-
     public static async Task<ExplorerSession> LoadAsync(
         IDockerRegistryClient client, IDockerRegistryClientFactory factory,
         ImageName image, PlatformOptionsBase options,
@@ -79,12 +69,6 @@ internal sealed class ExplorerSession
                 Files = files,
                 Analysis = analysis,
                 Entries = files.List(null, true, false),
-                BaseLayerCount = source.BaseLayerCount,
-                BaseWarning = source.BaseWarning,
-                BaseName = source.BaseName,
-                BaseImages = source.BaseImages,
-                Platform = source.Platform,
-                Platforms = source.Platforms
             };
         }
         catch
@@ -234,17 +218,6 @@ internal sealed class ExplorerSession
             old.ContentHash == current.ContentHash;
     }
 
-    internal static async Task<(int? Count, string? Name, string? Warning)> VerifyBaseAsync(
-        IDockerRegistryClient client, IDockerRegistryClientFactory factory,
-        ImageName image, ResolvedManifest target, PlatformOptionsBase options,
-        string? explicitBase, CancellationToken cancellationToken, ExplorerPlatform? platform = null)
-    {
-        (IReadOnlyList<ExplorerBaseImage> bases, string? warning) = await VerifyBasesAsync(
-            client, factory, image, target, options,
-            explicitBase is null ? null : [explicitBase], cancellationToken, platform);
-        return (bases.LastOrDefault()?.LayerCount, bases.LastOrDefault()?.Name, warning);
-    }
-
     internal static async Task<(IReadOnlyList<ExplorerBaseImage> Bases, string? Warning)> VerifyBasesAsync(
         IDockerRegistryClient client, IDockerRegistryClientFactory factory,
         ImageName image, ResolvedManifest target,
@@ -268,9 +241,9 @@ internal sealed class ExplorerSession
         ImageName[] baseNames = explicitBases?.Select(ImageName.Parse).ToArray() ?? [];
         ImageName? annotationName = string.IsNullOrEmpty(annotatedName) ? null :
             ImageName.Parse(annotatedName);
-        ImageName annotatedReference = annotationName!;
+        ImageName[] candidates = baseNames.Length == 0 && annotationName is not null ? [annotationName] : baseNames;
         List<(ExplorerBaseImage Base, string Digest)> verified = [];
-        foreach (ImageName baseName in baseNames.Length == 0 ? [annotatedReference] : baseNames)
+        foreach (ImageName baseName in candidates)
         {
             ResolvedManifest resolved;
             if (baseNames.Length == 0)
@@ -281,7 +254,7 @@ internal sealed class ExplorerSession
                 }
                 catch (Exception exception) when (exception is not OperationCanceledException)
                 {
-                    return ([], $"Annotated base '{annotatedReference}' could not be verified: {exception.Message}");
+                    return ([], $"Annotated base '{baseName}' could not be verified: {exception.Message}");
                 }
             }
             else

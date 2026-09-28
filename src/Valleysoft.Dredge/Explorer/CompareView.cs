@@ -78,15 +78,6 @@ internal sealed class CompareState
 
     public IEnumerable<int> Differences() => Enumerable.Range(0, LayerCount).Where(layer => !Shared(layer));
 
-    public static int? FirstDifference(ExplorerComparison comparison) =>
-        new CompareState(comparison) is var probe ? probe.Differences().Cast<int?>().FirstOrDefault() : null;
-
-    private CompareState(ExplorerComparison comparison)
-    {
-        Comparison = comparison;
-        BaselineLabel = TargetLabel = "";
-    }
-
     private static string? Digest(ExplorerSession session, int layer) =>
         layer < session.Resolved.Manifest.Layers.Length ? session.Resolved.Manifest.Layers[layer].Digest : null;
 
@@ -203,7 +194,7 @@ internal sealed class CompareView
         new ExplorerImage(session.Image.ToString(), "", "",
             session.Resolved.Manifest.Layers.Select(l => l.Digest ?? "").ToArray(),
             session.Resolved.Manifest.Layers.Select(l => l.Size).ToArray(),
-            session.Config.History, null, null, null).Instructions.ToArray();
+            session.Config.History).Instructions.ToArray();
 
     private string[]? baselineInstructions, targetInstructions;
     private string Instruction(int layer)

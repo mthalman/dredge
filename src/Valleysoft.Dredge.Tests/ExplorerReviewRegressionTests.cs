@@ -14,7 +14,7 @@ public sealed class ExplorerReviewRegressionTests
     {
         const string warning = "Annotated base could not be verified: connection refused";
         ExplorerImage image = new(ExplorerSamples.Reference, "linux/amd64", "sha256:m",
-            ["sha256:a"], [100], null, null, null, baseWarning: warning);
+            ["sha256:a"], [100], null, baseWarning: warning);
         using ExplorerUiHarness ui = ExplorerWindowTests.Open(image, new ExplorerState { Notice = notice },
             session => new FakeExplorerHost { Baseline = session }, out _);
         Assert.Equal(notice ?? warning, ui.State.Notice);

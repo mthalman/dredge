@@ -93,29 +93,22 @@ internal sealed class ExplorerImage
 
     public ExplorerImage(
         string reference, string? platform, string digest, IReadOnlyList<string> layerDigests,
-        IReadOnlyList<long> layerSizes, IReadOnlyList<LayerHistory>? configHistory, int? baseLayerCount,
-        string? baseName, string? baseWarning = null, DateTime? now = null,
-        IReadOnlyList<ExplorerBaseImage>? baseImages = null)
+        IReadOnlyList<long> layerSizes, IReadOnlyList<LayerHistory>? configHistory,
+        IReadOnlyList<ExplorerBaseImage>? baseImages = null, string? baseWarning = null, DateTime? now = null)
     {
         Reference = reference;
         Platform = platform ?? "linux";
         Digest = digest;
         LayerDigests = layerDigests;
         LayerDownloads = layerSizes;
-        BaseLayerCount = baseLayerCount;
-        BaseName = baseName;
-        BaseImages = baseImages ?? (baseLayerCount is int count && baseName is not null
-            ? [new ExplorerBaseImage(baseName, count)] : []);
+        BaseImages = baseImages ?? [];
         BaseWarning = baseWarning;
         LayerCount = layerDigests.Count;
         States = new ExplorerLayerState[LayerCount];
         Progress = new double[LayerCount];
         Errors = new string?[LayerCount];
-        (history, Instructions) = BuildHistory(configHistory, layerSizes, baseLayerCount, now ?? DateTime.UtcNow);
-        string repo = reference.Split('@')[0];
-        int slash = repo.LastIndexOf('/');
-        int colon = repo.LastIndexOf(':');
-        RepoName = (colon > slash ? repo[..colon] : repo)[(slash + 1)..];
+        (history, Instructions) = BuildHistory(configHistory, layerSizes, BaseLayerCount, now ?? DateTime.UtcNow);
+        RepoName = ImageName.Parse(reference).Repo.Split('/')[^1];
     }
 
     public static ExplorerImage FromSource(ExplorerSource source) => new(
@@ -124,8 +117,7 @@ internal sealed class ExplorerImage
         source.Resolved.ManifestInfo.DockerContentDigest,
         source.Resolved.Manifest.Layers.Select(layer => layer.Digest ?? "").ToArray(),
         source.Resolved.Manifest.Layers.Select(layer => layer.Size).ToArray(),
-        source.Config.History, source.BaseLayerCount, source.BaseName, source.BaseWarning,
-        baseImages: source.BaseImages)
+        source.Config.History, source.BaseImages, source.BaseWarning)
     {
         PlatformArguments = source.Platforms.Count > 1 && source.Platform is ExplorerPlatform platform
             ? PlatformArgumentsFor(platform) : "",
@@ -152,10 +144,9 @@ internal sealed class ExplorerImage
     public string Platform { get; }
     public string Digest { get; }
     public string RepoName { get; }
-    public string? BaseName { get; }
     public IReadOnlyList<ExplorerBaseImage> BaseImages { get; }
     public string? BaseWarning { get; }
-    public int? BaseLayerCount { get; }
+    public int? BaseLayerCount => BaseImages.LastOrDefault()?.LayerCount;
     public int LayerCount { get; }
     public IReadOnlyList<string> LayerDigests { get; }
     public IReadOnlyList<long> LayerDownloads { get; }
@@ -433,27 +424,6 @@ internal sealed class ExplorerImage
 
     public List<(int Layer, Change Change)> PathHistory(string path) =>
         SearchIndex.TryGetValue(path, out List<(int Layer, Change Change)>? list) ? list : [];
-
-    public ScannedEntry? EntryAt(string path, int layer)
-    {
-        if (!IsAnalyzed(layer))
-        {
-            return raw.TryGetValue(layer, out LayerChanges? changes)
-                ? changes.Entries.LastOrDefault(entry => entry.Path == path) : null;
-        }
-        ScannedEntry? result = null;
-        for (int index = 0; index <= layer; index++)
-        {
-            foreach (LayerFileChange change in Analysis!.Layers[index].Changes)
-            {
-                if (change.Path == path)
-                {
-                    result = change.Kind == LayerChangeKind.Deleted && index < layer ? null : change.Entry;
-                }
-            }
-        }
-        return result;
-    }
 
     // ───────────────────────────── helpers ─────────────────────────────
 
