@@ -678,6 +678,11 @@ public sealed class ExplorerWindowTests
         CompareState c = s.Compare!;
         Assert.Equal(("1.0", "2.0"), (c.BaselineLabel, c.TargetLabel));
         Assert.Equal(2, c.Layer);
+        Assert.True(ui.Shows("Comparison overview"), ui.Screen());
+        ui.Window.Apply(new OpenComparisonSection(true));
+        c.Expanded.Add("section:files");
+        ui.Window.Apply(new Redraw());
+        ui.Pump();
         Assert.True(ui.Shows("left-pad"), ui.Screen());
 
         ui.Press(new Key(']'));
@@ -712,6 +717,8 @@ public sealed class ExplorerWindowTests
 
         ui.Press(Key.Esc);
         Assert.NotNull(s.Compare);
+        ui.Press(Key.Esc);
+        Assert.True(ui.Shows("Comparison overview"), ui.Screen());
         ui.Press(Key.Esc);
         Assert.Null(s.Compare);
         Assert.False(ui.Window.StopRequested);

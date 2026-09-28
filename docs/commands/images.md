@@ -167,8 +167,12 @@ footer labels this action **Back to search** or **Back to insights**. Starting a
 different search, insights view, or package inventory starts a new investigation.
 
 Press `/` to **search** paths across every layer. Press `c` to **compare**
-with another tag. Compare mode lists added, changed, and removed packages and
-files. Comparison direction is the opened image (baseline) to the selected
+with another tag. Comparison opens with an overview of file-payload and hidden-
+payload changes and additional download bytes. Select **Files** or **Packages**
+and press `Enter`, or click either row, to browse its differences. Files compares
+the final filesystems; the layer pane separately compares layer identities and
+download sizes. `Esc` returns to the overview before leaving comparison.
+Comparison direction is the opened image (baseline) to the selected
 target; headers, layer-size columns, details, and file diffs use that order.
 Layer-size changes are target minus baseline, and `s` reverses both sides.
 The picker accepts a full image reference or a tag and selects an exact

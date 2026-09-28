@@ -7,6 +7,50 @@ namespace Valleysoft.Dredge.Tests;
 [Collection(ExplorerUiCollection.Name)]
 public sealed class ExplorerNavigationTests
 {
+    [Theory]
+    [InlineData(80, 24)]
+    [InlineData(150, 42)]
+    public void ComparisonOverviewKeepsFilesAccessibleWithHundredsOfPackageChanges(int width, int height)
+    {
+        using ExplorerUiHarness ui = ExplorerWindowTests.Open(Image(), new(),
+            session => new FakeExplorerHost
+            {
+                Baseline = session,
+                Target = _ => Session(["sha256:new"], [Layer([File("new-file", 100, "new")])],
+                    Enumerable.Range(0, 300).ToDictionary(i => $"pkg{i:D3}", _ => "2.0"), reference: "app:2")
+            }, out _, width, height);
+        ui.Window.StartCompare("2");
+        ui.Until(() => ui.State.Compare is not null, "comparison overview");
+        CompareState compare = ui.State.Compare!;
+        Assert.True(ui.Shows("Comparison overview"), ui.Screen());
+        Assert.True(ui.Shows("Files"), ui.Screen());
+        Assert.True(ui.Shows("Packages"), ui.Screen());
+        Assert.True(ui.Shows("Hidden payload"), ui.Screen());
+        Assert.Equal(2, new CompareView(ui.Window.Presenter, compare).Rows().Count);
+        ui.Press(Key.Enter);
+        Assert.True(ui.Shows("Final filesystem differences"), ui.Screen());
+        ui.Press(Key.Esc);
+        Assert.True(ui.Shows("Comparison overview"), ui.Screen());
+        ui.Press(Key.CursorDown);
+        ui.Press(Key.Enter);
+        Assert.Contains(new CompareView(ui.Window.Presenter, compare).Rows(), row => row.Package?.Name == "pkg299");
+        ui.Press(Key.Esc);
+        Assert.True(ui.Shows("Comparison overview"), ui.Screen());
+        ui.Press(new Key('/'));
+        ui.Type("pkg299");
+        Assert.Contains(new CompareView(ui.Window.Presenter, compare).Rows(), row => row.Package?.Name == "pkg299");
+        ui.Press(Key.Esc);
+        ui.Press(Key.Esc);
+        Assert.True(ui.Shows("Comparison overview"), ui.Screen());
+        (int x, int y) = ui.Find("Packages  ");
+        ui.Click(x, y);
+        Assert.False(compare.Overview);
+        Assert.Contains(new CompareView(ui.Window.Presenter, compare).Rows(), row => row.Package?.Name == "pkg299");
+        ui.Press(Key.Esc);
+        ui.Press(Key.Esc);
+        Assert.Null(ui.State.Compare);
+    }
+
     [Fact]
     public void ShortTerminalGivesFilesRoomAndRestoresTheViewportAfterTabbing()
     {

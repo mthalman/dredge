@@ -57,6 +57,7 @@ internal sealed record Quit : Cmd;
 
 internal sealed record Notify(string Text) : Cmd;
 internal sealed record ShowComparisonSnapshot : Cmd;
+internal sealed record OpenComparisonSection(bool Packages) : Cmd;
 internal sealed record RetryLayer(int Layer) : Cmd;
 internal sealed record ExtractSelected : Cmd;
 internal sealed record CopyCommand : Cmd;

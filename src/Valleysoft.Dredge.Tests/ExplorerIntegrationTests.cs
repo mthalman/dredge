@@ -159,6 +159,9 @@ public sealed class ExplorerIntegrationTests
             Assert.Contains(comparison.Packages, package =>
                 package.Name == "left-pad" && package.BaselineVersion == "1.0.0" && package.TargetVersion == "1.1.0");
             Assert.Contains(comparison.Files, file => file.Path == "app/package.json");
+            Assert.True(ui.Shows("Comparison overview"), ui.Screen());
+            ui.Press(Key.CursorDown);
+            ui.Press(Key.Enter);
             Assert.True(ui.Shows("left-pad"), ui.Screen());
 
             TextDiffContent diff = ui.Wait(() => explorer.Host.DiffAsync(comparison, "app/package.json", ct), "the diff");
@@ -169,6 +172,8 @@ public sealed class ExplorerIntegrationTests
             PackageFilesContent files = ui.Wait(() => explorer.Host.PackageFilesAsync(comparison, leftPad, ct), "the package files");
             Assert.Contains(files.Files!, file => file.Path == "app/node_modules/left-pad/index.js" && file.Change == Change.Modified);
 
+            ui.Press(Key.Esc);
+            Assert.True(ui.Shows("Comparison overview"), ui.Screen());
             ui.Press(Key.Esc);
             Assert.Null(ui.State.Compare);
 

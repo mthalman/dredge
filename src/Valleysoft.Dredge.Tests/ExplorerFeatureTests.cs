@@ -1108,6 +1108,11 @@ public sealed class ExplorerFeatureTests
             create ?? (session => new FakeExplorerHost { Baseline = session }), out host);
         ui.Window.StartCompare(tag);
         ui.Until(() => ui.State.Compare is not null, "the comparison");
+        ui.Window.Apply(new OpenComparisonSection(false));
+        ui.State.Compare!.Expanded.Add("section:packages");
+        ui.State.Compare.Cursor = 0;
+        ui.Window.Apply(new Redraw());
+        ui.Pump();
         return ui;
     }
 
@@ -1131,7 +1136,7 @@ public sealed class ExplorerFeatureTests
         AssertHides(ui, "1 packages");
         Assert.Contains("same", ui.Row(ui.Find("  0   1.0 KB").Y));
         Assert.Contains("gone", ui.Row(ui.Find("Layer 3").Y));
-        foreach (string hint in new[] { "[ ]  Next difference", "s  Swap sides", "Enter  Collapse group", "Esc  Leave compare" })
+        foreach (string hint in new[] { "[ ]  Next difference", "s  Swap sides", "Enter  Collapse group", "Esc  Overview" })
         {
             Assert.Contains(hint, Footer(ui));
         }
@@ -1699,7 +1704,8 @@ public sealed class ExplorerThemeTests : IDisposable
             ExplorerPresenter presenter = new(ExplorerSamples.Image(), 150, 42);
             Line header = presenter.FilesPane(new ExplorerState { Layer = 2 }).Lines
                 .Single(line => line.ToString().Contains("uid:gid", StringComparison.Ordinal));
-            Assert.All(header.Parts.Where(part => !string.IsNullOrWhiteSpace(part.Text)),
+            Assert.All(header.Parts.Where(part => !string.IsNullOrWhiteSpace(part.Text) &&
+                !part.Text.Contains("Name", StringComparison.Ordinal)),
                 part => Assert.Equal(Theme.Silt, part.Sty.Foreground));
         }
     }

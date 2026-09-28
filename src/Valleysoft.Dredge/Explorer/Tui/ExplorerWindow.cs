@@ -206,7 +206,7 @@ internal sealed class ExplorerWindow : Window
 
     private void FocusMoved(PaneView pane, FocusPane which)
     {
-        if (!focusSynced || !pane.HasFocus)
+        if (windowDisposed || !focusSynced || !pane.HasFocus)
         {
             return;
         }
@@ -479,6 +479,7 @@ internal sealed class ExplorerWindow : Window
         s.Focus == FocusPane.Right && ex.Narrow && ex.Height < 32;
 
     private bool UsesFullWidth() => s.View is RightView.Keys or RightView.Command or RightView.Warning || s.Compare?.Diff is not null ||
+        Comparing && Compare.IsOverview ||
         !Comparing && (s.View == RightView.Inspector || ex.Narrow && s.View is RightView.Search or RightView.Insights);
 
     // A key acts only when the current context lists it; hints trimmed from a narrow footer still count.
@@ -1505,7 +1506,7 @@ internal sealed class ExplorerWindow : Window
             }
             compareGeneration++;
             CompleteComparison();
-            s.Compare = new CompareState(comparison, ExplorerTags.Label(img.Reference), tag);
+            s.Compare = new CompareState(comparison, ExplorerTags.Label(img.Reference), tag) { Overview = true };
             s.View = RightView.Files;
             s.Notice = null;
             right.SetFocus();
@@ -1557,6 +1558,20 @@ internal sealed class ExplorerWindow : Window
     }
 
     // ───────────────────────────── compare ─────────────────────────────
+
+    private void OpenComparisonSection(CompareState comparison, bool packages)
+    {
+        comparison.Overview = false;
+        comparison.FocusLayers = false;
+        comparison.Expanded.Remove(packages ? "section:files" : "section:packages");
+        string key = packages ? "section:packages" : "section:files";
+        comparison.Expanded.Add(key);
+        comparison.Scroll = 0;
+        compareView = null;
+        List<CompareRow> rows = Compare.Rows();
+        comparison.Cursor = Math.Min(rows.Count - 1, Math.Max(0, rows.FindIndex(row => row.Key == key) + 1));
+        right.SetFocus();
+    }
 
     private bool ApplyCompare(Cmd cmd)
     {
@@ -1625,6 +1640,12 @@ internal sealed class ExplorerWindow : Window
                 c.PackageFiles = null;
                 (c.Cursor, c.Scroll, c.SearchQuery) = c.PackageReturn;
                 return true;
+            case Back when !Compare.IsOverview:
+                c.Overview = true;
+                c.FocusLayers = false;
+                c.Cursor = c.Scroll = 0;
+                right.SetFocus();
+                return true;
             case Back:
                 s.Compare = null;
                 right.SetFocus();
@@ -1683,6 +1704,12 @@ internal sealed class ExplorerWindow : Window
             case SetCursor sc:
                 c.Cursor = Math.Clamp(sc.Row, 0, Math.Max(0, rows.Count - 1));
                 return true;
+            case OpenComparisonSection section:
+                OpenComparisonSection(c, section.Packages);
+                return true;
+            case Activate when Compare.IsOverview:
+                OpenComparisonSection(c, c.Cursor == 1);
+                return true;
             case Fold f when row is not null && row.Expandable:
                 if (f.Open)
                 {
@@ -1692,6 +1719,7 @@ internal sealed class ExplorerWindow : Window
                 {
                     c.Expanded.Remove(row.Key);
                 }
+
                 return true;
             case Fold { Open: false } when row is not null:
                 // Jump to the parent row.

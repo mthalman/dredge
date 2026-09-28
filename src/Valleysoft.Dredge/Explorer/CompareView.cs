@@ -34,6 +34,7 @@ internal sealed class CompareState
     public string TargetLabel { get; set; }
     public int Layer { get; set; }
     public bool FocusLayers { get; set; }
+    public bool Overview { get; set; }
     public int Cursor { get; set; }
     public int Scroll { get; set; }
     public HashSet<string> Expanded { get; } = new(
@@ -109,6 +110,8 @@ internal sealed class CompareView
     private int RightInnerHeight => presenter.RightInnerHeight;
     private int LeftInner => Narrow ? width - 4 : ExplorerPresenter.LeftWidth - 4;
     public int DiffRows => Math.Max(1, RightInnerHeight - 5);
+    public bool IsOverview => c.Overview && !c.Searching && c.SearchQuery.Length == 0 &&
+        c.Diff is null && c.PackageFiles is null;
 
     public IReadOnlyList<string> Warnings() => warnings ??=
     [
@@ -314,6 +317,16 @@ internal sealed class CompareView
         {
             return rows;
         }
+        if (IsOverview)
+        {
+            return rows =
+            [
+                new("section:files", CompareRowKind.Section, "", "Files", Change.None, Expandable: true,
+                    Files: c.Comparison.Files.Count),
+                new("section:packages", CompareRowKind.Section, "", "Packages", Change.None, Expandable: true,
+                    Files: c.Comparison.Packages.Count)
+            ];
+        }
         List<CompareRow> all = c.PackageFiles is { } package
             ? (package.Files ?? []).Select(file => new CompareRow("file:" + file.Path,
                 CompareRowKind.File, "", file.Path, file.Change, Path: file.Path)).ToList()
@@ -462,6 +475,10 @@ internal sealed class CompareView
         {
             return FileDiffView.Render(presenter, c, c.Diff);
         }
+        if (IsOverview)
+        {
+            return OverviewPane();
+        }
         int w = RightInner;
         List<CompareRow> list = Rows();
         c.Cursor = Math.Clamp(c.Cursor, 0, Math.Max(0, list.Count - 1));
@@ -473,7 +490,9 @@ internal sealed class CompareView
                 : c.SearchQuery.Length == 0 ? Line.Blank : Line.Of($"Filter: {c.SearchQuery} · {list.Count} matches", Theme.Silt),
             new Line().Add("   ").Add(Fmt.Fit(c.BaselineLabel, 8).PadLeft(8), Theme.Silt).Add("    ").Add(Fmt.Fit(c.TargetLabel, 8).PadLeft(8), Theme.Silt).Add("  ")
                 .Add("change".PadLeft(9), Theme.Silt).Add("  ").Add("name".PadRight(28), Theme.Silt).Add("version", Theme.Silt).Truncate(w)];
-        PaneContent pane = ExplorerPresenter.Pane(lines, c.PackageFiles?.Package.Name ?? "Differences",
+        string title = !c.Expanded.Contains("section:packages") ? "Final filesystem differences"
+            : !c.Expanded.Contains("section:files") ? "Package differences" : "Differences";
+        PaneContent pane = ExplorerPresenter.Pane(lines, c.PackageFiles?.Package.Name ?? title,
             !c.FocusLayers, $"{c.BaselineLabel} → {c.TargetLabel}");
 
         int visible = DiffRows;
@@ -510,6 +529,41 @@ internal sealed class CompareView
         lines.Add(new Line().Append(ExplorerPresenter.Keycap("Enter")).Add(" " + ActivateLabel() + "   ", Theme.Silt)
             .Append(ExplorerPresenter.Keycap(presenter.Keys.Label(KeyAction.CopyCommand))).Add($" {presenter.CopyVerb} ", Theme.Silt)
             .Add("dredge image compare files", Theme.Foam).Truncate(w));
+        return pane;
+    }
+
+    private PaneContent OverviewPane()
+    {
+        ExplorerComparison comparison = c.Comparison;
+        List<Line> lines =
+        [
+            Line.Of($"{c.BaselineLabel} → {c.TargetLabel}", Theme.Foam),
+            Line.Blank,
+            Line.Of($"File payload change  {Signed(comparison.Target.Analysis.FileBytes - comparison.Baseline.Analysis.FileBytes)}", Theme.Foam),
+            Line.Of($"Hidden payload change  {Signed(comparison.Target.Analysis.HiddenBytes - comparison.Baseline.Analysis.HiddenBytes)}", Theme.Foam),
+            Line.Of($"Additional download  {Fmt.Size(comparison.AdditionalDownloadBytes)} with baseline present", Theme.Silt),
+            Line.Blank,
+        ];
+        PaneContent pane = ExplorerPresenter.Pane(lines, "Comparison overview", true,
+            $"{c.BaselineLabel} → {c.TargetLabel}");
+        List<CompareRow> choices = Rows();
+        c.Cursor = Math.Clamp(c.Cursor, 0, choices.Count - 1);
+        for (int i = 0; i < choices.Count; i++)
+        {
+            CompareRow row = choices[i];
+            pane.On(lines.Count, new OpenComparisonSection(row.Key == "section:packages"));
+            Line line = new Line().Add(i == c.Cursor ? "▌ " : "  ", Theme.Channel)
+                .Add(row.Name, Theme.S(Theme.Foam, null, Deco.Bold))
+                .Add($"  {Fmt.N(row.Files ?? 0)} changed {(i == 0 ? "paths" : "packages")}", Theme.Silt);
+            lines.Add(i == c.Cursor ? line.WithBackground(Theme.ChannelDeep) : line);
+        }
+        lines.Add(Line.Blank);
+        lines.Add(Chips(RightInner));
+        if (Warnings().Count > 0)
+        {
+            lines.Add(Line.Of($"{Fmt.Count(Warnings().Count, "metadata warning")} - Alt+W for details", Theme.Ochre));
+        }
+        lines.Add(Line.Of("Enter opens the selection. File differences compare the final filesystems.", Theme.Silt));
         return pane;
     }
 
@@ -666,7 +720,8 @@ internal sealed class CompareView
             new(k.Label(KeyAction.SwapSides), "Swap sides", new SwapSides()),
             new("Enter", ActivateLabel(), new Activate()),
             new(k.Label(KeyAction.Compare), "Change tag…", new PickTag()),
-            new("Esc", c.SearchQuery.Length > 0 ? "Clear filter" : c.PackageFiles is not null ? "Back to differences" : "Leave compare", new Back()),
+            new("Esc", c.SearchQuery.Length > 0 ? "Clear filter" : c.PackageFiles is not null ? "Back to differences"
+                : IsOverview ? "Leave compare" : "Overview", new Back()),
             new(k.Label(KeyAction.Search), "Search", new ShowView(RightView.Search)), new("←→", "Fold", ShowInFooter: false),
             new(k.Label(KeyAction.CopyCommand), $"{presenter.CopyVerb} command", new CopyCommand()),
             new("PgUp PgDn", "Page", ShowInFooter: false), new("Home End", "First or last", ShowInFooter: false),
@@ -676,6 +731,10 @@ internal sealed class CompareView
 
     private string ActivateLabel()
     {
+        if (IsOverview)
+        {
+            return c.Cursor == 0 ? "Browse files" : "Browse packages";
+        }
         List<CompareRow> list = Rows();
         CompareRow? row = list.ElementAtOrDefault(c.Cursor);
         return row?.Kind == CompareRowKind.File ? "Diff a file"
