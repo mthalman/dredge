@@ -149,7 +149,9 @@ The screen has four parts:
 
 Press `i` for **insights**: an efficiency score and findings such as files
 replaced by a later layer, deleted files that still take space, and large
-changes to base image files. Select a finding to open its files.
+changes to base image files. Select a finding to open its files. When a base
+verification warning is present, `Alt+W` opens its complete scrollable details
+without taking space away from findings.
 
 Press `/` to **search** paths across every layer. Press `c` to **compare**
 with another tag. Compare mode lists added, changed, and removed packages and
@@ -158,7 +160,8 @@ tag match before substring suggestions. A comparison target is a session
 snapshot: repeated comparisons reuse its first resolved manifest. Once cached,
 its picker statistics describe that same snapshot rather than a newer version
 of a moving tag. The resolved digest identifies the content being compared;
-reopen the explorer to obtain fresh snapshots.
+`Alt+I` shows the full identities of both comparison snapshots. Reopen the
+explorer to obtain fresh snapshots.
 Package metadata is read only when a comparison starts; loading an
 image for browsing or insights does not scan packages. Press `Enter` on a
 changed text file to see a diff, and `s` to swap the two sides.
@@ -192,7 +195,8 @@ Ownership is considered on both sides of an upgrade, so files no longer owned
 by the newer version can still appear as removed. Each ownership metadata file
 is limited to 64 MiB. If some ownership metadata is unreadable, malformed, or
 oversized, the explorer retains readable results and displays a warning that
-the list may be incomplete.
+the list may be incomplete. In comparison, `Alt+W` opens full metadata and
+ownership warning details; `Esc` returns to the previous view.
 
 Press `x` to extract the selected file or directory, and `y` to copy the
 equivalent `dredge image` command. Press `p` to choose another Linux platform,
