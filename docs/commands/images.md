@@ -179,6 +179,7 @@ Comparison always uses the final inventories of both images. Press `Enter` on a
 changed text file to see a diff, and `s` to swap the two sides.
 Package-type headings can be collapsed with `Enter` or `Left` and expanded
 with `Enter` or `Right`. Search includes packages inside collapsed groups.
+Types without detected packages are omitted from the Packages tree.
 Package names use the available pane width alongside the version column.
 Detected ecosystems include npm, dpkg, apk, pip, and NuGet. NuGet inventory
 comes from deployed `.deps.json` files: only libraries marked `package` in the

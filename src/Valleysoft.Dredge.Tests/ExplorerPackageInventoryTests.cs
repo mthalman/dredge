@@ -212,21 +212,37 @@ public sealed class ExplorerPackageInventoryTests
         Assert.Equal(0, ui.State.PackageScroll);
     }
 
-    [Fact]
-    public void EmptyAndUnavailableEcosystemsAreDistinct()
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void EmptyPackageTypesAreHidden(bool includePackages)
     {
         InstalledPackageMetadata metadata = new(Enum.GetValues<InstalledPackageEcosystem>().ToDictionary(
             ecosystem => ecosystem, ecosystem => new InstalledPackageEcosystemMetadata(
-                ecosystem == InstalledPackageEcosystem.NuGet
+                ecosystem == InstalledPackageEcosystem.NuGet || includePackages && ecosystem == InstalledPackageEcosystem.Npm
                     ? InstalledPackageMetadataAvailability.Available : InstalledPackageMetadataAvailability.Unavailable,
-                new Dictionary<string, IReadOnlyList<string>>())));
+                includePackages && ecosystem == InstalledPackageEcosystem.Npm
+                    ? new Dictionary<string, IReadOnlyList<string>> { ["example"] = ["1.0"] }
+                    : new Dictionary<string, IReadOnlyList<string>>())));
         using ExplorerUiHarness ui = Open(out _, (_, _) => Task.FromResult(metadata));
         ui.Press(new Key('k'));
         ui.Until(() => ui.State.Packages is not null, "empty inventory");
-        Assert.True(ui.Shows("npm  metadata unavailable"), ui.Screen());
-        Assert.True(ui.Shows("NuGet  0 packages"), ui.Screen());
+        List<PackageInventoryRow> rows = ui.Window.Presenter.PackageRows(ui.State);
+        Assert.DoesNotContain(rows, row => row.Ecosystem != InstalledPackageEcosystem.Npm);
+        if (includePackages)
+        {
+            Assert.Single(rows, row => row.IsGroup);
+            Assert.True(ui.Shows("example"), ui.Screen());
+        }
+        else
+        {
+            Assert.Empty(rows);
+            Assert.True(ui.Shows("No packages detected at this layer."), ui.Screen());
+            Assert.False(ui.Shows("Esc clears the filter"), ui.Screen());
+        }
         ui.Press(new Key('/'));
-        ui.Type("not-found");
+        ui.Type("NuGet");
+        Assert.Empty(ui.Window.Presenter.PackageRows(ui.State));
         Assert.True(ui.Shows("No matching packages"), ui.Screen());
     }
 }

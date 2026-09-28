@@ -29,7 +29,7 @@ internal sealed partial class ExplorerPresenter
             List<PackageInventoryRow> packages = metadata.Packages.OrderBy(pair => pair.Key, StringComparer.Ordinal)
                 .Select(pair => new PackageInventoryRow(ecosystem, pair.Key, string.Join(", ", pair.Value)))
                 .Where(row => Match(label) || Match(row.Name) || Match(row.Versions!)).ToList();
-            if (s.PackageQuery.Length > 0 && packages.Count == 0 && !Match(label))
+            if (packages.Count == 0)
             {
                 continue;
             }
@@ -104,7 +104,9 @@ internal sealed partial class ExplorerPresenter
         }
         if (rows.Count == 0)
         {
-            lines.Add(Line.Of("No matching packages. Esc clears the filter.", Theme.Silt).Truncate(w));
+            lines.Add(Line.Of(s.PackageQuery.Length > 0
+                ? "No matching packages. Esc clears the filter."
+                : "No packages detected at this layer.", Theme.Silt).Truncate(w));
         }
         while (lines.Count < 3 + visible)
         {
