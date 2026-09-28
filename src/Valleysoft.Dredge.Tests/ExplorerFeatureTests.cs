@@ -1056,7 +1056,8 @@ public sealed class ExplorerFeatureTests
         bool opened = ui.InDialog(() => ui.Press(new Key('c')),
             DialogStep.When("the tag details", () => ui.Shows("4 tags.") && ui.Shows("different base image") && ui.Shows("could not read this tag") && ui.Shows("to download"), () =>
             {
-                AssertShows(ui, "Compare 1.0 with", "▲ current image", "2 of 3 shared    1.0 KB to download", "Download is what pulling the tag adds to 1.0.");
+                AssertShows(ui, "Compare 1.0 with", "▲ current image", "2 of 3 shared    1.0 KB to download", "4 tags.");
+                Assert.False(ui.Shows("Download is what"));
                 (int oneY, int twoY) = (ui.Find("▌1.0 ").Y, ui.Find(" 2.0  ").Y);
                 Assert.True(oneY < twoY, "the explored tag is listed first");
                 ui.Send(Key.Esc);

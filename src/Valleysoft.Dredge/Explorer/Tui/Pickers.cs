@@ -275,7 +275,7 @@ internal static class TagPicker
                 source.Set(choices);
                 summary = choices.Count <= 1
                     ? "No other tags. Type a tag and press Enter."
-                    : $"{Fmt.N(choices.Count)} tags. Download is what pulling the tag adds to {current}.";
+                    : $"{Fmt.N(choices.Count)} tags.";
             }
             Filter();
             dialog.SetNeedsDraw();
