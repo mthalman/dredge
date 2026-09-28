@@ -33,6 +33,7 @@ internal sealed record SelectLayer(int Layer) : Cmd;
 internal sealed record StepLayer(int Delta) : Cmd;
 internal sealed record Move(int Delta) : Cmd;
 internal sealed record PanText(int Delta) : Cmd;
+internal sealed record ToggleDiffLayout : Cmd;
 internal sealed record Jump(bool ToEnd) : Cmd;
 internal sealed record SetCursor(int Row) : Cmd;
 internal sealed record Activate : Cmd;

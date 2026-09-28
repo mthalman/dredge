@@ -1558,6 +1558,26 @@ public sealed class ExplorerThemeTests : IDisposable
     }
 
     [Fact]
+    public void DiffTextHasReadableContrastInBothThemes()
+    {
+        try
+        {
+            foreach (ThemeKind kind in new[] { ThemeKind.Dark, ThemeKind.Light })
+            {
+                Theme.Apply(kind);
+                foreach (Rgb background in new[] { Theme.KelpDeep, Theme.GarnetDeep, Theme.DiffAddedWord, Theme.DiffRemovedWord })
+                {
+                    Assert.True(ContrastRatio(Theme.Foam, background) >= 4.5, $"{background} against {Theme.Foam} in {kind}");
+                }
+            }
+        }
+        finally
+        {
+            Theme.Apply(ThemeKind.Dark);
+        }
+    }
+
+    [Fact]
     public void AdjacentStrataAndWasteRemainDistinctInEveryTheme()
     {
         foreach (ThemeKind kind in new[] { ThemeKind.Dark, ThemeKind.Light })

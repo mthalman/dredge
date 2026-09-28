@@ -199,7 +199,13 @@ unavailable because dependency metadata does not reliably establish deployed
 file ownership.
 Text diffs retain available content when a size limit is reached and show a
 notice identifying the partial preview. Text diffs and file previews use the
-full body width. Use `Left`/`Right` to pan long lines; the preview indicates
+full body width. In a file diff, `Alt+V` switches between split (old/new
+side by side) and unified layouts, keeping the same source line in view where
+space permits. Both layouts show line numbers, `+`/`-` markers, red/green
+changed-line backgrounds, and stronger highlights on changed words.
+Very long or heavily rewritten lines retain line-level highlighting without
+word-level analysis. `NO_COLOR` retains the markers and emphasizes changed words
+with bold/underline instead of color. Use `Left`/`Right` to pan long lines; the preview indicates
 the current column when content extends beyond the viewport.
 Comparison progress stays visible while you browse. Press `Esc` to cancel a
 pending comparison without leaving the explorer.
@@ -260,6 +266,7 @@ base, and `p` only for a multi-platform image.
 | `Alt+W` | Full metadata warnings in Packages or comparison; base warning in Insights |
 | `Alt+L` `Alt+D` `Alt+C` | In search: this layer only, include deleted paths, exact case |
 | `c` `s` | Compare with a tag; swap compared sides |
+| `Alt+V` | Toggle split/unified layout in a file diff |
 | `p` `r` | Choose platform; retry a failed layer or package scan |
 | `x` `y` `o` | Extract; copy the dredge command; open in the text viewer |
 | `Esc` `q` | Back; quit |

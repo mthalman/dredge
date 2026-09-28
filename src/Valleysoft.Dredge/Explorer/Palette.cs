@@ -48,6 +48,8 @@ internal static class Theme
     public static Rgb Garnet { get; private set; }
     public static Rgb GarnetDeep { get; private set; }
     public static Rgb KelpDeep { get; private set; }
+    public static Rgb DiffAddedWord { get; private set; }
+    public static Rgb DiffRemovedWord { get; private set; }
     public static Rgb Bedrock1 { get; private set; }
     public static Rgb Bedrock2 { get; private set; }
     public static Rgb Sand1 { get; private set; }
@@ -101,6 +103,8 @@ internal static class Theme
             OchreDeep = Rgb.Hex(0xB98A1E);
             Garnet = Rgb.Hex(0xC0283B);
             GarnetDeep = Rgb.Hex(0xFBE1E5);
+            DiffAddedWord = Rgb.Hex(0xACDBA4);
+            DiffRemovedWord = Rgb.Hex(0xF3AFBD);
             Bedrock1 = Rgb.Hex(0x91AABB);
             Bedrock2 = Rgb.Hex(0xBDCDD7);
             Sand1 = Rgb.Hex(0xBC875B);
@@ -133,6 +137,8 @@ internal static class Theme
         OchreDeep = Rgb.Hex(0xC99E2E);
         Garnet = Rgb.Hex(0xE5566E);
         GarnetDeep = Rgb.Hex(0x4A1E27);
+        DiffAddedWord = Rgb.Hex(0x2B5934);
+        DiffRemovedWord = Rgb.Hex(0x793344);
         Bedrock1 = Rgb.Hex(0x324451);
         Bedrock2 = Rgb.Hex(0x4C6371);
         Sand1 = Rgb.Hex(0x684728);

@@ -590,6 +590,10 @@ internal sealed class ExplorerWindow : Window
         {
             cmd = new ShowComparisonSnapshot();
         }
+        if (key.IsAlt && !key.IsCtrl && key.NoAlt.KeyCode == KeyCode.V && s.Compare?.Diff is not null)
+        {
+            cmd = new ToggleDiffLayout();
+        }
         if (ex.TooSmall && cmd is not null)
         {
             return true;
@@ -1645,6 +1649,9 @@ internal sealed class ExplorerWindow : Window
                 return true;
             case Move m when c.Diff is not null:
                 c.DiffScroll = Math.Max(0, c.DiffScroll + m.Delta);
+                return true;
+            case ToggleDiffLayout when c.Diff is not null:
+                c.ToggleDiffLayout();
                 return true;
             case PanText pan when c.Diff is not null:
                 c.DiffColumn = Math.Max(0, c.DiffColumn + pan.Delta);

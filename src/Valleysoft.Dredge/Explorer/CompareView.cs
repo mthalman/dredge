@@ -9,7 +9,10 @@ internal sealed record CompareRow(
     ExplorerPackageDifference? Package = null, string? Path = null);
 
 internal sealed record TextDiffContent(
-    string Path, IReadOnlyList<DiffLine>? Lines, string? Message);
+    string Path, IReadOnlyList<DiffLine>? Lines, string? Message)
+{
+    public FileDiffDocument Document { get; } = new(Lines ?? []);
+}
 
 internal sealed record PackageFilesContent(
     ExplorerPackageDifference Package, IReadOnlyList<(string Path, Change Change)>? Files, string? Message, int Total,
@@ -38,11 +41,32 @@ internal sealed class CompareState
     public TextDiffContent? Diff { get; set; }
     public int DiffScroll { get; set; }
     public int DiffColumn { get; set; }
+    public bool UnifiedDiff { get; set; }
     public PackageFilesContent? PackageFiles { get; set; }
     public bool Busy { get; set; }
     public bool Searching { get; set; }
     public string SearchQuery { get; set; } = "";
     public (int Cursor, int Scroll, string Query) PackageReturn { get; set; } = (0, 0, "");
+
+    public void ToggleDiffLayout()
+    {
+        if (Diff is null) return;
+        FileDiffDocument document = Diff.Document;
+        if (UnifiedDiff)
+        {
+            VisualDiffLine? anchor = document.Unified.ElementAtOrDefault(DiffScroll);
+            DiffScroll = anchor is null ? 0 : document.Split.ToList()
+                .FindIndex(pair => pair.Left?.Source == anchor.Source || pair.Right?.Source == anchor.Source);
+        }
+        else
+        {
+            VisualDiffPair? pair = document.Split.ElementAtOrDefault(DiffScroll);
+            DiffLine? anchor = (pair?.Left ?? pair?.Right)?.Source;
+            DiffScroll = anchor is null ? 0 : document.Unified.ToList().FindIndex(line => line.Source == anchor);
+        }
+        DiffScroll = Math.Max(0, DiffScroll);
+        UnifiedDiff = !UnifiedDiff;
+    }
 
     public int LayerCount => Math.Max(Comparison.Baseline.Resolved.Manifest.Layers.Length, Comparison.Target.Resolved.Manifest.Layers.Length);
 
@@ -440,7 +464,7 @@ internal sealed class CompareView
     {
         if (c.Diff is not null)
         {
-            return TextDiffPane(c.Diff);
+            return FileDiffView.Render(presenter, c, c.Diff);
         }
         int w = RightInner;
         List<CompareRow> list = Rows();
@@ -588,54 +612,6 @@ internal sealed class CompareView
         return sel ? line.WithBackground(Theme.ChannelDeep) : line;
     }
 
-    // Side-by-side text diff of one file, opened with Enter on a changed file.
-    private PaneContent TextDiffPane(TextDiffContent diff)
-    {
-        int w = RightInner;
-        List<Line> lines = [];
-        int half = (w - 3) / 2;
-        int maxColumn = Math.Max(0, (diff.Lines ?? []).Select(line => DisplayText.Width(line.Text)).DefaultIfEmpty(0).Max() - Math.Max(1, half - 5));
-        c.DiffColumn = Math.Clamp(c.DiffColumn, 0, maxColumn);
-        lines.Add(new Line().Add(Fmt.Fit(c.BaselineLabel, half).PadRight(half), Theme.S(Theme.Silt, null, Deco.Bold)).Add(" │ ", Theme.Shale)
-            .Add(Fmt.Fit(c.TargetLabel, half), Theme.S(Theme.Foam, null, Deco.Bold)));
-        lines.Add(Line.Of(new string('─', half) + "─┼─" + new string('─', Math.Max(0, w - half - 3)), Theme.Shale));
-        if (diff.Message is not null)
-        {
-            lines.AddRange(Syntax.Wrap([("  " + diff.Message, new Sty(Theme.Silt))], w, 4));
-            if (diff.Lines is null)
-            {
-                return ExplorerPresenter.Pane(lines, diff.Path.Split('/')[^1], true, "/" + diff.Path);
-            }
-        }
-        List<(DiffLine? Left, DiffLine? Right)> pairs = Pair(diff.Lines ?? []);
-        int room = Math.Max(1, RightInnerHeight - lines.Count);
-        c.DiffScroll = Math.Clamp(c.DiffScroll, 0, Math.Max(0, pairs.Count - room));
-        foreach ((DiffLine? left, DiffLine? right) in pairs.Skip(c.DiffScroll).Take(room))
-        {
-            Line line = Half(left, half, left?.Op == DiffOp.Delete ? Theme.Garnet : Theme.Silt, left?.OldLine, left?.Op == DiffOp.Delete ? Theme.GarnetDeep : null);
-            line.Add(" │ ", Theme.Shale);
-            line.Append(Half(right, Math.Max(0, w - half - 3), right?.Op == DiffOp.Insert ? Theme.Kelp : Theme.Foam, right?.NewLine, right?.Op == DiffOp.Insert ? Theme.KelpDeep : null));
-            lines.Add(line);
-        }
-        int changes = (diff.Lines ?? []).Count(l => l.Op != DiffOp.Same);
-        return ExplorerPresenter.Pane(lines, diff.Path.Split('/')[^1], true,
-            $"/{diff.Path} · {Fmt.N(changes)} changed lines" +
-            (maxColumn > 0 ? $" · column {c.DiffColumn + 1} · ←→ pan" : ""));
-    }
-
-    private Line Half(DiffLine? line, int width, Rgb fg, int? number, Rgb? bg)
-    {
-        Line result = new();
-        if (line is null)
-        {
-            return result.Pad(width);
-        }
-        result.Add($"{number,4} ", Theme.Silt).Append(Line.Of(line.Text.Replace('\t', ' '), new Sty(fg, bg))
-            .Slice(c.DiffColumn, Math.Max(1, width - 5)));
-        result.Truncate(width).Pad(width, bg is null ? null : new Sty(fg, bg));
-        return result;
-    }
-
     internal static List<(DiffLine? Left, DiffLine? Right)> Pair(IReadOnlyList<DiffLine> lines)
     {
         List<(DiffLine?, DiffLine?)> pairs = [];
@@ -671,7 +647,8 @@ internal sealed class CompareView
         }
         if (c.Diff is not null)
         {
-            return [new("↑↓", "Scroll", ShowInFooter: false), new("←→", "Pan text", ShowInFooter: false), new("PgUp PgDn", "Page", ShowInFooter: false), new("Home End", "Top or bottom", ShowInFooter: false), new("Esc", "Back to differences", new Back()),
+            return [new("Alt+V", c.UnifiedDiff ? "Split diff" : "Unified diff", new ToggleDiffLayout()),
+                new("↑↓", "Scroll", ShowInFooter: false), new("←→", "Pan text", ShowInFooter: false), new("PgUp PgDn", "Page", ShowInFooter: false), new("Home End", "Top or bottom", ShowInFooter: false), new("Esc", "Back to differences", new Back()),
                 new(k.Label(KeyAction.Help), "Keys", new ShowView(RightView.Keys)), new(k.Label(KeyAction.Quit), "Quit", new Quit())];
         }
         return

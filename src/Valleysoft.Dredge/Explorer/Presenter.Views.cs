@@ -546,7 +546,7 @@ internal sealed partial class ExplorerPresenter
                 ($"{K(KeyAction.ToggleAdded)} {K(KeyAction.ToggleModified)} {K(KeyAction.ToggleIdentical)} {K(KeyAction.ToggleDeleted)}", "Show or hide changes"),
                 (K(KeyAction.FindingsOnly), "Only paths with findings"), ("Enter", "Inspect file")]),
             ("Preview", [("← →", "Pan long text lines")]),
-            ("Compare", [(K(KeyAction.SwapSides), "Swap sides"), ("Enter", "Diff a file"), ("Esc", "Leave compare")]),
+            ("Compare", [(K(KeyAction.SwapSides), "Swap sides"), ("Enter", "Diff a file"), ("Alt+V", "Split or unified diff"), ("Esc", "Leave compare")]),
         ];
         (string Group, (string Keys, string What)[] Items)[] right =
         [
