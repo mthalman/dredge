@@ -44,6 +44,36 @@ internal sealed class ExplorerState
     public string PackageQuery { get; set; } = "";
     public bool PackageSearching { get; set; }
     public HashSet<InstalledPackageEcosystem> CollapsedPackages { get; } = [];
+    public InvestigationContext? Investigation { get; set; }
+}
+
+internal sealed record InvestigationContext(
+    RightView View, int Layer, bool WholeFilesystem, bool FindingsOnly,
+    Change[] Hidden, string[] Expanded, int Cursor, int Scroll,
+    int SearchCursor, int SearchScroll, int Finding, int FindingScroll)
+{
+    public static InvestigationContext Capture(ExplorerState s) =>
+        new(s.View, s.Layer, s.WholeFilesystem, s.FindingsOnly, [.. s.Hidden], [.. s.Expanded],
+            s.Cursor, s.Scroll, s.SearchCursor, s.SearchScroll, s.Finding, s.FindingScroll);
+
+    public void Restore(ExplorerState s)
+    {
+        s.View = View;
+        s.Layer = Layer;
+        s.WholeFilesystem = WholeFilesystem;
+        s.FindingsOnly = FindingsOnly;
+        s.Hidden.Clear();
+        s.Hidden.UnionWith(Hidden);
+        s.Expanded.Clear();
+        s.Expanded.UnionWith(Expanded);
+        s.Cursor = Cursor;
+        s.Scroll = Scroll;
+        s.SearchCursor = SearchCursor;
+        s.SearchScroll = SearchScroll;
+        s.Finding = Finding;
+        s.FindingScroll = FindingScroll;
+        s.Focus = FocusPane.Right;
+    }
 }
 
 internal sealed record PreviewContent(string Path, string? Language, List<string>? Lines, string? Message, long Bytes);
@@ -383,7 +413,9 @@ internal sealed partial class ExplorerPresenter
         Hint page = new("PgUp PgDn", "Page", ShowInFooter: false);
         Hint ends = new("Home End", "First or last", ShowInFooter: false);
         Hint findingsOnly = new(K(KeyAction.FindingsOnly), s.FindingsOnly ? "All paths" : "Findings only", new ToggleFindingsOnly());
-        List<Hint> clear = s.FindingsOnly || s.Hidden.Count > 0 ? [new("Esc", "Clear filters", new Back())] : [];
+        List<Hint> clear = s.Investigation is { } investigation
+            ? [new("Esc", investigation.View == RightView.Search ? "Back to search" : "Back to insights", new Back())]
+            : s.FindingsOnly || s.Hidden.Count > 0 ? [new("Esc", "Clear filters", new Back())] : [];
         return s.View switch
         {
             RightView.Packages => PackageHints(s),
@@ -415,7 +447,7 @@ internal sealed partial class ExplorerPresenter
             _ when s.Focus == FocusPane.Layers =>
             [
                 .. retry, new("Tab", "Files", new FocusOn(FocusPane.Right)), packages, new("↑↓", "Layer", ShowInFooter: false), whole, compare, search, insights,
-                ends, keys, quit,
+                ends, .. clear, keys, quit,
             ],
             _ =>
             [

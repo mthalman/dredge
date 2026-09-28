@@ -429,8 +429,11 @@ public sealed class ExplorerWindowTests
         Assert.True(ui.Shows("deletes layer 2"), ui.Screen());
 
         ui.Press(Key.Esc);
+        Assert.Equal(RightView.Insights, s.View);
         Assert.False(s.FindingsOnly);
+        ui.Press(Key.Esc);
         ui.Window.Apply(new SelectLayer(2));
+        s.Expanded.Add("app/cache");
         ui.Press(new Key('w'));
         List<string> shown = ui.Window.Presenter.Flatten(s).Select(row => row.Path).ToList();
         Assert.Contains("app/cache/big.bin", shown);

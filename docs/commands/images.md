@@ -153,6 +153,12 @@ changes to base image files. Select a finding to open its files. When a base
 verification warning is present, `Alt+W` opens its complete scrollable details
 without taking space away from findings.
 
+Opening a search result or finding preserves its context. From a file preview,
+press `Esc` to return to its file tree, then `Esc` again to return to the same
+search result or finding, including its selection and scroll position. The
+footer labels this action **Back to search** or **Back to insights**. Starting a
+different search, insights view, or package inventory starts a new investigation.
+
 Press `/` to **search** paths across every layer. Press `c` to **compare**
 with another tag. Compare mode lists added, changed, and removed packages and
 files. Comparison direction is the opened image (baseline) to the selected

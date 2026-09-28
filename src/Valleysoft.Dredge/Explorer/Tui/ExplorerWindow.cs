@@ -783,6 +783,19 @@ internal sealed class ExplorerWindow : Window
             Refresh();
             return;
         }
+        if (cmd is Back && s.View == RightView.Files && s.Investigation is { } investigation)
+        {
+            if (investigation.View == RightView.Search)
+            {
+                search.Text = s.SearchQuery;
+            }
+            investigation.Restore(s);
+            s.Investigation = null;
+            ex.Invalidate();
+            Relayout();
+            SyncFocus();
+            return;
+        }
         List<FlatRow> rows = s.View == RightView.Files && img.IsIndexed(s.Layer) ? ex.Flatten(s) : [];
         FlatRow? row = s.Cursor >= 0 && s.Cursor < rows.Count ? rows[s.Cursor] : null;
         int findingCount = ex.VisibleFindings(s).Count;
@@ -804,6 +817,10 @@ internal sealed class ExplorerWindow : Window
                 right.SetFocus();
                 break;
             case ShowView v:
+                if (v.View is RightView.Search or RightView.Insights or RightView.Packages or RightView.Files)
+                {
+                    s.Investigation = null;
+                }
                 s.View = v.View;
                 if (v.View == RightView.Search && !Comparing)
                 {
@@ -1002,6 +1019,7 @@ internal sealed class ExplorerWindow : Window
             }
             return;
         }
+        s.Investigation = InvestigationContext.Capture(s);
         SelectLayerCore(finding.Layers[^1]);
         s.View = RightView.Files;
         s.FindingsOnly = true;
@@ -1035,6 +1053,7 @@ internal sealed class ExplorerWindow : Window
             return;
         }
         SearchHit hit = hits[Math.Clamp(s.SearchCursor, 0, hits.Count - 1)];
+        s.Investigation = InvestigationContext.Capture(s);
         (int Layer, Change Change) last = hit.Layers.LastOrDefault(l => l.Change != Change.Removed);
         SelectLayerCore(last == default ? hit.Layers[^1].Layer : last.Layer);
         s.View = RightView.Files;
