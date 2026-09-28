@@ -8,6 +8,50 @@ namespace Valleysoft.Dredge.Tests;
 public sealed class ExplorerDefenseUiTests
 {
     [Fact]
+    public async Task RealHostPickerStatisticsRemainVisibleAlongsideSnapshotAnnotations()
+    {
+        await using ExplorerDefenseHostTests fixture = new();
+        var (image, choices) = await fixture.PickerChoicesAsync();
+        Assert.All(choices, choice => Assert.Contains("cached session snapshot", choice.Note));
+        using ExplorerUiHarness ui = ExplorerWindowTests.Open(out _, width: 80, height: 24);
+        var (dialog, _, fill, _) = TagPicker.Create(image, "");
+        using (dialog)
+        {
+            fill(choices, null);
+            Assert.Contains(dialog.SubViews.OfType<Terminal.Gui.Views.Label>(),
+                label => label.Text.Contains("cached session snapshot", StringComparison.Ordinal));
+            Assert.True(ui.InDialog(() => ui.App.Run(dialog),
+                DialogStep.When("picker rows", () => ui.Shows("compatible"), () =>
+                {
+                    int first = ui.Find("compatible").Y;
+                    for (int i = 0; i < choices.Count; i++)
+                    {
+                        TagChoice choice = choices[i];
+                        string row = ui.Row(first + i);
+                        Assert.Contains($"{choice.Shared} of {choice.LayerCount} shared", row);
+                        Assert.Contains(Fmt.SizeShort(choice.AdditionalDownload!.Value), row);
+                        Assert.Contains("to download", row);
+                    }
+                    Assert.True(ui.Shows("cached session snapshot"), ui.Screen());
+                    Assert.True(ui.Shows("reopen explorer to refresh"), ui.Screen());
+                    ui.Send(Key.CursorDown);
+                }),
+                DialogStep.When("current identity annotation", () => ui.Shows("▌current"), () =>
+                {
+                    Assert.True(ui.Shows("same digest"), ui.Screen());
+                    Assert.True(ui.Shows("cached session snapshot"), ui.Screen());
+                    ui.Send(Key.CursorDown);
+                }),
+                DialogStep.When("unrelated image annotation", () => ui.Shows("▌unrelated"), () =>
+                {
+                    Assert.True(ui.Shows("different base image"), ui.Screen());
+                    Assert.True(ui.Shows("reopen explorer to refresh"), ui.Screen());
+                    ui.Send(Key.Esc);
+                })));
+        }
+    }
+
+    [Fact]
     public void TagPickerLabelsCurrentImageByDigestRatherThanTagSpelling()
     {
         using ExplorerUiHarness ui = ExplorerWindowTests.Open(out _);

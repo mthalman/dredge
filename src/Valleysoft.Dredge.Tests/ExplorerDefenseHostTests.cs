@@ -437,9 +437,29 @@ public sealed class ExplorerDefenseHostTests : IAsyncDisposable
         Assert.Same(metadata, image.Session.Packages);
     }
 
+    internal async Task<(ExplorerImage Image, IReadOnlyList<TagChoice> Choices)> PickerChoicesAsync()
+    {
+        byte[] shared = Blob(("base", "shared"));
+        TestImage baseline = await CreateAsync([shared], null, baseLayerCount: 1);
+        TestImage compatible = await CreateAsync(shared, Blob(("app", "target")));
+        TestImage unrelated = await CreateAsync(Blob(("other", "unrelated")));
+        baseline.Client.Setup(c => c.Manifests.GetAsync(Image.Repo, "compatible", It.IsAny<CancellationToken>()))
+            .ReturnsAsync(compatible.Source.Resolved.ManifestInfo);
+        baseline.Client.Setup(c => c.Manifests.GetAsync(Image.Repo, "unrelated", It.IsAny<CancellationToken>()))
+            .ReturnsAsync(unrelated.Source.Resolved.ManifestInfo);
+        ExplorerHost host = Host(baseline);
+        TagChoice[] choices = [new("compatible"), new("current"), new("unrelated")];
+        foreach (TagChoice choice in choices)
+        {
+            await host.DescribeTagAsync(choice, Token);
+        }
+        return (ExplorerImage.FromSource(baseline.Source), choices);
+    }
+
     private Task<TestImage> CreateAsync(params byte[][] blobs) => CreateAsync(blobs, null);
 
-    private async Task<TestImage> CreateAsync(byte[][] blobs, Action<Dictionary<int, StoredLayerIndex>>? customize)
+    private async Task<TestImage> CreateAsync(byte[][] blobs, Action<Dictionary<int, StoredLayerIndex>>? customize,
+        int? baseLayerCount = null)
     {
         LayerStore store = new(Path.Combine(cachePath, stores.Count.ToString()));
         stores.Add(store);
@@ -475,6 +495,7 @@ public sealed class ExplorerDefenseHostTests : IAsyncDisposable
         {
             Image = Image, Resolved = new(info, manifest),
             Config = new Image { Os = "linux", Architecture = "amd64" },
+            BaseLayerCount = baseLayerCount,
             Platforms = [], Platform = new("linux", "amd64", null, null)
         };
         ExplorerSession session = await ExplorerSession.CreateAsync(client.Object, source, store, indexes, Token);

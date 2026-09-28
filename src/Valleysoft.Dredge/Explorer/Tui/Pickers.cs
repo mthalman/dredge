@@ -219,16 +219,34 @@ internal static class TagPicker
         field.SetScheme(Dialogs.Input());
 
         TagSource source = new(img.LayerCount, img.Digest);
-        ListView list = new() { X = 1, Y = 3, Width = Dim.Fill(2), Height = 9, Source = source };
+        ListView list = new() { X = 1, Y = 3, Width = Dim.Fill(2), Height = 7, Source = source };
         list.SetScheme(Dialogs.Panel());
 
         Label hint = new() { X = 1, Y = Pos.Bottom(list) + 1, Width = Dim.Fill(2), Text = "Loading tags…" };
         hint.SetScheme(new Scheme(Paint.Attr(Theme.Silt, Theme.Graphite)));
+        Label annotationFirst = new() { X = 1, Y = Pos.Bottom(hint), Width = Dim.Fill(2), Height = 1 };
+        Label annotationLast = new() { X = 1, Y = Pos.Bottom(annotationFirst), Width = Dim.Fill(2), Height = 1 };
+        annotationFirst.SetScheme(new Scheme(Paint.Attr(Theme.Ochre, Theme.Graphite)));
+        annotationLast.SetScheme(new Scheme(Paint.Attr(Theme.Ochre, Theme.Graphite)));
+        string summary = "Loading tags…";
+
+        void UpdateHint()
+        {
+            TagChoice? selected = list.SelectedItem is int i && i < source.Count ? source[i] : null;
+            string? annotation = selected?.Digest == img.Digest
+                ? "current image; " + selected.Note : selected?.Note;
+            List<Line> lines = annotation is null ? [] : Syntax.Wrap([(annotation, new Sty(Theme.Silt))], 74, 2);
+            hint.Text = summary;
+            annotationFirst.Text = lines.ElementAtOrDefault(0)?.ToString() ?? "";
+            annotationLast.Text = lines.ElementAtOrDefault(1)?.ToString() ?? "";
+        }
+        list.ValueChanged += (_, _) => UpdateHint();
 
         void Filter()
         {
             source.Filter(field.Text);
             list.SelectedItem = source.Count > 0 ? 0 : null;
+            UpdateHint();
             list.SetNeedsDraw();
         }
         field.TextChanged += (_, _) => Filter();
@@ -242,7 +260,7 @@ internal static class TagPicker
             }
         };
 
-        dialog.Add(prompt, field, list, hint);
+        dialog.Add(prompt, field, list, hint, annotationFirst, annotationLast);
         Dialogs.AddButtons(dialog, "Compare");
         field.SetFocus();
 
@@ -250,12 +268,12 @@ internal static class TagPicker
         {
             if (choices is null)
             {
-                hint.Text = "Could not list tags: " + error + " Type a tag and press Enter.";
+                summary = "Could not list tags: " + error + " Type a tag and press Enter.";
             }
             else
             {
                 source.Set(choices);
-                hint.Text = choices.Count <= 1
+                summary = choices.Count <= 1
                     ? "No other tags. Type a tag and press Enter."
                     : $"{Fmt.N(choices.Count)} tags. Download is what pulling the tag adds to {current}.";
             }
@@ -270,7 +288,11 @@ internal static class TagPicker
             }
             string typed = field.Text.Trim();
             return typed.Length > 0 ? typed : null;
-        }, Fill, () => list.SetNeedsDraw());
+        }, Fill, () =>
+        {
+            UpdateHint();
+            list.SetNeedsDraw();
+        });
     }
 
     private sealed class TagSource : IListDataSource
@@ -308,24 +330,28 @@ internal static class TagPicker
         {
             TagChoice t = shown[item];
             Rgb bg = selected ? Theme.ChannelDeep : Theme.Graphite;
+            string? note = t.Digest == currentDigest ? "current image" : t.Note;
+            Line stats = new();
+            if (t.Shared is int shared)
+            {
+                stats.Add($"{shared} of {t.LayerCount ?? layerCount}", Theme.Foam).Add(" shared   ", Theme.Silt)
+                    .Add(Fmt.SizeShort(t.AdditionalDownload ?? 0).PadLeft(7), Theme.Foam).Add(" to download", Theme.Silt);
+            }
+            int nameWidth = Math.Min(26, Math.Max(10, width - 1 - stats.Length -
+                (note is null ? 0 : Math.Min(DisplayText.Width(note) + 3, 23))));
             Line line = new Line()
                 .Add(selected ? "▌" : " ", Theme.Channel)
-                .Add(Fmt.Fit(t.Tag, 24).PadRight(26), Theme.S(Theme.Foam, null, Deco.Bold));
-            string? note = t.Digest == currentDigest ? "current image" : t.Note;
+                .Add(Fmt.Fit(t.Tag, nameWidth - 2).PadRight(nameWidth), Theme.S(Theme.Foam, null, Deco.Bold))
+                .Append(stats);
             if (note is not null)
             {
-                line.Add("▲ " + note, Theme.Ochre);
+                line.Add((stats.Length > 0 ? " " : "") + "▲ " + note, Theme.Ochre);
             }
             else if (t.Failed)
             {
                 line.Add("could not read this tag", Theme.Garnet);
             }
-            else if (t.Shared is int shared)
-            {
-                line.Add($"{shared} of {t.LayerCount ?? layerCount}", Theme.Foam).Add(" shared   ", Theme.Silt)
-                    .Add(Fmt.SizeShort(t.AdditionalDownload ?? 0).PadLeft(7), Theme.Foam).Add(" to download", Theme.Silt);
-            }
-            else
+            else if (stats.Length == 0)
             {
                 line.Add("…", Theme.Shale);
             }
