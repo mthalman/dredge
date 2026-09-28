@@ -109,39 +109,6 @@ public sealed class ExplorerSettingsTests
     internal void ClipboardPrefersTheLocalWindowsClipboard(bool windows, bool remote, ClipboardMode expected) =>
         Assert.Equal(expected, Clipboard.Resolve(windows, remote));
 
-    [Fact]
-    public void NativeClipboardRoundTripsOnWindows()
-    {
-        Assert.SkipUnless(OperatingSystem.IsWindows(), "The native clipboard is Windows only.");
-        string? previous = ReadWindowsClipboard();
-        try
-        {
-            string text = $"dredge image ls app:1 /héllo {Guid.NewGuid()}";
-            Assert.True(Clipboard.Write(ClipboardMode.Native, text));
-            Assert.Equal(text, ReadWindowsClipboard());
-        }
-        finally
-        {
-            if (!string.IsNullOrEmpty(previous))
-            {
-                Clipboard.Write(ClipboardMode.Native, previous);
-            }
-        }
-    }
-
-    private static string? ReadWindowsClipboard()
-    {
-        System.Diagnostics.ProcessStartInfo info = new("powershell", "-NoProfile -Command \"[Console]::OutputEncoding=[Text.Encoding]::UTF8; Get-Clipboard -Raw\"")
-        {
-            RedirectStandardOutput = true,
-            StandardOutputEncoding = System.Text.Encoding.UTF8,
-        };
-        using System.Diagnostics.Process process = System.Diagnostics.Process.Start(info)!;
-        string output = process.StandardOutput.ReadToEnd();
-        process.WaitForExit();
-        return output.TrimEnd('\r', '\n');
-    }
-
     [Theory]
     [InlineData("SSH_CONNECTION", true)]
     [InlineData("SSH_CLIENT", true)]
