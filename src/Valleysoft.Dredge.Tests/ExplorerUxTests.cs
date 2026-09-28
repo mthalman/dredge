@@ -14,7 +14,7 @@ public sealed class ExplorerUxTests
         ui.Window.Apply(new SetCursor(ui.Window.Presenter.IndexOf(ui.State, "app/package.json")));
         ui.Press(Key.Enter);
         ui.Until(() => ui.State.Preview is not null, "preview");
-        ui.Press(new Key('y'));
+        ui.Press(Key.C.WithCtrl);
         Assert.Equal(RightView.Command, ui.State.View);
         Assert.Equal("dredge image cat registry.test/shop/storefront@sha256:manifest /app/package.json", ui.Window.CommandText.Text);
         Assert.True(ui.Window.CommandText.ReadOnly);
@@ -34,7 +34,7 @@ public sealed class ExplorerUxTests
         {
             Layer = 0, View = RightView.Inspector, InspectPath = path, Focus = FocusPane.Right,
         }, s => new FakeExplorerHost { Baseline = s }, out _, width: 80, height: 24);
-        ui.Press(new Key('y'));
+        ui.Press(Key.C.WithCtrl);
         Assert.Equal(RightView.Command, ui.State.View);
         ui.Press(Key.End);
         Assert.True(ui.Shows("-tail.txt"));

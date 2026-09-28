@@ -77,7 +77,7 @@ internal sealed partial class ExplorerPresenter
 
     public ExplorerImage Image => img;
     public KeyMap Keys { get; }
-    // Whether `y` copies or only shows the command, so hints can say which.
+    // Whether copying is available, so hints can say "Copy" or "Show".
     public bool Copies { get; init; }
     internal string CopyVerb => Copies ? "Copy" : "Show";
     public int Width { get; set; }

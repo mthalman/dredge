@@ -489,6 +489,7 @@ internal sealed class ExplorerWindow : Window
             KeyCode.End => "End",
             KeyCode.Enter => "Enter",
             KeyCode.Esc => "Esc",
+            _ when key == Key.C.WithCtrl => "^C",
             _ when key.IsAlt && !key.IsCtrl => "Alt+" + key.NoAlt.KeyCode,
             _ when key.AsRune.Value is int ch and > 32 and < 127 => ((char)ch).ToString(),
             _ => null,
@@ -579,6 +580,10 @@ internal sealed class ExplorerWindow : Window
             KeyCode.CursorRight => s.View == RightView.Inspector || s.Compare?.Diff is not null ? new PanText(8) : new Fold(true),
             _ => null,
         };
+        if (key == Key.C.WithCtrl && host.Keys.Lookup('\u0003') == KeyAction.CopyCommand)
+        {
+            cmd = new CopyCommand();
+        }
         if (key.IsAlt && !key.IsCtrl && key.NoAlt.KeyCode == KeyCode.W &&
             (s.View == RightView.Insights && img.BaseWarning is not null ||
                 s.View == RightView.Packages && s.Packages?.Diagnostics.Count > 0 ||

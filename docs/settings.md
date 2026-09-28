@@ -127,9 +127,9 @@ Set `explore.theme` to `light` for light terminal backgrounds. When the
 Set `explore.mouse` to `false` to leave the mouse to the terminal, which is the
 same as passing `--no-mouse`.
 
-`y` copies the equivalent `dredge` command. On local Windows, it uses the
-Windows clipboard. Elsewhere, including SSH sessions, it asks the terminal to
-copy with OSC 52. The terminal must support and allow OSC 52; tmux must be
+`Ctrl+C` (shown as `^C`) copies the equivalent `dredge` command. On local
+Windows, it uses the Windows clipboard. Elsewhere, including SSH sessions, it
+asks the terminal to copy with OSC 52. The terminal must support and allow OSC 52; tmux must be
 configured to pass it through. If the clipboard can't be reached, dredge
 shows the command instead.
 
@@ -155,8 +155,9 @@ dredge settings set explore.viewer.exePath "C:\Program Files\Notepad++\notepad++
 dredge settings set explore.viewer.args "\"{0}\""
 ```
 
-Each single-character explorer key can be replaced with any printable ASCII
-character. Two actions cannot share a key. The actions are `quit`, `help`,
+Each single-character explorer key, and the default `Ctrl+C` copy shortcut,
+can be replaced with any printable ASCII character. Two actions cannot share
+a key. The actions are `quit`, `help`,
 `insights`, `search`, `wholeFilesystem`, `compare`,
 `findingsOnly`, `previousLayer`, `nextLayer`, `toggleAdded`,
 `toggleModified`, `toggleIdentical`, `toggleDeleted`, `extract`,

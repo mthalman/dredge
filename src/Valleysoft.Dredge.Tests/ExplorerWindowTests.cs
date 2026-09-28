@@ -457,7 +457,7 @@ public sealed class ExplorerWindowTests
         Assert.Equal(["app/package.json"], host.Previewed);
         Assert.True(ui.Shows("\"storefront\""), ui.Screen());
 
-        ui.Press(new Key('y'));
+        ui.Press(Key.C.WithCtrl);
         Assert.Equal("$ dredge image cat registry.test/shop/storefront@sha256:manifest /app/package.json", s.Notice);
         Assert.Empty(host.Clipboard);
         ui.Press(Key.Esc);
@@ -478,13 +478,40 @@ public sealed class ExplorerWindowTests
     }
 
     [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void CopyShortcutUsesControlCUnlessRemapped(bool remapped)
+    {
+        KeyMap keys = KeyMap.FromSettings(new ExploreKeysSettings { CopyCommand = remapped ? "Y" : "" });
+        using ExplorerUiHarness ui = Open(out FakeExplorerHost host, keys: keys, clipboard: true);
+        ui.Window.Apply(new SetCursor(RowOf(ui, "app/package.json")));
+        ui.Press(Key.Enter);
+        Assert.Equal(RightView.Inspector, ui.State.View);
+        Assert.Equal(remapped ? "Y" : "^C", keys.Label(KeyAction.CopyCommand));
+        Assert.Contains(ui.Window.Presenter.Hints(ui.State),
+            hint => hint.Cmd is CopyCommand && hint.Key == (remapped ? "Y" : "^C"));
+        ui.Press(new Key('y'));
+        Assert.Empty(host.Clipboard);
+        ui.Press(Key.C.WithCtrl);
+        if (remapped)
+        {
+            Assert.Empty(host.Clipboard);
+            ui.Press(new Key('Y'));
+        }
+        Assert.Equal("dredge image cat registry.test/shop/storefront@sha256:manifest /app/package.json",
+            Assert.Single(host.Clipboard));
+        Assert.False(ui.Window.StopRequested);
+    }
+
+    [Theory]
     [InlineData(true, "Copy as dredge command")]
     [InlineData(false, "Show as dredge command")]
-    public void KeysScreenSaysWhetherYCopies(bool clipboard, string label)
+    public void HelpSaysWhetherControlCCopies(bool clipboard, string label)
     {
         using ExplorerUiHarness ui = Open(out _, clipboard: clipboard);
         ui.Press(new Key('?'));
         Assert.True(ui.Shows(label), ui.Screen());
+        Assert.True(ui.Shows("^C"), ui.Screen());
     }
 
     [Fact]
@@ -678,7 +705,7 @@ public sealed class ExplorerWindowTests
 
         ui.Press(new Key('s'));
         Assert.Equal(("2.0", "1.0"), (s.Compare!.BaselineLabel, s.Compare.TargetLabel));
-        ui.Press(new Key('y'));
+        ui.Press(Key.C.WithCtrl);
         ExplorerSession baseline = s.Compare.Comparison.Baseline, target = s.Compare.Comparison.Target;
         Assert.Equal($"$ dredge image compare files {ExplorerImage.DigestReference(baseline.Image, baseline.Resolved.ManifestInfo.DockerContentDigest)} {ExplorerImage.DigestReference(target.Image, target.Resolved.ManifestInfo.DockerContentDigest)}", s.Notice);
         ui.Press(new Key('w'));

@@ -27,7 +27,7 @@ internal sealed class KeyMap
         [KeyAction.ToggleIdentical] = '=',
         [KeyAction.ToggleDeleted] = '-',
         [KeyAction.Extract] = 'x',
-        [KeyAction.CopyCommand] = 'y',
+        [KeyAction.CopyCommand] = '\u0003',
         [KeyAction.Viewer] = 'o',
         [KeyAction.SwapSides] = 's',
         [KeyAction.Retry] = 'r',
@@ -47,7 +47,7 @@ internal sealed class KeyMap
 
     public char this[KeyAction action] => keys[action];
 
-    public string Label(KeyAction action) => keys[action].ToString();
+    public string Label(KeyAction action) => keys[action] == '\u0003' ? "^C" : keys[action].ToString();
 
     public KeyAction? Lookup(char key) => actions.TryGetValue(key, out KeyAction action) ? action : null;
 

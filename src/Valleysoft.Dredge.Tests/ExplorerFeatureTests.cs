@@ -1410,7 +1410,7 @@ public sealed class ExplorerFeatureTests
 
         // Copy and viewer belong to the inspector, not the file tree.
         ui.Window.Apply(new SetCursor(RowOf(ui, "app/package.json")));
-        ui.Press(new Key('y'));
+        ui.Press(Key.C.WithCtrl);
         ui.Press(new Key('o'));
         Assert.Null(s.Notice);
         Assert.False(ui.Window.StopRequested);
@@ -1418,7 +1418,7 @@ public sealed class ExplorerFeatureTests
         // With the layer list focused, file keys do not reach the file tree.
         ui.Press(Key.Tab);
         Assert.Equal(FocusPane.Layers, s.Focus);
-        foreach (Key key in new[] { new Key('y'), new Key('x'), new Key('o'), new Key('+'), Key.Enter, Key.Space, Key.CursorLeft, Key.PageDown })
+        foreach (Key key in new[] { Key.C.WithCtrl, new Key('x'), new Key('o'), new Key('+'), Key.Enter, Key.Space, Key.CursorLeft, Key.PageDown })
         {
             ui.Press(key);
             Assert.Null(s.Notice);
@@ -1458,7 +1458,7 @@ public sealed class ExplorerFeatureTests
     {
         { '?', "keys" }, { 'i', "insights" }, { '/', "search" }, { 'a', "whole" }, { 'p', "packages" }, { 'w', "findings" },
         { '[', "previous" }, { ']', "next" }, { '+', "added" }, { '~', "modified" }, { '=', "identical" }, { '-', "deleted" },
-        { 'x', "extract" }, { 'y', "copy" }, { 'o', "viewer" }, { 'q', "quit" },
+        { 'x', "extract" }, { '\u0003', "copy" }, { 'o', "viewer" }, { 'q', "quit" },
     };
 
     [Theory]
@@ -1479,7 +1479,7 @@ public sealed class ExplorerFeatureTests
                 Assert.Equal(RightView.Inspector, s.View);
             }
         }
-        ui.Press(new Key(key));
+        ui.Press(key == '\u0003' ? Key.C.WithCtrl : new Key(key));
         switch (action)
         {
             case "keys": Assert.Equal(RightView.Keys, s.View); break;

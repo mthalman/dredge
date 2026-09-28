@@ -223,8 +223,9 @@ oversized, the explorer retains readable results and displays a warning that
 the list may be incomplete. In comparison, `Alt+W` opens full metadata and
 ownership warning details; `Esc` returns to the previous view.
 
-Press `x` to extract the selected file or directory, and `y` to copy the
-equivalent `dredge image` command.
+Press `x` to extract the selected file or directory, and `Ctrl+C` (shown as
+`^C`) to copy the equivalent `dredge image` command. On macOS, use Control+C;
+Command+C remains the terminal's shortcut for copying selected text.
 If the initial image has multiple matching Linux platforms after applying flags
 and settings, a platform picker opens before layer indexing starts.
 This also resolves variant-only ambiguity, such as `arm/v6` versus `arm/v7`.
@@ -241,7 +242,7 @@ and PowerShell's `Legacy` argument-passing mode are not supported for this
 copy/paste guarantee; they can remove embedded double quotes before Dredge
 receives the arguments.
 
-When clipboard copying is unavailable or fails, `y` opens the complete command
+When clipboard copying is unavailable or fails, `Ctrl+C` opens the complete command
 in a read-only text field. Use `Left`/`Right` or `Home`/`End` to scroll the
 complete command. Select text with the mouse or `Ctrl+A`;
 `Esc` returns to the original view.
@@ -268,7 +269,7 @@ active commands.
 | `c` `s` | Compare with a tag; swap compared sides |
 | `Alt+V` | Toggle split/unified layout in a file diff |
 | `r` | Retry a failed layer or package scan |
-| `x` `y` `o` | Extract; copy the dredge command; open in the text viewer |
+| `x` `^C` `o` | Extract; copy the dredge command (Ctrl+C); open in the text viewer |
 | `Esc` `q` | Back; quit |
 
 With the mouse enabled, click a row, chip, or footer hint to use it, and
