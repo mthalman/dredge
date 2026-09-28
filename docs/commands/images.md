@@ -219,6 +219,14 @@ links to symbolic links, compare their target text without following it. Type
 changes and changed hard-link targets are identified in the diff notice.
 File-to-directory replacements retain the original file's size and diff access;
 use `Right` to expand their children.
+Folder sizes count shared hard-link content once within each folder, while
+individual links retain their readable file size and are marked as shared.
+All link names remain browsable. This applies to filesystem and comparison
+trees; comparison folders summarize the changed entries. Parent totals also
+deduplicate content shared across child folders, so they need not equal the sum
+of the displayed child sizes. These are unique content bytes, not disk space
+that deleting the folder would free. Layer payload and download sizes are
+unchanged.
 Comparison progress stays visible while you browse. Press `Esc` to cancel a
 pending comparison without leaving the explorer.
 Within comparison, `/` searches changed package names and paths, including

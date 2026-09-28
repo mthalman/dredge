@@ -687,6 +687,153 @@ public sealed class ExplorerDefenseHostTests : IAsyncDisposable
         }
     }
 
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task CoreutilsHardLinksCountContentOncePerFolder(bool reverse)
+    {
+        const int size = 11_807_104;
+        const string folder = "usr/lib/cargo/bin/coreutils";
+        TestImage image = await CreateAsync(ArchiveEntries(
+            [new PaxTarEntry(TarEntryType.RegularFile, "usr/bin/coreutils")
+                { DataStream = new MemoryStream(new byte[size]) },
+            .. Enumerable.Range(0, 115).Select(i =>
+                new PaxTarEntry(TarEntryType.HardLink, $"{folder}/tool{i:D3}") { LinkName = "usr/bin/coreutils" })]));
+        TestImage empty = await CreateAsync();
+        ExplorerImage model = ExplorerImage.FromSource(image.Source);
+        model.SetSession(image.Session, ExplorerInsights.Build(image.Session.Analysis, model.Instructions, null));
+        ExplorerPresenter presenter = new(model, 280, 42);
+        ExplorerComparison comparison = reverse ? await CompareAsync(image, empty) : await CompareAsync(empty, image);
+        CompareState state = new(comparison, "before", "after");
+        state.Expanded.UnionWith(["file:usr", "file:usr/lib", "file:usr/lib/cargo", "file:usr/lib/cargo/bin",
+            "file:" + folder]);
+        CompareView view = new(presenter, state);
+        List<CompareRow> rows = view.Rows();
+
+        foreach (string path in new[] { "usr", folder })
+        {
+            CompareRow row = Assert.Single(rows, row => row.Path == path);
+            Assert.Equal(reverse ? size : (long?)null, row.Before);
+            Assert.Equal(reverse ? (long?)null : size, row.After);
+        }
+        Assert.Equal(115, rows.Count(row => row.Path?.StartsWith(folder + "/", StringComparison.Ordinal) == true));
+        CompareRow link = Assert.Single(rows, row => row.Path == folder + "/tool000");
+        Assert.Equal(reverse ? size : (long?)null, link.Before);
+        Assert.Equal(reverse ? (long?)null : size, link.After);
+        state.Cursor = rows.IndexOf(link);
+        Assert.Contains(view.Diff().Lines, line => line.ToString().Contains("shared", StringComparison.Ordinal));
+
+        foreach (List<Node> tree in new[] { model.LayerTree(0), model.WholeTree(0)! })
+        {
+            Node directory = ExplorerImage.Find(tree, folder)!;
+            Assert.Equal(size, directory.Size);
+            Assert.Equal(115, directory.FileCount);
+            Assert.Equal("115 hard links, 1 shared file", directory.Sharing);
+            Assert.Equal(size, ExplorerImage.Find(tree, folder + "/tool000")!.Size);
+            Assert.Equal(size, ExplorerImage.Find(tree, "usr")!.Size);
+        }
+        ExplorerState searching = new() { SearchQuery = folder + "/" };
+        Assert.Equal(115, presenter.SearchResults(searching).Hits.Count);
+        Assert.All(presenter.SearchResults(searching).Hits, hit => Assert.Equal(size, hit.Size));
+        Assert.Equal(size, model.LayerSize(0));
+        Assert.Equal(size, model.TotalSize);
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task FolderTotalsDistinguishCopiesAndCapturedVersionsAcrossRoots(bool sameLayer)
+    {
+        PaxTarEntry[] original =
+        [
+            new PaxTarEntry(TarEntryType.RegularFile, "usr/original") { DataStream = new MemoryStream("old"u8.ToArray()) },
+            new PaxTarEntry(TarEntryType.RegularFile, "usr/copy") { DataStream = new MemoryStream("old"u8.ToArray()) },
+            new PaxTarEntry(TarEntryType.HardLink, "opt/links/old") { LinkName = "usr/original" },
+            new PaxTarEntry(TarEntryType.HardLink, "opt/links/chain") { LinkName = "opt/links/old" }
+        ];
+        PaxTarEntry[] replacement =
+        [
+            new PaxTarEntry(TarEntryType.RegularFile, "usr/original") { DataStream = new MemoryStream("newer"u8.ToArray()) },
+            new PaxTarEntry(TarEntryType.HardLink, "opt/links/new") { LinkName = "usr/original" }
+        ];
+        TestImage image = sameLayer ? await CreateAsync(ArchiveEntries([.. original, .. replacement]))
+            : await CreateAsync(ArchiveEntries(original), ArchiveEntries(replacement));
+        int layer = sameLayer ? 0 : 1;
+        TestImage empty = await CreateAsync();
+        ExplorerImage model = ExplorerImage.FromSource(image.Source);
+        model.SetSession(image.Session, ExplorerInsights.Build(image.Session.Analysis, model.Instructions, null));
+        ExplorerPresenter presenter = new(model, 200, 42);
+        CompareState state = new(await CompareAsync(empty, image), "empty", "image");
+        state.Expanded.UnionWith(["file:opt", "file:opt/links", "file:usr"]);
+        List<CompareRow> rows = new CompareView(presenter, state).Rows();
+        Assert.Equal(8, Assert.Single(rows, row => row.Path == "opt/links").After);
+        Assert.Equal(8, Assert.Single(rows, row => row.Path == "usr").After);
+        Assert.Equal(3, Assert.Single(rows, row => row.Path == "opt/links/old").After);
+        Assert.Equal(5, Assert.Single(rows, row => row.Path == "opt/links/new").After);
+
+        List<Node> tree = model.WholeTree(layer)!;
+        Assert.Equal(8, ExplorerImage.Find(tree, "opt/links")!.Size);
+        Assert.Equal(8, ExplorerImage.Find(tree, "usr")!.Size);
+        ExplorerState browsing = new() { Layer = layer, WholeFilesystem = true };
+        Assert.Contains("11 B in", presenter.FilesPane(browsing).Lines[0].ToString());
+        Assert.Equal(11, model.TotalSize);
+        Assert.Equal(sameLayer ? 11 : 5, model.LayerSize(layer));
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task ComparisonCountsSharedContentIndependentlyOnEachSide(bool reverse)
+    {
+        TestImage before = await CreateAsync(ArchiveEntries(
+            new PaxTarEntry(TarEntryType.RegularFile, "original") { DataStream = new MemoryStream("old"u8.ToArray()) },
+            new PaxTarEntry(TarEntryType.HardLink, "links/one") { LinkName = "original" },
+            new PaxTarEntry(TarEntryType.HardLink, "links/two") { LinkName = "original" }));
+        TestImage after = await CreateAsync(ArchiveEntries(
+            new PaxTarEntry(TarEntryType.RegularFile, "original") { DataStream = new MemoryStream("newer"u8.ToArray()) },
+            new PaxTarEntry(TarEntryType.HardLink, "links/one") { LinkName = "original" },
+            new PaxTarEntry(TarEntryType.RegularFile, "links/two") { DataStream = new MemoryStream("newer"u8.ToArray()) }));
+        ExplorerImage model = ExplorerImage.FromSource(before.Source);
+        ExplorerPresenter presenter = new(model, 200, 42);
+        ExplorerComparison comparison = reverse ? await CompareAsync(after, before) : await CompareAsync(before, after);
+        CompareState state = new(comparison, "before", "after");
+        state.Expanded.Add("file:links");
+        List<CompareRow> rows = new CompareView(presenter, state).Rows();
+        CompareRow folder = Assert.Single(rows, row => row.Path == "links");
+        CompareRow changedType = Assert.Single(rows, row => row.Path == "links/two");
+
+        Assert.Equal(reverse ? 10 : 3, folder.Before);
+        Assert.Equal(reverse ? 3 : 10, folder.After);
+        Assert.Equal(reverse
+            ? "Before: 1 hard link, 1 shared file; after: 2 hard links, 1 shared file"
+            : "Before: 2 hard links, 1 shared file; after: 1 hard link, 1 shared file", folder.Sharing);
+        Assert.Equal(reverse ? "original" : null, changedType.LinkTarget);
+        Assert.Equal(reverse ? "After: 1 hard link, 1 shared file" : "Before: 1 hard link, 1 shared file",
+            changedType.Sharing);
+    }
+
+    [Fact]
+    public async Task RemovedOriginalDoesNotLoseSurvivingOrDeletedHardLinkSizes()
+    {
+        TestImage image = await CreateAsync(
+            ArchiveEntries(
+                new PaxTarEntry(TarEntryType.RegularFile, "original") { DataStream = new MemoryStream("content"u8.ToArray()) },
+                new PaxTarEntry(TarEntryType.HardLink, "links/one") { LinkName = "original" },
+                new PaxTarEntry(TarEntryType.HardLink, "links/two") { LinkName = "links/one" }),
+            Blob((".wh.original", "")),
+            Blob(("links/.wh.one", "")));
+        ExplorerImage model = ExplorerImage.FromSource(image.Source);
+        model.SetSession(image.Session, ExplorerInsights.Build(image.Session.Analysis, model.Instructions, null));
+
+        Assert.Equal(7, ExplorerImage.Find(model.WholeTree(1)!, "links")!.Size);
+        Node removed = ExplorerImage.Find(model.LayerTree(2), "links/one")!;
+        Assert.Equal(Change.Removed, removed.Change);
+        Assert.Equal(7, removed.ShippedSize);
+        Assert.Equal(7, ExplorerImage.Find(model.WholeTree(2)!, "links")!.Size);
+        Assert.Equal(7, ExplorerImage.Find(model.WholeTree(2)!, "links")!.ShippedSize);
+        Assert.Equal(0, model.TotalReclaimable);
+    }
+
     private Task<TestImage> CreateAsync(params byte[][] blobs) => CreateAsync(blobs, null);
 
     private async Task<TestImage> CreateAsync(byte[][] blobs, Action<Dictionary<int, StoredLayerIndex>>? customize,

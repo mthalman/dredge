@@ -6,7 +6,8 @@ internal sealed record CompareRow(
     string Key, CompareRowKind Kind, string Branch, string Name, Change Change,
     long? Before = null, long? After = null, string? Versions = null,
     bool Expandable = false, bool Expanded = false, int? Files = null,
-    ExplorerPackageDifference? Package = null, string? Path = null);
+    ExplorerPackageDifference? Package = null, string? Path = null,
+    string? Sharing = null, string? LinkTarget = null);
 
 internal sealed record TextDiffContent(
     string Path, IReadOnlyList<DiffLine>? Lines, string? Message)
@@ -412,7 +413,8 @@ internal sealed class CompareView
                     bool open = expandable && (c.SearchQuery.Length > 0 || c.Expanded.Contains(key));
                     list.Add(new(key, n.Dir ? CompareRowKind.Dir : CompareRowKind.File,
                         guide + (last ? "└─ " : "├─ "), c.SearchQuery.Length > 0 ? n.Path : n.Name, n.Change, n.Before, n.After,
-                        Expandable: expandable, Expanded: open, Files: expandable ? n.FileCount : null, Path: n.Path));
+                        Expandable: expandable, Expanded: open, Files: expandable ? n.FileCount : null, Path: n.Path,
+                        Sharing: n.Sharing, LinkTarget: n.LinkTarget));
                     if (open)
                     {
                         Walk(n.Children, guide + (last ? "   " : "│  "));
@@ -502,7 +504,9 @@ internal sealed class CompareView
             lines.Add(Line.Blank);
         }
 
-        lines.Add(Line.Blank);
+        string? sharing = list.ElementAtOrDefault(c.Cursor)?.Sharing;
+        lines.Add(sharing is null ? Line.Blank
+            : Line.Of(sharing + "; shared content is counted once per folder.", Theme.Silt).Truncate(w));
         lines.Add(new Line().Append(ExplorerPresenter.Keycap("Enter")).Add(" " + ActivateLabel() + "   ", Theme.Silt)
             .Append(ExplorerPresenter.Keycap(presenter.Keys.Label(KeyAction.CopyCommand))).Add($" {presenter.CopyVerb} ", Theme.Silt)
             .Add("dredge image compare files", Theme.Foam).Truncate(w));
@@ -580,6 +584,14 @@ internal sealed class CompareView
             _ => Theme.S(Theme.Silt),
         };
         name.Add(r.Kind == CompareRowKind.Dir ? r.Name + "/" : r.Name, style);
+        if (r.LinkTarget is not null)
+        {
+            name.Add(" (shared) ⇒ /" + r.LinkTarget.TrimStart('/'), Theme.Silt);
+        }
+        else if (r.Sharing is not null)
+        {
+            name.Add("  " + r.Sharing, Theme.Silt);
+        }
         if (r.Files is int files && !r.Expanded)
         {
             name.Add($"  {Fmt.N(files)}", Theme.Silt);
@@ -680,8 +692,10 @@ internal sealed class CompareView
         public Change Change;
         public long? Before;
         public long? After;
-        public long? SubtreeBefore;
-        public long? SubtreeAfter;
+        public ImageFileSystemEntry? Baseline;
+        public ImageFileSystemEntry? Target;
+        public string? Sharing;
+        public string? LinkTarget;
         public int FileCount;
         public List<FileTree> Children = [];
 
@@ -711,31 +725,39 @@ internal sealed class CompareView
                     (file.Target is null or { Type: ImageFileType.Directory });
                 node.Before = file.Baseline is { Type: not ImageFileType.Directory } before ? before.Size : null;
                 node.After = file.Target is { Type: not ImageFileType.Directory } after ? after.Size : null;
+                node.Baseline = file.Baseline;
+                node.Target = file.Target;
+                node.LinkTarget = (file.Target is { Type: ImageFileType.HardLink } targetLink ? targetLink
+                    : file.Target is null && file.Baseline is { Type: ImageFileType.HardLink } baselineLink
+                        ? baselineLink : null)?.LinkTarget;
             }
             Finish(root);
             return root;
         }
 
-        private static void Finish(FileTree node)
+        private static (ContentTotals Before, ContentTotals After) Finish(FileTree node)
         {
             node.Children.Sort((a, b) => string.CompareOrdinal(a.Name, b.Name));
             node.FileCount = node.Dir ? 0 : 1;
-            long before = node.Before ?? 0, after = node.After ?? 0;
-            bool anyBefore = node.Before is not null, anyAfter = node.After is not null;
+            ContentTotals before = new(), after = new();
+            before.Add(node.Baseline);
+            after.Add(node.Target);
             foreach (FileTree child in node.Children)
             {
-                Finish(child);
+                (ContentTotals childBefore, ContentTotals childAfter) = Finish(child);
                 node.FileCount += child.FileCount;
-                if (child.SubtreeBefore is long b) { before += b; anyBefore = true; }
-                if (child.SubtreeAfter is long a) { after += a; anyAfter = true; }
+                before.UnionWith(childBefore);
+                after.UnionWith(childAfter);
             }
-            node.SubtreeBefore = anyBefore ? before : null;
-            node.SubtreeAfter = anyAfter ? after : null;
             if (node.Dir)
             {
-                node.Before = node.SubtreeBefore;
-                node.After = node.SubtreeAfter;
+                node.Before = before.HasEntries ? before.Bytes : null;
+                node.After = after.HasEntries ? after.Bytes : null;
             }
+            node.Sharing = before.Sharing == after.Sharing ? before.Sharing
+                : before.Sharing is null ? after.Sharing is null ? null : "After: " + after.Sharing
+                : after.Sharing is null ? "Before: " + before.Sharing
+                : $"Before: {before.Sharing}; after: {after.Sharing}";
             if (!node.HasEntry && node.Children.Count > 0 && node.Children.All(child => child.Change == Change.Added))
             {
                 node.Change = Change.Added;
@@ -744,6 +766,7 @@ internal sealed class CompareView
             {
                 node.Change = Change.Removed;
             }
+            return (before, after);
         }
     }
 }

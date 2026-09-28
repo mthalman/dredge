@@ -2,6 +2,8 @@ namespace Valleysoft.Dredge.Explorer;
 
 internal sealed partial class ExplorerPresenter
 {
+    private (List<Node> Tree, long Size)? treeSizeCache;
+
     // The whole filesystem needs the analysis of every layer up to this one; until
     // then the pane falls back to this layer's changes and says why.
     public bool WholeAvailable(ExplorerState s) => img.IsAnalyzed(s.Layer);
@@ -217,18 +219,26 @@ internal sealed partial class ExplorerPresenter
         {
             right.Add($" in {Fmt.Count(n.FileCount, "file")}", Theme.Silt);
         }
+        if (n.Sharing is not null)
+        {
+            right.Add(" (shared)", Theme.Silt);
+        }
         right.Add("  ").Append(Keycap("Enter")).Add(n.Kind is Kind.File or Kind.Link ? " inspect" : r.Expanded ? " fold" : " unfold", Theme.Silt);
         return left.Truncate(Math.Max(0, w - right.Length - 1)).PadRight(w, right);
     }
 
-    private static Line ModeToggle(ExplorerState s, int w, List<Node> tree, Dictionary<Change, int> counts, bool whole)
+    private Line ModeToggle(ExplorerState s, int w, List<Node> tree, Dictionary<Change, int> counts, bool whole)
     {
         Sty on = Theme.S(Theme.Foam, Theme.KeycapBg, Deco.Bold);
         Sty off = Theme.S(Theme.Silt, Theme.Graphite);
         Line toggle = new Line()
             .Add(" This layer ", s.WholeFilesystem ? off : on)
             .Add(" Whole filesystem ", s.WholeFilesystem ? on : off);
-        long size = tree.Where(n => n.Change != Change.Removed).Sum(n => n.Size);
+        if (treeSizeCache is not { } cached || cached.Tree != tree)
+        {
+            treeSizeCache = (tree, Node.TotalSize(tree));
+        }
+        long size = treeSizeCache.Value.Size;
         int paths = counts.Values.Sum();
         Line right = new Line()
             .Add(Fmt.Size(size), Theme.Foam)
@@ -321,11 +331,19 @@ internal sealed partial class ExplorerPresenter
         name.Add(n.Kind == Kind.Dir ? n.Name + "/" : n.Name, style);
         if (n.Kind == Kind.Link && n.Target is not null)
         {
+            if (n.HardLink)
+            {
+                name.Add(" (shared)", Theme.Silt);
+            }
             name.Add(n.HardLink ? " ⇒ " : " → ", Theme.Shale).Add(n.Target, Theme.Silt);
         }
         if (n.Kind == Kind.Dir && !r.Expanded && n.Children.Count > 0)
         {
             name.Add($"  {Fmt.Count(n.FileCount, "file")}", Theme.Silt);
+        }
+        if (n.Kind == Kind.Dir && n.Sharing is not null)
+        {
+            name.Add("  " + n.Sharing, Theme.Silt);
         }
         if (n.Note is not null)
         {

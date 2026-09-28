@@ -5,7 +5,10 @@ internal enum LayerChangeKind { Added, Modified, Identical, Deleted }
 // Entry is the entry this layer wrote, or for a deletion the entry it hid.
 internal sealed record LayerFileChange(
     string Path, int Layer, LayerChangeKind Kind, ImageFileType Type, long Size,
-    ScannedEntry? Entry = null);
+    ScannedEntry? Entry = null)
+{
+    public ImageContentId? ContentId { get; init; }
+}
 
 internal sealed record ImageLayerAnalysis(
     int Index, long FileBytes, long HiddenBytes, IReadOnlyList<LayerFileChange> Changes);
@@ -100,6 +103,7 @@ internal static class ImageAnalysis
     {
         public ScannedEntry Entry { get; } = entry;
         public int Layer { get; } = layer;
+        public ImageContentId Id { get; } = new(layer, entry.Path, entry.EntryIndex);
         public int References { get; set; }
     }
 
@@ -121,7 +125,8 @@ internal static class ImageAnalysis
             void Remove(string path, LiveEntry old)
             {
                 Charge(old, LayerChangeKind.Deleted);
-                changes.Add(new(path, index, LayerChangeKind.Deleted, old.Entry.Type, old.Entry.Size, old.Entry));
+                changes.Add(new(path, index, LayerChangeKind.Deleted, old.Entry.Type,
+                    old.Content?.Entry.Size ?? old.Entry.Size, old.Entry) { ContentId = old.Content?.Id });
                 live.Remove(path);
                 paths.Remove(path);
             }
@@ -192,7 +197,8 @@ internal static class ImageAnalysis
                 }
                 live[entry.Path] = new(entry, index, content);
                 paths.Add(entry.Path);
-                changes.Add(new(entry.Path, index, kind, entry.Type, entry.Size, entry));
+                changes.Add(new(entry.Path, index, kind, entry.Type, content?.Entry.Size ?? entry.Size, entry)
+                    { ContentId = content?.Id });
                 if (entry.Type == ImageFileType.File)
                 {
                     layerBytes += entry.Size;

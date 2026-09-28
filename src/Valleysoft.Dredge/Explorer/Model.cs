@@ -6,12 +6,9 @@ namespace Valleysoft.Dredge.Explorer;
 internal enum Change { None, Added, Modified, Identical, Removed }
 internal enum Kind { Dir, File, Link }
 
-// One row of a file tree. Trees are built once and never mutated afterward,
-// so sizes and counts are cached on first use.
+// Trees are immutable after construction, so counts can be cached on first use.
 internal sealed class Node
 {
-    private long? size;
-    private long? shipped;
     private Dictionary<Change, int>? counts;
     private bool? containsNote;
 
@@ -20,6 +17,8 @@ internal sealed class Node
     public required Kind Kind { get; init; }
     public Change Change { get; set; }
     public long OwnSize { get; set; }
+    public ImageContentId? ContentId { get; set; }
+    public string? Sharing { get; set; }
     public string Mode { get; set; } = "";
     public string Owner { get; set; } = "";
     public string? Target { get; set; }
@@ -28,17 +27,29 @@ internal sealed class Node
     public List<Node> Children { get; } = [];
     public string? Note { get; set; }
 
-    public long Size => size ??= Kind switch
-    {
-        Kind.Dir => Children.Where(child => child.Change != Change.Removed).Sum(child => child.Size),
-        _ => OwnSize
-    };
+    public long Size { get; set; }
+    public long ShippedSize { get; set; }
 
-    public long ShippedSize => shipped ??= Kind switch
+    public static long TotalSize(IEnumerable<Node> roots)
     {
-        Kind.Dir => Children.Sum(child => child.ShippedSize),
-        _ => OwnSize
-    };
+        ContentTotals total = new();
+        void Add(IEnumerable<Node> nodes)
+        {
+            foreach (Node node in nodes.Where(node => node.Change != Change.Removed))
+            {
+                if (node.Kind == Kind.Dir)
+                {
+                    Add(node.Children);
+                }
+                else
+                {
+                    total.Add(node.OwnSize, node.ContentId, node.HardLink);
+                }
+            }
+        }
+        Add(roots);
+        return total.Bytes;
+    }
 
     // Leaf counts by change: files, links and empty directories.
     public IReadOnlyDictionary<Change, int> Counts
@@ -266,7 +277,7 @@ internal sealed class ExplorerImage
         {
             foreach (LayerFileChange change in Analysis!.Layers[layer].Changes)
             {
-                builder.Set(change.Path, change.Entry, change.Type, ToChange(change.Kind), change.Size);
+                builder.Set(change.Path, change.Entry, change.Type, ToChange(change.Kind), change.Size, change.ContentId);
             }
         }
         else if (raw.TryGetValue(layer, out LayerChanges? changes))
@@ -333,7 +344,7 @@ internal sealed class ExplorerImage
         foreach (LayerFileChange change in live.Values)
         {
             builder.Set(change.Path, change.Entry, change.Type,
-                marks.GetValueOrDefault(change.Path, Change.None), change.Size);
+                marks.GetValueOrDefault(change.Path, Change.None), change.Size, change.ContentId);
         }
         List<Node> tree = builder.Build();
         ApplyNotes(tree, layer);
@@ -528,7 +539,8 @@ internal sealed class ExplorerImage
         private readonly List<Node> roots = [];
         private readonly Dictionary<string, Node> nodes = new(StringComparer.Ordinal);
 
-        public void Set(string path, ScannedEntry? entry, ImageFileType type, Change change, long size)
+        public void Set(string path, ScannedEntry? entry, ImageFileType type, Change change, long size,
+            ImageContentId? contentId = null)
         {
             if (path.Length == 0)
             {
@@ -543,6 +555,7 @@ internal sealed class ExplorerImage
             Node node = GetOrCreate(path, kind, explicitKind: true, removed: change == Change.Removed);
             node.Change = change;
             node.OwnSize = kind == Kind.Dir ? 0 : size;
+            node.ContentId = contentId;
             node.Entry = entry;
             if (entry is not null)
             {
@@ -583,7 +596,37 @@ internal sealed class ExplorerImage
         public List<Node> Build()
         {
             Sort(roots);
+            foreach (Node node in roots)
+            {
+                Finish(node);
+            }
             return roots;
+        }
+
+        private static (ContentTotals Live, ContentTotals Shipped) Finish(Node node)
+        {
+            ContentTotals live = new(), shipped = new();
+            if (node.Kind != Kind.Dir)
+            {
+                live.Add(node.OwnSize, node.ContentId, node.HardLink);
+                shipped.Add(node.OwnSize, node.ContentId, node.HardLink);
+            }
+            foreach (Node child in node.Children)
+            {
+                (ContentTotals childLive, ContentTotals childShipped) = Finish(child);
+                if (node.Kind == Kind.Dir)
+                {
+                    if (child.Change != Change.Removed)
+                    {
+                        live.UnionWith(childLive);
+                    }
+                    shipped.UnionWith(childShipped);
+                }
+            }
+            node.Size = live.Bytes;
+            node.ShippedSize = shipped.Bytes;
+            node.Sharing = (node.Change == Change.Removed ? shipped : live).Sharing;
+            return (live, shipped);
         }
 
         private static void Sort(List<Node> list)

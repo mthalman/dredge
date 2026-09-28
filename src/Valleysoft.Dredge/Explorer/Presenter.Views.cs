@@ -378,7 +378,8 @@ internal sealed partial class ExplorerPresenter
                         break;
                     }
                 }
-                hits.Add(new SearchHit(path, entry?.Type == ImageFileType.Directory, entry?.Size ?? 0, [.. layers], note));
+                long size = img.Analysis?.LiveContents.GetValueOrDefault(path)?.Size ?? entry?.Size ?? 0;
+                hits.Add(new SearchHit(path, entry?.Type == ImageFileType.Directory, size, [.. layers], note));
             }
             hits.Sort((a, b) => string.CompareOrdinal(a.Path, b.Path));
         }

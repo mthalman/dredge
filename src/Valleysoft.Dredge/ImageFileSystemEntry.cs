@@ -14,6 +14,8 @@ public enum ImageFileType
 
 public sealed record ImageLayerReference(int Index, string Digest);
 
+internal readonly record struct ImageContentId(int Layer, string Path, int EntryIndex);
+
 public sealed record ImageFileSystemEntry
 {
     public required string Path { get; init; }
@@ -38,6 +40,8 @@ public sealed record ImageFileSystemEntry
 
     [JsonIgnore]
     internal int ContentEntryIndex { get; init; }
+
+    internal ImageContentId ContentId => new(ContentLayerIndex, ContentPath ?? Path, ContentEntryIndex);
 
     // A hard link to a symlink shares its inode, so extraction must recreate the
     // symlink instead of dereferencing it into ordinary file content.
