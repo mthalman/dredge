@@ -46,10 +46,13 @@ internal sealed class ExplorerSource
         ImageName image, PlatformOptionsBase options, IReadOnlyList<string>? baseImages,
         CancellationToken cancellationToken,
         Func<IReadOnlyList<ExplorerPlatform>, ExplorerPlatform?>? choosePlatform = null,
-        IAppSettingsStore? settingsStore = null, ExplorerPlatform? exactPlatform = null)
+        IAppSettingsStore? settingsStore = null, ExplorerPlatform? exactPlatform = null,
+        ResolvedManifest? resolvedManifest = null)
     {
         (ResolvedManifest resolved, IReadOnlyList<ExplorerPlatform> platforms, ExplorerPlatform? platform) =
-            await ResolveAsync(client, image, options, exactPlatform, cancellationToken, choosePlatform, settingsStore);
+            resolvedManifest is null
+                ? await ResolveAsync(client, image, options, exactPlatform, cancellationToken, choosePlatform, settingsStore)
+                : (resolvedManifest, [], exactPlatform);
         PlatformOptionsBase resolvedOptions = platform is null ? options : ForPlatform(platform);
         IImageManifest manifest = resolved.Manifest;
         string configDigest = manifest.Config?.Digest ??

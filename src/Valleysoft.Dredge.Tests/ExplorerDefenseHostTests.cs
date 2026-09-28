@@ -266,15 +266,57 @@ public sealed class ExplorerDefenseHostTests : IAsyncDisposable
     }
 
     [Fact]
-    public async Task BaselineTagDescriptionIncludesItsResolvedSnapshotDigest()
+    public async Task CurrentTagDescriptionPinsItsSnapshotBeforeComparison()
     {
         TestImage baseline = await CreateAsync();
+        TestImage moved = await CreateAsync(Blob(("new", "tag moved")));
         TagChoice choice = new("current");
-        await Host(baseline).DescribeTagAsync(choice, Token);
+        ExplorerHost host = Host(baseline);
+        await host.DescribeTagAsync(choice, Token);
+        baseline.Client.Setup(c => c.Manifests.GetAsync(Image.Repo, "current", It.IsAny<CancellationToken>()))
+            .ReturnsAsync(moved.Source.Resolved.ManifestInfo);
+
+        ExplorerComparison comparison = await host.CompareAsync("registry.test/repo:current", () => { }, Token);
+
         Assert.Equal(baseline.Source.Resolved.ManifestInfo.DockerContentDigest, choice.Digest);
+        Assert.Equal(choice.Digest, comparison.Target.Resolved.ManifestInfo.DockerContentDigest);
+        Assert.Empty(comparison.Target.Entries);
         Assert.Contains("session snapshot", choice.Note);
         baseline.Client.Verify(c => c.Manifests.GetAsync(Image.Repo, It.IsAny<string>(),
-            It.IsAny<CancellationToken>()), Times.Never);
+            It.IsAny<CancellationToken>()), Times.Once);
+    }
+
+    [Fact]
+    public async Task MovedCurrentTagDescriptionMatchesItsCachedComparisonThroughBothAliases()
+    {
+        TestImage baseline = await CreateAsync();
+        byte[] movedBlob = Blob(("new", "tag moved"));
+        TestImage moved = await CreateAsync(movedBlob);
+        baseline.Client.Setup(c => c.Manifests.GetAsync(Image.Repo, "current", It.IsAny<CancellationToken>()))
+            .ReturnsAsync(moved.Source.Resolved.ManifestInfo);
+        baseline.Client.Setup(c => c.Blobs.GetRangeAsync(Image.Repo, LayerCacheTestContext.Digest(movedBlob),
+            0, It.IsAny<long?>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(() => new BlobDownloadResult(new MemoryStream(movedBlob), false, null, null, movedBlob.Length));
+        ExplorerHost host = Host(baseline);
+        ExplorerComparison comparison = await host.CompareAsync("current", () => { }, Token);
+        baseline.Client.Setup(c => c.Manifests.GetAsync(Image.Repo, "current", It.IsAny<CancellationToken>()))
+            .ReturnsAsync(baseline.Source.Resolved.ManifestInfo);
+
+        foreach (string alias in new[] { "current", "registry.test/repo:current" })
+        {
+            TagChoice choice = new(alias);
+            await host.DescribeTagAsync(choice, Token);
+            ExplorerComparison repeated = await host.CompareAsync(alias, () => { }, Token);
+
+            Assert.Same(comparison.Target, repeated.Target);
+            Assert.Equal(comparison.Target.Resolved.ManifestInfo.DockerContentDigest, choice.Digest);
+            Assert.Equal(1, choice.LayerCount);
+            Assert.Equal(0, choice.Shared);
+            Assert.Equal(movedBlob.Length, choice.AdditionalDownload);
+            Assert.DoesNotContain("same digest", choice.Note);
+        }
+        baseline.Client.Verify(c => c.Manifests.GetAsync(Image.Repo, "current",
+            It.IsAny<CancellationToken>()), Times.Once);
     }
 
     [Fact]

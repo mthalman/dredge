@@ -49,10 +49,12 @@ internal sealed class ExplorerSession
         IDockerRegistryClient client, IDockerRegistryClientFactory factory,
         ImageName image, PlatformOptionsBase options,
         LayerStore store, IReadOnlyList<string>? baseImages, CancellationToken cancellationToken,
-        IProgress<ImageIndexProgress>? progress = null, ExplorerPlatform? exactPlatform = null)
+        IProgress<ImageIndexProgress>? progress = null, ExplorerPlatform? exactPlatform = null,
+        ResolvedManifest? resolvedManifest = null)
     {
         ExplorerSource source = await ExplorerSource.OpenAsync(
-            client, factory, image, options, baseImages, cancellationToken, exactPlatform: exactPlatform);
+            client, factory, image, options, baseImages, cancellationToken, exactPlatform: exactPlatform,
+            resolvedManifest: resolvedManifest);
         return await CreateAsync(client, source, store, null, cancellationToken, progress);
     }
 

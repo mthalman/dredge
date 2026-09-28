@@ -524,6 +524,8 @@ internal sealed class ExplorerHost : IExplorerHost, IAsyncDisposable
     private Task? disposal;
     private readonly string viewerRoot;
     private readonly Dictionary<string, ExplorerSession> targets = new(StringComparer.Ordinal);
+    private readonly Dictionary<string, (ResolvedManifest Resolved, ExplorerPlatform? Platform, IDockerRegistryClient Client)>
+        targetSnapshots = new(StringComparer.Ordinal);
     private readonly List<IDockerRegistryClient> ownedClients = [];
     private IReadOnlyList<string>? tags;
 
@@ -591,22 +593,11 @@ internal sealed class ExplorerHost : IExplorerHost, IAsyncDisposable
     {
         using var operation = lifetime.Enter(cancellationToken);
         cancellationToken = operation.Token;
-        if (choice.Tag == ExplorerTags.Label(img.Reference))
-        {
-            choice.Digest = img.Digest;
-            choice.Shared = choice.LayerCount = img.LayerCount;
-            choice.AdditionalDownload = 0;
-            choice.Note = "same digest; session snapshot; reopen explorer to refresh";
-            return;
-        }
         ImageName name = ExploreCommand.ResolveCompareImage(source.Image, choice.Tag);
         await compareGate.WaitAsync(cancellationToken);
         try
         {
-            bool cached = targets.TryGetValue(name.ToString(), out ExplorerSession? target);
-            ResolvedManifest resolved = cached ? target!.Resolved :
-                (await ExplorerSource.ResolveAsync(
-                    client, name, PlatformOptions, source.Platform, cancellationToken)).Resolved;
+            ResolvedManifest resolved = (await GetTargetSnapshotAsync(name, cancellationToken)).Resolved;
             cancellationToken.ThrowIfCancellationRequested();
             choice.Digest = resolved.ManifestInfo.DockerContentDigest;
             string[] digests = resolved.Manifest.Layers.Select(layer => layer.Digest ?? "").ToArray();
@@ -614,16 +605,34 @@ internal sealed class ExplorerHost : IExplorerHost, IAsyncDisposable
                 resolved.Manifest.Layers.Select(layer => layer.Size).ToArray());
             choice.LayerCount = digests.Length;
             choice.Note = TagNote(choice.Digest, img.Digest, choice.Shared.Value, img.BaseLayerCount);
-            if (cached)
-            {
-                choice.Note = string.Join("; ", new[] { choice.Note, "cached session snapshot; reopen explorer to refresh" }
-                    .OfType<string>());
-            }
+            choice.Note = string.Join("; ", new[] { choice.Note, "cached session snapshot; reopen explorer to refresh" }
+                .OfType<string>());
         }
         finally
         {
             compareGate.Release();
         }
+    }
+
+    private async Task<(ResolvedManifest Resolved, ExplorerPlatform? Platform, IDockerRegistryClient Client)>
+        GetTargetSnapshotAsync(ImageName name, CancellationToken cancellationToken)
+    {
+        string key = name.ToString();
+        if (!targetSnapshots.TryGetValue(key, out var snapshot))
+        {
+            IDockerRegistryClient targetClient = client;
+            if (name.Registry != source.Image.Registry)
+            {
+                targetClient = await factory.GetClientAsync(name.Registry, cancellationToken);
+                ownedClients.Add(targetClient);
+            }
+            (ResolvedManifest resolved, _, ExplorerPlatform? platform) = await ExplorerSource.ResolveAsync(
+                targetClient, name, PlatformOptions, source.Platform, cancellationToken);
+            cancellationToken.ThrowIfCancellationRequested();
+            snapshot = (resolved, platform, targetClient);
+            targetSnapshots.Add(key, snapshot);
+        }
+        return snapshot;
     }
 
     // Flags tags that are this image, or that can't share its verified base.
@@ -667,14 +676,10 @@ internal sealed class ExplorerHost : IExplorerHost, IAsyncDisposable
         {
             if (!targets.TryGetValue(key, out ExplorerSession? target))
             {
-                IDockerRegistryClient targetClient = client;
-                if (name.Registry != source.Image.Registry)
-                {
-                    targetClient = await factory.GetClientAsync(name.Registry, cancellationToken);
-                    ownedClients.Add(targetClient);
-                }
-                target = await ExplorerSession.LoadAsync(targetClient, factory, name, PlatformOptions,
-                    store, baseImages: null, cancellationToken, exactPlatform: source.Platform);
+                var snapshot = await GetTargetSnapshotAsync(name, cancellationToken);
+                target = await ExplorerSession.LoadAsync(snapshot.Client, factory, name, PlatformOptions,
+                    store, baseImages: null, cancellationToken, exactPlatform: snapshot.Platform,
+                    resolvedManifest: snapshot.Resolved);
                 cancellationToken.ThrowIfCancellationRequested();
                 targets[key] = target;
             }
@@ -932,6 +937,7 @@ internal sealed class ExplorerHost : IExplorerHost, IAsyncDisposable
                 await target.Files.DisposeAsync();
             }
             targets.Clear();
+            targetSnapshots.Clear();
             foreach (IDockerRegistryClient owned in ownedClients)
             {
                 owned.Dispose();
