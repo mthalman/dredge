@@ -9,6 +9,7 @@ internal sealed class ExplorerState
     public FocusPane Focus { get; set; } = FocusPane.Right;
     public RightView View { get; set; } = RightView.Files;
     public bool WholeFilesystem { get; set; }
+    public bool LargestFirst { get; set; }
     public HashSet<Change> Hidden { get; } = [];
     public HashSet<string> Expanded { get; } = new(StringComparer.Ordinal);
     public int Cursor { get; set; }
@@ -454,6 +455,7 @@ internal sealed partial class ExplorerPresenter
                 .. retry, new("Tab", "Layers", new FocusOn(FocusPane.Layers)), packages, new("↑↓", "Move", ShowInFooter: false), step, whole,
                 new($"{K(KeyAction.ToggleAdded)} {K(KeyAction.ToggleModified)} {K(KeyAction.ToggleIdentical)} {K(KeyAction.ToggleDeleted)}", "Filter"),
                 new("Enter", "Inspect", new Activate()), search, insights,
+                new("Alt+S", s.LargestFirst ? "Sort by name" : "Largest first", new ToggleFileSort()),
                 new(K(KeyAction.Extract), "Extract…", new ExtractSelected()), compare, new("←→", "Fold", ShowInFooter: false), .. clear, findingsOnly,
                 page, ends, keys, quit,
             ],

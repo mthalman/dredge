@@ -139,6 +139,10 @@ The screen has four parts:
 - **Files pane.** Shows the files changed by the selected layer. Press `a` to
   show the whole filesystem instead. Permission and ownership columns are
   hidden when they would crowd filenames; finding annotations use spare space.
+  Press `Alt+S` or click the column header to switch between **Name** and
+  **Largest first**. Size ordering applies within each expanded directory and
+  keeps the selected path and expanded folders. It uses the displayed file or
+  folder size, not download bytes or potential savings.
 - **Details pane.** Describes the selected layer or file. Press `Enter` to
   inspect a file in a full-width preview; use `Esc` to return to the Layers and
   Files panes. Layer stepping is unavailable while previewing. Press `o` to

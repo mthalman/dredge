@@ -48,6 +48,11 @@ internal sealed partial class ExplorerPresenter
         void Walk(List<Node> nodes, string guide, int depth, bool inFinding)
         {
             List<Node> visible = nodes.Where(n => Visible(n) && (!s.FindingsOnly || inFinding || n.ContainsNote)).ToList();
+            if (s.LargestFirst)
+            {
+                visible = visible.OrderByDescending(n => n.Change == Change.Removed ? n.ShippedSize : n.Size)
+                    .ThenBy(n => n.Name, StringComparer.Ordinal).ToList();
+            }
             for (int i = 0; i < visible.Count; i++)
             {
                 Node n = visible[i];
@@ -92,7 +97,8 @@ internal sealed partial class ExplorerPresenter
         const int MetadataColumns = 35;
         const int MinimumNameColumns = 32;
         bool compact = Narrow || w - 2 - MetadataColumns < MinimumNameColumns;
-        List<Line> lines = [ModeToggle(s, w, tree, counts, whole), Chips(s, counts, chips, whole), ColumnHeader(compact)];
+        List<Line> lines = [ModeToggle(s, w, tree, counts, whole), Chips(s, counts, chips, whole),
+            ColumnHeader(compact).Add(s.LargestFirst ? "  Largest first" : "  Name", Theme.Channel).Add("  Alt+S", Theme.Silt)];
         List<(int Line, int Row)> clickable = [];
 
         int visible = TreeRows;
@@ -157,6 +163,7 @@ internal sealed partial class ExplorerPresenter
         pane.On(0, new SetWhole(false), 0, 12);
         pane.On(0, new SetWhole(true), 12, 30);
         chips.ForEach(c => pane.On(1, new ToggleChange(c.Change), c.Start, c.End));
+        pane.On(2, new ToggleFileSort());
         clickable.ForEach(c => pane.On(c.Line, new SetCursor(c.Row)));
         return pane;
     }
