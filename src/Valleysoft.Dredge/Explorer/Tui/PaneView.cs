@@ -154,7 +154,7 @@ internal sealed class PaneView : View
                 Command?.Invoke(cmd);
             }
             // Only rows open on double-click; a fast second click on a chip or toggle is just a click.
-            else if (ActivateOnDoubleClick && cmd is SetCursor or SelectFinding or SelectSearchHit)
+            else if (ActivateOnDoubleClick && cmd is SetCursor or SelectFinding or SelectSearchHit or SelectHistory)
             {
                 Command?.Invoke(new Activate());
             }

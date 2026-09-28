@@ -234,6 +234,17 @@ the current column when content extends beyond the viewport.
 Hard-link diffs read the captured file contents. Symbolic links, including hard
 links to symbolic links, compare their target text without following it. Type
 changes and changed hard-link targets are identified in the diff notice.
+In the inspector, `Alt+H` or clicking **History** opens every event in a
+scrollable list. Use arrows, Page Up/Down, or Home/End to select an event and
+`Enter` to preview the filesystem version at that layer. `Alt+D` compares the
+selected event with the previous event, including additions and deletions;
+the first event is compared with an absent file. Metadata-only changes and
+identical content are identified explicitly. Historical reads use the same
+bounded text previews and captured hard-link contents as other file reads.
+They do not move the selected layer or file-tree viewport. `Esc` retraces
+the historical diff, preview, history list, and original inspector.
+Extraction, external viewers, and copied CLI commands remain final-image
+operations in the original inspector, not historical-version actions.
 File-to-directory replacements retain the original file's size and diff access;
 use `Right` to expand their children.
 Folder sizes count shared hard-link content once within each folder, while
@@ -305,6 +316,8 @@ active commands.
 | `Alt+L` `Alt+D` `Alt+C` | In search: this layer only, include deleted paths, exact case |
 | `c` `s` | Compare with a tag; swap compared sides |
 | `Alt+V` | Toggle split/unified layout in a file diff |
+| `Alt+H` | Browse file history from the inspector |
+| `Alt+D` | In file history: diff selected event against its predecessor |
 | `r` | Retry a failed layer or package scan |
 | `x` `^C` `o` | Extract; copy the dredge command (Ctrl+C); open in the text viewer |
 | `Esc` `q` | Back; quit |

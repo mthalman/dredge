@@ -7,6 +7,123 @@ namespace Valleysoft.Dredge.Tests;
 [Collection(ExplorerUiCollection.Name)]
 public sealed class ExplorerNavigationTests
 {
+    [Fact]
+    public void HistoryReadFailuresAreVisibleAndReturningFromDiffResumesAnInterruptedPreview()
+    {
+        TaskCompletionSource<PreviewContent> preview = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        TaskCompletionSource<TextDiffContent> diff = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        int reads = 0;
+        ExplorerImage image = Custom([Layer([File("file", 1, "old")]), Layer([File("file", 1, "new")])]);
+        using ExplorerUiHarness ui = ExplorerWindowTests.Open(image, new() { Layer = 1 },
+            session => new FakeExplorerHost
+            {
+                Baseline = session,
+                VersionWork = (_, _, _) => Interlocked.Increment(ref reads) == 1 ? preview.Task
+                    : Task.FromException<PreviewContent>(new IOException("preview denied")),
+                VersionDiffWork = (_, _, _, _) => diff.Task
+            }, out _);
+        ui.Press(Key.Enter);
+        ui.Press(new Key('h').WithAlt);
+        ui.Press(Key.Enter);
+        ui.Until(() => reads == 1, "pending preview");
+        Task firstRead = ui.Window.HistoryTask;
+        ui.Press(new Key('d').WithAlt);
+        ui.Press(Key.Esc);
+        ui.Until(() => ui.Shows("preview denied"), "resumed preview failure");
+        preview.SetResult(new("file", null, ["stale"], null, 1));
+        diff.SetException(new IOException("stale diff"));
+        ui.Until(() => firstRead.IsCompleted, "old preview completion");
+        ui.Pump();
+        Assert.True(ui.Shows("preview denied"), ui.Screen());
+        Assert.Null(ui.State.HistoryDiff);
+        ui.Press(new Key('d').WithAlt);
+        ui.Until(() => ui.Shows("Could not read historical diff"), "diff failure");
+        ui.Press(Key.Esc);
+        Assert.True(ui.Shows("preview denied"), ui.Screen());
+        ui.Press(Key.Esc);
+        Assert.True(ui.Shows("File history"), ui.Screen());
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void CanceledHistoricalReadsCannotOverwriteAnotherVersion(bool failOldRequest)
+    {
+        TaskCompletionSource<PreviewContent> pending = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        CancellationToken oldToken = default;
+        ExplorerImage image = Custom([Layer([File("file", 1, "old")]), Layer([File("file", 1, "new")])]);
+        using ExplorerUiHarness ui = ExplorerWindowTests.Open(image, new() { Layer = 1 },
+            session => new FakeExplorerHost
+            {
+                Baseline = session,
+                VersionWork = (path, layer, token) =>
+                {
+                    if (layer == 0)
+                    {
+                        oldToken = token;
+                        return pending.Task;
+                    }
+                    return Task.FromResult(new PreviewContent(path, null, ["correct version"], null, 1));
+                }
+            }, out _);
+        ui.Press(Key.Enter);
+        ui.Until(() => ui.State.Preview is not null, "inspector");
+        (int x, int y) = ui.Find("History");
+        ui.Click(x, y);
+        Assert.Equal(RightView.History, ui.State.View);
+        ui.Press(Key.Home);
+        ui.Press(Key.Enter);
+        ui.Until(() => oldToken.CanBeCanceled, "older request");
+        Task oldRead = ui.Window.HistoryTask;
+        ui.Press(Key.Esc);
+        Assert.True(oldToken.IsCancellationRequested);
+        ui.Press(Key.End);
+        ui.Press(Key.Enter);
+        ui.Until(() => ui.Shows("correct version"), "newer version");
+        if (failOldRequest) pending.SetException(new IOException("stale failure"));
+        else pending.SetResult(new("file", null, ["stale version"], null, 1));
+        ui.Until(() => oldRead.IsCompleted, "canceled read completion");
+        ui.Pump();
+        Assert.Equal(["correct version"], ui.State.HistoryPreview!.Lines);
+        Assert.False(ui.Shows("stale"), ui.Screen());
+        Assert.Equal(1, ui.State.HistoryLayer);
+    }
+
+    [Theory]
+    [InlineData(80, 24)]
+    [InlineData(150, 42)]
+    public void FileHistoryOpensEveryVersionAndReturnsWithoutMovingTheFileTree(int width, int height)
+    {
+        ExplorerImage image = Custom(Enumerable.Range(0, 40)
+            .Select(i => Layer([File("file", 10, $"hash{i}")])).ToArray());
+        using ExplorerUiHarness ui = ExplorerWindowTests.Open(image, new() { Layer = 39 },
+            session => new FakeExplorerHost { Baseline = session }, out _, width, height);
+        ui.Press(Key.Enter);
+        ui.Until(() => ui.State.Preview is not null, "initial preview");
+        ui.Press(new Key('h').WithAlt);
+        Assert.True(ui.Shows("File history"), ui.Screen());
+        ui.Press(Key.Home);
+        (int firstX, int firstY) = ui.Find("layer 0 ");
+        ui.DoubleClick(firstX, firstY);
+        ui.Until(() => ui.Shows("Version at layer 0") && ui.Shows("version 0"), "first historical version");
+        Assert.Equal(39, ui.State.Layer);
+        ui.Press(Key.Esc);
+        Assert.True(ui.Shows("File history"), ui.Screen());
+        ui.Press(Key.End);
+        ui.Press(new Key('d').WithAlt);
+        ui.Until(() => ui.Shows("version 38") && ui.Shows("version 39") && ui.Shows("Split diff"), "historical diff");
+        ui.Press(new Key('v').WithAlt);
+        Assert.True(ui.Shows("Unified diff"), ui.Screen());
+        ui.Press(Key.Esc);
+        Assert.True(ui.Shows("File history"), ui.Screen());
+        ui.Press(Key.Esc);
+        Assert.Equal(RightView.Inspector, ui.State.View);
+        ui.Press(Key.Esc);
+        Assert.Equal(RightView.Files, ui.State.View);
+        Assert.Equal(39, ui.State.Layer);
+        Assert.Equal("file", ui.Window.Presenter.Flatten(ui.State)[ui.State.Cursor].Path);
+    }
+
     [Theory]
     [InlineData(80, 24)]
     [InlineData(150, 42)]

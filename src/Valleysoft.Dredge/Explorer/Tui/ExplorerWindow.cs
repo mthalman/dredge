@@ -40,6 +40,8 @@ internal sealed class ExplorerWindow : Window
     private IDriver? watched;
     private bool clearedThisFrame;
     private CancellationTokenSource? previewLoad;
+    private CancellationTokenSource? historyLoad;
+    private int historyGeneration;
     private CancellationTokenSource? packageLoad;
     private int compareGeneration;
     private CancellationTokenSource? compareLoad;
@@ -131,6 +133,7 @@ internal sealed class ExplorerWindow : Window
     public TextField ExtractField => extractField;
     internal TextField CommandText => commandText;
     internal Task DiffTask { get; private set; } = Task.CompletedTask;
+    internal Task HistoryTask { get; private set; } = Task.CompletedTask;
     internal Task PackageTask { get; private set; } = Task.CompletedTask;
     public ExplorerExit Exit { get; private set; } = new(ExplorerExitKind.Quit);
     internal void ViewerFailed(string error) => Notice(error, error: true);
@@ -200,6 +203,7 @@ internal sealed class ExplorerWindow : Window
         CancelComparison();
         CancelDiff();
         CancelPackages();
+        CancelHistory();
         Exit = exit;
         App?.RequestStop();
     }
@@ -330,6 +334,7 @@ internal sealed class ExplorerWindow : Window
             CancelComparison();
             CancelDiff();
             CancelPackages();
+            CancelHistory();
             previewLoad?.Dispose();
             previewLoad = null;
             windowLifetime.Dispose();
@@ -480,7 +485,7 @@ internal sealed class ExplorerWindow : Window
 
     private bool UsesFullWidth() => s.View is RightView.Keys or RightView.Command or RightView.Warning || s.Compare?.Diff is not null ||
         Comparing && Compare.IsOverview ||
-        !Comparing && (s.View == RightView.Inspector || ex.Narrow && s.View is RightView.Search or RightView.Insights);
+        !Comparing && (s.View is RightView.Inspector or RightView.History || ex.Narrow && s.View is RightView.Search or RightView.Insights);
 
     // A key acts only when the current context lists it; hints trimmed from a narrow footer still count.
     private bool Listed(Key key)
@@ -582,8 +587,8 @@ internal sealed class ExplorerWindow : Window
             KeyCode.PageDown => new Move(page),
             KeyCode.Home => new Jump(false),
             KeyCode.End => new Jump(true),
-            KeyCode.CursorLeft => s.View == RightView.Inspector || s.Compare?.Diff is not null ? new PanText(-8) : new Fold(false),
-            KeyCode.CursorRight => s.View == RightView.Inspector || s.Compare?.Diff is not null ? new PanText(8) : new Fold(true),
+            KeyCode.CursorLeft => s.View is RightView.Inspector or RightView.History || s.Compare?.Diff is not null ? new PanText(-8) : new Fold(false),
+            KeyCode.CursorRight => s.View is RightView.Inspector or RightView.History || s.Compare?.Diff is not null ? new PanText(8) : new Fold(true),
             _ => null,
         };
         if (key == Key.C.WithCtrl && host.Keys.Lookup('\u0003') == KeyAction.CopyCommand)
@@ -601,13 +606,22 @@ internal sealed class ExplorerWindow : Window
         {
             cmd = new ShowComparisonSnapshot();
         }
-        if (key.IsAlt && !key.IsCtrl && key.NoAlt.KeyCode == KeyCode.V && s.Compare?.Diff is not null)
+        if (key.IsAlt && !key.IsCtrl && key.NoAlt.KeyCode == KeyCode.V &&
+            (s.Compare?.Diff is not null || s.View == RightView.History && s.HistoryDiff is not null))
         {
             cmd = new ToggleDiffLayout();
         }
         if (key.IsAlt && !key.IsCtrl && key.NoAlt.KeyCode == KeyCode.S && !Comparing && s.View == RightView.Files)
         {
             cmd = new ToggleFileSort();
+        }
+        if (key.IsAlt && !key.IsCtrl && key.NoAlt.KeyCode == KeyCode.H && !Comparing && s.View == RightView.Inspector)
+        {
+            cmd = new OpenHistory();
+        }
+        if (key.IsAlt && !key.IsCtrl && key.NoAlt.KeyCode == KeyCode.D && !Comparing && s.View == RightView.History)
+        {
+            cmd = new DiffHistory();
         }
         if (ex.TooSmall && cmd is not null)
         {
@@ -793,6 +807,11 @@ internal sealed class ExplorerWindow : Window
             Refresh();
             return;
         }
+        if (!Comparing && s.View == RightView.History && ApplyHistory(cmd))
+        {
+            Refresh();
+            return;
+        }
         if (cmd is Back && s.View == RightView.Files && s.Investigation is { } investigation)
         {
             if (investigation.View == RightView.Search)
@@ -812,6 +831,20 @@ internal sealed class ExplorerWindow : Window
 
         switch (cmd)
         {
+            case OpenHistory when s.View == RightView.Inspector:
+                if (!img.Complete)
+                {
+                    Notice("History versions are available once every layer is indexed.");
+                    break;
+                }
+                CancelHistory();
+                s.HistoryCursor = Math.Max(0, img.PathHistory(s.InspectPath).FindLastIndex(item => item.Layer <= s.Layer));
+                s.HistoryScroll = 0;
+                s.HistoryLayer = null;
+                s.HistoryDiff = null;
+                s.View = RightView.History;
+                right.SetFocus();
+                break;
             case Quit:
                 Stop(new(ExplorerExitKind.Quit));
                 return;
@@ -1299,6 +1332,107 @@ internal sealed class ExplorerWindow : Window
                 return true;
         }
         return false;
+    }
+
+    private void CancelHistory()
+    {
+        historyGeneration++;
+        historyLoad?.Cancel();
+        historyLoad?.Dispose();
+        historyLoad = null;
+    }
+
+    private bool ApplyHistory(Cmd cmd)
+    {
+        List<(int Layer, Change Change)> history = img.PathHistory(s.InspectPath);
+        switch (cmd)
+        {
+            case Quit or Redraw or Notify or ShowView:
+                return false;
+            case Back:
+                CancelHistory();
+                if (s.HistoryDiff is not null)
+                {
+                    s.HistoryDiff = null;
+                    if (s.HistoryLayer is not null && s.HistoryPreview is null)
+                    {
+                        return ApplyHistory(new Activate());
+                    }
+                }
+                else if (s.HistoryLayer is not null) s.HistoryLayer = null;
+                else s.View = RightView.Inspector;
+                return true;
+            case Move move when s.HistoryDiff is { } diff:
+                diff.DiffScroll = Math.Max(0, diff.DiffScroll + move.Delta);
+                return true;
+            case Jump jump when s.HistoryDiff is { } diff:
+                diff.DiffScroll = jump.ToEnd ? int.MaxValue : 0;
+                return true;
+            case PanText pan when s.HistoryDiff is { } diff:
+                diff.DiffColumn = Math.Max(0, diff.DiffColumn + pan.Delta);
+                return true;
+            case ToggleDiffLayout when s.HistoryDiff is { } diff:
+                diff.ToggleDiffLayout();
+                return true;
+            case Move move when s.HistoryLayer is not null:
+                s.HistoryPreviewScroll = Math.Max(0, s.HistoryPreviewScroll + move.Delta);
+                return true;
+            case Jump jump when s.HistoryLayer is not null:
+                s.HistoryPreviewScroll = jump.ToEnd ? int.MaxValue : 0;
+                return true;
+            case PanText pan:
+                s.HistoryPreviewColumn = Math.Max(0, s.HistoryPreviewColumn + pan.Delta);
+                return true;
+            case Move move:
+                s.HistoryCursor = Math.Clamp(s.HistoryCursor + move.Delta, 0, Math.Max(0, history.Count - 1));
+                return true;
+            case Jump jump:
+                s.HistoryCursor = jump.ToEnd ? Math.Max(0, history.Count - 1) : 0;
+                return true;
+            case SelectHistory select:
+                s.HistoryCursor = Math.Clamp(select.Index, 0, Math.Max(0, history.Count - 1));
+                return true;
+            case Activate or DiffHistory when history.Count > 0:
+                CancelHistory();
+                historyLoad = CancellationTokenSource.CreateLinkedTokenSource(lifetime);
+                int generation = historyGeneration;
+                string path = s.InspectPath;
+                int layer = history[s.HistoryCursor].Layer;
+                if (cmd is DiffHistory)
+                {
+                    int previous = s.HistoryCursor == 0 ? -1 : history[s.HistoryCursor - 1].Layer;
+                    FileDiffState state = new(previous < 0 ? "Before first version" : $"layer {previous}", $"layer {layer}")
+                    {
+                        Diff = new(path, null, "Loading historical diff...")
+                    };
+                    s.HistoryDiff = state;
+                    HistoryTask = RunAsync(ct => host.DiffVersionAsync(path, previous, layer, ct), diff =>
+                    {
+                        if (historyGeneration == generation) state.Diff = diff;
+                    }, error =>
+                    {
+                        if (historyGeneration == generation)
+                            state.Diff = new(path, null, "Could not read historical diff: " + error.Message);
+                    }, historyLoad.Token);
+                }
+                else
+                {
+                    s.HistoryLayer = layer;
+                    s.HistoryPreview = null;
+                    s.HistoryPreviewScroll = s.HistoryPreviewColumn = 0;
+                    HistoryTask = RunAsync(ct => host.PreviewVersionAsync(path, layer, ct), preview =>
+                    {
+                        if (historyGeneration == generation) s.HistoryPreview = preview;
+                    }, error =>
+                    {
+                        if (historyGeneration == generation)
+                            s.HistoryPreview = new(path, null, null, "Could not read historical version: " + error.Message, 0);
+                    }, historyLoad.Token);
+                }
+                return true;
+            default:
+                return true;
+        }
     }
 
     private void EnsurePreview()

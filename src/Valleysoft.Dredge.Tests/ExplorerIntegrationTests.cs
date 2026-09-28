@@ -142,6 +142,26 @@ public sealed class ExplorerIntegrationTests
             Assert.Contains(ui.State.Preview!.Lines!, line => line.Contains("debug", StringComparison.Ordinal));
             Assert.True(ui.Shows("\"debug\""), ui.Screen());
 
+            ui.Press(new Key('h').WithAlt);
+            ui.Press(Key.Home);
+            ui.Press(Key.Enter);
+            ui.Until(() => ui.State.HistoryPreview?.Lines?.Any(line => line.Contains("info", StringComparison.Ordinal)) == true,
+                "the original config version");
+            Assert.True(ui.Shows("\"info\""), ui.Screen());
+            Assert.Equal(2, ui.State.Layer);
+            ui.Press(Key.Esc);
+            ui.Press(Key.End);
+            ui.Press(new Key('d').WithAlt);
+            ui.Until(() => ui.State.HistoryDiff?.Diff?.Lines is not null, "the config history diff");
+            Assert.Contains(ui.State.HistoryDiff!.Diff!.Lines!,
+                line => line.Op == DiffOp.Delete && line.Text.Contains("info", StringComparison.Ordinal));
+            Assert.Contains(ui.State.HistoryDiff.Diff.Lines!,
+                line => line.Op == DiffOp.Insert && line.Text.Contains("debug", StringComparison.Ordinal));
+            ui.Press(Key.Esc);
+            ui.Press(Key.Esc);
+            Assert.Equal(RightView.Inspector, ui.State.View);
+            Assert.True(ui.Shows("\"debug\""), ui.Screen());
+
             ui.Press(Key.C.WithCtrl);
             Assert.StartsWith("$ dredge image cat", ui.State.Notice);
             Assert.Contains("/app/config.json", ui.State.Notice);

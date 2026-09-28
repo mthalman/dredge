@@ -146,6 +146,8 @@ internal sealed class FakeExplorerHost : IExplorerHost
     public ExplorerSession? Baseline { get; init; }
     public IReadOnlyList<string> Tags { get; init; } = ["1.0", "2.0"];
     public Func<string, PreviewContent>? Preview { get; init; }
+    public Func<string, int, CancellationToken, Task<PreviewContent>>? VersionWork { get; init; }
+    public Func<string, int, int, CancellationToken, Task<TextDiffContent>>? VersionDiffWork { get; init; }
     public Func<string, ExplorerSession>? Target { get; init; }
     public Exception? CompareError { get; init; }
     public Func<Task<ExplorerComparison>>? CompareWork { get; init; }
@@ -218,6 +220,14 @@ internal sealed class FakeExplorerHost : IExplorerHost
         return Task.FromResult(Preview?.Invoke(path) ?? new PreviewContent(path, ExplorerHost.LanguageFor(path),
             ["{", "  \"name\": \"storefront\"", "}"], null, 30));
     }
+
+    public Task<PreviewContent> PreviewVersionAsync(string path, int layer, CancellationToken cancellationToken) =>
+        VersionWork?.Invoke(path, layer, cancellationToken) ??
+        Task.FromResult(new PreviewContent(path, null, [$"version {layer}"], null, 10));
+
+    public Task<TextDiffContent> DiffVersionAsync(string path, int previousLayer, int layer, CancellationToken cancellationToken) =>
+        VersionDiffWork?.Invoke(path, previousLayer, layer, cancellationToken) ??
+        Task.FromResult(new TextDiffContent(path, TextDiff.Diff([$"version {previousLayer}"], [$"version {layer}"]), null));
 
     public Task<TextDiffContent> DiffAsync(ExplorerComparison comparison, string path, CancellationToken cancellationToken)
     {

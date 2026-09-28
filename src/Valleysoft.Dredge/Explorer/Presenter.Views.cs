@@ -240,7 +240,7 @@ internal sealed partial class ExplorerPresenter
         }
         items.Add(meta.Truncate(w));
         items.Add(Line.Blank);
-        items.Add(Line.Of("History", Theme.S(Theme.Foam, null, Deco.Bold)));
+        items.Add(new Line().Add("History", Theme.S(Theme.Foam, null, Deco.Bold)).Add("  Alt+H browse versions", Theme.Silt));
 
         List<(int Layer, Change Change)> history = img.PathHistory(path);
         int maxHistory = Math.Max(2, (RightInnerHeight - 12) / 2);
@@ -330,7 +330,9 @@ internal sealed partial class ExplorerPresenter
             .Add(CopyCommandText(s, path, node.Kind == Kind.Dir), Theme.Foam)
             .PadRight(w, new Line().Append(Keycap(Keys.Label(KeyAction.CopyCommand))).Add(" " + CopyVerb.ToLowerInvariant(), Theme.Silt)));
 
-        return Pane(items, path.Split('/')[^1], true, "/" + path);
+        PaneContent pane = Pane(items, path.Split('/')[^1], true, "/" + path);
+        pane.On(2, new OpenHistory());
+        return pane;
     }
 
     public string CopyCommandText(ExplorerState s, string path, bool dir)
@@ -548,6 +550,8 @@ internal sealed partial class ExplorerPresenter
                 (K(KeyAction.FindingsOnly), "Only paths with findings"), ("Enter", "Inspect file")]),
             ("Preview", [("← →", "Pan long text lines")]),
             ("Compare", [(K(KeyAction.SwapSides), "Swap sides"), ("Enter", "Diff a file"), ("Alt+V", "Split or unified diff"), ("Esc", "Leave compare")]),
+            ("File history", [("Alt+H", "Browse versions from inspector"), ("Enter", "Preview selected version"),
+                ("Alt+D", "Diff against previous event"), ("Esc", "Back one step")]),
         ];
         (string Group, (string Keys, string What)[] Items)[] right =
         [

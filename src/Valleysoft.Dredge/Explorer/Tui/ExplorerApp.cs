@@ -718,6 +718,69 @@ internal sealed class ExplorerHost : IExplorerHost, IAsyncDisposable
         return await session.GetPackagesAsync(session.Resolved.Manifest.Layers.Length == 0 ? -1 : layer, operation.Token);
     }
 
+    public async Task<PreviewContent> PreviewVersionAsync(string path, int layer, CancellationToken cancellationToken)
+    {
+        using var operation = lifetime.Enter(cancellationToken);
+        await using ImageFileSystem snapshot = Loaded.Files.CreateLayerSnapshot(layer, operation.Token);
+        ImageFileSystemEntry? entry = snapshot.List(null, true, false).FirstOrDefault(entry => entry.Path == path);
+        if (entry is null)
+        {
+            return new(path, null, [], $"Path absent after layer {layer}.", 0);
+        }
+        if (entry.Type == ImageFileType.Directory)
+        {
+            return new(path, null, [], "Directory; no text content.", 0, entry);
+        }
+        if (entry.Type == ImageFileType.SymbolicLink || entry.ContentLinkTarget is not null)
+        {
+            return new(path, null, [entry.ContentLinkTarget ?? entry.LinkTarget ??
+                throw new InvalidDataException($"Link '/{path}' has no target.")],
+                "Symbolic link target, not the referenced file.", entry.Size, entry);
+        }
+        if (entry.Type is not (ImageFileType.File or ImageFileType.HardLink))
+        {
+            return new(path, null, null, $"No text preview for file type '{entry.Type}'.", entry.Size, entry);
+        }
+        (List<string>? lines, string? message, long bytes) = await ReadTextAsync(snapshot, path, operation.Token);
+        return new(path, LanguageFor(path), lines, message, bytes, entry);
+    }
+
+    public async Task<TextDiffContent> DiffVersionAsync(
+        string path, int previousLayer, int layer, CancellationToken cancellationToken)
+    {
+        if (previousLayer < -1 || previousLayer >= layer)
+        {
+            throw new ArgumentOutOfRangeException(nameof(previousLayer));
+        }
+        using var operation = lifetime.Enter(cancellationToken);
+        PreviewContent before = previousLayer < 0 ? new(path, null, [], "Before the first version.", 0)
+            : await PreviewVersionAsync(path, previousLayer, operation.Token);
+        PreviewContent after = await PreviewVersionAsync(path, layer, operation.Token);
+        List<string> messages = [];
+        if (before.Message is not null) messages.Add("Before: " + before.Message);
+        if (after.Message is not null) messages.Add("After: " + after.Message);
+        if (before.Entry?.Type != after.Entry?.Type || before.Entry?.Mode != after.Entry?.Mode ||
+            before.Entry?.UserId != after.Entry?.UserId || before.Entry?.GroupId != after.Entry?.GroupId ||
+            before.Entry?.LinkTarget != after.Entry?.LinkTarget)
+        {
+            string Metadata(ImageFileSystemEntry? entry) => entry is null ? "missing"
+                : $"{entry.Type}, mode {Convert.ToString(entry.Mode, 8)}, {entry.UserId}:{entry.GroupId}" +
+                    (entry.LinkTarget is null ? "" : $", target {entry.LinkTarget}");
+            messages.Add($"Metadata: {Metadata(before.Entry)} -> {Metadata(after.Entry)}.");
+        }
+        IReadOnlyList<DiffLine>? lines = before.Lines is null || after.Lines is null ? null
+            : TextDiff.Diff(before.Lines, after.Lines);
+        if (lines is null && before.Lines is not null && after.Lines is not null)
+        {
+            messages.Add("Too many changes to show.");
+        }
+        else if (lines is not null && lines.All(line => line.Op == DiffOp.Same))
+        {
+            messages.Add("No text differences; content is identical.");
+        }
+        return new(path, lines, messages.Count == 0 ? null : string.Join(" ", messages));
+    }
+
     internal static string? LanguageFor(string path) =>
         path.EndsWith(".json", StringComparison.OrdinalIgnoreCase) ? "json"
         : path.EndsWith("Dockerfile", StringComparison.OrdinalIgnoreCase) ? "dockerfile"

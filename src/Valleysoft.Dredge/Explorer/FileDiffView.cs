@@ -7,6 +7,42 @@ internal sealed record DiffSpan(string Text, bool Changed);
 internal sealed record VisualDiffLine(DiffLine Source, IReadOnlyList<DiffSpan> Spans);
 internal sealed record VisualDiffPair(VisualDiffLine? Left, VisualDiffLine? Right);
 
+internal class FileDiffState
+{
+    public FileDiffState(string baselineLabel, string targetLabel)
+    {
+        BaselineLabel = baselineLabel;
+        TargetLabel = targetLabel;
+    }
+
+    public string BaselineLabel { get; set; }
+    public string TargetLabel { get; set; }
+    public TextDiffContent? Diff { get; set; }
+    public int DiffScroll { get; set; }
+    public int DiffColumn { get; set; }
+    public bool UnifiedDiff { get; set; }
+
+    public void ToggleDiffLayout()
+    {
+        if (Diff is null) return;
+        FileDiffDocument document = Diff.Document;
+        if (UnifiedDiff)
+        {
+            VisualDiffLine? anchor = document.Unified.ElementAtOrDefault(DiffScroll);
+            DiffScroll = anchor is null ? 0 : document.Split.ToList()
+                .FindIndex(pair => pair.Left?.Source == anchor.Source || pair.Right?.Source == anchor.Source);
+        }
+        else
+        {
+            VisualDiffPair? pair = document.Split.ElementAtOrDefault(DiffScroll);
+            DiffLine? anchor = (pair?.Left ?? pair?.Right)?.Source;
+            DiffScroll = anchor is null ? 0 : document.Unified.ToList().FindIndex(line => line.Source == anchor);
+        }
+        DiffScroll = Math.Max(0, DiffScroll);
+        UnifiedDiff = !UnifiedDiff;
+    }
+}
+
 internal sealed class FileDiffDocument
 {
     public FileDiffDocument(IReadOnlyList<DiffLine> lines)
@@ -95,7 +131,7 @@ internal sealed class FileDiffDocument
 
 internal static class FileDiffView
 {
-    public static PaneContent Render(ExplorerPresenter presenter, CompareState state, TextDiffContent diff)
+    public static PaneContent Render(ExplorerPresenter presenter, FileDiffState state, TextDiffContent diff)
     {
         FileDiffDocument document = diff.Document;
         int width = presenter.RightInner;

@@ -23,6 +23,89 @@ public sealed class ExplorerDefenseHostTests : IAsyncDisposable
     private static CancellationToken Token => TestContext.Current.CancellationToken;
 
     [Fact]
+    public async Task HistoricalVersionsSurviveDeletionAndReadditionWithoutChangingTheFinalImage()
+    {
+        TestImage image = await CreateAsync(Blob(("file", "old")), Blob(("file", "new")),
+            Blob((".wh.file", "")), Blob(("file", "readded")));
+        ExplorerHost host = Host(image);
+        Assert.Equal(["old"], (await host.PreviewVersionAsync("file", 0, Token)).Lines);
+        Assert.Equal(["new"], (await host.PreviewVersionAsync("file", 1, Token)).Lines);
+        PreviewContent missing = await host.PreviewVersionAsync("file", 2, Token);
+        Assert.Empty(missing.Lines!);
+        Assert.Contains("absent", missing.Message);
+        Assert.Equal(["readded"], (await host.PreviewAsync("file", 0, Token)).Lines);
+        Assert.Equal([new DiffLine(DiffOp.Insert, null, 1, "old")],
+            (await host.DiffVersionAsync("file", -1, 0, Token)).Lines);
+        Assert.Equal([new DiffLine(DiffOp.Delete, 1, null, "new")],
+            (await host.DiffVersionAsync("file", 1, 2, Token)).Lines);
+        Assert.Equal([new DiffLine(DiffOp.Insert, null, 1, "readded")],
+            (await host.DiffVersionAsync("file", 2, 3, Token)).Lines);
+        Assert.Equal([new DiffLine(DiffOp.Delete, 1, null, "old"), new DiffLine(DiffOp.Insert, null, 1, "new")],
+            (await host.DiffVersionAsync("file", 0, 1, Token)).Lines);
+        using CancellationTokenSource canceled = new();
+        canceled.Cancel();
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(() => host.PreviewVersionAsync("file", 0, canceled.Token));
+        await Assert.ThrowsAsync<ArgumentOutOfRangeException>(() => host.PreviewVersionAsync("file", 4, Token));
+        await Assert.ThrowsAsync<ArgumentOutOfRangeException>(() => host.DiffVersionAsync("file", -2, 0, Token));
+    }
+
+    [Theory]
+    [InlineData(TarEntryType.RegularFile)]
+    [InlineData(TarEntryType.SymbolicLink)]
+    public async Task HistoricalHardLinksRetainCapturedContentAfterTheOriginalIsReplaced(TarEntryType type)
+    {
+        TestImage image = await CreateAsync(ArchiveEntries(
+            type == TarEntryType.RegularFile
+                ? new PaxTarEntry(type, "original") { DataStream = new MemoryStream("old"u8.ToArray()) }
+                : new PaxTarEntry(type, "original") { LinkName = "old" },
+            new PaxTarEntry(TarEntryType.HardLink, "saved") { LinkName = "original" }),
+            Blob(("original", "new")), Blob((".wh.original", "")));
+        ExplorerHost host = Host(image);
+        Assert.Equal(["old"], (await host.PreviewVersionAsync("saved", 2, Token)).Lines);
+        TextDiffContent diff = await host.DiffVersionAsync("saved", 0, 2, Token);
+        Assert.Equal(DiffOp.Same, Assert.Single(diff.Lines!).Op);
+        Assert.Contains("identical", diff.Message);
+    }
+
+    [Fact]
+    public async Task HistoricalDiffIdentifiesMetadataOnlyChangesAndFileDirectoryReplacement()
+    {
+        byte[] Layer(UnixFileMode mode) => ArchiveEntries(new PaxTarEntry(TarEntryType.RegularFile, "file")
+            { DataStream = new MemoryStream("same"u8.ToArray()), Mode = mode });
+        TestImage image = await CreateAsync(Layer(UnixFileMode.UserRead), Layer(UnixFileMode.UserRead | UnixFileMode.UserWrite),
+            ArchiveEntries(new PaxTarEntry(TarEntryType.Directory, "file")));
+        ExplorerHost host = Host(image);
+        TextDiffContent diff = await host.DiffVersionAsync("file", 0, 1, Token);
+        Assert.Equal(DiffOp.Same, Assert.Single(diff.Lines!).Op);
+        Assert.Contains("mode 400", diff.Message);
+        Assert.Contains("mode 600", diff.Message);
+        Assert.Contains("identical", diff.Message);
+        TextDiffContent replacement = await host.DiffVersionAsync("file", 1, 2, Token);
+        Assert.Equal(new DiffLine(DiffOp.Delete, 1, null, "same"), Assert.Single(replacement.Lines!));
+        Assert.Contains("Directory", replacement.Message);
+    }
+
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public async Task HistoricalDiffRetainsBinaryAndTruncationNotices(bool binary)
+    {
+        byte[] bytes = binary ? [0, 1, 2] : Encoding.UTF8.GetBytes(new string('x', ExplorerApp.PreviewLimit + 100));
+        TestImage image = await CreateAsync(Blob(("file", "old")), Archive(("file", bytes)));
+        TextDiffContent diff = await Host(image).DiffVersionAsync("file", 0, 1, Token);
+        if (binary)
+        {
+            Assert.Null(diff.Lines);
+            Assert.Contains("Binary", diff.Message);
+        }
+        else
+        {
+            Assert.Contains("first", diff.Message);
+            Assert.Equal(ExplorerApp.PreviewLimit, diff.Lines!.Single(line => line.Op == DiffOp.Insert).Text.Length);
+        }
+    }
+
+    [Fact]
     public async Task PackageInventoriesAreLazyCachedAndIsolatedByLayer()
     {
         const string path = "app/node_modules/example/package.json";

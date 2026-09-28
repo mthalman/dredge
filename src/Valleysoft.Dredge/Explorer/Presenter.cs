@@ -1,7 +1,7 @@
 namespace Valleysoft.Dredge.Explorer;
 
 internal enum FocusPane { Layers, Right }
-internal enum RightView { Files, Insights, Inspector, Search, Keys, Command, Warning, Packages }
+internal enum RightView { Files, Insights, Inspector, Search, Keys, Command, Warning, Packages, History }
 
 internal sealed class ExplorerState
 {
@@ -35,6 +35,13 @@ internal sealed class ExplorerState
     public int PreviewColumn { get; set; }
     public string InspectPath { get; set; } = "";
     public PreviewContent? Preview { get; set; }
+    public int HistoryCursor { get; set; }
+    public int HistoryScroll { get; set; }
+    public int? HistoryLayer { get; set; }
+    public PreviewContent? HistoryPreview { get; set; }
+    public FileDiffState? HistoryDiff { get; set; }
+    public int HistoryPreviewScroll { get; set; }
+    public int HistoryPreviewColumn { get; set; }
     public int Spinner { get; set; }
     public CompareState? Compare { get; set; }
     public int? PackagesLayer { get; set; }
@@ -77,7 +84,8 @@ internal sealed record InvestigationContext(
     }
 }
 
-internal sealed record PreviewContent(string Path, string? Language, List<string>? Lines, string? Message, long Bytes);
+internal sealed record PreviewContent(string Path, string? Language, List<string>? Lines, string? Message, long Bytes,
+    ImageFileSystemEntry? Entry = null);
 
 internal sealed record FlatRow(Node Node, string Path, string Branch, bool Expanded, bool Expandable);
 
@@ -135,6 +143,7 @@ internal sealed partial class ExplorerPresenter
     {
         RightView.Insights => InsightsPane(s),
         RightView.Inspector => InspectorPane(s),
+        RightView.History => HistoryPane(s),
         RightView.Search => SearchPane(s),
         RightView.Keys => KeysPane(s),
         RightView.Warning => WarningPane(s),
@@ -439,10 +448,26 @@ internal sealed partial class ExplorerPresenter
             ],
             RightView.Inspector =>
             [
+                new("Alt+H", "History", new OpenHistory()),
                 new("↑↓", "Scroll", ShowInFooter: false), new("←→", "Pan text", ShowInFooter: false), new(K(KeyAction.Extract), "Extract…", new ExtractSelected()),
                 new(K(KeyAction.CopyCommand), $"{CopyVerb} command", new CopyCommand()),
                 new(K(KeyAction.Viewer), "Open file in text viewer", new OpenInViewer()),
                 back, page, ends, keys, quit,
+            ],
+            RightView.History when s.HistoryDiff is not null =>
+            [
+                new("Alt+V", s.HistoryDiff.UnifiedDiff ? "Split diff" : "Unified diff", new ToggleDiffLayout()),
+                new("↑↓", "Scroll", ShowInFooter: false), new("←→", "Pan text", ShowInFooter: false),
+                new("Esc", s.HistoryLayer is null ? "Back to history" : "Back to version", new Back()), page, ends, keys, quit,
+            ],
+            RightView.History =>
+            [
+                .. s.HistoryLayer is null ? new Hint[] { new("Enter", "Preview version", new Activate()) } : [],
+                new("Alt+D", "Diff previous", new DiffHistory()),
+                new("Esc", s.HistoryLayer is null ? "Back to inspector" : "Back to history", new Back()),
+                new("↑↓", s.HistoryLayer is null ? "Select" : "Scroll", ShowInFooter: false),
+                .. s.HistoryLayer is not null ? new Hint[] { new("←→", "Pan text", ShowInFooter: false) } : [],
+                page, ends, keys, quit,
             ],
             RightView.Keys or RightView.Warning => [new("↑↓", "Scroll"), page, ends, back, quit],
             RightView.Command => [new("←→", "Scroll"), new("Ctrl+A", "Select all"), ends, back, keys, quit],

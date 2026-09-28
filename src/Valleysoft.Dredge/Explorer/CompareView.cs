@@ -19,19 +19,16 @@ internal sealed record PackageFilesContent(
     ExplorerPackageDifference Package, IReadOnlyList<(string Path, Change Change)>? Files, string? Message, int Total,
     IReadOnlyList<string>? Warnings = null);
 
-internal sealed class CompareState
+internal sealed class CompareState : FileDiffState
 {
     public CompareState(ExplorerComparison comparison, string baselineLabel, string targetLabel)
+        : base(baselineLabel, targetLabel)
     {
         Comparison = comparison;
-        BaselineLabel = baselineLabel;
-        TargetLabel = targetLabel;
         Layer = Differences().DefaultIfEmpty(0).First();
     }
 
     public ExplorerComparison Comparison { get; set; }
-    public string BaselineLabel { get; set; }
-    public string TargetLabel { get; set; }
     public int Layer { get; set; }
     public bool FocusLayers { get; set; }
     public bool Overview { get; set; }
@@ -40,35 +37,11 @@ internal sealed class CompareState
     public HashSet<string> Expanded { get; } = new(
         ["section:packages", "section:files", .. Enum.GetValues<InstalledPackageEcosystem>().Select(e => $"eco:{e}")],
         StringComparer.Ordinal);
-    public TextDiffContent? Diff { get; set; }
-    public int DiffScroll { get; set; }
-    public int DiffColumn { get; set; }
-    public bool UnifiedDiff { get; set; }
     public PackageFilesContent? PackageFiles { get; set; }
     public bool Busy { get; set; }
     public bool Searching { get; set; }
     public string SearchQuery { get; set; } = "";
     public (int Cursor, int Scroll, string Query) PackageReturn { get; set; } = (0, 0, "");
-
-    public void ToggleDiffLayout()
-    {
-        if (Diff is null) return;
-        FileDiffDocument document = Diff.Document;
-        if (UnifiedDiff)
-        {
-            VisualDiffLine? anchor = document.Unified.ElementAtOrDefault(DiffScroll);
-            DiffScroll = anchor is null ? 0 : document.Split.ToList()
-                .FindIndex(pair => pair.Left?.Source == anchor.Source || pair.Right?.Source == anchor.Source);
-        }
-        else
-        {
-            VisualDiffPair? pair = document.Split.ElementAtOrDefault(DiffScroll);
-            DiffLine? anchor = (pair?.Left ?? pair?.Right)?.Source;
-            DiffScroll = anchor is null ? 0 : document.Unified.ToList().FindIndex(line => line.Source == anchor);
-        }
-        DiffScroll = Math.Max(0, DiffScroll);
-        UnifiedDiff = !UnifiedDiff;
-    }
 
     public int LayerCount => Math.Max(Comparison.Baseline.Resolved.Manifest.Layers.Length, Comparison.Target.Resolved.Manifest.Layers.Length);
 
