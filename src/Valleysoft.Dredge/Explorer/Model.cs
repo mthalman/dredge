@@ -206,8 +206,6 @@ internal sealed class ExplorerImage
     public long PotentialSavings => Insights.PotentialBytes;
     public double Efficiency => TotalSize == 0 ? 1 : 1 - (double)TotalReclaimable / TotalSize;
 
-    public int? FirstUserLayer => LayerIndexes.Where(layer => !IsBase(layer)).Cast<int?>().FirstOrDefault();
-
     public void SetIndexed(int layer, LayerChanges changes)
     {
         raw[layer] = changes;

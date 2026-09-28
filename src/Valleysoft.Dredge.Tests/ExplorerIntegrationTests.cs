@@ -109,7 +109,7 @@ public sealed class ExplorerIntegrationTests
             ui.Press(Key.Esc);
             Assert.Equal(RightView.Files, ui.State.View);
 
-            ui.Press(new Key('k'));
+            ui.Press(new Key('p'));
             ui.Until(() => ui.State.Packages is not null, "the selected layer's package inventory");
             InstalledPackageMetadata layerPackages = ui.State.Packages!;
             Assert.Equal(["1.0.0"], layerPackages.Ecosystems[InstalledPackageEcosystem.Npm].Packages["left-pad"]);

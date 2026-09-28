@@ -165,7 +165,7 @@ its picker statistics describe that same snapshot rather than a newer version
 of a moving tag. The resolved digest identifies the content being compared;
 `Alt+I` shows the full identities of both comparison snapshots. Reopen the
 explorer to obtain fresh snapshots.
-Press `k` to view **packages at the selected layer**, without starting a
+Press `p` to view **packages at the selected layer**, without starting a
 comparison. This is the cumulative filesystem inventory through that layer,
 including inherited packages, not just packages changed by that layer. Step
 with `[`/`]` or select another layer to see installs, upgrades, and removals.
@@ -224,10 +224,9 @@ the list may be incomplete. In comparison, `Alt+W` opens full metadata and
 ownership warning details; `Esc` returns to the previous view.
 
 Press `x` to extract the selected file or directory, and `y` to copy the
-equivalent `dredge image` command. Press `p` to choose another Linux platform,
-including an architecture variant such as `arm/v7`, of a multi-platform image.
+equivalent `dredge image` command.
 If the initial image has multiple matching Linux platforms after applying flags
-and settings, the same platform picker opens before layer indexing starts.
+and settings, a platform picker opens before layer indexing starts.
 This also resolves variant-only ambiguity, such as `arm/v6` versus `arm/v7`.
 Compare mode opens the other tag on the same platform. Press `?` for all keys,
 and `q` to quit. Help uses the full screen body and supports scrolling with
@@ -250,8 +249,7 @@ complete command. Select text with the mouse or `Ctrl+A`;
 Keys work only in their applicable pane or view. Navigation keys such as
 arrows, `PgUp`/`PgDn`, and `Home`/`End` remain active even though they aren't
 shown in the footer; `?` lists them. A narrow footer can also trim hints for
-active commands. For example, `b` works only when the image has a verified
-base, and `p` only for a multi-platform image.
+active commands.
 
 | Key | Action |
 |-----|--------|
@@ -259,18 +257,17 @@ base, and `p` only for a multi-platform image.
 | `Tab` | Switch pane |
 | `[` `]` | Previous or next layer; in compare, previous or next difference |
 | `a` | Toggle the whole filesystem |
-| `b` | Select the first layer after the base image |
 | `←` `→` | Fold or unfold directories and package types |
 | `+` `~` `=` `-` | Show or hide added, modified, identical, or deleted files; `Esc` clears the filters |
 | `w` | Show only paths with findings |
 | `Enter` | Inspect a file, open a finding, fold a package type, show package details, or diff a compared file |
 | `i` `/` `?` | Insights, search, or keys |
-| `k` | Packages at the selected layer; `/` filters names, versions, and types |
+| `p` | Packages at the selected layer; `/` filters names, versions, and types |
 | `Alt+W` | Full metadata warnings in Packages or comparison; base warning in Insights |
 | `Alt+L` `Alt+D` `Alt+C` | In search: this layer only, include deleted paths, exact case |
 | `c` `s` | Compare with a tag; swap compared sides |
 | `Alt+V` | Toggle split/unified layout in a file diff |
-| `p` `r` | Choose platform; retry a failed layer or package scan |
+| `r` | Retry a failed layer or package scan |
 | `x` `y` `o` | Extract; copy the dredge command; open in the text viewer |
 | `Esc` `q` | Back; quit |
 

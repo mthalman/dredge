@@ -157,10 +157,10 @@ dredge settings set explore.viewer.args "\"{0}\""
 
 Each single-character explorer key can be replaced with any printable ASCII
 character. Two actions cannot share a key. The actions are `quit`, `help`,
-`insights`, `search`, `wholeFilesystem`, `firstUserLayer`, `compare`,
+`insights`, `search`, `wholeFilesystem`, `compare`,
 `findingsOnly`, `previousLayer`, `nextLayer`, `toggleAdded`,
-`toggleModified`, `toggleIdentical`, `toggleDeleted`, `platform`, `extract`,
-`copyCommand`, `viewer`, `swapSides`, `retry`, and `packages` (default `k`).
+`toggleModified`, `toggleIdentical`, `toggleDeleted`, `extract`,
+`copyCommand`, `viewer`, `swapSides`, `retry`, and `packages` (default `p`).
 For example, to quit with
 `Q` and use `q` to toggle the whole filesystem:
 

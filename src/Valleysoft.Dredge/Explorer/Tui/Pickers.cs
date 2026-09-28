@@ -360,7 +360,6 @@ internal static class TagPicker
     }
 }
 
-// `p`: choose another platform from a multi-platform image. The explorer restarts on it.
 internal static class PlatformPicker
 {
     public static ExplorerPlatform? ShowInitial(IReadOnlyList<ExplorerPlatform> platforms, bool mouse,

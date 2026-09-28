@@ -436,17 +436,18 @@ public sealed class ExplorerDefenseUiTests
     }
 
     [Fact]
-    public void EmptyImageRetainsPlatformPickerHint()
+    public void EmptyImageRetainsPackagesHint()
     {
-        ExplorerPresenter presenter = new(ExplorerSamples.Custom([]), 80, 24) { MultiPlatform = true };
-        Assert.Contains(presenter.Hints(new()), hint => hint.Cmd is PickPlatform);
-        Assert.DoesNotContain(presenter.Hints(new()), hint => hint.Cmd is SetWhole or FirstUserLayer or RetryLayer);
+        ExplorerPresenter presenter = new(ExplorerSamples.Custom([]), 80, 24);
+        Assert.Contains(presenter.Hints(new()), hint => hint.Key == "p" && hint.Cmd is ShowView { View: RightView.Packages });
+        Assert.DoesNotContain(presenter.Hints(new()), hint => hint.Cmd is SetWhole or RetryLayer);
         ExplorerPlatform amd = new("linux", "amd64", null, null);
         ExplorerPlatform arm = new("linux", "arm64", null, null);
         using ExplorerUiHarness ui = ExplorerWindowTests.Open(ExplorerSamples.Custom([]), new ExplorerState(),
             session => new FakeExplorerHost { Baseline = session, Platforms = [amd, arm], Platform = amd }, out _);
-        char key = KeyMap.Default.Label(KeyAction.Platform)[0];
-        Assert.True(ui.AnswerDialog(() => ui.Press(new Key(key)), Key.Esc));
+        ui.Press(new Key('p'));
+        Assert.Equal(RightView.Packages, ui.State.View);
+        Assert.False(ui.Window.StopRequested);
     }
 
     [Theory]

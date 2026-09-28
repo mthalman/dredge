@@ -36,7 +36,7 @@ public sealed class ExplorerPackageInventoryTests
         ui.Press(new Key('i'));
         Assert.Empty(host.PackageRequests);
         ui.Press(Key.Esc);
-        ui.Press(new Key('k'));
+        ui.Press(new Key('p'));
         ui.Until(() => ui.State.Packages is not null, "layer package inventory");
         Assert.Equal([0], host.PackageRequests);
         Assert.Equal(RightView.Packages, ui.State.View);
@@ -66,7 +66,7 @@ public sealed class ExplorerPackageInventoryTests
     public void PackagesCollapseFilterAndShowFullNameAndVersions(int width)
     {
         using ExplorerUiHarness ui = Open(out _, width: width);
-        ui.Press(new Key('k'));
+        ui.Press(new Key('p'));
         ui.Until(() => ui.State.Packages is not null, "packages");
         List<PackageInventoryRow> Rows() => ui.Window.Presenter.PackageRows(ui.State);
         ui.Window.Apply(new SetCursor(Rows().FindIndex(row => !row.IsGroup && row.Ecosystem == InstalledPackageEcosystem.NuGet)));
@@ -103,7 +103,7 @@ public sealed class ExplorerPackageInventoryTests
         using ExplorerUiHarness ui = Open(out _, (_, _) => ++attempts == 1
             ? Task.FromException<InstalledPackageMetadata>(new IOException("registry offline"))
             : Task.FromResult(Inventory(warnings: true)));
-        ui.Press(new Key('k'));
+        ui.Press(new Key('p'));
         ui.Until(() => ui.State.PackagesError is not null, "package failure");
         Assert.True(ui.Shows("registry offline"), ui.Screen());
         ui.Press(new Key('r'));
@@ -133,7 +133,7 @@ public sealed class ExplorerPackageInventoryTests
             }
             return Task.FromResult(Inventory("new"));
         });
-        ui.Press(new Key('k'));
+        ui.Press(new Key('p'));
         ui.Until(() => host.PackageRequests.Count == 1, "pending inventory");
         Task first = ui.Window.PackageTask;
         ui.Press(leave ? Key.Esc : new Key(']'));
@@ -161,7 +161,7 @@ public sealed class ExplorerPackageInventoryTests
     {
         KeyMap keys = KeyMap.FromSettings(new ExploreKeysSettings { Packages = "K" });
         using ExplorerUiHarness ui = ExplorerWindowTests.Open(out FakeExplorerHost host, keys: keys);
-        ui.Press(new Key('k'));
+        ui.Press(new Key('p'));
         Assert.Equal(RightView.Files, ui.State.View);
         ui.Press(new Key('K'));
         ui.Until(() => ui.State.Packages is not null, "remapped inventory");
@@ -172,7 +172,7 @@ public sealed class ExplorerPackageInventoryTests
     public void IncompleteImagesDoNotScanUntilTheSessionIsReady()
     {
         using ExplorerUiHarness ui = ExplorerWindowTests.Open(out FakeExplorerHost host, complete: false);
-        ui.Press(new Key('k'));
+        ui.Press(new Key('p'));
         Assert.True(ui.Shows("once every layer is indexed"), ui.Screen());
         Assert.Empty(host.PackageRequests);
         Assert.Equal(RightView.Packages, ui.State.View);
@@ -196,7 +196,7 @@ public sealed class ExplorerPackageInventoryTests
                 InstalledPackageMetadataAvailability.Available,
                 Enumerable.Range(0, 100).ToDictionary(i => $"package-{i:D3}", _ => (IReadOnlyList<string>)["1.0"]))));
         using ExplorerUiHarness ui = Open(out _, (_, _) => Task.FromResult(metadata), width: 80);
-        ui.Press(new Key('k'));
+        ui.Press(new Key('p'));
         ui.Until(() => ui.State.Packages is not null, "large inventory");
         ui.Press(Key.End);
         Assert.True(ui.State.PackageScroll > 0);
@@ -225,7 +225,7 @@ public sealed class ExplorerPackageInventoryTests
                     ? new Dictionary<string, IReadOnlyList<string>> { ["example"] = ["1.0"] }
                     : new Dictionary<string, IReadOnlyList<string>>())));
         using ExplorerUiHarness ui = Open(out _, (_, _) => Task.FromResult(metadata));
-        ui.Press(new Key('k'));
+        ui.Press(new Key('p'));
         ui.Until(() => ui.State.Packages is not null, "empty inventory");
         List<PackageInventoryRow> rows = ui.Window.Presenter.PackageRows(ui.State);
         Assert.DoesNotContain(rows, row => row.Ecosystem != InstalledPackageEcosystem.Npm);

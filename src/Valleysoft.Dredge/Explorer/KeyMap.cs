@@ -2,9 +2,9 @@ namespace Valleysoft.Dredge.Explorer;
 
 internal enum KeyAction
 {
-    Quit, Help, Insights, Search, WholeFilesystem, FirstUserLayer, Compare, FindingsOnly,
+    Quit, Help, Insights, Search, WholeFilesystem, Compare, FindingsOnly,
     PreviousLayer, NextLayer, ToggleAdded, ToggleModified, ToggleIdentical, ToggleDeleted,
-    Platform, Extract, CopyCommand, Viewer, SwapSides, Retry, Packages
+    Extract, CopyCommand, Viewer, SwapSides, Retry, Packages
 }
 
 // Single-character action keys, matched by the typed character so they work
@@ -18,7 +18,6 @@ internal sealed class KeyMap
         [KeyAction.Insights] = 'i',
         [KeyAction.Search] = '/',
         [KeyAction.WholeFilesystem] = 'a',
-        [KeyAction.FirstUserLayer] = 'b',
         [KeyAction.Compare] = 'c',
         [KeyAction.FindingsOnly] = 'w',
         [KeyAction.PreviousLayer] = '[',
@@ -27,13 +26,12 @@ internal sealed class KeyMap
         [KeyAction.ToggleModified] = '~',
         [KeyAction.ToggleIdentical] = '=',
         [KeyAction.ToggleDeleted] = '-',
-        [KeyAction.Platform] = 'p',
         [KeyAction.Extract] = 'x',
         [KeyAction.CopyCommand] = 'y',
         [KeyAction.Viewer] = 'o',
         [KeyAction.SwapSides] = 's',
         [KeyAction.Retry] = 'r',
-        [KeyAction.Packages] = 'k',
+        [KeyAction.Packages] = 'p',
     };
 
     private readonly Dictionary<KeyAction, char> keys;
@@ -88,7 +86,6 @@ internal sealed class KeyMap
         KeyAction.Insights => settings.Insights,
         KeyAction.Search => settings.Search,
         KeyAction.WholeFilesystem => settings.WholeFilesystem,
-        KeyAction.FirstUserLayer => settings.FirstUserLayer,
         KeyAction.Compare => settings.Compare,
         KeyAction.FindingsOnly => settings.FindingsOnly,
         KeyAction.PreviousLayer => settings.PreviousLayer,
@@ -97,7 +94,6 @@ internal sealed class KeyMap
         KeyAction.ToggleModified => settings.ToggleModified,
         KeyAction.ToggleIdentical => settings.ToggleIdentical,
         KeyAction.ToggleDeleted => settings.ToggleDeleted,
-        KeyAction.Platform => settings.Platform,
         KeyAction.Extract => settings.Extract,
         KeyAction.CopyCommand => settings.CopyCommand,
         KeyAction.Viewer => settings.Viewer,

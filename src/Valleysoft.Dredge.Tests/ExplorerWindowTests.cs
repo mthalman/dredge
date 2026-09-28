@@ -310,8 +310,6 @@ public sealed class ExplorerWindowTests
         Assert.Equal(2, s.Layer);
         ui.Press(new Key('['));
         Assert.Equal(1, s.Layer);
-        ui.Press(new Key('b'));
-        Assert.Equal(1, s.Layer);
         ui.Window.Apply(new SelectLayer(2));
 
         s.Expanded.Add("app");
@@ -695,23 +693,20 @@ public sealed class ExplorerWindowTests
     }
 
     [Fact]
-    public void PlatformPickerRestartsOnAnotherPlatform()
+    public void PackagesKeyOpensInventoryForMultiPlatformImages()
     {
-        using (ExplorerUiHarness single = Open(out _))
-        {
-            Assert.DoesNotContain(single.Window.Presenter.Hints(single.State), h => h.Cmd is PickPlatform);
-            single.Press(new Key('p'));
-            Assert.Null(single.State.Notice);
-        }
-
         ExplorerPlatform amd = new("linux", "amd64", null, null), arm = new("linux", "arm64", "v8", null);
         using ExplorerUiHarness ui = Open(out _, platforms: [amd, arm]);
-        Assert.Contains(ui.Window.Presenter.Hints(ui.State), h => h.Cmd is PickPlatform);
-        bool picked = ui.AnswerDialog(() => ui.Press(new Key('p')), Key.CursorDown, Key.Enter);
-        Assert.True(picked);
-        Assert.True(ui.Window.StopRequested);
-        Assert.Equal(ExplorerExitKind.Platform, ui.Window.Exit.Kind);
-        Assert.Equal(arm, ui.Window.Exit.Platform);
+        Assert.Contains(ui.Window.Presenter.Hints(ui.State), h => h.Key == "p" && h.Label == "Packages");
+        Assert.DoesNotContain(ui.Window.Presenter.Hints(ui.State), h => h.Label == "Platform…");
+        Assert.Null(KeyMap.Default.Lookup('k'));
+        ui.Press(new Key('k'));
+        Assert.Equal(RightView.Files, ui.State.View);
+        ui.Press(new Key('p'));
+        Assert.Equal(RightView.Packages, ui.State.View);
+        Assert.False(ui.Window.StopRequested);
+        ui.Press(new Key('?'));
+        Assert.False(ui.Shows("Choose platform…"));
     }
 
     [Fact]

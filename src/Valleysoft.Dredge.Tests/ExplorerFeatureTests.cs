@@ -597,30 +597,24 @@ public sealed class ExplorerFeatureTests
     }
 
     [Fact]
-    public void FirstUserLayerSkipsTheBaseOrExplainsWhyItCannot()
+    public void RemovedFirstOwnLayerKeyIsUnboundAndAvailableForRemapping()
     {
-        using (ExplorerUiHarness ui = Open(out _))
+        Assert.Null(KeyMap.Default.Lookup('b'));
+        Assert.Equal(KeyAction.WholeFilesystem,
+            KeyMap.FromSettings(new ExploreKeysSettings { WholeFilesystem = "b" }).Lookup('b'));
+        using ExplorerUiHarness ui = Open(out _);
+        ui.Window.Apply(new SelectLayer(3));
+        foreach (FocusPane focus in new[] { FocusPane.Layers, FocusPane.Right })
         {
-            ui.Window.Apply(new SelectLayer(3));
+            ui.Window.Apply(new FocusOn(focus));
+            Assert.DoesNotContain(ui.Window.Presenter.Hints(ui.State), h => h.Label == "First own layer");
             ui.Press(new Key('b'));
-            Assert.Equal(1, ui.State.Layer);
-        }
-
-        using (ExplorerUiHarness ui = OpenCustom(Custom([Layer([File("a", 1, "a")]), Layer([File("b", 1, "b")])]), out _, layer: 1))
-        {
-            // Without a verified base the key is not offered, so it does nothing.
-            Assert.DoesNotContain(ui.Window.Presenter.Hints(ui.State), h => h.Cmd is FirstUserLayer);
-            ui.Press(new Key('b'));
-            Assert.Equal(1, ui.State.Layer);
+            Assert.Equal(3, ui.State.Layer);
             Assert.Null(ui.State.Notice);
         }
-
-        using (ExplorerUiHarness ui = OpenCustom(Custom([Layer([File("a", 1, "a")]), Layer([File("b", 1, "b")])], baseLayerCount: 2), out _))
-        {
-            Assert.DoesNotContain(ui.Window.Presenter.Hints(ui.State), h => h.Cmd is FirstUserLayer);
-            ui.Press(new Key('b'));
-            Assert.Null(ui.State.Notice);
-        }
+        ui.Press(new Key('?'));
+        Assert.Equal(RightView.Keys, ui.State.View);
+        Assert.False(ui.Shows("First layer after base"));
     }
 
     [Fact]
@@ -1401,8 +1395,8 @@ public sealed class ExplorerFeatureTests
         ui.Window.Presenter.Invalidate();
         ui.Window.Apply(new Redraw());
 
-        // Outside compare, with one platform and no failed layer, s, p and r are not offered.
-        foreach (char key in "spr")
+        // Outside compare with no failed layer, s and r are not offered.
+        foreach (char key in "sr")
         {
             ui.Press(new Key(key));
             Assert.Null(s.Notice);
@@ -1450,7 +1444,7 @@ public sealed class ExplorerFeatureTests
         ui.Press(new Key('?'));
 
         AssertShows(ui, "Move", "Views", "Layers", "Search", "Files", "Actions", "Compare", "Change markers", "Tips",
-            "Toggle whole filesystem", "First layer after base", "Compare with a tag…", "Choose platform…",
+            "Toggle whole filesystem", "Compare with a tag…",
             "Retry a failed layer", "Only paths with findings", "Swap sides", "Open file in text viewer");
         ui.Press(Key.Esc);
         Assert.Equal(RightView.Files, ui.State.View);
@@ -1458,7 +1452,7 @@ public sealed class ExplorerFeatureTests
 
     public static TheoryData<char, string> DefaultKeys() => new()
     {
-        { '?', "keys" }, { 'i', "insights" }, { '/', "search" }, { 'a', "whole" }, { 'b', "base" }, { 'w', "findings" },
+        { '?', "keys" }, { 'i', "insights" }, { '/', "search" }, { 'a', "whole" }, { 'p', "packages" }, { 'w', "findings" },
         { '[', "previous" }, { ']', "next" }, { '+', "added" }, { '~', "modified" }, { '=', "identical" }, { '-', "deleted" },
         { 'x', "extract" }, { 'y', "copy" }, { 'o', "viewer" }, { 'q', "quit" },
     };
@@ -1488,7 +1482,7 @@ public sealed class ExplorerFeatureTests
             case "insights": Assert.Equal(RightView.Insights, s.View); break;
             case "search": Assert.Equal(RightView.Search, s.View); break;
             case "whole": Assert.True(s.WholeFilesystem); break;
-            case "base": Assert.Equal(1, s.Layer); break;
+            case "packages": Assert.Equal(RightView.Packages, s.View); break;
             case "findings": Assert.True(s.FindingsOnly); break;
             case "previous": Assert.Equal(1, s.Layer); break;
             case "next": Assert.Equal(3, s.Layer); break;

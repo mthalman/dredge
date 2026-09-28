@@ -80,7 +80,6 @@ internal sealed partial class ExplorerPresenter
     // Whether `y` copies or only shows the command, so hints can say which.
     public bool Copies { get; init; }
     internal string CopyVerb => Copies ? "Copy" : "Show";
-    public bool MultiPlatform { get; init; }
     public int Width { get; set; }
     public int Height { get; set; }
     public bool FullWidthContent { get; set; }
@@ -390,9 +389,6 @@ internal sealed partial class ExplorerPresenter
             ? [new(K(KeyAction.Retry), "Retry layer", new RetryLayer(s.Layer))] : [];
         Hint page = new("PgUp PgDn", "Page", ShowInFooter: false);
         Hint ends = new("Home End", "First or last", ShowInFooter: false);
-        List<Hint> platform = MultiPlatform ? [new(K(KeyAction.Platform), "Platform…", new PickPlatform())] : [];
-        List<Hint> firstOwn = img.BaseLayerCount is not null && img.FirstUserLayer is not null
-            ? [new(K(KeyAction.FirstUserLayer), "First own layer", new FirstUserLayer())] : [];
         Hint findingsOnly = new(K(KeyAction.FindingsOnly), s.FindingsOnly ? "All paths" : "Findings only", new ToggleFindingsOnly());
         List<Hint> clear = s.FindingsOnly || s.Hidden.Count > 0 ? [new("Esc", "Clear filters", new Back())] : [];
         return s.View switch
@@ -422,11 +418,11 @@ internal sealed partial class ExplorerPresenter
             ],
             RightView.Keys or RightView.Warning => [new("↑↓", "Scroll"), page, ends, back, quit],
             RightView.Command => [new("←→", "Scroll"), new("Ctrl+A", "Select all"), ends, back, keys, quit],
-            _ when img.LayerCount == 0 => [packages, compare, insights, search, .. platform, keys, back, quit],
+            _ when img.LayerCount == 0 => [packages, compare, insights, search, keys, back, quit],
             _ when s.Focus == FocusPane.Layers =>
             [
                 .. retry, new("Tab", "Files", new FocusOn(FocusPane.Right)), packages, new("↑↓", "Layer"), whole, compare, search, insights,
-                .. firstOwn, ends, .. platform, keys, quit,
+                ends, keys, quit,
             ],
             _ =>
             [
@@ -434,7 +430,7 @@ internal sealed partial class ExplorerPresenter
                 new($"{K(KeyAction.ToggleAdded)} {K(KeyAction.ToggleModified)} {K(KeyAction.ToggleIdentical)} {K(KeyAction.ToggleDeleted)}", "Filter"),
                 new("Enter", "Inspect", new Activate()), search, insights,
                 new(K(KeyAction.Extract), "Extract…", new ExtractSelected()), compare, new("←→", "Fold", ShowInFooter: false), .. clear, findingsOnly,
-                page, ends, .. firstOwn, .. platform, keys, quit,
+                page, ends, keys, quit,
             ],
         };
     }

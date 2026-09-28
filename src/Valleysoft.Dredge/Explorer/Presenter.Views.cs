@@ -539,8 +539,8 @@ internal sealed partial class ExplorerPresenter
         [
             ("Move", [("↑ ↓", "Move"), ("PgUp PgDn", "Page"), ("Home End", "First or last"), ("Tab", "Switch pane")]),
             ("Layers", [($"{K(KeyAction.PreviousLayer)} {K(KeyAction.NextLayer)}", "Previous or next layer"),
-                (K(KeyAction.WholeFilesystem), "Toggle whole filesystem"), (K(KeyAction.FirstUserLayer), "First layer after base"),
-                (K(KeyAction.Compare), "Compare with a tag…"), (K(KeyAction.Platform), "Choose platform…"),
+                (K(KeyAction.WholeFilesystem), "Toggle whole filesystem"),
+                (K(KeyAction.Compare), "Compare with a tag…"),
                 (K(KeyAction.Retry), "Retry a failed layer")]),
             ("Files", [("← →", "Fold or unfold"),
                 ($"{K(KeyAction.ToggleAdded)} {K(KeyAction.ToggleModified)} {K(KeyAction.ToggleIdentical)} {K(KeyAction.ToggleDeleted)}", "Show or hide changes"),

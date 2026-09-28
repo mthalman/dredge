@@ -39,6 +39,6 @@ internal interface IExplorerHost
     bool WriteClipboard(string text);
 }
 
-internal enum ExplorerExitKind { Quit, Viewer, Platform }
+internal enum ExplorerExitKind { Quit, Viewer }
 
-internal sealed record ExplorerExit(ExplorerExitKind Kind, string? ViewerFile = null, ExplorerPlatform? Platform = null);
+internal sealed record ExplorerExit(ExplorerExitKind Kind, string? ViewerFile = null);

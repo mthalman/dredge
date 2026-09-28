@@ -63,7 +63,7 @@ internal sealed class ExplorerWindow : Window
             s.Notice = img.BaseWarning;
             s.NoticeIsError = true;
         }
-        ex = new ExplorerPresenter(img, 150, 42, host.Keys) { Copies = host.ClipboardEnabled, MultiPlatform = host.Platforms.Count > 1 };
+        ex = new ExplorerPresenter(img, 150, 42, host.Keys) { Copies = host.ClipboardEnabled };
         BorderStyle = LineStyle.None;
         SetScheme(new Scheme(Paint.Attr(Theme.Foam)));
 
@@ -613,7 +613,6 @@ internal sealed class ExplorerWindow : Window
                 KeyAction.Packages => new ShowView(RightView.Packages),
                 KeyAction.Search => new ShowView(RightView.Search),
                 KeyAction.WholeFilesystem => new SetWhole(!s.WholeFilesystem),
-                KeyAction.FirstUserLayer => new FirstUserLayer(),
                 KeyAction.Compare => new PickTag(),
                 KeyAction.FindingsOnly => new ToggleFindingsOnly(),
                 KeyAction.PreviousLayer => Comparing ? new StepDifference(-1) : new StepLayer(-1),
@@ -622,7 +621,6 @@ internal sealed class ExplorerWindow : Window
                 KeyAction.ToggleModified => new ToggleChange(Change.Modified),
                 KeyAction.ToggleIdentical => new ToggleChange(Change.Identical),
                 KeyAction.ToggleDeleted => new ToggleChange(Change.Removed),
-                KeyAction.Platform => new PickPlatform(),
                 KeyAction.Extract => new ExtractSelected(),
                 KeyAction.CopyCommand => new CopyCommand(),
                 KeyAction.Viewer => new OpenInViewer(),
@@ -819,12 +817,6 @@ internal sealed class ExplorerWindow : Window
             case StepLayer d when s.View != RightView.Inspector:
                 SelectLayerCore(s.Layer + d.Delta);
                 break;
-            case FirstUserLayer when img.BaseLayerCount is not null && img.FirstUserLayer is int first:
-                SelectLayerCore(first);
-                break;
-            case FirstUserLayer:
-                Notice(img.BaseLayerCount is null ? "No verified base image, so every layer is shown as yours." : "Every layer is part of the base image.");
-                break;
             case RetryLayer r when r.Layer >= 0 && r.Layer < img.LayerCount && img.States[r.Layer] == ExplorerLayerState.Failed:
                 host.Retry(r.Layer);
                 img.States[r.Layer] = ExplorerLayerState.Waiting;
@@ -976,9 +968,6 @@ internal sealed class ExplorerWindow : Window
                 break;
             case CompareWith c:
                 StartCompare(c.Tag);
-                break;
-            case PickPlatform:
-                ChoosePlatform();
                 break;
             case ExtractSelected:
                 BeginExtract(SelectedPath());
@@ -1423,24 +1412,6 @@ internal sealed class ExplorerWindow : Window
                 Notice($"Starting viewer for /{path}…");
             }
         }, abandoned: staged => staged.Dispose());
-    }
-
-    private void ChoosePlatform()
-    {
-        if (host.Platforms.Count <= 1)
-        {
-            Notice("This image has only one platform.");
-            return;
-        }
-        if (App is not IApplication app)
-        {
-            return;
-        }
-        ExplorerPlatform? chosen = PlatformPicker.Show(app, host.Platforms, host.Platform);
-        if (chosen is not null && chosen != host.Platform)
-        {
-            Stop(new(ExplorerExitKind.Platform, Platform: chosen));
-        }
     }
 
     private void PickTagAndCompare()

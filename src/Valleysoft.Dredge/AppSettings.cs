@@ -246,9 +246,6 @@ internal partial class ExploreKeysSettings
     [JsonPropertyName("wholeFilesystem")]
     public string WholeFilesystem { get; set; } = "";
 
-    [JsonPropertyName("firstUserLayer")]
-    public string FirstUserLayer { get; set; } = "";
-
     [JsonPropertyName("compare")]
     public string Compare { get; set; } = "";
 
@@ -272,9 +269,6 @@ internal partial class ExploreKeysSettings
 
     [JsonPropertyName("toggleDeleted")]
     public string ToggleDeleted { get; set; } = "";
-
-    [JsonPropertyName("platform")]
-    public string Platform { get; set; } = "";
 
     [JsonPropertyName("extract")]
     public string Extract { get; set; } = "";

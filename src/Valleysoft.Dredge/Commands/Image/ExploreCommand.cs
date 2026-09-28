@@ -38,34 +38,8 @@ public sealed class ExploreCommand : RegistryCommandBase<ExploreOptions>
                 choosePlatform: platforms => PlatformPicker.ShowInitial(platforms, explorerOptions.Mouse, ct));
             ValidateLayer(Options.Layer, source.LayerCount);
 
-            while (true)
-            {
-                ExplorerExit exit;
-                await using (ExplorerApp app = new(client, DockerRegistryClientFactory, source, store, explorerOptions, ct))
-                {
-                    exit = app.Run();
-                }
-                if (exit.Kind != ExplorerExitKind.Platform || exit.Platform is null)
-                {
-                    return;
-                }
-                try
-                {
-                    source = await ExplorerSource.OpenAsync(client, DockerRegistryClientFactory, image,
-                        ExplorerSource.ForPlatform(exit.Platform), Options.BaseImages, ct,
-                        exactPlatform: exit.Platform);
-                    explorerOptions = explorerOptions with { Layer = null, Compare = null, Notice = null };
-                }
-                catch (Exception exception) when (exception is not OperationCanceledException)
-                {
-                    // Stay in the explorer on the platform that already works.
-                    explorerOptions = explorerOptions with
-                    {
-                        Layer = null, Compare = null,
-                        Notice = $"Could not open {exit.Platform}: {exception.Message}"
-                    };
-                }
-            }
+            await using ExplorerApp app = new(client, DockerRegistryClientFactory, source, store, explorerOptions, ct);
+            app.Run();
         });
     }
 

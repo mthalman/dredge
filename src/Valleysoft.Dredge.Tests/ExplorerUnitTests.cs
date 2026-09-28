@@ -566,7 +566,6 @@ public sealed class ExplorerImageModelTests
         // No base layer follows the CMD, so it is attributed to this image.
         Assert.False(img.History[1].IsBase);
         Assert.False(img.History[2].IsBase);
-        Assert.Equal(1, img.FirstUserLayer);
         Assert.True(img.IsBase(0));
         Assert.Equal(30, img.TotalDownload);
     }
@@ -579,7 +578,6 @@ public sealed class ExplorerImageModelTests
         Assert.Equal(["Layer 0", "Layer 1"], img.Instructions);
         Assert.All(img.History, row => Assert.Equal("(no history for this layer)", row.Instruction));
         Assert.Equal("linux", img.Platform);
-        Assert.Equal(0, img.FirstUserLayer);
     }
 
     [Fact]
