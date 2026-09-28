@@ -93,6 +93,10 @@ public sealed class ExplorerUxTests
             Preview = path => new PreviewContent(path, null, [new string('x', 150) + "preview-tail"], null, 162),
         }, out _, width: 80, height: 24);
         ui.Until(() => ui.State.Preview is not null, "preview");
+        Assert.All(ui.Window.Presenter.Hints(ui.State).Where(hint => hint.Label is "Scroll" or "Pan text"),
+            hint => Assert.False(hint.ShowInFooter));
+        Assert.DoesNotContain("Scroll", ui.Row(ui.Height - 1));
+        Assert.DoesNotContain("Pan text", ui.Row(ui.Height - 1));
         Assert.False(ui.Shows("preview-tail"));
         for (int i = 0; i < 30; i++) ui.Press(Key.CursorRight);
         Assert.True(ui.Shows("preview-tail"));
@@ -105,6 +109,10 @@ public sealed class ExplorerUxTests
         ui.Pump();
         Assert.False(ui.Window.Layers.Visible);
         Assert.Equal(80, ui.Window.Right.Frame.Width);
+        Assert.All(new CompareView(ui.Window.Presenter, ui.State.Compare!).Hints()
+            .Where(hint => hint.Label is "Scroll" or "Pan text"), hint => Assert.False(hint.ShowInFooter));
+        Assert.DoesNotContain("Scroll", ui.Row(ui.Height - 1));
+        Assert.DoesNotContain("Pan text", ui.Row(ui.Height - 1));
         for (int i = 0; i < 30; i++) ui.Press(Key.CursorRight);
         Assert.True(ui.Shows("old-tail"));
         Assert.True(ui.Shows("new-tail"));

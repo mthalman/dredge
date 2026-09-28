@@ -659,7 +659,7 @@ internal sealed class CompareView
         }
         if (c.Diff is not null)
         {
-            return [new("↑↓", "Scroll"), new("←→", "Pan text"), new("PgUp PgDn", "Page", ShowInFooter: false), new("Home End", "Top or bottom", ShowInFooter: false), new("Esc", "Back to differences", new Back()),
+            return [new("↑↓", "Scroll", ShowInFooter: false), new("←→", "Pan text", ShowInFooter: false), new("PgUp PgDn", "Page", ShowInFooter: false), new("Home End", "Top or bottom", ShowInFooter: false), new("Esc", "Back to differences", new Back()),
                 new(k.Label(KeyAction.Help), "Keys", new ShowView(RightView.Keys)), new(k.Label(KeyAction.Quit), "Quit", new Quit())];
         }
         return

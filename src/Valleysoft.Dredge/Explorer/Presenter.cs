@@ -404,7 +404,7 @@ internal sealed partial class ExplorerPresenter
             ],
             RightView.Inspector =>
             [
-                new("↑↓", "Scroll"), new("←→", "Pan text"), new(K(KeyAction.Extract), "Extract…", new ExtractSelected()),
+                new("↑↓", "Scroll", ShowInFooter: false), new("←→", "Pan text", ShowInFooter: false), new(K(KeyAction.Extract), "Extract…", new ExtractSelected()),
                 new(K(KeyAction.CopyCommand), $"{CopyVerb} command", new CopyCommand()),
                 new(K(KeyAction.Viewer), "Open file in text viewer", new OpenInViewer()),
                 back, page, ends, keys, quit,
