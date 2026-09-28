@@ -1,11 +1,38 @@
 using Terminal.Gui.Input;
 using Valleysoft.Dredge.Explorer;
+using Valleysoft.Dredge.Explorer.Tui;
 
 namespace Valleysoft.Dredge.Tests;
 
 [Collection(ExplorerUiCollection.Name)]
 public sealed class ExplorerDefenseUiTests
 {
+    [Fact]
+    public void TagPickerLabelsCurrentImageByDigestRatherThanTagSpelling()
+    {
+        using ExplorerUiHarness ui = ExplorerWindowTests.Open(out _);
+        ExplorerImage image = ui.Window.Presenter.Image;
+        var (dialog, _, fill, _) = TagPicker.Create(image, "");
+        using (dialog)
+        {
+            fill(
+            [
+                new TagChoice("1.0") { Digest = "sha256:moved", Shared = 0, LayerCount = 2, AdditionalDownload = 100 },
+                new TagChoice("alias") { Digest = image.Digest },
+            ], null);
+            Assert.True(ui.InDialog(() => ui.App.Run(dialog),
+                DialogStep.When("resolved tag identities", () => ui.Shows("current image"), () =>
+                {
+                    int moved = ui.Find("▌1.0 ").Y;
+                    int alias = ui.Find(" alias ").Y;
+                    Assert.True(moved >= 0 && alias >= 0, ui.Screen());
+                    Assert.DoesNotContain("current image", ui.Row(moved));
+                    Assert.Contains("current image", ui.Row(alias));
+                    ui.Send(Key.Esc);
+                })));
+        }
+    }
+
     [Fact]
     public void ComparisonSnapshotShowsAuthoritativeIdentitiesAndRefreshPolicy()
     {

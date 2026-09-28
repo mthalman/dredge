@@ -218,7 +218,7 @@ internal static class TagPicker
         TextField field = new() { X = 15, Y = 1, Width = Dim.Fill(2), Text = filter };
         field.SetScheme(Dialogs.Input());
 
-        TagSource source = new(img.LayerCount, current);
+        TagSource source = new(img.LayerCount, img.Digest);
         ListView list = new() { X = 1, Y = 3, Width = Dim.Fill(2), Height = 9, Source = source };
         list.SetScheme(Dialogs.Panel());
 
@@ -276,14 +276,14 @@ internal static class TagPicker
     private sealed class TagSource : IListDataSource
     {
         private readonly int layerCount;
-        private readonly string current;
+        private readonly string currentDigest;
         private List<TagChoice> all = [];
         private List<TagChoice> shown = [];
 
-        public TagSource(int layerCount, string current)
+        public TagSource(int layerCount, string currentDigest)
         {
             this.layerCount = layerCount;
-            this.current = current;
+            this.currentDigest = currentDigest;
         }
 
         public TagChoice this[int i] => shown[i];
@@ -311,7 +311,7 @@ internal static class TagPicker
             Line line = new Line()
                 .Add(selected ? "▌" : " ", Theme.Channel)
                 .Add(Fmt.Fit(t.Tag, 24).PadRight(26), Theme.S(Theme.Foam, null, Deco.Bold));
-            string? note = t.Tag == current ? "current image" : t.Note;
+            string? note = t.Digest == currentDigest ? "current image" : t.Note;
             if (note is not null)
             {
                 line.Add("▲ " + note, Theme.Ochre);

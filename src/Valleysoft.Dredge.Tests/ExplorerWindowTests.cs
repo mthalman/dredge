@@ -185,6 +185,7 @@ internal sealed class FakeExplorerHost : IExplorerHost
         choice.Shared = choice.Tag == "1.0" ? 4 : choice.Tag == "other-base" ? 0 : 2;
         choice.LayerCount = choice.Tag == "1.0" ? 4 : 3;
         choice.AdditionalDownload = choice.Tag == "2.0" ? 1_000 : 0;
+        choice.Digest = choice.Tag == "1.0" ? "sha256:manifest" : "sha256:" + choice.Tag;
         choice.Note = ExplorerHost.TagNote(choice.Tag == "1.0" ? "sha256:manifest" : "sha256:" + choice.Tag,
             "sha256:manifest", choice.Shared.Value, 1);
         return Task.CompletedTask;
