@@ -219,20 +219,23 @@ internal sealed class CompareView
         int w = LeftInner;
         List<Line> lines =
         [
-            new Line().Add("    ").Add(Fmt.Fit(c.TargetLabel, 8).PadLeft(8), Theme.Silt).Add("   ")
-                .Add(("vs " + Fmt.Fit(c.BaselineLabel, 6)).PadLeft(9), Theme.Silt),
+            new Line().Add("    ").Add(Fmt.Fit(c.BaselineLabel, 8).PadLeft(8), Theme.Silt).Add(" → ", Theme.Shale)
+                .Add(Fmt.Fit(c.TargetLabel, 8).PadLeft(8), Theme.Foam).Add("  ")
+                .Add("change".PadLeft(9), Theme.Silt),
         ];
         int visible = Narrow ? ExplorerPresenter.NarrowLayersHeight - 3 : height - ExplorerPresenter.HeaderHeight - 1 - ExplorerPresenter.DetailsHeight - 3;
         int start = c.LayerCount <= visible ? 0 : Math.Clamp(c.Layer - visible / 2, 0, c.LayerCount - visible);
-        PaneContent pane = ExplorerPresenter.Pane(lines, "Layers", c.FocusLayers, $"{c.TargetLabel} vs {c.BaselineLabel}");
+        PaneContent pane = ExplorerPresenter.Pane(lines, "Layers", c.FocusLayers, $"{c.BaselineLabel} → {c.TargetLabel}");
         for (int layer = start; layer < Math.Min(c.LayerCount, start + visible); layer++)
         {
             bool selected = layer == c.Layer;
             bool same = c.Shared(layer);
             Line line = new Line().Add(selected ? "▌" : " ", Theme.Channel);
             line.Add($"{layer,2} ", selected ? Theme.S(Theme.Foam, null, Deco.Bold) : Theme.S(Theme.Silt))
+                .Add((c.BaselineSize(layer) is long b ? Fmt.Size(b) : "—").PadLeft(8), Theme.Silt)
+                .Add(" → ", Theme.Shale)
                 .Add((c.TargetSize(layer) is long t ? Fmt.Size(t) : "—").PadLeft(8), same ? Theme.Silt : Theme.Foam)
-                .Add(same ? " = " : " ≠ ", same ? Theme.S(Theme.Shale) : Theme.S(Theme.Ochre, null, Deco.Bold));
+                .Add("  ");
             if (same)
             {
                 line.Add("same".PadLeft(9), Theme.Silt);
@@ -283,8 +286,8 @@ internal sealed class CompareView
             }
             lines.Add(line.Truncate(w));
         }
-        Side(c.TargetLabel, c.TargetDigest(layer), c.TargetSize(layer));
         Side(c.BaselineLabel, c.BaselineDigest(layer), c.BaselineSize(layer));
+        Side(c.TargetLabel, c.TargetDigest(layer), c.TargetSize(layer));
         lines.Add(Line.Blank);
         if (c.Shared(layer))
         {

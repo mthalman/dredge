@@ -1125,7 +1125,7 @@ public sealed class ExplorerFeatureTests
         Assert.StartsWith(" 1.0 ", ui.Row(1));
         Assert.StartsWith(" 2.0 ", ui.Row(2));
 
-        AssertShows(ui, "Layers  2.0 vs 1.0", "Differences  1.0 → 2.0", "~ 1 updated   + 0 added   − 0 removed",
+        AssertShows(ui, "Layers  1.0 → 2.0", "Differences  1.0 → 2.0", "~ 1 updated   + 0 added   − 0 removed",
             "3 paths differ", "▾ Installed packages  1 package differs", "npm", "left-pad", "1.0.0 → 1.1.0",
             "▾ Files  3 paths differ", "▸ app/", "−791 B",
             "2.0  sha256:t2", "1.0  sha256:l2", "Additional download  1.0 KB for this layer", "Layers 0 to 1 are shared.");
@@ -1145,6 +1145,47 @@ public sealed class ExplorerFeatureTests
             hint => hint.Key == "c" && hint.Cmd is PickTag);
         Assert.True(ui.AnswerDialog(() => ui.Press(new Key('c')), Key.Esc));
         Assert.Same(comparison, ui.State.Compare);
+    }
+
+    [Theory]
+    [InlineData(80)]
+    [InlineData(150)]
+    public void ComparisonDirectionMatchesLayerSizesAndDetailsAfterSwapping(int width)
+    {
+        using ExplorerUiHarness ui = ExplorerWindowTests.Open(out _, width: width);
+        ui.Window.StartCompare("9.0");
+        ui.Until(() => ui.State.Compare is not null, "comparison");
+        CompareState state = ui.State.Compare!;
+        state.BaselineLabel = "10.0";
+        state.TargetLabel = "9.0";
+        Assert.IsType<Valleysoft.DockerRegistryClient.Models.Manifests.Oci.OciDescriptor>(
+            state.Comparison.Target.Resolved.Manifest.Layers[2]).Size = 2000;
+        for (int swapped = 0; swapped < 2; swapped++)
+        {
+            CompareView view = new(ui.Window.Presenter, state);
+            string direction = $"{state.BaselineLabel} → {state.TargetLabel}";
+            PaneContent layers = view.Layers();
+            Assert.Equal(direction, layers.Subtitle);
+            string columns = layers.Lines[0].ToString();
+            Assert.True(columns.IndexOf(state.BaselineLabel, StringComparison.Ordinal) <
+                columns.IndexOf(state.TargetLabel, StringComparison.Ordinal));
+            Assert.Contains("change", columns);
+            Assert.StartsWith(" " + state.BaselineLabel + " ", view.Header()[1].ToString());
+            Assert.StartsWith(" " + state.TargetLabel + " ", view.Header()[2].ToString());
+            if (width >= 120)
+            {
+                Assert.Contains(view.Header(), line => line.ToString().Contains(direction));
+            }
+            Assert.Equal(direction, view.Diff().Subtitle);
+            string sizes = layers.Lines[3].ToString();
+            Assert.Contains(swapped == 0 ? "1.0 KB →   2.0 KB" : "2.0 KB →   1.0 KB", sizes);
+            Assert.Contains(swapped == 0 ? "+1.0 KB" : "−1.0 KB", sizes);
+            string[] details = view.Details().Lines.Select(line => line.ToString()).ToArray();
+            Assert.True(Array.FindIndex(details, line => line.StartsWith(state.BaselineLabel + " ")) <
+                Array.FindIndex(details, line => line.StartsWith(state.TargetLabel + " ")));
+            Assert.Contains(layers.Lines, line => line.ToString().Contains(swapped == 0 ? "gone" : "new"));
+            ui.Press(new Key('s'));
+        }
     }
 
     [Fact]

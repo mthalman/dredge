@@ -155,7 +155,10 @@ without taking space away from findings.
 
 Press `/` to **search** paths across every layer. Press `c` to **compare**
 with another tag. Compare mode lists added, changed, and removed packages and
-files. The picker accepts a full image reference or a tag and selects an exact
+files. Comparison direction is the opened image (baseline) to the selected
+target; headers, layer-size columns, details, and file diffs use that order.
+Layer-size changes are target minus baseline, and `s` reverses both sides.
+The picker accepts a full image reference or a tag and selects an exact
 tag match before substring suggestions. A comparison target is a session
 snapshot: repeated comparisons reuse its first resolved manifest. Once cached,
 its picker statistics describe that same snapshot rather than a newer version
