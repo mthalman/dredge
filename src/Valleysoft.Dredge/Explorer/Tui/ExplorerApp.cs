@@ -713,6 +713,13 @@ internal sealed class ExplorerHost : IExplorerHost, IAsyncDisposable
         return new PreviewContent(path, LanguageFor(path), lines, message, bytes);
     }
 
+    public async Task<InstalledPackageMetadata> PackagesAsync(int layer, CancellationToken cancellationToken)
+    {
+        using var operation = lifetime.Enter(cancellationToken);
+        ExplorerSession session = Loaded;
+        return await session.GetPackagesAsync(session.Resolved.Manifest.Layers.Length == 0 ? -1 : layer, operation.Token);
+    }
+
     internal static string? LanguageFor(string path) =>
         path.EndsWith(".json", StringComparison.OrdinalIgnoreCase) ? "json"
         : path.EndsWith("Dockerfile", StringComparison.OrdinalIgnoreCase) ? "dockerfile"

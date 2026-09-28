@@ -171,6 +171,26 @@ internal sealed class ImageFileSystem : IAsyncDisposable
             .Select(index => indexes[index].Changes).ToArray());
     }
 
+    internal ImageFileSystem CreateLayerSnapshot(int layer, CancellationToken cancellationToken)
+    {
+        if (layer < 0 || layer >= manifest.Layers.Length)
+        {
+            throw new ArgumentOutOfRangeException(nameof(layer));
+        }
+        ImageFileSystem snapshot = new(client, imageName, manifest, store, ownsStore: false);
+        for (int i = 0; i <= layer; i++)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            if (!indexes.TryGetValue(i, out StoredLayerIndex? index))
+            {
+                throw new InvalidOperationException($"Layer {i} must be indexed before reading its package inventory.");
+            }
+            snapshot.indexes.Add(i, index);
+            snapshot.builder.ApplyLayer(index.Changes, new(i, index.Digest), cancellationToken);
+        }
+        return snapshot;
+    }
+
     public async Task CopyFileToAsync(
         string requestedPath,
         Stream destination,

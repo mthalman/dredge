@@ -290,4 +290,7 @@ internal partial class ExploreKeysSettings
 
     [JsonPropertyName("retry")]
     public string Retry { get; set; } = "";
+
+    [JsonPropertyName("packages")]
+    public string Packages { get; set; } = "";
 }

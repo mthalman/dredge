@@ -24,6 +24,47 @@ public sealed class ExplorerDefenseHostTests : IAsyncDisposable
     private static CancellationToken Token => TestContext.Current.CancellationToken;
 
     [Fact]
+    public async Task PackageInventoriesAreLazyCachedAndIsolatedByLayer()
+    {
+        const string path = "app/node_modules/example/package.json";
+        TestImage image = await CreateAsync(
+            Blob((path, """{"name":"example","version":"1.0"}""")),
+            Blob((path, """{"name":"example","version":"2.0"}""")),
+            Blob(("app/node_modules/example/.wh.package.json", "")));
+        ExplorerHost host = Host(image);
+        Assert.Throws<InvalidOperationException>(() => image.Session.Packages);
+
+        InstalledPackageMetadata first = await host.PackagesAsync(0, Token);
+        InstalledPackageMetadata second = await host.PackagesAsync(1, Token);
+        Assert.Equal(["1.0"], first.Ecosystems[InstalledPackageEcosystem.Npm].Packages["example"]);
+        Assert.Equal(["2.0"], second.Ecosystems[InstalledPackageEcosystem.Npm].Packages["example"]);
+        Assert.Throws<InvalidOperationException>(() => image.Session.Packages);
+        Assert.Same(first, await host.PackagesAsync(0, Token));
+        Assert.Same(second, await host.PackagesAsync(1, Token));
+
+        InstalledPackageMetadata final = await host.PackagesAsync(2, Token);
+        Assert.Empty(final.Ecosystems[InstalledPackageEcosystem.Npm].Packages);
+        await image.Session.EnsurePackagesAsync(Token);
+        Assert.Same(final, image.Session.Packages);
+        using CancellationTokenSource canceled = new();
+        canceled.Cancel();
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(() => host.PackagesAsync(0, canceled.Token));
+        await Assert.ThrowsAsync<ArgumentOutOfRangeException>(() => host.PackagesAsync(3, Token));
+    }
+
+    [Fact]
+    public async Task EmptyImageHasAnUnavailablePackageInventory()
+    {
+        TestImage image = await CreateAsync();
+        InstalledPackageMetadata metadata = await Host(image).PackagesAsync(0, Token);
+        Assert.All(metadata.Ecosystems.Values, ecosystem =>
+        {
+            Assert.Equal(InstalledPackageMetadataAvailability.Unavailable, ecosystem.Availability);
+            Assert.Empty(ecosystem.Packages);
+        });
+    }
+
+    [Fact]
     public async Task TerminalViewerExitCanceledBeforeLaunchDeletesItsStagedFile()
     {
         TestImage image = await CreateAsync(Blob(("file", "private bytes")));

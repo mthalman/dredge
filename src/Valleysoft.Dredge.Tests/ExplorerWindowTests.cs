@@ -156,6 +156,8 @@ internal sealed class FakeExplorerHost : IExplorerHost
     public Exception? TagsError { get; init; }
     public Func<CancellationToken, Task<IReadOnlyList<string>>>? ListTagsWork { get; init; }
     public Func<TagChoice, CancellationToken, Task>? DescribeTagWork { get; init; }
+    public Func<int, CancellationToken, Task<InstalledPackageMetadata>>? PackagesWork { get; init; }
+    public List<int> PackageRequests { get; } = [];
 
     public List<int> Prioritized { get; } = [];
     public List<int> Retried { get; } = [];
@@ -167,6 +169,12 @@ internal sealed class FakeExplorerHost : IExplorerHost
 
     public void Prioritize(int layer) => Prioritized.Add(layer);
     public void Retry(int layer) => Retried.Add(layer);
+
+    public Task<InstalledPackageMetadata> PackagesAsync(int layer, CancellationToken cancellationToken)
+    {
+        PackageRequests.Add(layer);
+        return PackagesWork?.Invoke(layer, cancellationToken) ?? Task.FromResult(Baseline!.Packages);
+    }
 
     public Task<IReadOnlyList<string>> ListTagsAsync(CancellationToken cancellationToken) =>
         ListTagsWork?.Invoke(cancellationToken) ??

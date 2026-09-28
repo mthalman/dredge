@@ -550,7 +550,7 @@ internal sealed partial class ExplorerPresenter
         ];
         (string Group, (string Keys, string What)[] Items)[] right =
         [
-            ("Views", [(K(KeyAction.Insights), "Insights"), (K(KeyAction.Search), "Search"), (K(KeyAction.Help), "This screen"), ("Esc", "Back")]),
+            ("Views", [(K(KeyAction.Packages), "Packages at this layer"), (K(KeyAction.Insights), "Insights"), (K(KeyAction.Search), "Search"), (K(KeyAction.Help), "This screen"), ("Esc", "Back")]),
             ("Search", [("Alt+L", "Whole image or this layer"), ("Alt+D", "Include deleted paths"), ("Alt+C", "Match exact case")]),
             ("Actions", [(K(KeyAction.Extract), "Extract file or folder…"), (K(KeyAction.CopyCommand), $"{CopyVerb} as dredge command"),
                 (K(KeyAction.Viewer), "Open file in text viewer"), (K(KeyAction.Quit), "Quit")]),

@@ -162,8 +162,20 @@ its picker statistics describe that same snapshot rather than a newer version
 of a moving tag. The resolved digest identifies the content being compared;
 `Alt+I` shows the full identities of both comparison snapshots. Reopen the
 explorer to obtain fresh snapshots.
-Package metadata is read only when a comparison starts; loading an
-image for browsing or insights does not scan packages. Press `Enter` on a
+Press `k` to view **packages at the selected layer**, without starting a
+comparison. This is the cumulative filesystem inventory through that layer,
+including inherited packages, not just packages changed by that layer. Step
+with `[`/`]` or select another layer to see installs, upgrades, and removals.
+Inventory becomes available once all layers are indexed; scans start only
+when Packages is opened and are cached per layer for the session. `/` filters
+package names, versions, or types, including collapsed groups. `Enter` on a
+package opens its full name and versions. `Alt+W` opens metadata warnings;
+readable results remain visible when some metadata cannot be read.
+An unavailable ecosystem is not proof that no packages are installed.
+
+Package metadata is read only when Packages is opened or a comparison starts;
+loading an image for filesystem browsing or insights does not scan packages.
+Comparison always uses the final inventories of both images. Press `Enter` on a
 changed text file to see a diff, and `s` to swap the two sides.
 Package-type headings can be collapsed with `Enter` or `Left` and expanded
 with `Enter` or `Right`. Search includes packages inside collapsed groups.
@@ -238,14 +250,16 @@ base, and `p` only for a multi-platform image.
 | `[` `]` | Previous or next layer; in compare, previous or next difference |
 | `a` | Toggle the whole filesystem |
 | `b` | Select the first layer after the base image |
-| `←` `→` | Fold or unfold directories |
+| `←` `→` | Fold or unfold directories and package types |
 | `+` `~` `=` `-` | Show or hide added, modified, identical, or deleted files; `Esc` clears the filters |
 | `w` | Show only paths with findings |
-| `Enter` | Inspect a file, open a finding, or diff a compared file |
+| `Enter` | Inspect a file, open a finding, fold a package type, show package details, or diff a compared file |
 | `i` `/` `?` | Insights, search, or keys |
+| `k` | Packages at the selected layer; `/` filters names, versions, and types |
+| `Alt+W` | Full metadata warnings in Packages or comparison; base warning in Insights |
 | `Alt+L` `Alt+D` `Alt+C` | In search: this layer only, include deleted paths, exact case |
 | `c` `s` | Compare with a tag; swap compared sides |
-| `p` `r` | Choose platform; retry a failed layer |
+| `p` `r` | Choose platform; retry a failed layer or package scan |
 | `x` `y` `o` | Extract; copy the dredge command; open in the text viewer |
 | `Esc` `q` | Back; quit |
 

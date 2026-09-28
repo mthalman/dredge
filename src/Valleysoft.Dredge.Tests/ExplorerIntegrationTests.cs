@@ -109,6 +109,20 @@ public sealed class ExplorerIntegrationTests
             ui.Press(Key.Esc);
             Assert.Equal(RightView.Files, ui.State.View);
 
+            ui.Press(new Key('k'));
+            ui.Until(() => ui.State.Packages is not null, "the selected layer's package inventory");
+            InstalledPackageMetadata layerPackages = ui.State.Packages!;
+            Assert.Equal(["1.0.0"], layerPackages.Ecosystems[InstalledPackageEcosystem.Npm].Packages["left-pad"]);
+            Assert.True(ui.Shows("left-pad"), ui.Screen());
+            ui.Press(new Key('['));
+            ui.Until(() => ui.State.PackagesLayer == 0 && ui.State.Packages is not null, "the base layer's inventory");
+            Assert.Empty(ui.State.Packages!.Ecosystems[InstalledPackageEcosystem.Npm].Packages);
+            ui.Press(new Key(']'));
+            ui.Until(() => ui.State.PackagesLayer == 1 && ui.State.Packages is not null, "the cached layer inventory");
+            Assert.Same(layerPackages, ui.State.Packages);
+            Assert.Throws<InvalidOperationException>(() => explorer.Host.Session!.Packages);
+            ui.Press(Key.Esc);
+
             // Search every layer, then open the hit in the tree.
             ui.Press(new Key('/'));
             Assert.True(ui.Window.Search.HasFocus);

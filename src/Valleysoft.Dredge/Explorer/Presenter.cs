@@ -1,7 +1,7 @@
 namespace Valleysoft.Dredge.Explorer;
 
 internal enum FocusPane { Layers, Right }
-internal enum RightView { Files, Insights, Inspector, Search, Keys, Command, Warning }
+internal enum RightView { Files, Insights, Inspector, Search, Keys, Command, Warning, Packages }
 
 internal sealed class ExplorerState
 {
@@ -36,6 +36,14 @@ internal sealed class ExplorerState
     public PreviewContent? Preview { get; set; }
     public int Spinner { get; set; }
     public CompareState? Compare { get; set; }
+    public int? PackagesLayer { get; set; }
+    public InstalledPackageMetadata? Packages { get; set; }
+    public string? PackagesError { get; set; }
+    public int PackageCursor { get; set; }
+    public int PackageScroll { get; set; }
+    public string PackageQuery { get; set; } = "";
+    public bool PackageSearching { get; set; }
+    public HashSet<InstalledPackageEcosystem> CollapsedPackages { get; } = [];
 }
 
 internal sealed record PreviewContent(string Path, string? Language, List<string>? Lines, string? Message, long Bytes);
@@ -99,6 +107,7 @@ internal sealed partial class ExplorerPresenter
         RightView.Search => SearchPane(s),
         RightView.Keys => KeysPane(s),
         RightView.Warning => WarningPane(s),
+        RightView.Packages => PackagesPane(s),
         RightView.Command => Pane([Line.Blank, Line.Blank, Line.Blank,
             Line.Of("Use Left/Right or Home/End to read the complete command.", Theme.Silt),
             Line.Of("Ctrl+A selects all. Esc returns to the explorer.", Theme.Silt)],
@@ -375,6 +384,7 @@ internal sealed partial class ExplorerPresenter
         Hint compare = new(K(KeyAction.Compare), "Compare…", new PickTag());
         Hint search = new(K(KeyAction.Search), "Search", new ShowView(RightView.Search));
         Hint insights = new(K(KeyAction.Insights), "Insights", new ShowView(RightView.Insights));
+        Hint packages = new(K(KeyAction.Packages), "Packages", new ShowView(RightView.Packages));
         Hint step = new($"{K(KeyAction.PreviousLayer)} {K(KeyAction.NextLayer)}", "Step layer");
         List<Hint> retry = img.LayerCount > 0 && img.States[s.Layer] == ExplorerLayerState.Failed
             ? [new(K(KeyAction.Retry), "Retry layer", new RetryLayer(s.Layer))] : [];
@@ -387,6 +397,7 @@ internal sealed partial class ExplorerPresenter
         List<Hint> clear = s.FindingsOnly || s.Hidden.Count > 0 ? [new("Esc", "Clear filters", new Back())] : [];
         return s.View switch
         {
+            RightView.Packages => PackageHints(s),
             RightView.Search =>
             [
                 new("↑↓", "Select"), new("Enter", "Open", new Activate()), page,
@@ -400,7 +411,7 @@ internal sealed partial class ExplorerPresenter
                 .. img.BaseWarning is not null ? new Hint[] { new("Alt+W", "Base warning", new ShowView(RightView.Warning)) } : [],
                 new("↑↓", "Finding"), new("Enter", "Show files", new Activate()),
                 .. img.LayerCount > 0 ? new Hint[] { new("Tab", "Layers", new FocusOn(FocusPane.Layers)) } : [], back,
-                ends, search, keys, quit,
+                packages, ends, search, keys, quit,
             ],
             RightView.Inspector =>
             [
@@ -411,15 +422,15 @@ internal sealed partial class ExplorerPresenter
             ],
             RightView.Keys or RightView.Warning => [new("↑↓", "Scroll"), page, ends, back, quit],
             RightView.Command => [new("←→", "Scroll"), new("Ctrl+A", "Select all"), ends, back, keys, quit],
-            _ when img.LayerCount == 0 => [compare, insights, search, .. platform, keys, back, quit],
+            _ when img.LayerCount == 0 => [packages, compare, insights, search, .. platform, keys, back, quit],
             _ when s.Focus == FocusPane.Layers =>
             [
-                .. retry, new("Tab", "Files", new FocusOn(FocusPane.Right)), new("↑↓", "Layer"), whole, compare, search, insights,
+                .. retry, new("Tab", "Files", new FocusOn(FocusPane.Right)), packages, new("↑↓", "Layer"), whole, compare, search, insights,
                 .. firstOwn, ends, .. platform, keys, quit,
             ],
             _ =>
             [
-                .. retry, new("Tab", "Layers", new FocusOn(FocusPane.Layers)), new("↑↓", "Move", ShowInFooter: false), step, whole,
+                .. retry, new("Tab", "Layers", new FocusOn(FocusPane.Layers)), packages, new("↑↓", "Move", ShowInFooter: false), step, whole,
                 new($"{K(KeyAction.ToggleAdded)} {K(KeyAction.ToggleModified)} {K(KeyAction.ToggleIdentical)} {K(KeyAction.ToggleDeleted)}", "Filter"),
                 new("Enter", "Inspect", new Activate()), search, insights,
                 new(K(KeyAction.Extract), "Extract…", new ExtractSelected()), compare, new("←→", "Fold", ShowInFooter: false), .. clear, findingsOnly,

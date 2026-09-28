@@ -160,7 +160,8 @@ character. Two actions cannot share a key. The actions are `quit`, `help`,
 `insights`, `search`, `wholeFilesystem`, `firstUserLayer`, `compare`,
 `findingsOnly`, `previousLayer`, `nextLayer`, `toggleAdded`,
 `toggleModified`, `toggleIdentical`, `toggleDeleted`, `platform`, `extract`,
-`copyCommand`, `viewer`, `swapSides`, and `retry`. For example, to quit with
+`copyCommand`, `viewer`, `swapSides`, `retry`, and `packages` (default `k`).
+For example, to quit with
 `Q` and use `q` to toggle the whole filesystem:
 
 ```console

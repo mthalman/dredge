@@ -40,6 +40,7 @@ internal sealed class ExplorerWindow : Window
     private IDriver? watched;
     private bool clearedThisFrame;
     private CancellationTokenSource? previewLoad;
+    private CancellationTokenSource? packageLoad;
     private int compareGeneration;
     private CancellationTokenSource? compareLoad;
     private int diffGeneration;
@@ -130,6 +131,7 @@ internal sealed class ExplorerWindow : Window
     public TextField ExtractField => extractField;
     internal TextField CommandText => commandText;
     internal Task DiffTask { get; private set; } = Task.CompletedTask;
+    internal Task PackageTask { get; private set; } = Task.CompletedTask;
     public ExplorerExit Exit { get; private set; } = new(ExplorerExitKind.Quit);
     internal void ViewerFailed(string error) => Notice(error, error: true);
     private bool Comparing => s.Compare is not null;
@@ -139,7 +141,8 @@ internal sealed class ExplorerWindow : Window
     private List<Line> HeaderLines() =>
         ex.TooSmall ? ex.TooSmallMessage() : Comparing ? Compare.Header() : ex.Header(s);
 
-    private bool Searching => Comparing ? s.Compare!.Searching && s.View is not (RightView.Keys or RightView.Warning) : s.View == RightView.Search;
+    private bool Searching => Comparing ? s.Compare!.Searching && s.View is not (RightView.Keys or RightView.Warning)
+        : s.View == RightView.Search || s.View == RightView.Packages && s.PackageSearching;
     private bool Typing() => pendingExtract is not null || Searching;
 
     // Puts Terminal.Gui focus where the state says it is.
@@ -184,6 +187,7 @@ internal sealed class ExplorerWindow : Window
             right.SetFocus();
         }
         EnsurePreview();
+        EnsurePackages();
     }
 
     // Tearing down the screen moves Terminal.Gui focus; the state outlives this
@@ -195,6 +199,7 @@ internal sealed class ExplorerWindow : Window
         windowLifetime.Cancel();
         CancelComparison();
         CancelDiff();
+        CancelPackages();
         Exit = exit;
         App?.RequestStop();
     }
@@ -324,6 +329,7 @@ internal sealed class ExplorerWindow : Window
             windowLifetime.Cancel();
             CancelComparison();
             CancelDiff();
+            CancelPackages();
             previewLoad?.Dispose();
             previewLoad = null;
             windowLifetime.Dispose();
@@ -402,6 +408,7 @@ internal sealed class ExplorerWindow : Window
     // Brings the footer and every pane up to date with the state; each repaints only if it changed.
     private void Refresh()
     {
+        EnsurePackages();
         if (!ex.TooSmall && inspecting != UsesFullWidth())
         {
             Relayout();
@@ -415,7 +422,8 @@ internal sealed class ExplorerWindow : Window
         extractLabel.Visible = extractField.Visible = extracting;
         if (searching)
         {
-            int n = Comparing ? Compare.Rows().Count : ex.SearchResults(s).Total;
+            int n = Comparing ? Compare.Rows().Count
+                : s.View == RightView.Packages ? ex.PackageRows(s).Count(row => !row.IsGroup) : ex.SearchResults(s).Total;
             string count = n == 1 ? "1 match" : $"{Fmt.N(n)} matches";
             if (matches.Text != count)
             {
@@ -572,7 +580,9 @@ internal sealed class ExplorerWindow : Window
             _ => null,
         };
         if (key.IsAlt && !key.IsCtrl && key.NoAlt.KeyCode == KeyCode.W &&
-            (s.View == RightView.Insights && img.BaseWarning is not null || Comparing && Compare.Warnings().Count > 0))
+            (s.View == RightView.Insights && img.BaseWarning is not null ||
+                s.View == RightView.Packages && s.Packages?.Diagnostics.Count > 0 ||
+                Comparing && Compare.Warnings().Count > 0))
         {
             cmd = new ShowView(RightView.Warning);
         }
@@ -596,6 +606,7 @@ internal sealed class ExplorerWindow : Window
                 KeyAction.Quit => new Quit(),
                 KeyAction.Help => new ShowView(RightView.Keys),
                 KeyAction.Insights => new ShowView(RightView.Insights),
+                KeyAction.Packages => new ShowView(RightView.Packages),
                 KeyAction.Search => new ShowView(RightView.Search),
                 KeyAction.WholeFilesystem => new SetWhole(!s.WholeFilesystem),
                 KeyAction.FirstUserLayer => new FirstUserLayer(),
@@ -687,9 +698,11 @@ internal sealed class ExplorerWindow : Window
         {
             warningReturn = (s.View, s.Focus, s.Compare?.FocusLayers ?? false);
             s.WarningText = cmd is ShowComparisonSnapshot ? Compare.SnapshotDetails()
-                : Comparing ? string.Join("\n\n", Compare.Warnings()) : img.BaseWarning;
+                : Comparing ? string.Join("\n\n", Compare.Warnings())
+                : s.View == RightView.Packages ? string.Join("\n\n", s.Packages!.Diagnostics.Select(d => $"/{d.Path}: {d.Message}"))
+                : img.BaseWarning;
             s.WarningTitle = cmd is ShowComparisonSnapshot ? "Comparison snapshot"
-                : Comparing ? "Package metadata warnings" : "Base verification warning";
+                : Comparing || s.View == RightView.Packages ? "Package metadata warnings" : "Base verification warning";
             s.WarningScroll = 0;
             s.View = RightView.Warning;
             Relayout();
@@ -757,6 +770,12 @@ internal sealed class ExplorerWindow : Window
             Refresh();
             return;
         }
+        if (!Comparing && s.View == RightView.Packages && ApplyPackages(cmd))
+        {
+            ex.Invalidate();
+            Refresh();
+            return;
+        }
         List<FlatRow> rows = s.View == RightView.Files && img.IsIndexed(s.Layer) ? ex.Flatten(s) : [];
         FlatRow? row = s.Cursor >= 0 && s.Cursor < rows.Count ? rows[s.Cursor] : null;
         int findingCount = ex.VisibleFindings(s).Count;
@@ -811,7 +830,7 @@ internal sealed class ExplorerWindow : Window
             case RetryLayer:
                 Notice("Only a failed layer can be retried.");
                 break;
-            case Move m when s.Focus == FocusPane.Layers && s.View is RightView.Files or RightView.Insights:
+            case Move m when s.Focus == FocusPane.Layers && s.View is RightView.Files or RightView.Insights or RightView.Packages:
                 SelectLayerCore(s.Layer + Math.Sign(m.Delta));
                 break;
             case Move m when s.View == RightView.Insights:
@@ -835,7 +854,7 @@ internal sealed class ExplorerWindow : Window
             case Move m when s.View == RightView.Files:
                 s.Cursor = Math.Clamp(s.Cursor + m.Delta, 0, Math.Max(0, rows.Count - 1));
                 break;
-            case Jump j when s.Focus == FocusPane.Layers && s.View is RightView.Files or RightView.Insights:
+            case Jump j when s.Focus == FocusPane.Layers && s.View is RightView.Files or RightView.Insights or RightView.Packages:
                 SelectLayerCore(j.ToEnd ? img.LayerCount - 1 : 0);
                 break;
             case Jump j when s.View == RightView.Insights:
@@ -1131,6 +1150,123 @@ internal sealed class ExplorerWindow : Window
                 }
             }, ct, Abandon);
         }, TaskScheduler.Default);
+    }
+
+    private void CancelPackages()
+    {
+        packageLoad?.Cancel();
+        packageLoad?.Dispose();
+        packageLoad = null;
+    }
+
+    private void EnsurePackages()
+    {
+        if (windowDisposed || windowStopped || lifetime.IsCancellationRequested || Comparing || s.View != RightView.Packages)
+        {
+            CancelPackages();
+            return;
+        }
+        if (s.PackagesLayer != s.Layer)
+        {
+            CancelPackages();
+            s.PackagesLayer = s.Layer;
+            s.Packages = null;
+            s.PackagesError = null;
+            s.PackageCursor = s.PackageScroll = 0;
+        }
+        if (App is null || !img.Complete || s.Packages is not null || s.PackagesError is not null || packageLoad is not null)
+        {
+            return;
+        }
+        int layer = s.Layer;
+        CancellationTokenSource request = packageLoad = CancellationTokenSource.CreateLinkedTokenSource(lifetime);
+        PackageTask = RunAsync(ct => host.PackagesAsync(layer, ct), metadata =>
+        {
+            if (packageLoad == request && s.Layer == layer)
+            {
+                s.Packages = metadata;
+                packageLoad = null;
+                request.Dispose();
+            }
+        }, error =>
+        {
+            if (packageLoad == request && s.Layer == layer)
+            {
+                s.PackagesError = $"Could not read packages: {error.Message}";
+                packageLoad = null;
+                request.Dispose();
+            }
+        }, request.Token);
+    }
+
+    private bool ApplyPackages(Cmd cmd)
+    {
+        List<PackageInventoryRow> rows = ex.PackageRows(s);
+        PackageInventoryRow? row = rows.ElementAtOrDefault(s.PackageCursor);
+        switch (cmd)
+        {
+            case ShowView { View: RightView.Search }:
+                s.PackageSearching = true;
+                s.Focus = FocusPane.Right;
+                search.Text = s.PackageQuery;
+                search.Visible = true;
+                search.SetFocus();
+                search.MoveEnd();
+                return true;
+            case SetQuery query:
+                s.PackageQuery = query.Text;
+                s.PackageCursor = s.PackageScroll = 0;
+                return true;
+            case Back when s.PackageSearching:
+            case Activate when s.PackageSearching:
+                s.PackageSearching = false;
+                right.SetFocus();
+                return true;
+            case Back when s.PackageQuery.Length > 0:
+                s.PackageQuery = "";
+                s.PackageCursor = s.PackageScroll = 0;
+                return true;
+            case Move m when s.Focus == FocusPane.Right:
+                s.PackageCursor = Math.Clamp(s.PackageCursor + m.Delta, 0, Math.Max(0, rows.Count - 1));
+                return true;
+            case Jump j when s.Focus == FocusPane.Right:
+                s.PackageCursor = j.ToEnd ? Math.Max(0, rows.Count - 1) : 0;
+                return true;
+            case SetCursor cursor:
+                s.PackageCursor = Math.Clamp(cursor.Row, 0, Math.Max(0, rows.Count - 1));
+                return true;
+            case Fold fold when row?.IsGroup == true:
+                if (fold.Open)
+                {
+                    s.CollapsedPackages.Remove(row.Ecosystem);
+                }
+                else
+                {
+                    s.CollapsedPackages.Add(row.Ecosystem);
+                }
+                return true;
+            case Fold { Open: false } when row is not null:
+                s.PackageCursor = rows.FindIndex(item => item.IsGroup && item.Ecosystem == row.Ecosystem);
+                return true;
+            case Activate when row?.IsGroup == true:
+                if (!s.CollapsedPackages.Remove(row.Ecosystem))
+                {
+                    s.CollapsedPackages.Add(row.Ecosystem);
+                }
+                return true;
+            case Activate when row is not null:
+                warningReturn = (RightView.Packages, s.Focus, false);
+                s.WarningTitle = "Package details";
+                s.WarningText = $"{CompareView.EcosystemName(row.Ecosystem)}\n\n{row.Name}\n\nVersions: {row.Versions}\n\nInventory through layer {s.Layer}.";
+                s.WarningScroll = 0;
+                s.View = RightView.Warning;
+                SyncFocus();
+                return true;
+            case RetryLayer when s.PackagesError is not null:
+                s.PackagesError = null;
+                return true;
+        }
+        return false;
     }
 
     private void EnsurePreview()

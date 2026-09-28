@@ -25,6 +25,31 @@ public class ImageFileSystemTests : IAsyncDisposable
     private static readonly ImageName ImageName = ImageName.Parse("registry.test/repo:tag");
 
     [Fact]
+    public async Task LayerPackageSnapshotsPreserveLinksAndOpaqueDirectorySemantics()
+    {
+        static string Package(string name, string version) => $$"""{"name":"{{name}}","version":"{{version}}"}""";
+        byte[][] layers =
+        [
+            CreateLayer(Entry.File("original", Package("captured", "1.0")),
+                Entry.File("app/node_modules/removed/package.json", Package("removed", "1.0"))),
+            CreateLayer(Entry.HardLink("app/node_modules/kept/package.json", "original"),
+                Entry.File("original", Package("captured", "2.0"))),
+            CreateLayer(Entry.File("app/node_modules/.wh..wh..opq", ""),
+                Entry.File("app/node_modules/final/package.json", Package("final", "3.0")))
+        ];
+        using IDockerRegistryClient client = CreateClient(layers).Object;
+        await using ImageFileSystem files = await ImageFileSystem.CreateAsync(client, ImageName,
+            new PlatformOptionsBase(), TestContext.Current.CancellationToken, cache.Store, requireLayerIndexes: true);
+        await using ImageFileSystem snapshot = files.CreateLayerSnapshot(1, TestContext.Current.CancellationToken);
+        InstalledPackageMetadata earlier = await InstalledPackageReader.ReadAsync(snapshot, TestContext.Current.CancellationToken);
+        InstalledPackageMetadata final = await InstalledPackageReader.ReadAsync(files, TestContext.Current.CancellationToken);
+
+        Assert.Equal(["captured", "removed"], earlier.Ecosystems[InstalledPackageEcosystem.Npm].Packages.Keys);
+        Assert.Equal(["1.0"], earlier.Ecosystems[InstalledPackageEcosystem.Npm].Packages["captured"]);
+        Assert.Equal(["final"], final.Ecosystems[InstalledPackageEcosystem.Npm].Packages.Keys);
+    }
+
+    [Fact]
     public async Task NuGetMetadata_UsesFinalDependencyFilesAndSkipsInvalidDocuments()
     {
         static string Deps(string version) =>

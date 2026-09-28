@@ -4,7 +4,7 @@ internal enum KeyAction
 {
     Quit, Help, Insights, Search, WholeFilesystem, FirstUserLayer, Compare, FindingsOnly,
     PreviousLayer, NextLayer, ToggleAdded, ToggleModified, ToggleIdentical, ToggleDeleted,
-    Platform, Extract, CopyCommand, Viewer, SwapSides, Retry
+    Platform, Extract, CopyCommand, Viewer, SwapSides, Retry, Packages
 }
 
 // Single-character action keys, matched by the typed character so they work
@@ -33,6 +33,7 @@ internal sealed class KeyMap
         [KeyAction.Viewer] = 'o',
         [KeyAction.SwapSides] = 's',
         [KeyAction.Retry] = 'r',
+        [KeyAction.Packages] = 'k',
     };
 
     private readonly Dictionary<KeyAction, char> keys;
@@ -102,6 +103,7 @@ internal sealed class KeyMap
         KeyAction.Viewer => settings.Viewer,
         KeyAction.SwapSides => settings.SwapSides,
         KeyAction.Retry => settings.Retry,
+        KeyAction.Packages => settings.Packages,
         _ => null
     };
 }

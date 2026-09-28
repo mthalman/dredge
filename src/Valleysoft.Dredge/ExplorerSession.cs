@@ -23,6 +23,7 @@ internal sealed class ExplorerSession
 {
     private readonly SemaphoreSlim packageGate = new(1, 1);
     private InstalledPackageMetadata? packages;
+    private readonly Dictionary<int, InstalledPackageMetadata> layerPackages = [];
 
     public required ImageName Image { get; init; }
     public required ResolvedManifest Resolved { get; init; }
@@ -32,7 +33,7 @@ internal sealed class ExplorerSession
     public required IReadOnlyList<ImageFileSystemEntry> Entries { get; init; }
     public InstalledPackageMetadata Packages
     {
-        get => packages ?? throw new InvalidOperationException("Package metadata has not been loaded for comparison.");
+        get => packages ?? throw new InvalidOperationException("Package metadata has not been loaded.");
         init => packages = value;
     }
     public int? BaseLayerCount { get; init; }
@@ -95,19 +96,42 @@ internal sealed class ExplorerSession
 
     public async Task EnsurePackagesAsync(CancellationToken cancellationToken)
     {
-        if (packages is not null)
+        await GetPackagesAsync(Resolved.Manifest.Layers.Length - 1, cancellationToken);
+    }
+
+    public async Task<InstalledPackageMetadata> GetPackagesAsync(int layer, CancellationToken cancellationToken)
+    {
+        int finalLayer = Resolved.Manifest.Layers.Length - 1;
+        if (layer < 0 && finalLayer >= 0 || layer < -1 || layer > finalLayer)
         {
-            return;
+            throw new ArgumentOutOfRangeException(nameof(layer));
         }
         await packageGate.WaitAsync(cancellationToken);
         try
         {
-            if (packages is null)
+            if (layer == finalLayer && packages is not null)
             {
-                InstalledPackageMetadata metadata = await InstalledPackageReader.ReadAsync(Files, cancellationToken);
+                return packages;
+            }
+            if (layerPackages.TryGetValue(layer, out InstalledPackageMetadata? cached))
+            {
+                return cached;
+            }
+            InstalledPackageMetadata metadata;
+            if (layer == finalLayer)
+            {
+                metadata = await InstalledPackageReader.ReadAsync(Files, cancellationToken);
                 cancellationToken.ThrowIfCancellationRequested();
                 packages = metadata;
             }
+            else
+            {
+                await using ImageFileSystem snapshot = Files.CreateLayerSnapshot(layer, cancellationToken);
+                metadata = await InstalledPackageReader.ReadAsync(snapshot, cancellationToken);
+                cancellationToken.ThrowIfCancellationRequested();
+                layerPackages.Add(layer, metadata);
+            }
+            return metadata;
         }
         finally
         {
