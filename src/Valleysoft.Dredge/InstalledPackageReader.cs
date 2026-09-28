@@ -55,8 +55,14 @@ internal static class InstalledPackageReader
         ImageFileSystemEntry[] pipManifests = entries
             .Where(entry => IsReadableFile(entry) && IsPipMetadataPath(entry.Path))
             .ToArray();
+        HashSet<string> nugetCacheDirectories = entries
+            .Where(entry => IsReadableFile(entry) &&
+                (entry.Path == ".nupkg.metadata" || entry.Path.EndsWith("/.nupkg.metadata", StringComparison.Ordinal)))
+            .Select(entry => ImagePath.GetDirectoryName(entry.Path))
+            .ToHashSet(StringComparer.Ordinal);
         ImageFileSystemEntry[] nugetManifests = entries
-            .Where(entry => IsReadableFile(entry) && IsNuGetDepsPath(entry.Path))
+            .Where(entry => IsReadableFile(entry) && IsNuGetDepsPath(entry.Path) &&
+                !IsNuGetCachePath(entry.Path, nugetCacheDirectories))
             .ToArray();
         ImageFileSystemEntry? dpkgStatus = entries.SingleOrDefault(
             entry => IsReadableFile(entry) && entry.Path == DpkgStatusPath);
@@ -176,6 +182,33 @@ internal static class InstalledPackageReader
 
     internal static bool IsNuGetDepsPath(string path) =>
         path.EndsWith(".deps.json", StringComparison.OrdinalIgnoreCase);
+
+    private static bool IsNuGetCachePath(string path, IReadOnlySet<string> cacheDirectories)
+    {
+        string[] segments = path.Split('/');
+        for (int i = 0; i < segments.Length - 1; i++)
+        {
+            if (segments[i].Equals("NuGetFallbackFolder", StringComparison.OrdinalIgnoreCase) ||
+                (segments[i].Equals(".nuget", StringComparison.OrdinalIgnoreCase) &&
+                    segments[i + 1].Equals("packages", StringComparison.OrdinalIgnoreCase)))
+            {
+                return true;
+            }
+        }
+        string directory = ImagePath.GetDirectoryName(path);
+        while (true)
+        {
+            if (cacheDirectories.Contains(directory))
+            {
+                return true;
+            }
+            if (directory.Length == 0)
+            {
+                return false;
+            }
+            directory = ImagePath.GetDirectoryName(directory);
+        }
+    }
 
     internal static IReadOnlyList<InstalledPackage> ParseNuGetDepsJson(string content, string sourcePath)
     {

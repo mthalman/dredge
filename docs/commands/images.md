@@ -165,7 +165,12 @@ changed text file to see a diff, and `s` to swap the two sides.
 Detected ecosystems include npm, dpkg, apk, pip, and NuGet. NuGet inventory
 comes from deployed `.deps.json` files: only libraries marked `package` in the
 selected runtime target are counted, not project references or restore-cache
-contents. Package IDs are normalized to lowercase and versions from multiple
+contents. Discovery excludes `.nuget/packages` and `NuGetFallbackFolder`
+subtrees, plus extracted-package directories containing NuGet's
+`.nupkg.metadata` marker, including at custom cache locations. An arbitrarily
+relocated cache without these names or markers cannot be distinguished from
+deployed files; dependency discovery is not proof that an application runs.
+Package IDs are normalized to lowercase and versions from multiple
 applications are combined. Dependency files are limited to 64 MiB each.
 Missing or unreadable dependency metadata means NuGet inventory is unavailable,
 not proof that the image has no packages; a valid empty inventory is distinguished.

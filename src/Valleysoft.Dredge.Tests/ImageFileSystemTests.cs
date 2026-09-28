@@ -75,6 +75,42 @@ public class ImageFileSystemTests : IAsyncDisposable
         Assert.Empty(metadata.Ecosystems[InstalledPackageEcosystem.NuGet].Packages);
     }
 
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task NuGetMetadata_ExcludesValidCachedDependencyFiles(bool includeDeployed)
+    {
+        const string cached = """
+            {"runtimeTarget":{"name":"net"},"targets":{"net":{"Cached/99":{}}},
+             "libraries":{"Cached/99":{"type":"package"}}}
+            """;
+        List<Entry> entries =
+        [
+            Entry.File("root/.nuget/packages/tool/1/tools/Tool.deps.json", cached),
+            Entry.File("usr/share/dotnet/sdk/NuGetFallbackFolder/tool/1/Tool.deps.json", cached),
+            Entry.File("opt/restore/tool/1/.nupkg.metadata", "{}"),
+            Entry.File("opt/restore/tool/1/tools/net10/Tool.deps.json", cached),
+            Entry.File("arbitrary/package/.nupkg.metadata", "{}"),
+            Entry.File("arbitrary/package/App.deps.json", cached)
+        ];
+        if (includeDeployed)
+        {
+            entries.Add(Entry.File("app/App.deps.json", cached.Replace("Cached/99", "Deployed/1")));
+            entries.Add(Entry.File("opt/restore/tool/10/App.deps.json", cached.Replace("Cached/99", "Sibling/2")));
+        }
+        using IDockerRegistryClient client = CreateClient([CreateLayer(entries.ToArray())]).Object;
+        await using ImageFileSystem fileSystem = await CreateFileSystemAsync(
+            client, ImageName, new PlatformOptionsBase(), TestContext.Current.CancellationToken);
+
+        InstalledPackageMetadata metadata = await InstalledPackageReader.ReadAsync(
+            fileSystem, TestContext.Current.CancellationToken);
+        InstalledPackageEcosystemMetadata nuget = metadata.Ecosystems[InstalledPackageEcosystem.NuGet];
+
+        Assert.Equal(includeDeployed, nuget.Availability == InstalledPackageMetadataAvailability.Available);
+        Assert.Equal(includeDeployed ? ["deployed", "sibling"] : Array.Empty<string>(), nuget.Packages.Keys);
+        Assert.Empty(metadata.Diagnostics);
+    }
+
     [Fact]
     public async Task PackageMetadata_ReadsEachLayerOnceAndIsolatesInvalidManifests()
     {
