@@ -1704,8 +1704,7 @@ public sealed class ExplorerThemeTests : IDisposable
             ExplorerPresenter presenter = new(ExplorerSamples.Image(), 150, 42);
             Line header = presenter.FilesPane(new ExplorerState { Layer = 2 }).Lines
                 .Single(line => line.ToString().Contains("uid:gid", StringComparison.Ordinal));
-            Assert.All(header.Parts.Where(part => !string.IsNullOrWhiteSpace(part.Text) &&
-                !part.Text.Contains("Name", StringComparison.Ordinal)),
+            Assert.All(header.Parts.Where(part => !string.IsNullOrWhiteSpace(part.Text)),
                 part => Assert.Equal(Theme.Silt, part.Sty.Foreground));
         }
     }

@@ -200,7 +200,7 @@ public sealed class ExplorerNavigationTests
     }
 
     [Fact]
-    public void LargestFirstSortsEveryExpandedDirectoryWithoutMovingSelection()
+    public void FileOrderingIsUnaffectedByTheRemovedSortShortcutAndHeaderClick()
     {
         ExplorerImage image = Custom([Layer([
             File("a/small", 1, "a"), File("z/a", 2, "za"), File("z/big", 100, "zb"),
@@ -212,11 +212,11 @@ public sealed class ExplorerNavigationTests
         string[] original = ui.Window.Presenter.Flatten(state).Select(row => row.Path).ToArray();
         ui.Window.Apply(new SetCursor(ui.Window.Presenter.IndexOf(state, "a/small")));
         ui.Press(new Key('s').WithAlt);
-        Assert.Equal(["z", "z/big", "z/a", "z/c", "middle", "a", "a/small"],
-            ui.Window.Presenter.Flatten(state).Select(row => row.Path));
+        Assert.Equal(original, ui.Window.Presenter.Flatten(state).Select(row => row.Path));
         Assert.Equal("a/small", ui.Window.Presenter.Flatten(state)[state.Cursor].Path);
-        Assert.True(ui.Shows("Largest first"), ui.Screen());
-        (int x, int y) = ui.Find("Largest first");
+        Assert.DoesNotContain(ui.Window.Presenter.Hints(state), hint => hint.Key == "Alt+S");
+        Assert.False(ui.Shows("Largest first"), ui.Screen());
+        (int x, int y) = ui.Find("uid:gid");
         ui.Click(x + 2, y);
         Assert.Equal(original, ui.Window.Presenter.Flatten(state).Select(row => row.Path));
         Assert.Equal("a/small", ui.Window.Presenter.Flatten(state)[state.Cursor].Path);
@@ -226,7 +226,7 @@ public sealed class ExplorerNavigationTests
     [Theory]
     [InlineData(false)]
     [InlineData(true)]
-    public void SizeSortingCountsSharedFolderContentOnce(bool whole)
+    public void DefaultFileOrderingCountsSharedFolderContentOnce(bool whole)
     {
         ExplorerImage image = Custom([Layer([
             File("bin/content", 100, "shared"),
@@ -235,10 +235,9 @@ public sealed class ExplorerNavigationTests
             File("z/content", 150, "other")])]);
         using ExplorerUiHarness ui = ExplorerWindowTests.Open(image, new() { WholeFilesystem = whole },
             session => new FakeExplorerHost { Baseline = session }, out _);
-        ui.Press(new Key('s').WithAlt);
         List<FlatRow> rows = ui.Window.Presenter.Flatten(ui.State);
-        Assert.Equal(["z", "bin", "usr"], rows.Select(row => row.Path));
-        Assert.Equal([150L, 100L, 100L], rows.Select(row => row.Node.Size));
+        Assert.Equal(["bin", "usr", "z"], rows.Select(row => row.Path));
+        Assert.Equal([100L, 100L, 150L], rows.Select(row => row.Node.Size));
         Assert.Equal(250, Node.TotalSize(ui.Window.Presenter.Tree(ui.State)));
     }
 

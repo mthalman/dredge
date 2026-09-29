@@ -611,10 +611,6 @@ internal sealed class ExplorerWindow : Window
         {
             cmd = new ToggleDiffLayout();
         }
-        if (key.IsAlt && !key.IsCtrl && key.NoAlt.KeyCode == KeyCode.S && !Comparing && s.View == RightView.Files)
-        {
-            cmd = new ToggleFileSort();
-        }
         if (key.IsAlt && !key.IsCtrl && key.NoAlt.KeyCode == KeyCode.H && !Comparing && s.View == RightView.Inspector)
         {
             cmd = new OpenHistory();
@@ -990,11 +986,6 @@ internal sealed class ExplorerWindow : Window
                 }
                 s.View = RightView.Files;
                 s.Cursor = s.Scroll = 0;
-                break;
-            case ToggleFileSort when s.View == RightView.Files:
-                s.LargestFirst = !s.LargestFirst;
-                ex.Invalidate();
-                s.Cursor = row is null ? 0 : Math.Max(0, ex.IndexOf(s, row.Path));
                 break;
             case SetWhole w:
                 s.WholeFilesystem = w.On;

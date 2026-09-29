@@ -40,7 +40,6 @@ internal sealed record Activate : Cmd;
 internal sealed record Fold(bool Open) : Cmd;
 internal sealed record ToggleChange(Change Change) : Cmd;
 internal sealed record ToggleFindingsOnly : Cmd;
-internal sealed record ToggleFileSort : Cmd;
 internal sealed record SetWhole(bool On) : Cmd;
 internal sealed record ShowView(RightView View) : Cmd;
 internal sealed record Back : Cmd;
