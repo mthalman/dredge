@@ -110,7 +110,7 @@ public sealed class DeletionIntegrationTests(RegistryFixture fixture, ZotRegistr
     public async Task DisabledDeletion_DoesNotDeleteManifest(bool tagOnly)
     {
         await using RegistryFixture disabled = new(
-            _ => RegistryFixture.StartDistributionContainerAsync(deleteEnabled: false));
+            static _ => RegistryFixture.StartDistributionContainerAsync(deleteEnabled: false));
         await disabled.EnsureInitializedAsync();
         string repository = disabled.GetRepositoryName(nameof(DisabledDeletion_DoesNotDeleteManifest));
         ImageSeed image = await disabled.PutImageAsync(repository, "keep", []);

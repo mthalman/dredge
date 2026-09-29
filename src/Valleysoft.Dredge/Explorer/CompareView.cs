@@ -35,7 +35,7 @@ internal sealed class CompareState : FileDiffState
     public int Cursor { get; set; }
     public int Scroll { get; set; }
     public HashSet<string> Expanded { get; } = new(
-        ["section:packages", "section:files", .. Enum.GetValues<InstalledPackageEcosystem>().Select(e => $"eco:{e}")],
+        ["section:packages", "section:files", .. Enum.GetValues<InstalledPackageEcosystem>().Select(static e => $"eco:{e}")],
         StringComparer.Ordinal);
     public PackageFilesContent? PackageFiles { get; set; }
     public bool Busy { get; set; }
@@ -88,8 +88,8 @@ internal sealed class CompareView
 
     public IReadOnlyList<string> Warnings() => warnings ??=
     [
-        .. c.Comparison.Baseline.Packages.Diagnostics.Select(d => $"Baseline /{d.Path}: {d.Message}"),
-        .. c.Comparison.Target.Packages.Diagnostics.Select(d => $"Target /{d.Path}: {d.Message}"),
+        .. c.Comparison.Baseline.Packages.Diagnostics.Select(static d => $"Baseline /{d.Path}: {d.Message}"),
+        .. c.Comparison.Target.Packages.Diagnostics.Select(static d => $"Target /{d.Path}: {d.Message}"),
         .. c.PackageFiles?.Warnings ?? [],
     ];
 
@@ -168,10 +168,10 @@ internal sealed class CompareView
     }
 
     private string[] Instructions(ExplorerSession session) =>
-        new ExplorerImage(session.Image.ToString(), "", "",
-            session.Resolved.Manifest.Layers.Select(l => l.Digest ?? "").ToArray(),
-            session.Resolved.Manifest.Layers.Select(l => l.Size).ToArray(),
-            session.Config.History).Instructions.ToArray();
+        [.. new ExplorerImage(session.Image.ToString(), "", "",
+            [.. session.Resolved.Manifest.Layers.Select(static l => l.Digest ?? "")],
+            [.. session.Resolved.Manifest.Layers.Select(static l => l.Size)],
+            session.Config.History).Instructions];
 
     private string[]? baselineInstructions, targetInstructions;
     private string Instruction(int layer)
@@ -301,12 +301,12 @@ internal sealed class CompareView
             ];
         }
         List<CompareRow> all = c.PackageFiles is { } package
-            ? (package.Files ?? []).Select(file => new CompareRow("file:" + file.Path,
-                CompareRowKind.File, "", file.Path, file.Change, Path: file.Path)).ToList()
+            ? [.. (package.Files ?? []).Select(file => new CompareRow("file:" + file.Path,
+                CompareRowKind.File, "", file.Path, file.Change, Path: file.Path))]
             : BuildRows();
-        rows = c.SearchQuery.Length == 0 ? all : all
+        rows = c.SearchQuery.Length == 0 ? all : [.. all
             .Where(row => row.Kind is CompareRowKind.File or CompareRowKind.Package &&
-                (row.Path ?? row.Name).Contains(c.SearchQuery, StringComparison.OrdinalIgnoreCase)).ToList();
+                (row.Path ?? row.Name).Contains(c.SearchQuery, StringComparison.OrdinalIgnoreCase))];
         return rows;
     }
 
@@ -321,7 +321,7 @@ internal sealed class CompareView
         {
             foreach (InstalledPackageEcosystem ecosystem in Enum.GetValues<InstalledPackageEcosystem>())
             {
-                List<ExplorerPackageDifference> changes = packages.Where(p => p.Ecosystem == ecosystem).ToList();
+                List<ExplorerPackageDifference> changes = [.. packages.Where(p => p.Ecosystem == ecosystem)];
                 if (!Available(ecosystem))
                 {
                     continue;
@@ -332,10 +332,10 @@ internal sealed class CompareView
                 {
                     continue;
                 }
-                List<(string Key, List<ExplorerPackageDifference> Items)> groups = changes
+                List<(string Key, List<ExplorerPackageDifference> Items)> groups = [.. changes
                     .GroupBy(p => ecosystem == InstalledPackageEcosystem.Npm && p.Name.StartsWith('@') && p.Name.Contains('/')
                         ? p.Name[..p.Name.IndexOf('/')] : p.Name)
-                    .Select(g => (g.Key, g.ToList())).ToList();
+                    .Select(g => (g.Key, g.ToList()))];
                 int count = groups.Count + (unchanged > 0 ? 1 : 0);
                 int index = 0;
                 string ecosystemKey = $"eco:{ecosystem}";
@@ -469,7 +469,7 @@ internal sealed class CompareView
             !c.FocusLayers, $"{c.BaselineLabel} → {c.TargetLabel}");
 
         int visible = DiffRows;
-        int versionWidth = Math.Min(list.Select(row => row.Versions is null ? 0 : DisplayText.Width(row.Versions)).DefaultIfEmpty().Max(),
+        int versionWidth = Math.Min(list.Select(static row => row.Versions is null ? 0 : DisplayText.Width(row.Versions)).DefaultIfEmpty().Max(),
             Math.Max(1, (w - 4) / 3));
         int packageNameWidth = Math.Max(1, w - 4 - versionWidth - 2);
         int scroll = Math.Clamp(c.Scroll, 0, Math.Max(0, list.Count - visible));
@@ -552,10 +552,10 @@ internal sealed class CompareView
             .Add(" −", Theme.S(Theme.Garnet, Theme.Graphite, Deco.Bold)).Add($" {Fmt.N(removed)} removed ", Theme.S(Theme.Foam, Theme.Graphite));
         // An ecosystem missing from both images has nothing to compare; one missing
         // from only one image means its package changes can't be shown.
-        List<string> unavailable = Enum.GetValues<InstalledPackageEcosystem>()
+        List<string> unavailable = [.. Enum.GetValues<InstalledPackageEcosystem>()
             .Where(e => (c.Comparison.Baseline.Packages.Ecosystems[e].Availability == InstalledPackageMetadataAvailability.Unavailable)
                 != (c.Comparison.Target.Packages.Ecosystems[e].Availability == InstalledPackageMetadataAvailability.Unavailable))
-            .Select(EcosystemName).ToList();
+            .Select(EcosystemName)];
         Line right = unavailable.Count > 0
             ? Line.Of($"▲ {string.Join(", ", unavailable)} metadata unavailable", Theme.Ochre)
             : Line.Of($"{Fmt.Count(c.Comparison.Files.Count, "path")} {(c.Comparison.Files.Count == 1 ? "differs" : "differ")}", Theme.Silt);
@@ -680,7 +680,7 @@ internal sealed class CompareView
         }
         if (c.Diff is not null)
         {
-            return [new("Alt+V", c.UnifiedDiff ? "Split diff" : "Unified diff", new ToggleDiffLayout()),
+            return [new("Alt+V", c.UnifiedDiff ? "Side-by-side diff" : "Inline diff", new ToggleDiffLayout()),
                 new("↑↓", "Scroll", ShowInFooter: false), new("←→", "Pan text", ShowInFooter: false), new("PgUp PgDn", "Page", ShowInFooter: false), new("Home End", "Top or bottom", ShowInFooter: false), new("Esc", "Back to differences", new Back()),
                 new(k.Label(KeyAction.Help), "Help", new ShowView(RightView.Keys)), new(k.Label(KeyAction.Quit), "Quit", new Quit())];
         }
@@ -769,7 +769,7 @@ internal sealed class CompareView
 
         private static (ContentTotals Before, ContentTotals After) Finish(FileTree node)
         {
-            node.Children.Sort((a, b) => string.CompareOrdinal(a.Name, b.Name));
+            node.Children.Sort(static (a, b) => string.CompareOrdinal(a.Name, b.Name));
             node.FileCount = node.Dir ? 0 : 1;
             ContentTotals before = new(), after = new();
             before.Add(node.Baseline);
@@ -790,11 +790,11 @@ internal sealed class CompareView
                 : before.Sharing is null ? after.Sharing is null ? null : "After: " + after.Sharing
                 : after.Sharing is null ? "Before: " + before.Sharing
                 : $"Before: {before.Sharing}; after: {after.Sharing}";
-            if (!node.HasEntry && node.Children.Count > 0 && node.Children.All(child => child.Change == Change.Added))
+            if (!node.HasEntry && node.Children.Count > 0 && node.Children.All(static child => child.Change == Change.Added))
             {
                 node.Change = Change.Added;
             }
-            else if (!node.HasEntry && node.Children.Count > 0 && node.Children.All(child => child.Change == Change.Removed))
+            else if (!node.HasEntry && node.Children.Count > 0 && node.Children.All(static child => child.Change == Change.Removed))
             {
                 node.Change = Change.Removed;
             }

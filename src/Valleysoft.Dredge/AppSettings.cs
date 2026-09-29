@@ -7,7 +7,7 @@ namespace Valleysoft.Dredge;
 [GenerateSettings]
 internal partial class AppSettings
 {
-    private static readonly object settingsFileLock = new();
+    private static readonly Lock settingsFileLock = new();
     private string settingsPath = SettingsPath;
 
     public static readonly string SettingsPath =
@@ -194,9 +194,6 @@ internal partial class ExploreSettings
     [JsonPropertyName("viewer")]
     public ExploreViewerSettings Viewer { get; set; } = new();
 
-    [JsonPropertyName("keys")]
-    public ExploreKeysSettings Keys { get; set; } = new();
-
     public bool IsMouseEnabled() => Mouse switch
     {
         "true" => true,
@@ -225,66 +222,4 @@ internal partial class ExploreViewerSettings
         _ => throw new InvalidOperationException(
             $"Invalid explore.viewer.terminal value '{Terminal}'; expected true or false.")
     };
-}
-
-// One remappable explorer key per action. Empty means the built-in default.
-[GenerateSettings]
-internal partial class ExploreKeysSettings
-{
-    [JsonPropertyName("quit")]
-    public string Quit { get; set; } = "";
-
-    [JsonPropertyName("help")]
-    public string Help { get; set; } = "";
-
-    [JsonPropertyName("insights")]
-    public string Insights { get; set; } = "";
-
-    [JsonPropertyName("search")]
-    public string Search { get; set; } = "";
-
-    [JsonPropertyName("wholeFilesystem")]
-    public string WholeFilesystem { get; set; } = "";
-
-    [JsonPropertyName("compare")]
-    public string Compare { get; set; } = "";
-
-    [JsonPropertyName("findingsOnly")]
-    public string FindingsOnly { get; set; } = "";
-
-    [JsonPropertyName("previousLayer")]
-    public string PreviousLayer { get; set; } = "";
-
-    [JsonPropertyName("nextLayer")]
-    public string NextLayer { get; set; } = "";
-
-    [JsonPropertyName("toggleAdded")]
-    public string ToggleAdded { get; set; } = "";
-
-    [JsonPropertyName("toggleModified")]
-    public string ToggleModified { get; set; } = "";
-
-    [JsonPropertyName("toggleIdentical")]
-    public string ToggleIdentical { get; set; } = "";
-
-    [JsonPropertyName("toggleDeleted")]
-    public string ToggleDeleted { get; set; } = "";
-
-    [JsonPropertyName("extract")]
-    public string Extract { get; set; } = "";
-
-    [JsonPropertyName("copyCommand")]
-    public string CopyCommand { get; set; } = "";
-
-    [JsonPropertyName("viewer")]
-    public string Viewer { get; set; } = "";
-
-    [JsonPropertyName("swapSides")]
-    public string SwapSides { get; set; } = "";
-
-    [JsonPropertyName("retry")]
-    public string Retry { get; set; } = "";
-
-    [JsonPropertyName("packages")]
-    public string Packages { get; set; } = "";
 }

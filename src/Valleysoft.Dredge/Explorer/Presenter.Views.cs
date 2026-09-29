@@ -13,8 +13,8 @@ internal sealed partial class ExplorerPresenter
         {
             return [];
         }
-        List<ExplorerFinding?> list = img.Findings.Where(f => !f.FromBase).Cast<ExplorerFinding?>().ToList();
-        List<ExplorerFinding> fromBase = img.Findings.Where(f => f.FromBase).ToList();
+        List<ExplorerFinding?> list = [.. img.Findings.Where(static f => !f.FromBase).Cast<ExplorerFinding?>()];
+        List<ExplorerFinding> fromBase = [.. img.Findings.Where(static f => f.FromBase)];
         if (fromBase.Count > 0)
         {
             list.Add(null);
@@ -147,7 +147,7 @@ internal sealed partial class ExplorerPresenter
                     fix.Add(f.Fix, Theme.S(Theme.Foam, Theme.Graphite));
                 }
                 fix.Add(" ", Theme.S(Theme.Foam, Theme.Graphite));
-                list.AddRange(Syntax.Wrap(fix.Parts.ToList(), w, int.MaxValue));
+                list.AddRange(Syntax.Wrap([.. fix.Parts], w, int.MaxValue));
             }
             blocks.Add((start, list.Count - start));
             list.Add(Line.Blank);
@@ -206,7 +206,7 @@ internal sealed partial class ExplorerPresenter
     {
         List<Line> lines = WarningLines(s);
         s.WarningScroll = Math.Clamp(s.WarningScroll, 0, Math.Max(0, lines.Count - RightInnerHeight));
-        return Pane(lines.Skip(s.WarningScroll).Take(RightInnerHeight).ToList(),
+        return Pane([.. lines.Skip(s.WarningScroll).Take(RightInnerHeight)],
             s.WarningTitle ?? "Base verification warning", true, "Complete details - Esc returns");
     }
 
@@ -249,7 +249,7 @@ internal sealed partial class ExplorerPresenter
         {
             items.Add(Line.Of($"  … {history.Count - maxHistory} earlier layers", Theme.Silt));
         }
-        List<(int Layer, Change Change)> shownList = shown.ToList();
+        List<(int Layer, Change Change)> shownList = [.. shown];
         for (int i = 0; i < shownList.Count; i++)
         {
             var (layer, change) = shownList[i];
@@ -327,7 +327,7 @@ internal sealed partial class ExplorerPresenter
         }
         items.Add(new Line()
             .Add("$ ", Theme.Shale)
-            .Add(CopyCommandText(s, path, node.Kind == Kind.Dir), Theme.Foam)
+            .Add(CopyCommandText(path, node.Kind == Kind.Dir), Theme.Foam)
             .PadRight(w, new Line().Append(Keycap(Keys.Label(KeyAction.CopyCommand))).Add(" " + CopyVerb.ToLowerInvariant(), Theme.Silt)));
 
         PaneContent pane = Pane(items, path.Split('/')[^1], true, "/" + path);
@@ -335,7 +335,7 @@ internal sealed partial class ExplorerPresenter
         return pane;
     }
 
-    public string CopyCommandText(ExplorerState s, string path, bool dir)
+    public string CopyCommandText(string path, bool dir)
     {
         string platform = img.PlatformArguments.Length > 0 ? " " + img.PlatformArguments : "";
         return dir
@@ -549,7 +549,7 @@ internal sealed partial class ExplorerPresenter
                 ($"{K(KeyAction.ToggleAdded)} {K(KeyAction.ToggleModified)} {K(KeyAction.ToggleIdentical)} {K(KeyAction.ToggleDeleted)}", "Show or hide changes"),
                 (K(KeyAction.FindingsOnly), "Only paths with findings"), ("Enter", "Inspect file")]),
             ("Preview", [("← →", "Pan long text lines")]),
-            ("Compare", [(K(KeyAction.SwapSides), "Swap sides"), ("Enter", "Diff a file"), ("Alt+V", "Split or unified diff"), ("Esc", "Leave compare")]),
+            ("Compare", [(K(KeyAction.SwapSides), "Swap sides"), ("Enter", "Diff a file"), ("Alt+V", "Inline or side-by-side diff"), ("Esc", "Leave compare")]),
             ("File history", [("Alt+H", "Browse versions from inspector"), ("Enter", "Preview selected version"),
                 ("Alt+D", "Diff against previous event"), ("Esc", "Back one step")]),
         ];
@@ -614,16 +614,15 @@ internal sealed partial class ExplorerPresenter
         {
             ("Open at a layer", "dredge image explore <image> --layer 7"),
             ("Pick a platform", "dredge image explore <image> --os linux --arch arm64"),
-            ("Change a key", "dredge settings set explore.keys.search f"),
             ("Light theme", "dredge settings set explore.theme light"),
             ("Turn off color", "NO_COLOR=1 dredge image explore <image>"),
         })
         {
-            rows.AddRange(Syntax.Wrap(new Line().Add("  " + what.PadRight(22), Theme.Silt)
-                .Add("$ ", Theme.Shale).Add(cmd, Theme.Foam).Parts.ToList(), RightInner, int.MaxValue));
+            rows.AddRange(Syntax.Wrap([.. new Line().Add("  " + what.PadRight(22), Theme.Silt)
+                .Add("$ ", Theme.Shale).Add(cmd, Theme.Foam).Parts], RightInner, int.MaxValue));
         }
         s.KeysScroll = Math.Clamp(s.KeysScroll, 0, Math.Max(0, rows.Count - RightInnerHeight));
-        return Pane(rows.Skip(s.KeysScroll).Take(RightInnerHeight).ToList(), "Help", true,
+        return Pane([.. rows.Skip(s.KeysScroll).Take(RightInnerHeight)], "Help", true,
             $"{s.KeysScroll + 1}–{Math.Min(rows.Count, s.KeysScroll + RightInnerHeight)} of {rows.Count} lines");
     }
 }

@@ -18,7 +18,7 @@ public sealed class ExplorerDiveScenarioTests
     {
         ExplorerImage image = Custom([Layer([File("visible", 1, "one")])]);
         using ExplorerUiHarness ui = ExplorerWindowTests.Open(image, new(),
-            session => new FakeExplorerHost { Baseline = session }, out FakeExplorerHost host);
+            static session => new FakeExplorerHost { Baseline = session }, out FakeExplorerHost host);
         if (search)
         {
             ui.Press(new Key('/'));
@@ -103,7 +103,7 @@ public sealed class ExplorerDiveScenarioTests
         ExplorerState state = new();
         state.Expanded.Add("app");
         using ExplorerUiHarness ui = ExplorerWindowTests.Open(image, state,
-            session => new FakeExplorerHost { Baseline = session }, out _);
+            static session => new FakeExplorerHost { Baseline = session }, out _);
         List<Node> first = image.WholeTree(0)!;
         for (int i = 0; i < 12; i++)
         {
@@ -111,7 +111,7 @@ public sealed class ExplorerDiveScenarioTests
             ui.Window.Apply(new SelectLayer(layer));
             ui.Window.Apply(new SetWhole(i % 3 == 0));
             Assert.Equal(["app", "app/nested", "app/root"],
-                ui.Window.Presenter.Flatten(state).Select(row => row.Path));
+                ui.Window.Presenter.Flatten(state).Select(static row => row.Path));
             Assert.DoesNotContain("app/nested", state.Expanded);
             Assert.Equal(layer + 1, ExplorerImage.Find(ui.Window.Presenter.Tree(state), "app/nested/value")!.Size);
             ui.Press(Key.End);
@@ -129,8 +129,7 @@ public sealed class ExplorerDiveScenarioTests
     [InlineData(150, 42)]
     public void LongLayerListsKeepExactlyOneVisibleSelectionAtBothEnds(int width, int height)
     {
-        ExplorerImage image = Custom(Enumerable.Range(0, 80)
-            .Select(i => Layer([File($"layer{i:D2}", 1, $"h{i}")])).ToArray());
+        ExplorerImage image = Custom([.. Enumerable.Range(0, 80).Select(i => Layer([File($"layer{i:D2}", 1, $"h{i}")]))]);
         using ExplorerUiHarness ui = ExplorerWindowTests.Open(image, new() { Focus = FocusPane.Layers },
             session => new FakeExplorerHost { Baseline = session }, out _, width, height);
         foreach (bool last in new[] { true, false })
@@ -193,11 +192,11 @@ public sealed class ExplorerDiveScenarioTests
         state.Hidden.UnionWith([Change.None, Change.Identical]);
         state.Expanded.Add("app");
         using ExplorerUiHarness ui = ExplorerWindowTests.Open(image, state,
-            session => new FakeExplorerHost { Baseline = session }, out _);
+            static session => new FakeExplorerHost { Baseline = session }, out _);
         foreach (bool whole in new[] { false, true })
         {
             ui.Window.Apply(new SetWhole(whole));
-            FlatRow file = Assert.Single(ui.Window.Presenter.Flatten(state), row => row.Path == "app/value");
+            FlatRow file = Assert.Single(ui.Window.Presenter.Flatten(state), static row => row.Path == "app/value");
             Assert.Equal(Change.Added, file.Node.Change);
             Assert.True(ui.Shows("value"), ui.Screen());
         }
@@ -208,10 +207,9 @@ public sealed class ExplorerDiveScenarioTests
     [Trait("Upstream", "wagoodman/dive#674")]
     public void LongInsightListsScrollTheirSelectedFindingIntoView()
     {
-        ExplorerImage image = Custom(Enumerable.Range(0, 31)
-            .Select(i => Layer([File("app/payload", 2_000_000 + i, $"version{i}")])).ToArray());
+        ExplorerImage image = Custom([.. Enumerable.Range(0, 31).Select(static i => Layer([File("app/payload", 2_000_000 + i, $"version{i}")]))]);
         using ExplorerUiHarness ui = ExplorerWindowTests.Open(image, new() { View = RightView.Insights },
-            session => new FakeExplorerHost { Baseline = session }, out _, width: 100, height: 28);
+            static session => new FakeExplorerHost { Baseline = session }, out _, width: 100, height: 28);
         Assert.True(image.Findings.Count >= 30);
         ui.Press(Key.End);
         Assert.Equal(image.Findings.Count - 1, ui.State.Finding);
@@ -232,13 +230,12 @@ public sealed class ExplorerDiveScenarioTests
     public void DuplicateHeavyImageNavigationKeepsAllocationAndLatencyBounded()
     {
         const int files = 20_000;
-        LayerChanges layer = Layer(Enumerable.Range(0, files)
-            .Select(i => File($"app/f{i:D5}", 64, $"h{i}")).ToArray());
+        LayerChanges layer = Layer([.. Enumerable.Range(0, files).Select(static i => File($"app/f{i:D5}", 64, $"h{i}"))]);
         ExplorerImage image = Custom([layer, layer, layer]);
         ExplorerState state = new() { Layer = 2 };
         state.Expanded.Add("app");
         using ExplorerUiHarness ui = ExplorerWindowTests.Open(image, state,
-            session => new FakeExplorerHost { Baseline = session }, out _);
+            static session => new FakeExplorerHost { Baseline = session }, out _);
         ui.Window.Apply(new Move(1));
         ui.Pump();
         List<Node> tree = image.LayerTree(2);
@@ -266,12 +263,12 @@ public sealed class ExplorerDiveScenarioTests
         const string instruction = "/bin/sh -c printf '%s\\n' \"[ok]\" &&\r\n\t echo ready # buildkit";
         ExplorerImage image = Custom([Layer([File("app/value", 1, "h")])], instructions: [instruction]);
         using ExplorerUiHarness ui = ExplorerWindowTests.Open(image, new(),
-            session => new FakeExplorerHost { Baseline = session }, out _);
+            static session => new FakeExplorerHost { Baseline = session }, out _);
 
         Assert.Equal("RUN printf '%s\\n' \"[ok]\" && echo ready", image.Instructions[0]);
         PaneContent pane = ui.Window.Presenter.LayersPane(ui.State);
         Assert.Single(pane.Lines);
-        Assert.All(pane.Lines.Select(line => line.ToString()), line =>
+        Assert.All(pane.Lines.Select(static line => line.ToString()), static line =>
             Assert.DoesNotContain(line, char.IsControl));
         Assert.True(ui.Shows("printf"), ui.Screen());
         Assert.True(ui.Shows("[ok]"), ui.Screen());

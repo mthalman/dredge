@@ -263,7 +263,7 @@ internal sealed class ExplorerUiHarness : IDisposable
         }
     }
 
-    public void Send(string text) => Send(text.Select(c => new Key(c)).ToArray());
+    public void Send(string text) => Send([.. text.Select(static c => new Key(c))]);
 
     public void Dispose()
     {
@@ -277,5 +277,5 @@ internal sealed class ExplorerUiHarness : IDisposable
 internal sealed record DialogStep(string What, Func<bool> Ready, Action Act)
 {
     public static DialogStep When(string what, Func<bool> ready, Action act) => new(what, ready, act);
-    public static DialogStep Then(Action act) => new("the next step", () => true, act);
+    public static DialogStep Then(Action act) => new("the next step", static () => true, act);
 }

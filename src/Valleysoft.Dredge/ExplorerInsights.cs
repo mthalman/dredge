@@ -63,11 +63,11 @@ internal static class ExplorerInsights
         List<HiddenFile> small = [];
 
         foreach (var group in analysis.HiddenFiles
-            .GroupBy(file => (file.Layer, file.HiddenBy, file.Reason, LinkReplacement: file.ReplacedByHardLink is not null)))
+            .GroupBy(static file => (file.Layer, file.HiddenBy, file.Reason, LinkReplacement: file.ReplacedByHardLink is not null)))
         {
             (int layer, int hiddenBy, LayerChangeKind reason, bool linkReplacement) = group.Key;
-            HiddenFile[] files = group.ToArray();
-            long bytes = files.Sum(file => file.Size);
+            HiddenFile[] files = [.. group];
+            long bytes = files.Sum(static file => file.Size);
             if (bytes == 0)
             {
                 continue;
@@ -121,9 +121,9 @@ internal static class ExplorerInsights
 
         List<ExplorerFinding> ordered =
         [
-            .. findings.Where(finding => finding.Certain && !finding.FromBase).OrderByDescending(finding => finding.Bytes),
-            .. findings.Where(finding => !finding.Certain).OrderByDescending(finding => finding.Bytes),
-            .. findings.Where(finding => finding.FromBase).OrderByDescending(finding => finding.Bytes),
+            .. findings.Where(static finding => finding.Certain && !finding.FromBase).OrderByDescending(static finding => finding.Bytes),
+            .. findings.Where(static finding => !finding.Certain).OrderByDescending(static finding => finding.Bytes),
+            .. findings.Where(static finding => finding.FromBase).OrderByDescending(static finding => finding.Bytes),
         ];
         return new(ordered, analysis.HiddenBytes, churn, potentialBytes);
     }
@@ -132,10 +132,10 @@ internal static class ExplorerInsights
         ExplorerFindingKind kind, HiddenFile[] files, IReadOnlyList<string> instructions)
     {
         int layer = files[0].Layer, hiddenBy = files[0].HiddenBy;
-        string[] paths = files.Select(file => file.Path).ToArray();
+        string[] paths = [.. files.Select(static file => file.Path)];
         IReadOnlyList<string> roots = SummarizeRoots(paths);
-        string where = FormatWhere(roots, paths);
-        long bytes = files.Sum(file => file.Size);
+        string where = FormatWhere(roots);
+        long bytes = files.Sum(static file => file.Size);
         string producer = Instruction(instructions, layer);
         string hider = Instruction(instructions, hiddenBy);
         string count = N(files.Length);
@@ -185,7 +185,7 @@ internal static class ExplorerInsights
             title = kind is ExplorerFindingKind.BaseReplaced or ExplorerFindingKind.FromBase
                 ? title : "Content hidden by hard-link replacement";
             why = $"Layer {hiddenBy} replaced the last references to content from layer {layer} with hard links, not new file payload.";
-            explain[1] = $"Layer {hiddenBy} replaced {string.Join(", ", files.Select(file => "/" + file.ReplacedByHardLink))} with hard links, hiding {Size(bytes)}.";
+            explain[1] = $"Layer {hiddenBy} replaced {string.Join(", ", files.Select(static file => "/" + file.ReplacedByHardLink))} with hard links, hiding {Size(bytes)}.";
             if (kind is not (ExplorerFindingKind.BaseReplaced or ExplorerFindingKind.FromBase))
             {
                 (fixLabel, fix, dockerfile) = ("Avoid shipping the unused content",
@@ -198,12 +198,12 @@ internal static class ExplorerInsights
 
     private static ExplorerFinding CreateSmall(List<HiddenFile> files)
     {
-        string[] paths = files.Select(file => file.Path).ToArray();
+        string[] paths = [.. files.Select(static file => file.Path)];
         IReadOnlyList<string> roots = SummarizeRoots(paths);
-        int[] layers = files.SelectMany(file => new[] { file.Layer, file.HiddenBy }).Distinct().Order().ToArray();
-        long bytes = files.Sum(file => file.Size);
+        int[] layers = [.. files.SelectMany(static file => new[] { file.Layer, file.HiddenBy }).Distinct().Order()];
+        long bytes = files.Sum(static file => file.Size);
         return new(ExplorerFindingKind.Replaced, "Other small overwrites", "Replaced by later layers", bytes,
-            files.Count, layers, roots, FormatWhere(roots, paths),
+            files.Count, layers, roots, FormatWhere(roots),
             "Several layers each hide a little of what earlier layers shipped.",
             "Write each file in one layer", "Combine the steps that touch these files", false,
             [
@@ -217,9 +217,9 @@ internal static class ExplorerInsights
         ImagePotentialSaving saving, IReadOnlyDictionary<string, int> liveLayers,
         IReadOnlyList<string> instructions, int baseCount)
     {
-        int[] layers = saving.Paths
+        int[] layers = [.. saving.Paths
             .Select(path => liveLayers.TryGetValue(path, out int layer) ? layer : -1)
-            .Where(layer => layer >= 0).Distinct().Order().ToArray();
+            .Where(layer => layer >= 0).Distinct().Order()];
         IReadOnlyList<string> roots = SummarizeRoots(saving.Paths);
         bool underNodeModules = saving.Paths.Any(path => path.Contains("node_modules/", StringComparison.Ordinal));
         bool copied = layers.Any(layer => IsCopy(Instruction(instructions, layer)));
@@ -251,7 +251,7 @@ internal static class ExplorerInsights
                 underNodeModules && copied ? "Add to .dockerignore" : "Install dependencies inside the image",
                 underNodeModules && copied ? "node_modules" : "RUN npm ci", !(underNodeModules && copied)),
         };
-        string where = FormatWhere(roots, saving.Paths);
+        string where = FormatWhere(roots);
         string layerText = layers.Length == 1 ? $"layer {layers[0]}" : $"layers {string.Join(", ", layers)}";
         List<string> explain =
         [
@@ -279,7 +279,7 @@ internal static class ExplorerInsights
     private static (string Label, string Fix, bool Dockerfile) Fix(
         ExplorerFindingKind kind, string producer, string hider, IReadOnlyList<string> paths)
     {
-        bool nodeModules = paths.Any(path => path.Contains("node_modules/", StringComparison.Ordinal));
+        bool nodeModules = paths.Any(static path => path.Contains("node_modules/", StringComparison.Ordinal));
         if (IsCopy(hider) && nodeModules)
         {
             return ("Add to .dockerignore", "node_modules", false);
@@ -315,15 +315,14 @@ internal static class ExplorerInsights
         {
             return [paths[0]];
         }
-        string[][] split = paths.Select(path => path.Split('/')).ToArray();
-        string[] best = split.Select(parts => parts[0]).Distinct(StringComparer.Ordinal)
-            .Order(StringComparer.Ordinal).ToArray();
+        string[][] split = [.. paths.Select(path => path.Split('/'))];
+        string[] best = [.. split.Select(parts => parts[0]).Distinct(StringComparer.Ordinal).Order(StringComparer.Ordinal)];
         int maxDepth = split.Max(parts => parts.Length);
         for (int depth = 2; depth <= maxDepth; depth++)
         {
-            string[] roots = split
+            string[] roots = [.. split
                 .Select(parts => string.Join('/', parts.Take(Math.Min(depth, Math.Max(1, parts.Length - 1)))))
-                .Distinct(StringComparer.Ordinal).Order(StringComparer.Ordinal).ToArray();
+                .Distinct(StringComparer.Ordinal).Order(StringComparer.Ordinal)];
             if (roots.Length > MaxRoots)
             {
                 break;
@@ -333,13 +332,13 @@ internal static class ExplorerInsights
         return best;
     }
 
-    internal static string FormatWhere(IReadOnlyList<string> roots, IReadOnlyList<string> paths)
+    internal static string FormatWhere(IReadOnlyList<string> roots)
     {
         if (roots.Count == 0)
         {
             return "";
         }
-        IEnumerable<string> shown = roots.Take(MaxRoots).Select(root => "/" + root);
+        IEnumerable<string> shown = roots.Take(MaxRoots).Select(static root => "/" + root);
         string text = string.Join(", ", shown);
         return roots.Count > MaxRoots ? $"{text} +{N(roots.Count - MaxRoots)} more" : text;
     }

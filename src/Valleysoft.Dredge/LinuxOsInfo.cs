@@ -59,9 +59,9 @@ public record LinuxOsInfo
     {
         Dictionary<string, string> osFields = new([..osInfoContent
             .Split("\n", StringSplitOptions.RemoveEmptyEntries)
-            .Select(line => line.TrimEnd('\r'))
-            .Where(line => !line.StartsWith('#') && line.Contains('='))
-            .Select(line =>
+            .Select(static line => line.TrimEnd('\r'))
+            .Where(static line => !line.StartsWith('#') && line.Contains('='))
+            .Select(static line =>
             {
                 int index = line.IndexOf('=');
                 return new KeyValuePair<string, string>(line[..index], line[(index + 1)..].TrimStart('"').TrimEnd('"'));

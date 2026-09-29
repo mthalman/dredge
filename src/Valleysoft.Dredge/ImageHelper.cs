@@ -199,7 +199,7 @@ internal static class ImageHelper
     {
         Console.Error.WriteLine($"\tApplying layer...");
 
-        FileInfo[] layerFiles = GetLayerFiles(new DirectoryInfo(layerDir)).ToArray();
+        FileInfo[] layerFiles = [.. GetLayerFiles(new DirectoryInfo(layerDir))];
 
         foreach (FileInfo layerFile in layerFiles
             .Where(IsOpaqueWhiteout)

@@ -48,7 +48,7 @@ internal sealed partial class ExplorerPresenter
 
         void Walk(List<Node> nodes, string guide, int depth, bool inFinding)
         {
-            List<Node> visible = nodes.Where(n => Visible(n) && (!s.FindingsOnly || inFinding || n.ContainsNote)).ToList();
+            List<Node> visible = [.. nodes.Where(n => Visible(n) && (!s.FindingsOnly || inFinding || n.ContainsNote))];
             for (int i = 0; i < visible.Count; i++)
             {
                 Node n = visible[i];

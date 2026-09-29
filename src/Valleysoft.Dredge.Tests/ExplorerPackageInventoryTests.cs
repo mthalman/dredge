@@ -157,14 +157,11 @@ public sealed class ExplorerPackageInventoryTests
     }
 
     [Fact]
-    public void PackageKeyCanBeRemapped()
+    public void BuiltInPackageKeyOpensInventory()
     {
-        KeyMap keys = KeyMap.FromSettings(new ExploreKeysSettings { Packages = "K" });
-        using ExplorerUiHarness ui = ExplorerWindowTests.Open(out FakeExplorerHost host, keys: keys);
+        using ExplorerUiHarness ui = ExplorerWindowTests.Open(out FakeExplorerHost host);
         ui.Press(new Key('p'));
-        Assert.Equal(RightView.Files, ui.State.View);
-        ui.Press(new Key('K'));
-        ui.Until(() => ui.State.Packages is not null, "remapped inventory");
+        ui.Until(() => ui.State.Packages is not null, "package inventory");
         Assert.Single(host.PackageRequests);
     }
 
@@ -223,7 +220,7 @@ public sealed class ExplorerPackageInventoryTests
                     ? InstalledPackageMetadataAvailability.Available : InstalledPackageMetadataAvailability.Unavailable,
                 includePackages && ecosystem == InstalledPackageEcosystem.Npm
                     ? new Dictionary<string, IReadOnlyList<string>> { ["example"] = ["1.0"] }
-                    : new Dictionary<string, IReadOnlyList<string>>())));
+                    : [])));
         using ExplorerUiHarness ui = Open(out _, (_, _) => Task.FromResult(metadata));
         ui.Press(new Key('p'));
         ui.Until(() => ui.State.Packages is not null, "empty inventory");

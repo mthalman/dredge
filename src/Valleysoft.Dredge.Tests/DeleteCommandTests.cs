@@ -98,14 +98,14 @@ public sealed class DeleteCommandTests
         harness.ExpectClient();
         if (tagOnly)
         {
-            harness.Manifests.Setup(m => m.DeleteTagAsync("repo", "tag", It.IsAny<CancellationToken>()))
+            harness.Manifests.Setup(static m => m.DeleteTagAsync("repo", "tag", It.IsAny<CancellationToken>()))
                 .Returns(Task.CompletedTask);
         }
         else
         {
-            harness.Manifests.Setup(m => m.GetDigestAsync("repo", "tag", It.IsAny<CancellationToken>()))
+            harness.Manifests.Setup(static m => m.GetDigestAsync("repo", "tag", It.IsAny<CancellationToken>()))
                 .ReturnsAsync(Digest);
-            harness.Manifests.Setup(m => m.DeleteAsync("repo", Digest, It.IsAny<CancellationToken>()))
+            harness.Manifests.Setup(static m => m.DeleteAsync("repo", Digest, It.IsAny<CancellationToken>()))
                 .Returns(Task.CompletedTask);
         }
 
@@ -137,9 +137,9 @@ public sealed class DeleteCommandTests
         }
         else
         {
-            harness.Manifests.Verify(m => m.GetAsync("repo", "tag", It.IsAny<CancellationToken>()), Times.Once);
+            harness.Manifests.Verify(static m => m.GetAsync("repo", "tag", It.IsAny<CancellationToken>()), Times.Once);
             harness.Manifests.VerifyNoOtherCalls();
-            harness.Client.Verify(c => c.Dispose(), Times.Once);
+            harness.Client.Verify(static c => c.Dispose(), Times.Once);
         }
     }
 
@@ -188,12 +188,12 @@ public sealed class DeleteCommandTests
     {
         using Harness harness = new(tagOnly: false);
         harness.ExpectClient();
-        harness.Manifests.Setup(m => m.DeleteAsync("repo", Digest, It.IsAny<CancellationToken>()))
+        harness.Manifests.Setup(static m => m.DeleteAsync("repo", Digest, It.IsAny<CancellationToken>()))
             .Returns(Task.CompletedTask);
 
         Assert.Equal(0, await harness.RunAsync([$"registry.example/repo@{Digest}", "--yes"]));
 
-        harness.Manifests.Verify(m => m.DeleteAsync("repo", Digest, It.IsAny<CancellationToken>()), Times.Once);
+        harness.Manifests.Verify(static m => m.DeleteAsync("repo", Digest, It.IsAny<CancellationToken>()), Times.Once);
         harness.Manifests.VerifyNoOtherCalls();
     }
 
@@ -202,17 +202,17 @@ public sealed class DeleteCommandTests
     {
         using Harness harness = new(tagOnly: false);
         harness.ExpectClient();
-        harness.Manifests.Setup(m => m.GetAsync("repo", Digest, It.IsAny<CancellationToken>()))
+        harness.Manifests.Setup(static m => m.GetAsync("repo", Digest, It.IsAny<CancellationToken>()))
             .ReturnsAsync(new ManifestInfo("application/test", "sha256:" + new string('a', 64), new OciImageIndex()));
-        harness.Manifests.Setup(m => m.DeleteAsync("repo", Digest, It.IsAny<CancellationToken>()))
+        harness.Manifests.Setup(static m => m.DeleteAsync("repo", Digest, It.IsAny<CancellationToken>()))
             .Returns(Task.CompletedTask);
 
         Assert.Equal(0, await harness.RunAsync([$"registry.example/repo@{Digest}"]));
 
         Assert.Contains(Digest, harness.Prompt);
         Assert.Contains("manifest list/image index", harness.Prompt);
-        harness.Manifests.Verify(m => m.GetAsync("repo", Digest, It.IsAny<CancellationToken>()), Times.Once);
-        harness.Manifests.Verify(m => m.DeleteAsync("repo", Digest, It.IsAny<CancellationToken>()), Times.Once);
+        harness.Manifests.Verify(static m => m.GetAsync("repo", Digest, It.IsAny<CancellationToken>()), Times.Once);
+        harness.Manifests.Verify(static m => m.DeleteAsync("repo", Digest, It.IsAny<CancellationToken>()), Times.Once);
         harness.Manifests.VerifyNoOtherCalls();
     }
 
@@ -221,7 +221,7 @@ public sealed class DeleteCommandTests
     {
         using Harness harness = new(tagOnly: true);
         harness.ExpectClient();
-        harness.Manifests.Setup(m => m.DeleteTagAsync("repo", "tag", It.IsAny<CancellationToken>()))
+        harness.Manifests.Setup(static m => m.DeleteTagAsync("repo", "tag", It.IsAny<CancellationToken>()))
             .Returns(Task.CompletedTask);
 
         Assert.Equal(0, await harness.RunAsync([Image]));
@@ -240,12 +240,12 @@ public sealed class DeleteCommandTests
         harness.ExpectClient();
         if (tagOnly)
         {
-            harness.Manifests.Setup(m => m.DeleteTagAsync("repo", "tag", It.IsAny<CancellationToken>()))
+            harness.Manifests.Setup(static m => m.DeleteTagAsync("repo", "tag", It.IsAny<CancellationToken>()))
                 .ThrowsAsync(new InvalidOperationException("Deletion is not supported."));
         }
         else
         {
-            harness.Manifests.Setup(m => m.DeleteAsync("repo", Digest, It.IsAny<CancellationToken>()))
+            harness.Manifests.Setup(static m => m.DeleteAsync("repo", Digest, It.IsAny<CancellationToken>()))
                 .ThrowsAsync(new InvalidOperationException("Manifest not found."));
         }
         string reference = tagOnly ? Image : $"registry.example/repo@{Digest}";
@@ -254,9 +254,9 @@ public sealed class DeleteCommandTests
 
         Assert.Empty(harness.Output.ToString());
         Assert.Contains(tagOnly ? "Deletion is not supported." : "Manifest not found.", harness.Error.ToString());
-        harness.Manifests.Verify(m => m.DeleteAsync("repo", It.IsAny<string>(), It.IsAny<CancellationToken>()),
+        harness.Manifests.Verify(static m => m.DeleteAsync("repo", It.IsAny<string>(), It.IsAny<CancellationToken>()),
             tagOnly ? Times.Never() : Times.Once());
-        harness.Client.Verify(c => c.Dispose(), Times.Once);
+        harness.Client.Verify(static c => c.Dispose(), Times.Once);
     }
 
     [Fact]
@@ -264,16 +264,16 @@ public sealed class DeleteCommandTests
     {
         using Harness harness = new(tagOnly: false);
         harness.ExpectClient();
-        harness.Manifests.Setup(m => m.GetAsync("repo", "tag", It.IsAny<CancellationToken>()))
+        harness.Manifests.Setup(static m => m.GetAsync("repo", "tag", It.IsAny<CancellationToken>()))
             .ThrowsAsync(new InvalidOperationException("Manifest not found."));
 
         Assert.Equal(1, await harness.RunAsync([Image]));
 
         Assert.Equal(0, harness.PromptCount);
         Assert.Empty(harness.Output.ToString());
-        harness.Manifests.Verify(m => m.GetAsync("repo", "tag", It.IsAny<CancellationToken>()), Times.Once);
+        harness.Manifests.Verify(static m => m.GetAsync("repo", "tag", It.IsAny<CancellationToken>()), Times.Once);
         harness.Manifests.VerifyNoOtherCalls();
-        harness.Client.Verify(c => c.Dispose(), Times.Once);
+        harness.Client.Verify(static c => c.Dispose(), Times.Once);
     }
 
     [Theory]
@@ -292,8 +292,8 @@ public sealed class DeleteCommandTests
         Assert.NotEqual(0, await harness.RunAsync([Image], cancellation.Token));
 
         Assert.Empty(harness.Output.ToString());
-        harness.Manifests.Verify(m => m.DeleteAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<CancellationToken>()), Times.Never);
-        harness.Manifests.Verify(m => m.DeleteTagAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<CancellationToken>()), Times.Never);
+        harness.Manifests.Verify(static m => m.DeleteAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<CancellationToken>()), Times.Never);
+        harness.Manifests.Verify(static m => m.DeleteTagAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<CancellationToken>()), Times.Never);
     }
 
     [Theory]
@@ -314,15 +314,15 @@ public sealed class DeleteCommandTests
             Ansi = AnsiSupport.No
         });
         Mock<IAnsiConsoleInput> input = new(MockBehavior.Strict);
-        input.Setup(i => i.ReadKeyAsync(true, It.IsAny<CancellationToken>()))
+        input.Setup(static i => i.ReadKeyAsync(true, It.IsAny<CancellationToken>()))
             .ReturnsAsync(key == ConsoleKey.None ? null : new ConsoleKeyInfo(character, key, false, false, false));
         Mock<IAnsiConsole> console = new(MockBehavior.Strict);
-        console.SetupGet(c => c.Profile).Returns(realConsole.Profile);
-        console.SetupGet(c => c.Input).Returns(input.Object);
-        console.SetupGet(c => c.ExclusivityMode).Returns(realConsole.ExclusivityMode);
-        console.SetupGet(c => c.Cursor).Returns(realConsole.Cursor);
-        console.SetupGet(c => c.Pipeline).Returns(realConsole.Pipeline);
-        console.Setup(c => c.Write(It.IsAny<IRenderable>()))
+        console.SetupGet(static c => c.Profile).Returns(realConsole.Profile);
+        console.SetupGet(static c => c.Input).Returns(input.Object);
+        console.SetupGet(static c => c.ExclusivityMode).Returns(realConsole.ExclusivityMode);
+        console.SetupGet(static c => c.Cursor).Returns(realConsole.Cursor);
+        console.SetupGet(static c => c.Pipeline).Returns(realConsole.Pipeline);
+        console.Setup(static c => c.Write(It.IsAny<IRenderable>()))
             .Callback<IRenderable>(realConsole.Write);
 
         bool confirmed = await DeleteConfirmation.PromptAsync(
@@ -331,7 +331,7 @@ public sealed class DeleteCommandTests
         Assert.Equal(expected, confirmed);
         Assert.Contains("[::1]/repo:tag", error.ToString());
         Assert.Contains("(n)", error.ToString());
-        input.Verify(i => i.ReadKeyAsync(true, It.IsAny<CancellationToken>()), Times.Once);
+        input.Verify(static i => i.ReadKeyAsync(true, It.IsAny<CancellationToken>()), Times.Once);
     }
 
     [Theory]
@@ -411,7 +411,7 @@ public sealed class DeleteCommandTests
                 .ReturnsAsync(Client.Object);
 
         public void ExpectInspection(IManifest manifest) =>
-            Manifests.Setup(m => m.GetAsync("repo", "tag", It.IsAny<CancellationToken>()))
+            Manifests.Setup(static m => m.GetAsync("repo", "tag", It.IsAny<CancellationToken>()))
                 .ReturnsAsync(new ManifestInfo("application/test", Digest, manifest));
 
         public async Task<int> RunAsync(string[] args, CancellationToken cancellationToken = default)

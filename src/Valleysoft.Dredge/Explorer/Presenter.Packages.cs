@@ -26,9 +26,9 @@ internal sealed partial class ExplorerPresenter
         {
             string label = CompareView.EcosystemName(ecosystem);
             bool Match(string text) => text.Contains(s.PackageQuery, StringComparison.OrdinalIgnoreCase);
-            List<PackageInventoryRow> packages = metadata.Packages.OrderBy(pair => pair.Key, StringComparer.Ordinal)
+            List<PackageInventoryRow> packages = [.. metadata.Packages.OrderBy(pair => pair.Key, StringComparer.Ordinal)
                 .Select(pair => new PackageInventoryRow(ecosystem, pair.Key, string.Join(", ", pair.Value)))
-                .Where(row => Match(label) || Match(row.Name) || Match(row.Versions!)).ToList();
+                .Where(row => Match(label) || Match(row.Name) || Match(row.Versions!))];
             if (packages.Count == 0)
             {
                 continue;
@@ -60,7 +60,7 @@ internal sealed partial class ExplorerPresenter
         }
 
         List<PackageInventoryRow> rows = PackageRows(s);
-        int count = s.Packages.Ecosystems.Values.Sum(metadata => metadata.Packages.Count);
+        int count = s.Packages.Ecosystems.Values.Sum(static metadata => metadata.Packages.Count);
         List<Line> lines =
         [
             Line.Of($"{Fmt.Count(count, "package")} detected {layer}", Theme.Foam).Truncate(w),
@@ -82,7 +82,7 @@ internal sealed partial class ExplorerPresenter
         {
             s.PackageScroll = s.PackageCursor - visible + 1;
         }
-        int versionWidth = Math.Min(rows.Select(row => row.Versions is null ? 0 : DisplayText.Width(row.Versions))
+        int versionWidth = Math.Min(rows.Select(static row => row.Versions is null ? 0 : DisplayText.Width(row.Versions))
             .DefaultIfEmpty().Max(), Math.Max(1, (w - 3) / 3));
         int nameWidth = Math.Max(1, w - 3 - versionWidth - 2);
         for (int i = s.PackageScroll; i < Math.Min(rows.Count, s.PackageScroll + visible); i++)

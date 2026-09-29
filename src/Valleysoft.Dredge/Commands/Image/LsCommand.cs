@@ -57,7 +57,7 @@ public class LsCommand : RegistryCommandBase<LsOptions>
         IEnumerable<ImageFileSystemEntry> entries,
         LsOptions options)
     {
-        ImageFileSystemEntry[] entryArray = entries.ToArray();
+        ImageFileSystemEntry[] entryArray = [.. entries];
         string listedPath = ImagePath.NormalizeRequested(options.Path);
         if (!options.Long && !options.ShowProvenance)
         {
@@ -77,11 +77,10 @@ public class LsCommand : RegistryCommandBase<LsOptions>
             return;
         }
 
-        string[] paths = entryArray
+        string[] paths = [.. entryArray
             .Select(entry => options.Long
                 ? FormatLongPath(entry, listedPath)
-                : FormatPath(entry, listedPath))
-            .ToArray();
+                : FormatPath(entry, listedPath))];
         int userIdWidth = entryArray
             .Select(entry => entry.UserId.ToString(CultureInfo.InvariantCulture).Length)
             .DefaultIfEmpty()

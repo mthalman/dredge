@@ -33,7 +33,7 @@ public sealed class ExplorerUxTests
         using ExplorerUiHarness ui = ExplorerWindowTests.Open(image, new ExplorerState
         {
             Layer = 0, View = RightView.Inspector, InspectPath = path, Focus = FocusPane.Right,
-        }, s => new FakeExplorerHost { Baseline = s }, out _, width: 80, height: 24);
+        }, static s => new FakeExplorerHost { Baseline = s }, out _, width: 80, height: 24);
         ui.Press(Key.C.WithCtrl);
         Assert.Equal(RightView.Command, ui.State.View);
         ui.Press(Key.End);
@@ -52,7 +52,7 @@ public sealed class ExplorerUxTests
         }, s => new FakeExplorerHost
         {
             Baseline = s, Preview = path => new PreviewContent(path, null,
-                Enumerable.Range(0, 100).Select(i => new string('x', 200) + i).ToList(), null, 20100),
+                [.. Enumerable.Range(0, 100).Select(i => new string('x', 200) + i)], null, 20100),
         }, out _);
         ui.Until(() => ui.State.Preview is not null, "preview");
         ui.Press(Key.PageDown);
@@ -150,7 +150,7 @@ public sealed class ExplorerUxTests
         ui.Until(() => ui.State.Compare is not null, "comparison");
         CompareState c = ui.State.Compare!;
         c.PackageFiles = new PackageFilesContent(c.Comparison.Packages[0],
-            Enumerable.Range(0, 50).Select(i => ($"app/file-{i:D2}", Change.Modified)).ToArray(), null, 50);
+            [.. Enumerable.Range(0, 50).Select(i => ($"app/file-{i:D2}", Change.Modified))], null, 50);
         ui.Window.ImageChanged();
         ui.Press(Key.End);
         Assert.True(ui.Shows("app/file-49"));

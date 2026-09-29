@@ -126,7 +126,7 @@ internal static class TagPicker
                     return;
                 }
                 token.ThrowIfCancellationRequested();
-                List<TagChoice> choices = Order(tags, ExplorerTags.Label(img.Reference)).Select(tag => new TagChoice(tag)).ToList();
+                List<TagChoice> choices = [.. Order(tags, ExplorerTags.Label(img.Reference)).Select(tag => new TagChoice(tag))];
                 Post(() => fill(choices, null));
                 using SemaphoreSlim gate = new(StatsConcurrency);
                 await Task.WhenAll(choices.Select(async choice =>
@@ -313,8 +313,7 @@ internal static class TagPicker
         public void Set(IReadOnlyList<TagChoice> choices) => all = [.. choices];
 
         public void Filter(string text) =>
-            shown = all.Where(t => t.Tag.Contains(text.Trim(), StringComparison.OrdinalIgnoreCase))
-                .OrderBy(t => t.Tag == text.Trim() ? 0 : 1).ToList();
+            shown = [.. all.Where(t => t.Tag.Contains(text.Trim(), StringComparison.OrdinalIgnoreCase)).OrderBy(t => t.Tag == text.Trim() ? 0 : 1)];
 
         public event NotifyCollectionChangedEventHandler? CollectionChanged { add { } remove { } }
         public int Count => shown.Count;
@@ -394,7 +393,7 @@ internal static class PlatformPicker
     public static Dialog Create(IReadOnlyList<ExplorerPlatform> platforms, ExplorerPlatform? current, out Func<ExplorerPlatform?> chosen)
     {
         Dialog dialog = Dialogs.Create("Choose platform", 60, Math.Min(22, platforms.Count + 8));
-        List<ExplorerPlatform> items = platforms.ToList();
+        List<ExplorerPlatform> items = [.. platforms];
         ListView list = new()
         {
             X = 1, Y = 1, Width = Dim.Fill(2), Height = Math.Min(14, items.Count),

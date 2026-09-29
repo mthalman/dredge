@@ -45,8 +45,7 @@ public class ImageAnalysisTests
     public void RepeatedCopiesCountOnlyHiddenPayload(int copies, bool deleted)
     {
         const long size = 4_000_000;
-        List<LayerChanges> layers = Enumerable.Range(0, copies)
-            .Select(_ => Layer([File("app/data", size, "same")])).ToList();
+        List<LayerChanges> layers = [.. Enumerable.Range(0, copies).Select(static _ => Layer([File("app/data", size, "same")]))];
         if (deleted)
         {
             layers.Add(Layer([], whiteouts: ["app/data"]));
@@ -56,8 +55,8 @@ public class ImageAnalysisTests
         long hidden = (deleted ? copies : copies - 1) * size;
         Assert.Equal(copies * size, result.FileBytes);
         Assert.Equal(hidden, result.HiddenBytes);
-        Assert.Equal(hidden, result.HiddenFiles.Sum(file => file.Size));
-        Assert.Equal(hidden, result.Layers.Sum(layer => layer.HiddenBytes));
+        Assert.Equal(hidden, result.HiddenFiles.Sum(static file => file.Size));
+        Assert.Equal(hidden, result.Layers.Sum(static layer => layer.HiddenBytes));
         Assert.Equal(deleted ? 0 : 1d / copies, result.Efficiency, 10);
         Assert.Equal(!deleted, result.LiveEntries.ContainsKey("app/data"));
     }
@@ -98,12 +97,12 @@ public class ImageAnalysisTests
 
         Assert.Equal(21, result.FileBytes);
         Assert.Equal(21, result.HiddenBytes);
-        Assert.Equal([12L, 9L, 0L], result.Layers.Select(layer => layer.HiddenBytes));
+        Assert.Equal([12L, 9L, 0L], result.Layers.Select(static layer => layer.HiddenBytes));
         Assert.Equal(0, result.Efficiency);
         Assert.Contains(result.Layers[1].Changes,
-            change => change.Path == "app/old" && change.Kind == LayerChangeKind.Deleted);
+            static change => change.Path == "app/old" && change.Kind == LayerChangeKind.Deleted);
         Assert.Contains(result.Layers[2].Changes,
-            change => change.Path == "app/shared" && change.Kind == LayerChangeKind.Deleted);
+            static change => change.Path == "app/shared" && change.Kind == LayerChangeKind.Deleted);
     }
 
     [Fact]
@@ -119,7 +118,7 @@ public class ImageAnalysisTests
         Assert.Equal(4, result.HiddenBytes);
         Assert.Equal(0.5, result.Efficiency);
         Assert.Contains(result.Layers[1].Changes,
-            change => change.Path == "same" && change.Kind == LayerChangeKind.Identical);
+            static change => change.Path == "same" && change.Kind == LayerChangeKind.Identical);
     }
 
     [Fact]
@@ -134,7 +133,7 @@ public class ImageAnalysisTests
         Assert.Equal(11, result.HiddenBytes);
         Assert.Equal(11, result.Layers[0].HiddenBytes);
         Assert.Contains(result.Layers[1].Changes,
-            change => change.Path == "app/cache/item" && change.Kind == LayerChangeKind.Deleted);
+            static change => change.Path == "app/cache/item" && change.Kind == LayerChangeKind.Deleted);
     }
 
     [Fact]
@@ -211,9 +210,9 @@ public class ImageAnalysisTests
 
         Assert.Equal(10, result.HiddenBytes);
         Assert.Equal(10d / 34d, 1 - result.Efficiency, 6);
-        Assert.Equal(24, result.FindPotentialSavings().Sum(finding => finding.Bytes));
+        Assert.Equal(24, result.FindPotentialSavings().Sum(static finding => finding.Bytes));
         Assert.DoesNotContain(result.FindPotentialSavings()
-            .SelectMany(finding => finding.Paths), path => path.EndsWith("/old", StringComparison.Ordinal));
+            .SelectMany(static finding => finding.Paths), static path => path.EndsWith("/old", StringComparison.Ordinal));
     }
 
     private static LayerChanges Layer(

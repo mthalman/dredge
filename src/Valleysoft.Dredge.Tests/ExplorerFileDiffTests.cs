@@ -24,13 +24,13 @@ public sealed class ExplorerFileDiffTests
         FileDiffDocument doc = state.Diff!.Document;
         Assert.Equal(2, doc.Split.Count);
         VisualDiffPair pair = doc.Split[1];
-        Assert.Equal(["before"], pair.Left!.Spans.Where(span => span.Changed).Select(span => span.Text));
-        Assert.Equal(["after"], pair.Right!.Spans.Where(span => span.Changed).Select(span => span.Text));
+        Assert.Equal(["before"], pair.Left!.Spans.Where(static span => span.Changed).Select(static span => span.Text));
+        Assert.Equal(["after"], pair.Right!.Spans.Where(static span => span.Changed).Select(static span => span.Text));
         foreach (VisualDiffLine line in doc.Unified)
         {
-            Assert.Equal(line.Source.Text, string.Concat(line.Spans.Select(span => span.Text)));
+            Assert.Equal(line.Source.Text, string.Concat(line.Spans.Select(static span => span.Text)));
         }
-        Assert.Equal([DiffOp.Same, DiffOp.Delete, DiffOp.Insert], doc.Unified.Select(line => line.Source.Op));
+        Assert.Equal([DiffOp.Same, DiffOp.Delete, DiffOp.Insert], doc.Unified.Select(static line => line.Source.Op));
     }
 
     [Theory]
@@ -44,7 +44,7 @@ public sealed class ExplorerFileDiffTests
         CompareState state = State(["same", "before = 1;", "deleted"], ["same", "after = 1;"], unified);
         ExplorerPresenter presenter = new(ExplorerSamples.Image(), width, 30) { FullWidthContent = true };
         PaneContent pane = new CompareView(presenter, state).Diff();
-        Assert.Contains(pane.Lines, line => line.ToString().Contains(unified ? "Unified diff" : "Split diff"));
+        Assert.Contains(pane.Lines, line => line.ToString().Contains(unified ? "Inline diff" : "Side-by-side diff"));
         Assert.Contains(pane.Lines, line => line.ToString().Contains("+1 -2"));
         Assert.Contains(pane.Lines, line => line.ToString().Contains(unified ? "  2     - before" : "  2 - before"));
         Assert.Contains(pane.Lines, line => line.ToString().Contains("+ after"));
@@ -57,7 +57,7 @@ public sealed class ExplorerFileDiffTests
         Assert.All(pane.Lines, line => Assert.True(line.Length <= presenter.RightInner));
         if (unified)
         {
-            List<string> text = pane.Lines.Select(line => line.ToString()).ToList();
+            List<string> text = [.. pane.Lines.Select(line => line.ToString())];
             Assert.True(text.FindIndex(line => line.Contains("deleted")) < text.FindIndex(line => line.Contains("after")));
         }
     }
@@ -72,9 +72,9 @@ public sealed class ExplorerFileDiffTests
             Theme.Apply(ThemeKind.NoColor);
             CompareState state = State(["before"], ["after"], unified);
             PaneContent pane = new CompareView(new(ExplorerSamples.Image(), 80, 24) { FullWidthContent = true }, state).Diff();
-            Assert.Contains(pane.Lines, line => line.ToString().Contains("- before"));
-            Assert.Contains(pane.Lines, line => line.ToString().Contains("+ after"));
-            Assert.Contains(pane.Lines.SelectMany(line => line.Parts), part =>
+            Assert.Contains(pane.Lines, static line => line.ToString().Contains("- before"));
+            Assert.Contains(pane.Lines, static line => line.ToString().Contains("+ after"));
+            Assert.Contains(pane.Lines.SelectMany(static line => line.Parts), static part =>
                 part.Text == "after" && part.Sty.Deco.HasFlag(Deco.Underline));
         }
         finally
@@ -90,21 +90,24 @@ public sealed class ExplorerFileDiffTests
         ui.Window.StartCompare("2.0");
         ui.Until(() => ui.State.Compare is not null, "comparison");
         CompareState state = ui.State.Compare!;
-        string[] before = Enumerable.Range(0, 100).Select(i => $"before value {i}").ToArray();
-        string[] after = Enumerable.Range(0, 100).Select(i => $"after value {i}").ToArray();
+        string[] before = [.. Enumerable.Range(0, 100).Select(i => $"before value {i}")];
+        string[] after = [.. Enumerable.Range(0, 100).Select(i => $"after value {i}")];
         state.Diff = new("file", TextDiff.Diff(before, after), null);
         state.DiffScroll = 20;
         ui.Window.ImageChanged();
         ui.Pump();
         Assert.False(state.UnifiedDiff);
         Assert.Contains("Alt+V", ui.Row(ui.Height - 1));
+        Assert.Contains("Inline diff", ui.Row(ui.Height - 1));
         ui.Press(new Key('v').WithAlt);
         Assert.True(state.UnifiedDiff);
         Assert.Equal(20, state.DiffScroll);
-        Assert.True(ui.Shows("Unified diff"), ui.Screen());
+        Assert.True(ui.Shows("Inline diff"), ui.Screen());
+        Assert.Contains("Side-by-side diff", ui.Row(ui.Height - 1));
         ui.Press(new Key('v').WithAlt);
         Assert.False(state.UnifiedDiff);
         Assert.Equal(20, state.DiffScroll);
+        Assert.True(ui.Shows("Side-by-side diff"), ui.Screen());
         ui.Press(new Key('?'));
         ui.Press(Key.Esc);
         Assert.NotNull(state.Diff);
@@ -122,9 +125,9 @@ public sealed class ExplorerFileDiffTests
         CompareState state = State(["\t" + new string('界', 100) + "old-tail"], ["\t" + new string('界', 100) + "new-tail"], unified);
         state.DiffColumn = int.MaxValue;
         PaneContent pane = new CompareView(new(ExplorerSamples.Image(), 80, 24) { FullWidthContent = true }, state).Diff();
-        Assert.Contains(pane.Lines, line => line.ToString().Contains("old-tail"));
-        Assert.Contains(pane.Lines, line => line.ToString().Contains("new-tail"));
-        Assert.All(pane.Lines, line => Assert.True(line.Length <= 76));
+        Assert.Contains(pane.Lines, static line => line.ToString().Contains("old-tail"));
+        Assert.Contains(pane.Lines, static line => line.ToString().Contains("new-tail"));
+        Assert.All(pane.Lines, static line => Assert.True(line.Length <= 76));
         int column = 0;
         Assert.Equal("a   b   c", FileDiffDocument.ExpandTabs("a\tb\tc", ref column));
     }

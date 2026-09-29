@@ -46,13 +46,13 @@ internal static class ExplorerSamples
     // An arbitrary image: one history entry per layer and 100-byte downloads.
     public static ExplorerImage Custom(LayerChanges[] layers, int? baseLayerCount = null, string[]? instructions = null)
     {
-        string[] digests = layers.Select((_, i) => $"sha256:c{i}").ToArray();
-        LayerHistory[] history = layers.Select((_, i) => new LayerHistory
+        string[] digests = [.. layers.Select((_, i) => $"sha256:c{i}")];
+        LayerHistory[] history = [.. layers.Select((_, i) => new LayerHistory
         {
             CreatedBy = instructions?[i] ?? $"RUN /bin/sh -c step {i} # buildkit"
-        }).ToArray();
+        })];
         ExplorerImage img = new(Reference, "linux/amd64", "sha256:custom", digests,
-            layers.Select(_ => 100L).ToArray(), history,
+            [.. layers.Select(_ => 100L)], history,
             baseImages: baseLayerCount is int count ? [new("registry.test/base:1", count)] : [],
             now: new DateTime(2026, 1, 1));
         return Load(img, layers, complete: true, npm: []);
@@ -60,7 +60,7 @@ internal static class ExplorerSamples
 
     private static ExplorerImage Load(ExplorerImage img, LayerChanges[] layers, bool complete, Dictionary<string, string> npm)
     {
-        string[] digests = img.LayerDigests.ToArray();
+        string[] digests = [.. img.LayerDigests];
         for (int layer = 0; layer < layers.Length; layer++)
         {
             if (complete || layer < 2)
@@ -99,7 +99,7 @@ internal static class ExplorerSamples
         OciImageManifest manifest = new()
         {
             Config = new OciDescriptor { Digest = "sha256:config" },
-            Layers = digests.Select(digest => new OciDescriptor { Digest = digest, Size = 1000 }).ToArray(),
+            Layers = [.. digests.Select(digest => new OciDescriptor { Digest = digest, Size = 1000 })],
         };
         Dictionary<InstalledPackageEcosystem, InstalledPackageEcosystemMetadata> ecosystems = Enum
             .GetValues<InstalledPackageEcosystem>()
@@ -116,7 +116,7 @@ internal static class ExplorerSamples
             Config = new Image { Os = "linux", Architecture = architecture },
             Files = null!,
             Analysis = analysis,
-            Entries = analysis.LiveEntries.Values.Select(entry => new ImageFileSystemEntry
+            Entries = [.. analysis.LiveEntries.Values.Select(entry => new ImageFileSystemEntry
             {
                 Path = entry.Path,
                 Type = entry.Type,
@@ -124,7 +124,7 @@ internal static class ExplorerSamples
                 Size = entry.Size,
                 LinkTarget = entry.LinkTarget,
                 IntroducedLayer = new(analysis.LiveLayers[entry.Path], digests[analysis.LiveLayers[entry.Path]]),
-            }).ToArray(),
+            })],
             Packages = new InstalledPackageMetadata(ecosystems) { Diagnostics = diagnostics ?? [] },
         };
     }
@@ -141,7 +141,6 @@ internal static class ExplorerSamples
 
 internal sealed class FakeExplorerHost : IExplorerHost
 {
-    public KeyMap Keys { get; init; } = KeyMap.Default;
     public bool ClipboardEnabled { get; init; }
     public ExplorerSession? Baseline { get; init; }
     public IReadOnlyList<string> Tags { get; init; } = ["1.0", "2.0"];
@@ -265,12 +264,11 @@ public sealed class ExplorerWindowTests
 {
     internal static ExplorerUiHarness Open(
         out FakeExplorerHost host, int width = 150, int height = 42, bool complete = true,
-        KeyMap? keys = null, bool clipboard = false, bool clipboardWorks = true)
+        bool clipboard = false, bool clipboardWorks = true)
     {
         ExplorerImage img = ExplorerSamples.Image(complete);
         FakeExplorerHost fake = new()
         {
-            Keys = keys ?? KeyMap.Default,
             ClipboardEnabled = clipboard,
             ClipboardWorks = clipboardWorks,
             Baseline = img.Session,
@@ -445,7 +443,7 @@ public sealed class ExplorerWindowTests
         ui.Window.Apply(new SelectLayer(2));
         s.Expanded.Add("app/cache");
         ui.Press(new Key('w'));
-        List<string> shown = ui.Window.Presenter.Flatten(s).Select(row => row.Path).ToList();
+        List<string> shown = [.. ui.Window.Presenter.Flatten(s).Select(static row => row.Path)];
         Assert.Contains("app/cache/big.bin", shown);
         Assert.DoesNotContain("app/src/index.js", shown);
         ui.Press(new Key('w'));
@@ -485,27 +483,17 @@ public sealed class ExplorerWindowTests
         Assert.StartsWith("Copied: ", ui.State.Notice);
     }
 
-    [Theory]
-    [InlineData(false)]
-    [InlineData(true)]
-    public void CopyShortcutUsesControlCUnlessRemapped(bool remapped)
+    [Fact]
+    public void CopyShortcutUsesControlC()
     {
-        KeyMap keys = KeyMap.FromSettings(new ExploreKeysSettings { CopyCommand = remapped ? "Y" : "" });
-        using ExplorerUiHarness ui = Open(out FakeExplorerHost host, keys: keys, clipboard: true);
+        using ExplorerUiHarness ui = Open(out FakeExplorerHost host, clipboard: true);
         ui.Window.Apply(new SetCursor(RowOf(ui, "app/package.json")));
         ui.Press(Key.Enter);
         Assert.Equal(RightView.Inspector, ui.State.View);
-        Assert.Equal(remapped ? "Y" : "^C", keys.Label(KeyAction.CopyCommand));
+        Assert.Equal("^C", KeyMap.Default.Label(KeyAction.CopyCommand));
         Assert.Contains(ui.Window.Presenter.Hints(ui.State),
-            hint => hint.Cmd is CopyCommand && hint.Key == (remapped ? "Y" : "^C"));
-        ui.Press(new Key('y'));
-        Assert.Empty(host.Clipboard);
+            static hint => hint.Cmd is CopyCommand && hint.Key == "^C");
         ui.Press(Key.C.WithCtrl);
-        if (remapped)
-        {
-            Assert.Empty(host.Clipboard);
-            ui.Press(new Key('Y'));
-        }
         Assert.Equal("dredge image cat registry.test/shop/storefront@sha256:manifest /app/package.json",
             Assert.Single(host.Clipboard));
         Assert.False(ui.Window.StopRequested);
@@ -735,38 +723,27 @@ public sealed class ExplorerWindowTests
     }
 
     [Fact]
-    public void PackagesKeyOpensInventoryWithoutPlatformSwitching()
+    public void PackagesKeyOpensInventory()
     {
         using ExplorerUiHarness ui = Open(out _);
-        Assert.Contains(ui.Window.Presenter.Hints(ui.State), h => h.Key == "p" && h.Label == "Packages");
-        Assert.DoesNotContain(ui.Window.Presenter.Hints(ui.State), h => h.Label == "Platform…");
-        Assert.Null(KeyMap.Default.Lookup('k'));
-        ui.Press(new Key('k'));
-        Assert.Equal(RightView.Files, ui.State.View);
+        Assert.Contains(ui.Window.Presenter.Hints(ui.State), static h => h.Key == "p" && h.Label == "Packages");
         ui.Press(new Key('p'));
         Assert.Equal(RightView.Packages, ui.State.View);
         Assert.False(ui.Window.StopRequested);
-        ui.Press(new Key('?'));
-        Assert.False(ui.Shows("Choose platform…"));
     }
 
     [Fact]
-    public void RemappedKeysDriveActionsAndHelp()
+    public void BuiltInKeysDriveActionsAndHelp()
     {
-        KeyMap keys = KeyMap.FromSettings(new ExploreKeysSettings { Quit = "Q", Insights = "n" });
-        using ExplorerUiHarness ui = Open(out _, keys: keys);
+        using ExplorerUiHarness ui = Open(out _);
         ui.Press(new Key('?'));
         Assert.Equal(RightView.Keys, ui.State.View);
-        Assert.True(ui.Shows(" Q "), ui.Screen());
+        Assert.True(ui.Shows(" q "), ui.Screen());
         ui.Press(Key.Esc);
 
         ui.Press(new Key('i'));
-        Assert.Equal(RightView.Files, ui.State.View);
-        ui.Press(new Key('n'));
         Assert.Equal(RightView.Insights, ui.State.View);
         ui.Press(new Key('q'));
-        Assert.False(ui.Window.StopRequested);
-        ui.Press(new Key('Q'));
         Assert.True(ui.Window.StopRequested);
     }
 }

@@ -6,7 +6,7 @@ internal static class Breakdown
 {
     public static List<Line> Render(List<(string Label, long Value, Rgb Color)> parts, int width)
     {
-        long total = parts.Sum(p => p.Value);
+        long total = parts.Sum(static p => p.Value);
         if (total <= 0 || parts.Count == 0)
         {
             return [Line.Of(new string('█', Math.Max(0, width)), Theme.Shale)];

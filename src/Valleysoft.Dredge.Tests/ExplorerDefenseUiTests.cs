@@ -84,7 +84,7 @@ public sealed class ExplorerDefenseUiTests
         ExplorerSession target = ExplorerSamples.Target("other.test/team/app:rolling");
         CompareState compare = new(ExplorerSession.Compare(image.Session!, target), "before", "after");
         using ExplorerUiHarness ui = ExplorerWindowTests.Open(image, new ExplorerState { Compare = compare },
-            session => new FakeExplorerHost { Baseline = session }, out _, width: 80, height: 24);
+            static session => new FakeExplorerHost { Baseline = session }, out _, width: 80, height: 24);
         ui.Press(new Key('i').WithAlt);
         Assert.Equal(RightView.Warning, ui.State.View);
         Assert.Equal("Comparison snapshot", ui.State.WarningTitle);
@@ -115,7 +115,7 @@ public sealed class ExplorerDefenseUiTests
             unavailable ? 0 : 1, [warning]);
         compare.PackageFiles = result;
         using ExplorerUiHarness ui = ExplorerWindowTests.Open(image, new ExplorerState { Compare = compare },
-            session => new FakeExplorerHost { Baseline = session }, out _, width: 80, height: 24);
+            static session => new FakeExplorerHost { Baseline = session }, out _, width: 80, height: 24);
         Assert.True(ui.Shows(unavailable ? "ownership is unavailable" : "Ownership is incomplete"), ui.Screen());
         Assert.True(ui.Shows("1 metadata warning"), ui.Screen());
         if (!unavailable)
@@ -140,7 +140,7 @@ public sealed class ExplorerDefenseUiTests
             diagnostics: [new("app/node_modules/pkg/package.json", message)]);
         CompareState compare = new(ExplorerSession.Compare(baseline, ExplorerSamples.Target()), "before", "after");
         using ExplorerUiHarness ui = ExplorerWindowTests.Open(image, new ExplorerState { Compare = compare },
-            session => new FakeExplorerHost { Baseline = session }, out _, width: 80, height: 24);
+            static session => new FakeExplorerHost { Baseline = session }, out _, width: 80, height: 24);
         Assert.True(ui.Shows("1 metadata warning"), ui.Screen());
         ui.Press(Key.CursorDown);
         Assert.True(ui.Shows("1 metadata warning"), ui.Screen());
@@ -312,7 +312,7 @@ public sealed class ExplorerDefenseUiTests
         ExplorerPresenter presenter = new(image, 150, 42);
         foreach (bool directory in new[] { false, true })
         {
-            string command = presenter.CopyCommandText(new(), "app/item", directory);
+            string command = presenter.CopyCommandText("app/item", directory);
             Assert.Contains("registry.test/shop/storefront@sha256:resolvedarmv7", command);
             Assert.DoesNotContain("storefront:1.0", command);
         }
@@ -326,7 +326,7 @@ public sealed class ExplorerDefenseUiTests
         ExplorerComparison comparison = ExplorerSession.Compare(image.Session!, target);
         ExplorerState state = new() { Compare = new CompareState(comparison, "before", "after") };
         using ExplorerUiHarness ui = ExplorerWindowTests.Open(image, state,
-            session => new FakeExplorerHost { Baseline = session }, out _);
+            static session => new FakeExplorerHost { Baseline = session }, out _);
         string before = new ImageName(image.Session!.Image.Registry, image.Session.Image.Repo, null,
             image.Session.Resolved.ManifestInfo.DockerContentDigest).ToString();
         string after = new ImageName(target.Image.Registry, target.Image.Repo, null,
@@ -382,7 +382,7 @@ public sealed class ExplorerDefenseUiTests
     {
         ExplorerImage image = ExplorerSamples.Image();
         using ExplorerUiHarness ui = ExplorerWindowTests.Open(image, new ExplorerState { Layer = 2 },
-            session => new FakeExplorerHost { Baseline = session }, out _);
+            static session => new FakeExplorerHost { Baseline = session }, out _);
         Assert.Contains("file payload", ui.Screen());
         Assert.DoesNotContain("on disk", ui.Screen());
         CompareState compare = new(ExplorerSession.Compare(image.Session!, ExplorerSamples.Target()), "before", "after");
@@ -417,7 +417,7 @@ public sealed class ExplorerDefenseUiTests
     {
         ExplorerImage image = ExplorerSamples.Custom([]);
         using ExplorerUiHarness ui = ExplorerWindowTests.Open(image, new ExplorerState(),
-            session => new FakeExplorerHost { Baseline = session }, out _, width: 80, height: 24);
+            static session => new FakeExplorerHost { Baseline = session }, out _, width: 80, height: 24);
         ui.Press(new Key('?'));
         Assert.Equal(RightView.Keys, ui.State.View);
         ui.Press(Key.CursorDown);
@@ -432,17 +432,17 @@ public sealed class ExplorerDefenseUiTests
         ui.Press(new Key('c').WithAlt);
         Assert.Equal(!deleted, ui.State.SearchIncludeDeleted);
         Assert.Equal(!exact, ui.State.SearchExactCase);
-        Assert.DoesNotContain(ui.Window.Presenter.Hints(ui.State), hint => hint.Cmd is SetSearchScope);
+        Assert.DoesNotContain(ui.Window.Presenter.Hints(ui.State), static hint => hint.Cmd is SetSearchScope);
     }
 
     [Fact]
     public void EmptyImageRetainsPackagesHint()
     {
         ExplorerPresenter presenter = new(ExplorerSamples.Custom([]), 80, 24);
-        Assert.Contains(presenter.Hints(new()), hint => hint.Key == "p" && hint.Cmd is ShowView { View: RightView.Packages });
-        Assert.DoesNotContain(presenter.Hints(new()), hint => hint.Cmd is SetWhole or RetryLayer);
+        Assert.Contains(presenter.Hints(new()), static hint => hint.Key == "p" && hint.Cmd is ShowView { View: RightView.Packages });
+        Assert.DoesNotContain(presenter.Hints(new()), static hint => hint.Cmd is SetWhole or RetryLayer);
         using ExplorerUiHarness ui = ExplorerWindowTests.Open(ExplorerSamples.Custom([]), new ExplorerState(),
-            session => new FakeExplorerHost { Baseline = session }, out _);
+            static session => new FakeExplorerHost { Baseline = session }, out _);
         ui.Press(new Key('p'));
         Assert.Equal(RightView.Packages, ui.State.View);
         Assert.False(ui.Window.StopRequested);
@@ -465,7 +465,7 @@ public sealed class ExplorerDefenseUiTests
     [InlineData("RUN echo \"escaped \\\" quote\" && echo \ud83d\udc1f")]
     [InlineData("RUN  --mount=type=cache,target=/cache \t echo [x]; a | b \\\n next")]
     public void DockerfileHighlightingPreservesEverySourceCharacter(string source) =>
-        Assert.Equal(source, string.Concat(Syntax.Dockerfile(source, Theme.Foam).Select(token => token.Text)));
+        Assert.Equal(source, string.Concat(Syntax.Dockerfile(source, Theme.Foam).Select(static token => token.Text)));
 
     [Theory]
     [InlineData(false)]
@@ -480,8 +480,8 @@ public sealed class ExplorerDefenseUiTests
 
         List<FlatRow> rows = presenter.Flatten(state);
 
-        Assert.Contains(rows, row => row.Path == "app/item/old" && row.Node.Change == Change.Removed);
-        Node replacement = Assert.Single(rows, row => row.Path == "app/item").Node;
+        Assert.Contains(rows, static row => row.Path == "app/item/old" && row.Node.Change == Change.Removed);
+        Node replacement = Assert.Single(rows, static row => row.Path == "app/item").Node;
         Assert.Equal(Kind.File, replacement.Kind);
         Assert.Equal(2, replacement.Size);
     }

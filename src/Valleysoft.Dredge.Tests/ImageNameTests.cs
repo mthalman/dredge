@@ -188,7 +188,7 @@ public class ImageNameTests
     public void Parse_InvalidReference_ThrowsComponentError()
     {
         ArgumentException exception = Assert.Throws<ArgumentException>(
-            () => ImageName.Parse("registry.example:invalid/repo"));
+            static () => ImageName.Parse("registry.example:invalid/repo"));
 
         Assert.Contains("registry", exception.Message, StringComparison.OrdinalIgnoreCase);
     }

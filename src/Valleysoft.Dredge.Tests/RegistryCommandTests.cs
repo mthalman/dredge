@@ -62,7 +62,7 @@ public class RegistryCommandTests
     {
         Mock<IDockerRegistryClient> client = CreateClient();
         client
-            .Setup(o => o.Manifests.GetDigestAsync("repo", "tag", It.IsAny<CancellationToken>()))
+            .Setup(static o => o.Manifests.GetDigestAsync("repo", "tag", It.IsAny<CancellationToken>()))
             .ReturnsAsync("sha256:digest");
         using StringWriter output = new();
         TestDigestCommand command = new(CreateFactory(client.Object), output)
@@ -80,7 +80,7 @@ public class RegistryCommandTests
     {
         Mock<IDockerRegistryClient> client = CreateClient();
         client
-            .Setup(o => o.Manifests.GetDigestAsync("repo", "tag", It.IsAny<CancellationToken>()))
+            .Setup(static o => o.Manifests.GetDigestAsync("repo", "tag", It.IsAny<CancellationToken>()))
             .ThrowsAsync(new InvalidOperationException("failure"));
         using StringWriter output = new();
         TestDigestCommand command = new(CreateFactory(client.Object), output)
@@ -104,7 +104,7 @@ public class RegistryCommandTests
         };
         Mock<IDockerRegistryClient> client = CreateClient();
         client
-            .Setup(o => o.Manifests.GetAsync("repo", "tag", It.IsAny<CancellationToken>()))
+            .Setup(static o => o.Manifests.GetAsync("repo", "tag", It.IsAny<CancellationToken>()))
             .ReturnsAsync(new ManifestInfo("application/test", "sha256:digest", manifest));
         using StringWriter output = new();
         TestGetCommand command = new(CreateFactory(client.Object), output)
@@ -126,7 +126,7 @@ public class RegistryCommandTests
         RawManifest manifest = new(MediaType, Encoding.UTF8.GetBytes("""{"custom":"value"}"""));
         Mock<IDockerRegistryClient> client = CreateClient();
         client
-            .Setup(o => o.Manifests.GetAsync("repo", "tag", It.IsAny<CancellationToken>()))
+            .Setup(static o => o.Manifests.GetAsync("repo", "tag", It.IsAny<CancellationToken>()))
             .ReturnsAsync(new ManifestInfo(MediaType, "sha256:digest", manifest));
         using StringWriter output = new();
         TestGetCommand command = new(CreateFactory(client.Object), output)
@@ -145,7 +145,7 @@ public class RegistryCommandTests
     {
         Mock<IDockerRegistryClient> client = CreateClient();
         client
-            .Setup(o => o.Manifests.GetAsync("repo", "tag", It.IsAny<CancellationToken>()))
+            .Setup(static o => o.Manifests.GetAsync("repo", "tag", It.IsAny<CancellationToken>()))
             .ReturnsAsync(CreateManifestInfo("sha256:resolved"));
         using StringWriter output = new();
         TestResolveCommand command = new(CreateFactory(client.Object), output)
@@ -163,10 +163,10 @@ public class RegistryCommandTests
     {
         Mock<IDockerRegistryClient> client = CreateClient();
         client
-            .Setup(o => o.Manifests.GetAsync("repo", "tag", It.IsAny<CancellationToken>()))
+            .Setup(static o => o.Manifests.GetAsync("repo", "tag", It.IsAny<CancellationToken>()))
             .ReturnsAsync(CreateManifestInfo("sha256:manifest", "sha256:config"));
         client
-            .Setup(o => o.Blobs.GetAsync("repo", "sha256:config", It.IsAny<CancellationToken>()))
+            .Setup(static o => o.Blobs.GetAsync("repo", "sha256:config", It.IsAny<CancellationToken>()))
             .ReturnsAsync(new MemoryStream(Encoding.UTF8.GetBytes("""{"created":"today","config":{"Env":["A=B"]}}""")));
         using StringWriter output = new();
         TestInspectCommand command = new(CreateFactory(client.Object), output)
@@ -189,10 +189,10 @@ public class RegistryCommandTests
             """{"timestamp":"2021-08-31T21:19:56.930000+02:00","exponent":1e10,"decimal":1.10,"negativeZero":-0,"dup":1,"dup":2}""";
         Mock<IDockerRegistryClient> client = CreateClient();
         client
-            .Setup(o => o.Manifests.GetAsync("repo", "tag", It.IsAny<CancellationToken>()))
+            .Setup(static o => o.Manifests.GetAsync("repo", "tag", It.IsAny<CancellationToken>()))
             .ReturnsAsync(CreateManifestInfo("sha256:manifest", "sha256:config"));
         client
-            .Setup(o => o.Blobs.GetAsync("repo", "sha256:config", It.IsAny<CancellationToken>()))
+            .Setup(static o => o.Blobs.GetAsync("repo", "sha256:config", It.IsAny<CancellationToken>()))
             .ReturnsAsync(new MemoryStream(Encoding.UTF8.GetBytes(Content)));
         using StringWriter output = new();
         TestInspectCommand command = new(CreateFactory(client.Object), output)
@@ -222,12 +222,12 @@ public class RegistryCommandTests
     {
         Mock<IDockerRegistryClient> client = CreateClient();
         client
-            .Setup(o => o.Catalog.GetAsync(null, It.IsAny<CancellationToken>()))
+            .Setup(static o => o.Catalog.GetAsync(null, It.IsAny<CancellationToken>()))
             .ReturnsAsync(new Page<Catalog>(
                 new Catalog { RepositoryNames = ["zebra", "alpha"] },
                 "next"));
         client
-            .Setup(o => o.Catalog.GetNextAsync("next", It.IsAny<CancellationToken>()))
+            .Setup(static o => o.Catalog.GetNextAsync("next", It.IsAny<CancellationToken>()))
             .ReturnsAsync(new Page<Catalog>(
                 new Catalog { RepositoryNames = ["middle"] },
                 null));
@@ -249,7 +249,7 @@ public class RegistryCommandTests
     {
         Mock<IDockerRegistryClient> client = CreateClient();
         client
-            .Setup(o => o.Catalog.GetAsync(2, It.IsAny<CancellationToken>()))
+            .Setup(static o => o.Catalog.GetAsync(2, It.IsAny<CancellationToken>()))
             .ReturnsAsync(new Page<Catalog>(
                 new Catalog { RepositoryNames = ["zebra", "alpha", "middle"] },
                 "next"));
@@ -265,7 +265,7 @@ public class RegistryCommandTests
             ["alpha", "zebra"],
             JsonSerializer.Deserialize<string[]>(output.ToString())!);
         client.Verify(
-            o => o.Catalog.GetNextAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()),
+            static o => o.Catalog.GetNextAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()),
             Times.Never);
     }
 
@@ -274,12 +274,12 @@ public class RegistryCommandTests
     {
         Mock<IDockerRegistryClient> client = CreateClient();
         client
-            .Setup(o => o.Tags.GetAsync("library/repo", null, It.IsAny<CancellationToken>()))
+            .Setup(static o => o.Tags.GetAsync("library/repo", null, It.IsAny<CancellationToken>()))
             .ReturnsAsync(new Page<RepositoryTags>(
                 new RepositoryTags { RepositoryName = "library/repo", Tags = ["z", "a"] },
                 "next"));
         client
-            .Setup(o => o.Tags.GetNextAsync("next", It.IsAny<CancellationToken>()))
+            .Setup(static o => o.Tags.GetNextAsync("next", It.IsAny<CancellationToken>()))
             .ReturnsAsync(new Page<RepositoryTags>(
                 new RepositoryTags { RepositoryName = "library/repo", Tags = ["m"] },
                 null));
@@ -301,12 +301,12 @@ public class RegistryCommandTests
     {
         Mock<IDockerRegistryClient> client = CreateClient();
         client
-            .Setup(o => o.Tags.GetAsync("library/repo", 3, It.IsAny<CancellationToken>()))
+            .Setup(static o => o.Tags.GetAsync("library/repo", 3, It.IsAny<CancellationToken>()))
             .ReturnsAsync(new Page<RepositoryTags>(
                 new RepositoryTags { RepositoryName = "library/repo", Tags = ["z", "a"] },
                 "next"));
         client
-            .Setup(o => o.Tags.GetNextAsync("next", It.IsAny<CancellationToken>()))
+            .Setup(static o => o.Tags.GetNextAsync("next", It.IsAny<CancellationToken>()))
             .ReturnsAsync(new Page<RepositoryTags>(
                 new RepositoryTags { RepositoryName = "library/repo", Tags = ["y", "m"] },
                 "unused"));
@@ -322,10 +322,10 @@ public class RegistryCommandTests
             ["a", "y", "z"],
             JsonSerializer.Deserialize<string[]>(output.ToString())!);
         client.Verify(
-            o => o.Tags.GetNextAsync("next", It.IsAny<CancellationToken>()),
+            static o => o.Tags.GetNextAsync("next", It.IsAny<CancellationToken>()),
             Times.Once);
         client.Verify(
-            o => o.Tags.GetNextAsync("unused", It.IsAny<CancellationToken>()),
+            static o => o.Tags.GetNextAsync("unused", It.IsAny<CancellationToken>()),
             Times.Never);
     }
 
@@ -336,12 +336,12 @@ public class RegistryCommandTests
         OciManifestReference second = new() { Digest = "sha256:second" };
         Mock<IDockerRegistryClient> client = CreateClient();
         client
-            .Setup(o => o.Referrers.GetAsync("repo", ImageDigest, "application/test", It.IsAny<CancellationToken>()))
+            .Setup(static o => o.Referrers.GetAsync("repo", ImageDigest, "application/test", It.IsAny<CancellationToken>()))
             .ReturnsAsync(new Page<OciImageIndex>(
                 new OciImageIndex { Manifests = [first] },
                 "next"));
         client
-            .Setup(o => o.Referrers.GetNextAsync("next", It.IsAny<CancellationToken>()))
+            .Setup(static o => o.Referrers.GetNextAsync("next", It.IsAny<CancellationToken>()))
             .ReturnsAsync(new Page<OciImageIndex>(
                 new OciImageIndex { Manifests = [second] },
                 null));
@@ -356,12 +356,10 @@ public class RegistryCommandTests
         };
 
         await command.RunAsync();
-        string[] digests = JsonNode.Parse(output.ToString())!["manifests"]!.AsArray()
-            .Select(manifest => manifest!["digest"]!.GetValue<string>())
-            .ToArray();
+        string[] digests = [.. JsonNode.Parse(output.ToString())!["manifests"]!.AsArray().Select(static manifest => manifest!["digest"]!.GetValue<string>())];
 
         Assert.Equal(["sha256:first", "sha256:second"], digests);
-        client.Verify(o => o.Referrers.GetNextAsync("next", It.IsAny<CancellationToken>()), Times.Once);
+        client.Verify(static o => o.Referrers.GetNextAsync("next", It.IsAny<CancellationToken>()), Times.Once);
     }
 
     [Fact]
@@ -371,7 +369,7 @@ public class RegistryCommandTests
         OciManifestReference second = new() { Digest = "sha256:second" };
         Mock<IDockerRegistryClient> client = CreateClient();
         client
-            .Setup(o => o.Referrers.GetAsync("repo", ImageDigest, null, It.IsAny<CancellationToken>()))
+            .Setup(static o => o.Referrers.GetAsync("repo", ImageDigest, null, It.IsAny<CancellationToken>()))
             .ReturnsAsync(new Page<OciImageIndex>(
                 new OciImageIndex
                 {
@@ -395,10 +393,10 @@ public class RegistryCommandTests
         Assert.Equal(
             ["sha256:first", "sha256:second"],
             json["manifests"]!.AsArray().Select(
-                manifest => manifest!["digest"]!.GetValue<string>()));
+                static manifest => manifest!["digest"]!.GetValue<string>()));
         Assert.Equal("first-page", json["annotations"]!["source"]!.GetValue<string>());
         client.Verify(
-            o => o.Referrers.GetNextAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()),
+            static o => o.Referrers.GetNextAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()),
             Times.Never);
     }
 
@@ -408,7 +406,7 @@ public class RegistryCommandTests
     private static IDockerRegistryClientFactory CreateFactory(IDockerRegistryClient client)
     {
         Mock<IDockerRegistryClientFactory> factory = new();
-        factory.Setup(o => o.GetClientAsync(It.IsAny<string?>(), It.IsAny<CancellationToken>())).ReturnsAsync(client);
+        factory.Setup(static o => o.GetClientAsync(It.IsAny<string?>(), It.IsAny<CancellationToken>())).ReturnsAsync(client);
         return factory.Object;
     }
 

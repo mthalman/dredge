@@ -77,7 +77,7 @@ public class RegistryFixture : IAsyncLifetime
                 .WithEnvironment("REGISTRY_STORAGE_DELETE_ENABLED", deleteEnabled ? "true" : "false")
                 .WithWaitStrategy(
                     Wait.ForUnixContainer().UntilHttpRequestIsSucceeded(
-                        request => request.ForPort(RegistryPort).ForPath("/v2/")))
+                        static request => request.ForPort(RegistryPort).ForPath("/v2/")))
                 .Build());
 
     internal static Task<RegistryInstance> StartZotContainerAsync(string configPath) =>
@@ -87,7 +87,7 @@ public class RegistryFixture : IAsyncLifetime
                 .WithResourceMapping(configPath, "/etc/zot/")
                 .WithWaitStrategy(
                     Wait.ForUnixContainer().UntilHttpRequestIsSucceeded(
-                        request => request.ForPort(RegistryPort).ForPath("/v2/")))
+                        static request => request.ForPort(RegistryPort).ForPath("/v2/")))
                 .Build());
 
     internal static async Task<RegistryInstance> StartContainerAsync(IContainer container)
@@ -232,15 +232,14 @@ public class RegistryFixture : IAsyncLifetime
             rootfs = new
             {
                 type = "layers",
-                diff_ids = layers.Select(layer => layer.DiffId).ToArray()
+                diff_ids = layers.Select(static layer => layer.DiffId).ToArray()
             },
-            history = history ?? layers
-                .Select((_, index) => (object)new
+            history = history ?? [.. layers
+                .Select(static (_, index) => (object)new
                 {
                     created_by = $"/bin/sh -c echo layer-{index}",
                     empty_layer = false
-                })
-                .ToArray()
+                })]
         };
         BlobSeed configBlob = await UploadBlobAsync(
             repository,
@@ -255,7 +254,7 @@ public class RegistryFixture : IAsyncLifetime
                 size = configBlob.Size,
                 digest = configBlob.Digest
             },
-            layers = layers.Select(layer => new
+            layers = layers.Select(static layer => new
             {
                 mediaType = "application/vnd.oci.image.layer.v1.tar+gzip",
                 size = layer.Size,
@@ -278,7 +277,7 @@ public class RegistryFixture : IAsyncLifetime
             repository,
             reference,
             images
-                .Select(item => new PlatformImageSeed(
+                .Select(static item => new PlatformImageSeed(
                     item.Image,
                     item.Os,
                     item.Architecture))
@@ -296,7 +295,7 @@ public class RegistryFixture : IAsyncLifetime
             {
                 schemaVersion = 2,
                 mediaType = ManifestMediaTypes.OciImageIndex1,
-                manifests = images.Select(item => new
+                manifests = images.Select(static item => new
                 {
                     mediaType = ManifestMediaTypes.OciManifestSchema1,
                     size = item.Image.Manifest.Size,

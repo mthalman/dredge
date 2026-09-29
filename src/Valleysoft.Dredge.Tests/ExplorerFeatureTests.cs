@@ -18,7 +18,7 @@ public sealed class ExplorerFeatureTests
         Func<ExplorerSession?, FakeExplorerHost>? create = null, int width = 150, int height = 42)
     {
         ExplorerState state = new() { Layer = layer };
-        return ExplorerWindowTests.Open(img, state, create ?? (session => new FakeExplorerHost { Baseline = session }),
+        return ExplorerWindowTests.Open(img, state, create ?? (static session => new FakeExplorerHost { Baseline = session }),
             out host, width, height);
     }
 
@@ -58,7 +58,7 @@ public sealed class ExplorerFeatureTests
         Assert.Equal("base:new", img.BaseImageAt(1));
         Assert.Equal("base:new", img.BaseImageAt(2));
         Assert.Null(img.BaseImageAt(3));
-        string[] layerLines = presenter.LayersPane(state).Lines.Select(line => line.ToString()).ToArray();
+        string[] layerLines = [.. presenter.LayersPane(state).Lines.Select(line => line.ToString())];
         Assert.Contains(layerLines, line => line.Contains("── base:old"));
         Assert.Contains(layerLines, line => line.Contains("── base:new"));
         Assert.Contains(layerLines, line => line.Contains("── " + img.Reference));
@@ -97,7 +97,7 @@ public sealed class ExplorerFeatureTests
             "mcr.microsoft.com/dotnet/aspnet:10.0",
             "mcr.microsoft.com/dotnet/sdk:10.0"],
             img.LayerIndexes.Select(img.GroupAt));
-        string[] rows = presenter.LayersPane(state).Lines.Select(line => line.ToString()).ToArray();
+        string[] rows = [.. presenter.LayersPane(state).Lines.Select(line => line.ToString())];
         foreach (string label in img.LayerIndexes.Select(img.GroupAt))
         {
             Assert.Contains(rows, row => row.Contains($"── {label} "));
@@ -227,14 +227,12 @@ public sealed class ExplorerFeatureTests
         Assert.DoesNotContain("app/src", s.Expanded);
         ui.Press(Key.Enter);
         Assert.Contains("app/src", s.Expanded);
-
-        Assert.DoesNotContain(ui.Window.Presenter.Hints(s), hint => hint.Key == "Space");
     }
 
     [Fact]
     public void PagingMovesTheCursorByAScreen()
     {
-        LayerChanges many = Layer(Enumerable.Range(0, 80).Select(i => File($"f{i:00}", 10, $"h{i}")).ToArray());
+        LayerChanges many = Layer([.. Enumerable.Range(0, 80).Select(static i => File($"f{i:00}", 10, $"h{i}"))]);
         using ExplorerUiHarness ui = OpenCustom(Custom([many]), out _);
         ExplorerState s = ui.State;
 
@@ -259,7 +257,7 @@ public sealed class ExplorerFeatureTests
         s.Expanded.Add("app");
         s.Expanded.Add("app/cache");
         ui.Window.Presenter.Invalidate();
-        List<string> Paths() => ui.Window.Presenter.Flatten(s).Select(row => row.Path).ToList();
+        List<string> Paths() => [.. ui.Window.Presenter.Flatten(s).Select(row => row.Path)];
         Assert.Contains("app/cache/big.bin", Paths());
 
         foreach ((char key, Change change) in new[] { ('+', Change.Added), ('~', Change.Modified), ('=', Change.Identical), ('-', Change.Removed) })
@@ -329,8 +327,8 @@ public sealed class ExplorerFeatureTests
             Rgb under = selected ? Theme.Graphite : Theme.Ground;
             // The same colour the layer has in the core bar above.
             Rgb fill = strata[layer];
-            Assert.Contains(strata[layer], img.Row(layer).IsBase ? new[] { Theme.Bedrock1, Theme.Bedrock2 } : new[] { Theme.Sand1, Theme.Sand2 });
-            Rgb[] cells = Backgrounds(line).Skip(3).Take(ExplorerPresenter.GaugeWidth).Select(bg => bg ?? under).ToArray();
+            Assert.Contains(strata[layer], img.Row(layer).IsBase ? new[] { Theme.Bedrock1, Theme.Bedrock2 } : [Theme.Sand1, Theme.Sand2]);
+            Rgb[] cells = [.. Backgrounds(line).Skip(3).Take(ExplorerPresenter.GaugeWidth).Select(bg => bg ?? under)];
             double reach = ExplorerPresenter.GaugeReach((double)img.LayerSize(layer) / max);
             int full = (int)reach;
             // Fully covered cells take the fill (or red for waste); past the reach, the row shows through.
@@ -371,10 +369,10 @@ public sealed class ExplorerFeatureTests
         foreach (int layer in new[] { 1, 2 })
         {
             state.Layer = layer == 1 ? 2 : 1;
-            Rgb?[] unselectedBar = Foregrounds(presenter.Header(state)[1]).ToArray();
+            Rgb?[] unselectedBar = [.. Foregrounds(presenter.Header(state)[1])];
             Line unselected = presenter.LayersPane(state).Lines.Single(line => line.ToString().StartsWith($" {layer} "));
             state.Layer = layer;
-            Rgb?[] selectedBar = Foregrounds(presenter.Header(state)[1]).ToArray();
+            Rgb?[] selectedBar = [.. Foregrounds(presenter.Header(state)[1])];
             Line selected = presenter.LayersPane(state).Lines.Single(line => line.ToString().StartsWith($"▌{layer} "));
 
             int shadedCells = (int)Math.Ceiling(ExplorerPresenter.GaugeReach(
@@ -416,9 +414,9 @@ public sealed class ExplorerFeatureTests
             }
             return (t, err);
         }
-        var a = Fit(under, fill, bg);
-        var b = Fit(under, Theme.StratumWaste, bg);
-        return a.Error <= b.Error ? a.Amount : b.Amount;
+        var (fillAmount, fillError) = Fit(under, fill, bg);
+        var (wasteAmount, wasteError) = Fit(under, Theme.StratumWaste, bg);
+        return fillError <= wasteError ? fillAmount : wasteAmount;
     }
 
     [Fact]
@@ -438,9 +436,9 @@ public sealed class ExplorerFeatureTests
         Assert.Equal(0, pane.Inset);
         string gauge = "waiting".PadLeft(ExplorerPresenter.GaugeWidth);
         Assert.Equal([$"▌0 {gauge} RUN step 0", $"{new string(' ', 4 + ExplorerPresenter.GaugeWidth)}ENV APP_UID=165", $" 1 {gauge} RUN step 1"],
-            pane.Lines.Select(l => l.ToString().TrimEnd()[..Math.Min(l.ToString().TrimEnd().Length, 3 + ExplorerPresenter.GaugeWidth + 16)]));
+            pane.Lines.Select(static l => l.ToString().TrimEnd()[..Math.Min(l.ToString().TrimEnd().Length, 3 + ExplorerPresenter.GaugeWidth + 16)]));
         using ExplorerUiHarness screen = OpenCustom(img, out _);
-        Assert.Contains(screen.Screen().Split('\n'), row => row.Contains("┃▌0 ") || row.Contains("│▌0 "));
+        Assert.Contains(screen.Screen().Split('\n'), static row => row.Contains("┃▌0 ") || row.Contains("│▌0 "));
     }
 
     [Fact]
@@ -455,10 +453,10 @@ public sealed class ExplorerFeatureTests
     }
 
     private static IEnumerable<Rgb?> Foregrounds(Line line) =>
-        line.Parts.SelectMany(p => Enumerable.Repeat(p.Sty.Foreground, p.Text.Length));
+        line.Parts.SelectMany(static p => Enumerable.Repeat(p.Sty.Foreground, p.Text.Length));
 
     private static IEnumerable<Rgb?> Backgrounds(Line line) =>
-        line.Parts.SelectMany(p => Enumerable.Repeat(p.Sty.Background, p.Text.Length));
+        line.Parts.SelectMany(static p => Enumerable.Repeat(p.Sty.Background, p.Text.Length));
 
     [Fact]
     public void OnlyPanesWhoseContentChangedRepaint()
@@ -597,27 +595,6 @@ public sealed class ExplorerFeatureTests
     }
 
     [Fact]
-    public void RemovedFirstOwnLayerKeyIsUnboundAndAvailableForRemapping()
-    {
-        Assert.Null(KeyMap.Default.Lookup('b'));
-        Assert.Equal(KeyAction.WholeFilesystem,
-            KeyMap.FromSettings(new ExploreKeysSettings { WholeFilesystem = "b" }).Lookup('b'));
-        using ExplorerUiHarness ui = Open(out _);
-        ui.Window.Apply(new SelectLayer(3));
-        foreach (FocusPane focus in new[] { FocusPane.Layers, FocusPane.Right })
-        {
-            ui.Window.Apply(new FocusOn(focus));
-            Assert.DoesNotContain(ui.Window.Presenter.Hints(ui.State), h => h.Label == "First own layer");
-            ui.Press(new Key('b'));
-            Assert.Equal(3, ui.State.Layer);
-            Assert.Null(ui.State.Notice);
-        }
-        ui.Press(new Key('?'));
-        Assert.Equal(RightView.Keys, ui.State.View);
-        Assert.False(ui.Shows("First layer after base"));
-    }
-
-    [Fact]
     public void StepLayerStopsAtTheEnds()
     {
         using ExplorerUiHarness ui = Open(out _);
@@ -630,7 +607,7 @@ public sealed class ExplorerFeatureTests
         ui.Press(Key.Tab);
         ui.Press(Key.End);
         Assert.Equal(3, ui.State.Layer);
-        Assert.False(Assert.Single(ui.Window.Presenter.Hints(ui.State), hint => hint.Label == "Layer").ShowInFooter);
+        Assert.False(Assert.Single(ui.Window.Presenter.Hints(ui.State), static hint => hint.Label == "Layer").ShowInFooter);
         Assert.DoesNotContain("↑↓", ui.Row(ui.Height - 1));
         ui.Press(Key.CursorUp);
         Assert.Equal(2, ui.State.Layer);
@@ -716,7 +693,7 @@ public sealed class ExplorerFeatureTests
 
         // The unchanged filter applies to earlier layers' files.
         ui.Press(new Key('='));
-        Assert.DoesNotContain(ui.Window.Presenter.Flatten(s), row => row.Path == "etc/os-release");
+        Assert.DoesNotContain(ui.Window.Presenter.Flatten(s), static row => row.Path == "etc/os-release");
 
         ui.Window.Apply(new SetCursor(RowOf(ui, "usr/lib/current.so")));
         ui.Press(Key.Enter);
@@ -785,7 +762,7 @@ public sealed class ExplorerFeatureTests
         AssertHides(ui, "/usr/share/big.dat");
         ui.Press(Key.Enter);
         Assert.True(s.ShowBaseFindings);
-        Assert.Contains(ui.Window.Presenter.VisibleFindings(s), f => f is { FromBase: true });
+        Assert.Contains(ui.Window.Presenter.VisibleFindings(s), static f => f is { FromBase: true });
         AssertShows(ui, "/usr/share/big.dat");
     }
 
@@ -796,7 +773,7 @@ public sealed class ExplorerFeatureTests
         ExplorerState s = ui.State;
         ui.Press(new Key('w'));
         Assert.True(s.FindingsOnly);
-        List<string> shown = ui.Window.Presenter.Flatten(s).Select(row => row.Path).ToList();
+        List<string> shown = [.. ui.Window.Presenter.Flatten(s).Select(static row => row.Path)];
         Assert.Contains("app/package.json", shown);
         Assert.DoesNotContain("app/src", shown);
         ui.Press(Key.Esc);
@@ -867,7 +844,7 @@ public sealed class ExplorerFeatureTests
     [Fact]
     public void InspectorScrollsLongPreviewsAndExplainsWhatItCannotShow()
     {
-        string[] lines = Enumerable.Range(1, 200).Select(i => $"line {i}").ToArray();
+        string[] lines = [.. Enumerable.Range(1, 200).Select(i => $"line {i}")];
         using ExplorerUiHarness ui = ExplorerWindowTests.Open(ExplorerSamples.Image(), new ExplorerState { Layer = 2 },
             session => new FakeExplorerHost
             {
@@ -981,7 +958,7 @@ public sealed class ExplorerFeatureTests
 
         (int x, int y) = ui.Find("/app/src/index.js");
         ui.Click(x, y);
-        Assert.Equal(ui.Window.Presenter.SearchResults(s).Hits.FindIndex(h => h.Path == "app/src/index.js"), s.SearchCursor);
+        Assert.Equal(ui.Window.Presenter.SearchResults(s).Hits.FindIndex(static h => h.Path == "app/src/index.js"), s.SearchCursor);
         // A second click on the same spot completes a double-click.
         ui.Click(x, y);
         Assert.Equal(RightView.Files, s.View);
@@ -1184,7 +1161,7 @@ public sealed class ExplorerFeatureTests
             string sizes = layers.Lines[3].ToString();
             Assert.Contains(swapped == 0 ? "1.0 KB →   2.0 KB" : "2.0 KB →   1.0 KB", sizes);
             Assert.Contains(swapped == 0 ? "+1.0 KB" : "−1.0 KB", sizes);
-            string[] details = view.Details().Lines.Select(line => line.ToString()).ToArray();
+            string[] details = [.. view.Details().Lines.Select(line => line.ToString())];
             Assert.True(Array.FindIndex(details, line => line.StartsWith(state.BaselineLabel + " ")) <
                 Array.FindIndex(details, line => line.StartsWith(state.TargetLabel + " ")));
             Assert.Contains(layers.Lines, line => line.ToString().Contains(swapped == 0 ? "gone" : "new"));
@@ -1537,7 +1514,7 @@ public sealed class ExplorerFeatureTests
     {
         using ExplorerUiHarness ui = ExplorerWindowTests.Open(ExplorerSamples.Image(),
             new ExplorerState { Layer = 2, Notice = "Could not open linux/arm64: denied", NoticeIsError = true },
-            session => new FakeExplorerHost { Baseline = session }, out _);
+            static session => new FakeExplorerHost { Baseline = session }, out _);
 
         AssertShows(ui, "Could not open linux/arm64: denied");
         ui.Press(Key.CursorDown);
@@ -1703,9 +1680,9 @@ public sealed class ExplorerThemeTests : IDisposable
             }
             ExplorerPresenter presenter = new(ExplorerSamples.Image(), 150, 42);
             Line header = presenter.FilesPane(new ExplorerState { Layer = 2 }).Lines
-                .Single(line => line.ToString().Contains("uid:gid", StringComparison.Ordinal));
-            Assert.All(header.Parts.Where(part => !string.IsNullOrWhiteSpace(part.Text)),
-                part => Assert.Equal(Theme.Silt, part.Sty.Foreground));
+                .Single(static line => line.ToString().Contains("uid:gid", StringComparison.Ordinal));
+            Assert.All(header.Parts.Where(static part => !string.IsNullOrWhiteSpace(part.Text)),
+                static part => Assert.Equal(Theme.Silt, part.Sty.Foreground));
         }
     }
 

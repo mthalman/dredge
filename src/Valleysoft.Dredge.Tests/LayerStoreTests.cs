@@ -326,7 +326,7 @@ public sealed class LayerStoreTests
         await cache.Store.DisposeAsync();
         Assert.Empty(Directory.GetFiles(DataPath(cache), "*.blob"));
         Assert.Single(Directory.GetFiles(DataPath(cache), "*.index"));
-        Assert.True(new DirectoryInfo(DataPath(cache)).GetFiles().Sum(file => file.Length) <= 32 * 1024);
+        Assert.True(new DirectoryInfo(DataPath(cache)).GetFiles().Sum(static file => file.Length) <= 32 * 1024);
     }
 
     [Theory]
@@ -446,7 +446,7 @@ public sealed class LayerStoreTests
         string digest = LayerCacheTestContext.Digest(bytes);
         Mock<IDockerRegistryClient> client = Client(bytes);
         StoredLayerIndex index = await cache.Store.GetIndexAsync(client.Object, Image, new(0, digest), bytes.Length, Token);
-        Assert.Equal([0, 1], index.Changes.Entries.Select(entry => entry.EntryIndex));
+        Assert.Equal([0, 1], index.Changes.Entries.Select(static entry => entry.EntryIndex));
         using Stream blob = await cache.Store.OpenIndexedBlobAsync(client.Object, Image, index, [0, 1], Token);
         using LayerContentReader reader = new(blob);
         using MemoryStream result = new();

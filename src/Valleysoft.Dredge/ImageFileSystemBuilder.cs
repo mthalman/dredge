@@ -190,11 +190,10 @@ internal sealed class ImageFileSystemBuilder
         ImageLayerReference layer)
     {
         string prefix = $"{path}/";
-        string[] affected = entries.Keys
+        string[] affected = [.. entries.Keys
             .Where(candidate =>
                 (includePath && candidate == path) ||
-                candidate.StartsWith(prefix, StringComparison.Ordinal))
-            .ToArray();
+                candidate.StartsWith(prefix, StringComparison.Ordinal))];
         foreach (string candidate in affected)
         {
             ImageFileSystemEntry removed = entries[candidate] with

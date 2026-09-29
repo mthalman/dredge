@@ -19,10 +19,10 @@ public sealed class ExplorerDefenseBackendTests : IAsyncDisposable
     [Fact]
     public async Task NuGetDependencyMetadataDoesNotImplyFileOwnership()
     {
-        NotSupportedException exception = await Assert.ThrowsAsync<NotSupportedException>(() =>
+        NotSupportedException exception = await Assert.ThrowsAsync<NotSupportedException>(static () =>
             PackageFileLister.ListAsync(InstalledPackageEcosystem.NuGet, "Example.Package",
                 ["app/app.deps.json", "app/Example.Package.dll"],
-                (_, _) => throw new InvalidOperationException("Ownership must not guess from dependency metadata."),
+                static (_, _) => throw new InvalidOperationException("Ownership must not guess from dependency metadata."),
                 TestContext.Current.CancellationToken));
 
         Assert.Equal("NuGet dependency metadata identifies packages but does not establish deployed file ownership.",
@@ -135,12 +135,12 @@ public sealed class ExplorerDefenseBackendTests : IAsyncDisposable
         IReadOnlyList<string> paths = await PackageFileLister.ListAsync(InstalledPackageEcosystem.Pip,
             "example", records.Keys, (path, _) => Task.FromResult<string?>(records[path]),
             TestContext.Current.CancellationToken);
-        Assert.Equal(new[]
-        {
+        Assert.Equal(
+        [
             "opt/venv/lib/python/site-packages/pkg/a,b.py",
             "usr/bin/example",
             "usr/lib/python/site-packages/pkg/a\"b.py"
-        }, paths);
+        ], paths);
     }
 
     [Theory]
@@ -328,10 +328,10 @@ public sealed class ExplorerDefenseBackendTests : IAsyncDisposable
         OciImageManifest manifest = new()
         {
             Config = new OciDescriptor { Digest = "sha256:config" },
-            Layers = indexes.Values.Select(index => new OciDescriptor
+            Layers = [.. indexes.Values.Select(index => new OciDescriptor
             {
                 Digest = index.Digest, Size = index.BlobLength
-            }).ToArray()
+            })]
         };
         ResolvedManifest resolved = new(new ManifestInfo("application/vnd.oci.image.manifest.v1+json",
             LayerCacheTestContext.Digest(Encoding.UTF8.GetBytes(string.Join(",", indexes.Values.Select(i => i.Digest)))),
@@ -355,7 +355,7 @@ public sealed class ExplorerDefenseBackendTests : IAsyncDisposable
             Analysis = files.Analyze(),
             Entries = files.List(null, true, false),
             Packages = new InstalledPackageMetadata(Enum.GetValues<InstalledPackageEcosystem>()
-                .ToDictionary(ecosystem => ecosystem, _ => new InstalledPackageEcosystemMetadata(
+                .ToDictionary(static ecosystem => ecosystem, static _ => new InstalledPackageEcosystemMetadata(
                     InstalledPackageMetadataAvailability.Unavailable,
                     new Dictionary<string, IReadOnlyList<string>>())))
         };
@@ -370,7 +370,7 @@ public sealed class ExplorerDefenseBackendTests : IAsyncDisposable
         File(path, 0, "") with { Type = ImageFileType.HardLink, LinkTarget = target };
 
     private static byte[] Blob(params (string Path, string Content)[] files) =>
-        Archive(files.Select(file => (file.Path, file.Content, TarEntryType.RegularFile)).ToArray());
+        Archive([.. files.Select(static file => (file.Path, file.Content, TarEntryType.RegularFile))]);
 
     private static byte[] Archive(params (string Path, string Value, TarEntryType Type)[] entries)
     {

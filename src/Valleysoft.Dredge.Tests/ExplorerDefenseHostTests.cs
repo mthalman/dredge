@@ -70,7 +70,7 @@ public sealed class ExplorerDefenseHostTests : IAsyncDisposable
     [Fact]
     public async Task HistoricalDiffIdentifiesMetadataOnlyChangesAndFileDirectoryReplacement()
     {
-        byte[] Layer(UnixFileMode mode) => ArchiveEntries(new PaxTarEntry(TarEntryType.RegularFile, "file")
+        static byte[] Layer(UnixFileMode mode) => ArchiveEntries(new PaxTarEntry(TarEntryType.RegularFile, "file")
             { DataStream = new MemoryStream("same"u8.ToArray()), Mode = mode });
         TestImage image = await CreateAsync(Layer(UnixFileMode.UserRead), Layer(UnixFileMode.UserRead | UnixFileMode.UserWrite),
             ArchiveEntries(new PaxTarEntry(TarEntryType.Directory, "file")));
@@ -127,7 +127,7 @@ public sealed class ExplorerDefenseHostTests : IAsyncDisposable
         else
         {
             Assert.Contains("first", diff.Message);
-            Assert.Equal(ExplorerApp.PreviewLimit, diff.Lines!.Single(line => line.Op == DiffOp.Insert).Text.Length);
+            Assert.Equal(ExplorerApp.PreviewLimit, diff.Lines!.Single(static line => line.Op == DiffOp.Insert).Text.Length);
         }
     }
 
@@ -168,7 +168,7 @@ public sealed class ExplorerDefenseHostTests : IAsyncDisposable
     {
         TestImage image = await CreateAsync();
         InstalledPackageMetadata metadata = await Host(image).PackagesAsync(0, Token);
-        Assert.All(metadata.Ecosystems.Values, ecosystem =>
+        Assert.All(metadata.Ecosystems.Values, static ecosystem =>
         {
             Assert.Equal(InstalledPackageMetadataAvailability.Unavailable, ecosystem.Availability);
             Assert.Empty(ecosystem.Packages);
@@ -182,7 +182,7 @@ public sealed class ExplorerDefenseHostTests : IAsyncDisposable
         string file = await Host(image).PrepareForViewerAsync("file", Token);
         using CancellationTokenSource cancellation = CancellationTokenSource.CreateLinkedTokenSource(Token);
         await using ExplorerApp app = new(image.Client.Object, Mock.Of<IDockerRegistryClientFactory>(),
-            image.Source, image.Store, new(null, null, false, ClipboardMode.Off, KeyMap.Default, "", ""),
+            image.Source, image.Store, new(null, null, false, ClipboardMode.Off, "", ""),
             cancellation.Token);
         bool launched = false;
 
@@ -206,7 +206,7 @@ public sealed class ExplorerDefenseHostTests : IAsyncDisposable
     {
         TestImage image = await CreateAsync(Blob(("file", "value")));
         await using ExplorerApp app = new(image.Client.Object, Mock.Of<IDockerRegistryClientFactory>(),
-            image.Source, image.Store, new(null, null, false, ClipboardMode.Off, KeyMap.Default, "", ""), Token);
+            image.Source, image.Store, new(null, null, false, ClipboardMode.Off, "", ""), Token);
         TaskCompletionSource<bool> observed = new(TaskCreationOptions.RunContinuationsAsynchronously);
         Mock<IApplication> application = new();
         using ExplorerWindow window = app.Attach(application.Object, new());
@@ -329,7 +329,7 @@ public sealed class ExplorerDefenseHostTests : IAsyncDisposable
                 return new BlobDownloadResult(new MemoryStream(blob), false, null, null, blob.Length);
             });
         await using ExplorerApp app = new(image.Client.Object, Mock.Of<IDockerRegistryClientFactory>(),
-            image.Source, image.Store, new(null, null, false, ClipboardMode.Off, KeyMap.Default, "", ""), Token);
+            image.Source, image.Store, new(null, null, false, ClipboardMode.Off, "", ""), Token);
         app.Start();
         await entered.Task.WaitAsync(TimeSpan.FromSeconds(10), Token);
 
@@ -423,16 +423,16 @@ public sealed class ExplorerDefenseHostTests : IAsyncDisposable
         TagChoice choice = new("current");
         ExplorerHost host = Host(baseline);
         await host.DescribeTagAsync(choice, Token);
-        baseline.Client.Setup(c => c.Manifests.GetAsync(Image.Repo, "current", It.IsAny<CancellationToken>()))
+        baseline.Client.Setup(static c => c.Manifests.GetAsync(Image.Repo, "current", It.IsAny<CancellationToken>()))
             .ReturnsAsync(moved.Source.Resolved.ManifestInfo);
 
-        ExplorerComparison comparison = await host.CompareAsync("registry.test/repo:current", () => { }, Token);
+        ExplorerComparison comparison = await host.CompareAsync("registry.test/repo:current", static () => { }, Token);
 
         Assert.Equal(baseline.Source.Resolved.ManifestInfo.DockerContentDigest, choice.Digest);
         Assert.Equal(choice.Digest, comparison.Target.Resolved.ManifestInfo.DockerContentDigest);
         Assert.Empty(comparison.Target.Entries);
         Assert.Contains("session snapshot", choice.Note);
-        baseline.Client.Verify(c => c.Manifests.GetAsync(Image.Repo, It.IsAny<string>(),
+        baseline.Client.Verify(static c => c.Manifests.GetAsync(Image.Repo, It.IsAny<string>(),
             It.IsAny<CancellationToken>()), Times.Once);
     }
 
@@ -482,8 +482,8 @@ public sealed class ExplorerDefenseHostTests : IAsyncDisposable
                 {
                     Changes = index.Changes with
                     {
-                        Entries = index.Changes.Entries.Select(entry =>
-                            entry with { Size = ExplorerHost.MaxPackageOwnershipBytes + 1 }).ToArray()
+                        Entries = [.. index.Changes.Entries.Select(entry =>
+                            entry with { Size = ExplorerHost.MaxPackageOwnershipBytes + 1 })]
                     }
                 };
             });
@@ -513,7 +513,7 @@ public sealed class ExplorerDefenseHostTests : IAsyncDisposable
 
         Assert.Equal(("site/good", Change.Removed), Assert.Single(result.Files!));
         Assert.Equal(2, result.Warnings!.Count);
-        Assert.All(result.Warnings, warning => Assert.StartsWith("Baseline /", warning));
+        Assert.All(result.Warnings, static warning => Assert.StartsWith("Baseline /", warning));
     }
 
     [Fact]
@@ -525,7 +525,7 @@ public sealed class ExplorerDefenseHostTests : IAsyncDisposable
 
         Assert.Null(result.Files);
         Assert.Contains("unavailable", result.Message);
-        Assert.All(result.Warnings!, warning => Assert.Contains("does not establish deployed file ownership", warning));
+        Assert.All(result.Warnings!, static warning => Assert.Contains("does not establish deployed file ownership", warning));
     }
 
     [Fact]
@@ -582,8 +582,8 @@ public sealed class ExplorerDefenseHostTests : IAsyncDisposable
         Assert.Equal(["good"], metadata.Ecosystems[InstalledPackageEcosystem.Npm].Packages.Keys);
         Assert.Equal("good", Assert.Single(metadata.NpmPackageRoots).Key);
         Assert.Equal(["node_modules/bad/package.json", "node_modules/invalid/package.json", "node_modules/large/package.json"],
-            metadata.Diagnostics.Select(item => item.Path).Order(StringComparer.Ordinal));
-        Assert.All(metadata.Diagnostics, item => Assert.NotEmpty(item.Message));
+            metadata.Diagnostics.Select(static item => item.Path).Order(StringComparer.Ordinal));
+        Assert.All(metadata.Diagnostics, static item => Assert.NotEmpty(item.Message));
         await image.Session.EnsurePackagesAsync(Token);
         Assert.Same(metadata, image.Session.Packages);
     }
@@ -594,9 +594,9 @@ public sealed class ExplorerDefenseHostTests : IAsyncDisposable
         TestImage baseline = await CreateAsync([shared], null, baseLayerCount: 1);
         TestImage compatible = await CreateAsync(shared, Blob(("app", "target")));
         TestImage unrelated = await CreateAsync(Blob(("other", "unrelated")));
-        baseline.Client.Setup(c => c.Manifests.GetAsync(Image.Repo, "compatible", It.IsAny<CancellationToken>()))
+        baseline.Client.Setup(static c => c.Manifests.GetAsync(Image.Repo, "compatible", It.IsAny<CancellationToken>()))
             .ReturnsAsync(compatible.Source.Resolved.ManifestInfo);
-        baseline.Client.Setup(c => c.Manifests.GetAsync(Image.Repo, "unrelated", It.IsAny<CancellationToken>()))
+        baseline.Client.Setup(static c => c.Manifests.GetAsync(Image.Repo, "unrelated", It.IsAny<CancellationToken>()))
             .ReturnsAsync(unrelated.Source.Resolved.ManifestInfo);
         ExplorerHost host = Host(baseline);
         TagChoice[] choices = [new("compatible"), new("current"), new("unrelated")];
@@ -697,7 +697,7 @@ public sealed class ExplorerDefenseHostTests : IAsyncDisposable
     [InlineData(true)]
     public async Task PackageOwnershipResolvesEachSidesParentsButPreservesFinalLinks(bool moved)
     {
-        byte[] Layer(string root, string text, string link) => ArchiveEntries(
+        static byte[] Layer(string root, string text, string link) => ArchiveEntries(
             new PaxTarEntry(TarEntryType.RegularFile, "var/lib/dpkg/info/bash.list")
                 { DataStream = new MemoryStream("/bin/bash\n/bin/bash-link\n"u8.ToArray()) },
             new PaxTarEntry(TarEntryType.SymbolicLink, "bin") { LinkName = root },
@@ -763,8 +763,8 @@ public sealed class ExplorerDefenseHostTests : IAsyncDisposable
 
         Assert.Empty(result.Warnings!);
         Assert.NotNull(result.Files);
-        Assert.Equal(new[] { "app/node_modules/@aliases/second/index.js", "app/node_modules/@aliases/second/package.json",
-            "app/node_modules/alias/index.js", "app/node_modules/alias/package.json" },
+        Assert.Equal([ "app/node_modules/@aliases/second/index.js", "app/node_modules/@aliases/second/package.json",
+            "app/node_modules/alias/index.js", "app/node_modules/alias/package.json" ],
             result.Files!.Select(file => file.Path));
         Assert.All(result.Files, file => Assert.Equal(Change.Modified, file.Change));
     }
@@ -875,10 +875,10 @@ public sealed class ExplorerDefenseHostTests : IAsyncDisposable
         CompareState state = new(await CompareAsync(empty, image), "empty", "image");
         state.Expanded.UnionWith(["file:opt", "file:opt/links", "file:usr"]);
         List<CompareRow> rows = new CompareView(presenter, state).Rows();
-        Assert.Equal(8, Assert.Single(rows, row => row.Path == "opt/links").After);
-        Assert.Equal(8, Assert.Single(rows, row => row.Path == "usr").After);
-        Assert.Equal(3, Assert.Single(rows, row => row.Path == "opt/links/old").After);
-        Assert.Equal(5, Assert.Single(rows, row => row.Path == "opt/links/new").After);
+        Assert.Equal(8, Assert.Single(rows, static row => row.Path == "opt/links").After);
+        Assert.Equal(8, Assert.Single(rows, static row => row.Path == "usr").After);
+        Assert.Equal(3, Assert.Single(rows, static row => row.Path == "opt/links/old").After);
+        Assert.Equal(5, Assert.Single(rows, static row => row.Path == "opt/links/new").After);
 
         List<Node> tree = model.WholeTree(layer)!;
         Assert.Equal(8, ExplorerImage.Find(tree, "opt/links")!.Size);
@@ -908,8 +908,8 @@ public sealed class ExplorerDefenseHostTests : IAsyncDisposable
         CompareState state = new(comparison, "before", "after");
         state.Expanded.Add("file:links");
         List<CompareRow> rows = new CompareView(presenter, state).Rows();
-        CompareRow folder = Assert.Single(rows, row => row.Path == "links");
-        CompareRow changedType = Assert.Single(rows, row => row.Path == "links/two");
+        CompareRow folder = Assert.Single(rows, static row => row.Path == "links");
+        CompareRow changedType = Assert.Single(rows, static row => row.Path == "links/two");
 
         Assert.Equal(reverse ? 10 : 3, folder.Before);
         Assert.Equal(reverse ? 3 : 10, folder.After);
@@ -967,10 +967,10 @@ public sealed class ExplorerDefenseHostTests : IAsyncDisposable
         OciImageManifest manifest = new()
         {
             Config = new OciDescriptor { Digest = "sha256:config" },
-            Layers = indexes.Values.Select(index => new OciDescriptor
+            Layers = [.. indexes.Values.Select(index => new OciDescriptor
             {
                 Digest = index.Digest, Size = index.BlobLength
-            }).ToArray()
+            })]
         };
         ManifestInfo info = new("application/vnd.oci.image.manifest.v1+json",
             LayerCacheTestContext.Digest(JsonSerializer.SerializeToUtf8Bytes(manifest)), manifest);
@@ -993,9 +993,11 @@ public sealed class ExplorerDefenseHostTests : IAsyncDisposable
     {
         ExplorerHost host = new(image.Client.Object, factory ?? Mock.Of<IDockerRegistryClientFactory>(),
             image.Source, image.Store, ExplorerImage.FromSource(image.Source),
-            new ExplorerLayerIndexer(0, (_, _, _) => throw new InvalidOperationException()),
-            new ExplorerOptions(null, null, false, ClipboardMode.Off, KeyMap.Default, "", ""), cachePath);
-        host.Session = image.Session;
+            new ExplorerLayerIndexer(0, static (_, _, _) => throw new InvalidOperationException()),
+            new ExplorerOptions(null, null, false, ClipboardMode.Off, "", ""), cachePath)
+        {
+            Session = image.Session
+        };
         hosts.Add(host);
         return host;
     }
@@ -1008,11 +1010,11 @@ public sealed class ExplorerDefenseHostTests : IAsyncDisposable
     }
 
     private static byte[] Blob(params (string Path, string Content)[] files) =>
-        Archive(files.Select(file => (file.Path, Encoding.UTF8.GetBytes(file.Content))).ToArray());
+        Archive([.. files.Select(static file => (file.Path, Encoding.UTF8.GetBytes(file.Content)))]);
 
     private static byte[] Archive(params (string Path, byte[] Content)[] files) =>
-        ArchiveEntries(files.Select(file => new PaxTarEntry(TarEntryType.RegularFile, file.Path)
-            { DataStream = new MemoryStream(file.Content) }).ToArray());
+        ArchiveEntries([.. files.Select(static file => new PaxTarEntry(TarEntryType.RegularFile, file.Path)
+            { DataStream = new MemoryStream(file.Content) })]);
 
     private static byte[] ArchiveEntries(params TarEntry[] entries)
     {

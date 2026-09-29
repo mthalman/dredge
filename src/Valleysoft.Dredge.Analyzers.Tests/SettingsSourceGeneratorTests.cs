@@ -69,7 +69,7 @@ public class SettingsSourceGeneratorTests
         var sources = GeneratorTestHelper.Accessors(GeneratorTestHelper.Result(driver));
 
         Assert.Equal(2, sources.Length);
-        Assert.Equal(2, sources.Select(source => source.HintName).Distinct().Count());
+        Assert.Equal(2, sources.Select(static source => source.HintName).Distinct().Count());
         GeneratorTestHelper.AssertCompiles(output);
     }
 

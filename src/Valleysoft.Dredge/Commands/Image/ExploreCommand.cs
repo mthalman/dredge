@@ -50,7 +50,6 @@ public sealed class ExploreCommand : RegistryCommandBase<ExploreOptions>
         Mouse: !options.NoMouse && settings.IsMouseEnabled(),
         Clipboard: Explorer.Tui.Clipboard.Resolve(OperatingSystem.IsWindows(),
             Explorer.Tui.Clipboard.IsRemoteSession(Environment.GetEnvironmentVariable)),
-        Keys: KeyMap.FromSettings(settings.Keys),
         ViewerExePath: string.IsNullOrWhiteSpace(settings.Viewer.ExePath)
             ? OperatingSystem.IsWindows() ? "cmd.exe" : "less"
             : settings.Viewer.ExePath,

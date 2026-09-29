@@ -36,7 +36,7 @@ public class ReferrerArtifactCommandTests
         Assert.Contains("[0] sha256:unknown", text);
         Assert.Contains("Media type: application/example", text);
         client.Verify(
-            instance => instance.Blobs.GetAsync(
+            static instance => instance.Blobs.GetAsync(
                 It.IsAny<string>(),
                 It.IsAny<string>(),
                 It.IsAny<CancellationToken>()),
@@ -171,7 +171,7 @@ public class ReferrerArtifactCommandTests
         Assert.Equal("CycloneDX", payloads[0].GetProperty("format").GetString());
         Assert.False(payloads[1].TryGetProperty("format", out _));
         client.Verify(
-            instance => instance.Blobs.GetAsync(
+            static instance => instance.Blobs.GetAsync(
                 Repository,
                 "sha256:binary",
                 It.IsAny<CancellationToken>()),
@@ -565,7 +565,7 @@ public class ReferrerArtifactCommandTests
 
         Assert.Equal(content, output.ToArray());
         client.Verify(
-            instance => instance.Blobs.GetAsync(
+            static instance => instance.Blobs.GetAsync(
                 It.IsAny<string>(),
                 It.IsAny<string>(),
                 It.IsAny<CancellationToken>()),
@@ -735,7 +735,7 @@ public class ReferrerArtifactCommandTests
             1));
         Mock<IDockerRegistryClient> client = CreateClient(manifest);
         client
-            .Setup(instance => instance.Manifests.GetDigestAsync(
+            .Setup(static instance => instance.Manifests.GetDigestAsync(
                 Repository,
                 "tag",
                 It.IsAny<CancellationToken>()))
@@ -794,7 +794,7 @@ public class ReferrerArtifactCommandTests
     {
         Mock<IDockerRegistryClient> client = new() { DefaultValue = DefaultValue.Mock };
         client
-            .Setup(instance => instance.Manifests.GetAsync(
+            .Setup(static instance => instance.Manifests.GetAsync(
                 Repository,
                 ArtifactDigest,
                 It.IsAny<CancellationToken>()))
@@ -819,7 +819,7 @@ public class ReferrerArtifactCommandTests
     private static IDockerRegistryClientFactory CreateFactory(IDockerRegistryClient client)
     {
         Mock<IDockerRegistryClientFactory> factory = new();
-        factory.Setup(instance => instance.GetClientAsync(Registry, It.IsAny<CancellationToken>())).ReturnsAsync(client);
+        factory.Setup(static instance => instance.GetClientAsync(Registry, It.IsAny<CancellationToken>())).ReturnsAsync(client);
         return factory.Object;
     }
 

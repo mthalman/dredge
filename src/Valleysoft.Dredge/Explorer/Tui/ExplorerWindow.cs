@@ -65,7 +65,7 @@ internal sealed class ExplorerWindow : Window
             s.Notice = img.BaseWarning;
             s.NoticeIsError = true;
         }
-        ex = new ExplorerPresenter(img, 150, 42, host.Keys) { Copies = host.ClipboardEnabled };
+        ex = new ExplorerPresenter(img, 150, 42) { Copies = host.ClipboardEnabled };
         BorderStyle = LineStyle.None;
         SetScheme(new Scheme(Paint.Attr(Theme.Foam)));
 
@@ -88,7 +88,7 @@ internal sealed class ExplorerWindow : Window
         Terminal.Gui.Drawing.Attribute field = Paint.Attr(Theme.Foam, Theme.Graphite, Deco.Bold);
         Scheme fieldScheme = new(field) { Focus = field, Editable = field, Active = field, HotNormal = field, HotFocus = field };
 
-        searchKey = new Label { X = 1, Y = Pos.AnchorEnd(1), Text = $" {host.Keys.Label(KeyAction.Search)} ", Visible = false };
+        searchKey = new Label { X = 1, Y = Pos.AnchorEnd(1), Text = $" {ex.Keys.Label(KeyAction.Search)} ", Visible = false };
         searchKey.SetScheme(new Scheme(Paint.Attr(Theme.Foam, Theme.KeycapBg, Deco.Bold)));
         search = new TextField { X = 5, Y = Pos.AnchorEnd(1), Width = 26, Text = s.SearchQuery, Visible = false };
         search.SetScheme(fieldScheme);
@@ -258,16 +258,10 @@ internal sealed class ExplorerWindow : Window
         IDriver? driver = App?.Driver;
         if (driver != watched)
         {
-            if (watched is not null)
-            {
-                watched.ClearedContents -= ForgetShown;
-            }
+            watched?.ClearedContents -= ForgetShown;
             watched = driver;
             shown = null;
-            if (driver is not null)
-            {
-                driver.ClearedContents += ForgetShown;
-            }
+            driver?.ClearedContents += ForgetShown;
         }
         Cell[,]? cells = driver?.Contents;
         // Dialogs and popovers draw over this window after it, so the frame isn't only ours.
@@ -430,7 +424,7 @@ internal sealed class ExplorerWindow : Window
         if (searching)
         {
             int n = Comparing ? Compare.Rows().Count
-                : s.View == RightView.Packages ? ex.PackageRows(s).Count(row => !row.IsGroup) : ex.SearchResults(s).Total;
+                : s.View == RightView.Packages ? ex.PackageRows(s).Count(static row => !row.IsGroup) : ex.SearchResults(s).Total;
             string count = n == 1 ? "1 match" : $"{Fmt.N(n)} matches";
             if (matches.Text != count)
             {
@@ -453,9 +447,9 @@ internal sealed class ExplorerWindow : Window
         if (!extracting)
         {
             int room = Math.Max(0, Viewport.Width - left - statusWidth - 1);
-            List<Hint> source = ex.TooSmall ? [new(host.Keys.Label(KeyAction.Quit), "Quit", new Quit())] : ContextHints();
-            hints = ex.Fit(source.Where(h => h.ShowInFooter).ToList(), room,
-                h => DisplayText.Width(h.Key) + DisplayText.Width(h.Label) + 5);
+            List<Hint> source = ex.TooSmall ? [new(ex.Keys.Label(KeyAction.Quit), "Quit", new Quit())] : ContextHints();
+            hints = ex.Fit([.. source.Where(static h => h.ShowInFooter)], room,
+                static h => DisplayText.Width(h.Key) + DisplayText.Width(h.Label) + 5);
         }
         footer.Show(hints, status, s.NoticeIsError && s.Notice is not null, Math.Max(0, Viewport.Width - left));
 
@@ -474,10 +468,10 @@ internal sealed class ExplorerWindow : Window
         List<Hint> hints = Comparing && s.View is not (RightView.Keys or RightView.Command or RightView.Warning) ? Compare.Hints() : ex.Hints(s);
         if (ex.FullWidthContent)
         {
-            hints = hints.Where(h => h.Key != "Tab").ToList();
+            hints = [.. hints.Where(static h => h.Key != "Tab")];
         }
         return compareLoad is null ? hints
-            : [new("Esc", "Cancel comparison", new Back()), .. hints.Where(h => h.Key != "Esc")];
+            : [new("Esc", "Cancel comparison", new Back()), .. hints.Where(static h => h.Key != "Esc")];
     }
 
     private bool UseCompactLayers() => !Comparing && s.View == RightView.Files &&
@@ -521,7 +515,7 @@ internal sealed class ExplorerWindow : Window
                 Apply(new Back());
                 return true;
             }
-            if (!key.IsCtrl && !key.IsAlt && host.Keys.Lookup((char)key.AsRune.Value) is KeyAction commandAction)
+            if (!key.IsCtrl && !key.IsAlt && ex.Keys.Lookup((char)key.AsRune.Value) is KeyAction commandAction)
             {
                 if (commandAction is KeyAction.Help or KeyAction.Quit)
                 {
@@ -591,7 +585,7 @@ internal sealed class ExplorerWindow : Window
             KeyCode.CursorRight => s.View is RightView.Inspector or RightView.History || s.Compare?.Diff is not null ? new PanText(8) : new Fold(true),
             _ => null,
         };
-        if (key == Key.C.WithCtrl && host.Keys.Lookup('\u0003') == KeyAction.CopyCommand)
+        if (key == Key.C.WithCtrl)
         {
             cmd = new CopyCommand();
         }
@@ -624,7 +618,7 @@ internal sealed class ExplorerWindow : Window
             return true;
         }
         if (cmd is null && !key.IsCtrl && !key.IsAlt && key.AsRune.Value is int ch and > 32 and < 127
-            && host.Keys.Lookup((char)ch) is KeyAction action)
+            && ex.Keys.Lookup((char)ch) is KeyAction action)
         {
             if (ex.TooSmall && action != KeyAction.Quit)
             {
@@ -743,10 +737,7 @@ internal sealed class ExplorerWindow : Window
                 warningReturn ?? (RightView.Insights, FocusPane.Right, false);
             s.View = previous.View;
             s.Focus = previous.Focus;
-            if (s.Compare is not null)
-            {
-                s.Compare.FocusLayers = previous.CompareLayers;
-            }
+            s.Compare?.FocusLayers = previous.CompareLayers;
             warningReturn = null;
             Relayout();
             SyncFocus();
@@ -759,10 +750,7 @@ internal sealed class ExplorerWindow : Window
                 helpReturn ?? (RightView.Files, FocusPane.Right, false);
             s.View = previous.View;
             s.Focus = previous.Focus;
-            if (s.Compare is not null)
-            {
-                s.Compare.FocusLayers = previous.CompareLayers;
-            }
+            s.Compare?.FocusLayers = previous.CompareLayers;
             helpReturn = null;
             Relayout();
             SyncFocus();
@@ -775,10 +763,7 @@ internal sealed class ExplorerWindow : Window
                 commandReturn ?? (RightView.Files, FocusPane.Right, false);
             s.View = previous.View;
             s.Focus = previous.Focus;
-            if (s.Compare is not null)
-            {
-                s.Compare.FocusLayers = previous.CompareLayers;
-            }
+            s.Compare?.FocusLayers = previous.CompareLayers;
             commandReturn = null;
             Relayout();
             SyncFocus();
@@ -1094,7 +1079,7 @@ internal sealed class ExplorerWindow : Window
         }
         SearchHit hit = hits[Math.Clamp(s.SearchCursor, 0, hits.Count - 1)];
         s.Investigation = InvestigationContext.Capture(s);
-        (int Layer, Change Change) last = hit.Layers.LastOrDefault(l => l.Change != Change.Removed);
+        (int Layer, Change Change) last = hit.Layers.LastOrDefault(static l => l.Change != Change.Removed);
         SelectLayerCore(last == default ? hit.Layers[^1].Layer : last.Layer);
         s.View = RightView.Files;
         s.WholeFilesystem = img.IsAnalyzed(s.Layer) && hit.Layers[^1].Change != Change.Removed;
@@ -1501,7 +1486,7 @@ internal sealed class ExplorerWindow : Window
             Notice("Select a file or folder first.");
             return;
         }
-        Copy(ex.CopyCommandText(s, path, IsDirectory(path)));
+        Copy(ex.CopyCommandText(path, IsDirectory(path)));
     }
 
     private void Copy(string command)
@@ -1609,10 +1594,7 @@ internal sealed class ExplorerWindow : Window
         compareLoad = CancellationTokenSource.CreateLinkedTokenSource(lifetime);
         s.ComparisonStatus = $"Comparing with {tag}… reading its layers";
         Notice(s.ComparisonStatus);
-        if (s.Compare is not null)
-        {
-            s.Compare.Busy = true;
-        }
+        s.Compare?.Busy = true;
         int generation = ++compareGeneration;
         IApplication? app = App;
         RunAsync(ct => host.CompareAsync(tag, () => Post(app, () =>
@@ -1644,10 +1626,7 @@ internal sealed class ExplorerWindow : Window
             }
             compareGeneration++;
             CompleteComparison();
-            if (s.Compare is not null)
-            {
-                s.Compare.Busy = false;
-            }
+            s.Compare?.Busy = false;
             Notice($"Could not compare with {tag}: {error.Message}", error: true);
         }, compareLoad.Token);
     }
@@ -1657,10 +1636,7 @@ internal sealed class ExplorerWindow : Window
         compareLoad?.Dispose();
         compareLoad = null;
         s.ComparisonStatus = null;
-        if (s.Compare is not null)
-        {
-            s.Compare.Busy = false;
-        }
+        s.Compare?.Busy = false;
     }
 
     private void CancelComparison()
@@ -1784,7 +1760,7 @@ internal sealed class ExplorerWindow : Window
                 c.Layer = Math.Clamp(l.Layer, 0, c.LayerCount - 1);
                 return true;
             case StepDifference d:
-                List<int> diffs = c.Differences().ToList();
+                List<int> diffs = [.. c.Differences()];
                 int? next = d.Delta > 0 ? diffs.Cast<int?>().FirstOrDefault(l => l > c.Layer) : diffs.Cast<int?>().LastOrDefault(l => l < c.Layer);
                 if (next is int n)
                 {

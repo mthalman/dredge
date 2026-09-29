@@ -9,15 +9,14 @@ internal static class GeneratorTestHelper
 {
     internal static readonly CSharpParseOptions ParseOptions = new(LanguageVersion.CSharp12);
     private static readonly ImmutableArray<MetadataReference> References =
-        ((string)AppContext.GetData("TRUSTED_PLATFORM_ASSEMBLIES")!)
+        [.. ((string)AppContext.GetData("TRUSTED_PLATFORM_ASSEMBLIES")!)
         .Split(Path.PathSeparator)
-        .Select(path => MetadataReference.CreateFromFile(path))
-        .ToImmutableArray<MetadataReference>();
+        .Select(static path => MetadataReference.CreateFromFile(path))];
 
     internal static CSharpCompilation CreateCompilation(params string[] sources) =>
         CSharpCompilation.Create(
             $"GeneratorTests_{Guid.NewGuid():N}",
-            sources.Select((source, index) => CSharpSyntaxTree.ParseText(
+            sources.Select(static (source, index) => CSharpSyntaxTree.ParseText(
                 source, ParseOptions, $"Input{index}.cs")),
             References,
             new CSharpCompilationOptions(
@@ -45,11 +44,9 @@ internal static class GeneratorTestHelper
     }
 
     internal static GeneratedSourceResult[] Accessors(GeneratorRunResult result) =>
-        result.GeneratedSources
-            .Where(source => source.HintName != "GenerateSettingsAttribute.g.cs")
-            .ToArray();
+        [.. result.GeneratedSources.Where(static source => source.HintName != "GenerateSettingsAttribute.g.cs")];
 
     internal static void AssertCompiles(Compilation compilation) =>
         Assert.Empty(compilation.GetDiagnostics().Where(
-            diagnostic => diagnostic.Severity is DiagnosticSeverity.Error or DiagnosticSeverity.Warning));
+            static diagnostic => diagnostic.Severity is DiagnosticSeverity.Error or DiagnosticSeverity.Warning));
 }

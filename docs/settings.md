@@ -32,7 +32,6 @@ Setting names use dot notation with `dredge settings get` and
 | `explore.viewer.exePath` | Empty | Executable for `o`; empty uses the platform's default text viewer |
 | `explore.viewer.args` | `"{0}"` | Arguments for the text viewer; `{0}` is the staged file path |
 | `explore.viewer.terminal` | `false` | Set to `true` when a configured viewer uses the current terminal |
-| `explore.keys.<action>` | Empty | Replacement key for an explorer action; empty uses the default |
 
 An empty platform setting does not filter candidate manifests. Command-line
 platform options take precedence over the corresponding settings. See
@@ -41,9 +40,6 @@ platform options take precedence over the corresponding settings. See
 `operations.timeout` accepts a .NET `TimeSpan` value. Set it to an empty string
 or `null` to disable the timeout. Zero and negative values also disable the
 timeout. Positive values are limited to about 24.8 days by the runtime.
-
-`image explore` ignores `operations.timeout`. Its interactive session has no
-command deadline and stays open until you quit or cancel it.
 
 ## Configure the layer cache
 
@@ -111,63 +107,6 @@ dredge settings set fileCompareTool.args "{0} {1}"
 Quote the placeholders in `fileCompareTool.args` if the comparison program
 requires quoted paths.
 
-## Configure the explorer
-
-The [`image explore`](commands/images.md#explore) command reads the `explore`
-settings each time it starts.
-
-Set `explore.theme` to `light` for light terminal backgrounds. When the
-`NO_COLOR` environment variable is set, the explorer uses a monochrome theme.
-
-Set `explore.mouse` to `false` to leave the mouse to the terminal, which is the
-same as passing `--no-mouse`.
-
-`Ctrl+C` (shown as `^C`) copies the equivalent `dredge` command. On local
-Windows, it uses the Windows clipboard. Elsewhere, including SSH sessions, it
-asks the terminal to copy with OSC 52. The terminal must support and allow OSC 52; tmux must be
-configured to pass it through. If the clipboard can't be reached, dredge
-shows the command instead.
-
-Press `o` while inspecting a file to open it in an external text viewer.
-Configure the viewer executable with `explore.viewer.exePath` and its arguments
-with `explore.viewer.args`. The arguments string uses `{0}` for the staged file
-path; quote the placeholder when the viewer expects a filename argument.
-When `exePath` is empty, dredge uses `less -X` on Unix-like systems or the
-Windows `more` command. The Windows default passes the file to `more` through
-standard input. Both built-in defaults ignore `explore.viewer.args`; set both
-settings to use custom arguments. The built-in pagers leave their output visible
-and wait for Enter after closing before the explorer screen returns. Terminal
-viewers temporarily replace the explorer screen; configured windowed viewers
-leave the explorer visible and interactive while the viewer runs. Set
-`explore.viewer.terminal` to `true` for a configured terminal viewer such as
-`vim`. The staged file is removed when the viewer process exits; configure the
-viewer to remain running while it uses the file.
-
-For example, to use Notepad++ on Windows:
-
-```console
-dredge settings set explore.viewer.exePath "C:\Program Files\Notepad++\notepad++.exe"
-dredge settings set explore.viewer.args "\"{0}\""
-```
-
-Each single-character explorer key, and the default `Ctrl+C` copy shortcut,
-can be replaced with any printable ASCII character. Two actions cannot share
-a key. The actions are `quit`, `help`,
-`insights`, `search`, `wholeFilesystem`, `compare`,
-`findingsOnly`, `previousLayer`, `nextLayer`, `toggleAdded`,
-`toggleModified`, `toggleIdentical`, `toggleDeleted`, `extract`,
-`copyCommand`, `viewer`, `swapSides`, `retry`, and `packages` (default `p`).
-For example, to quit with
-`Q` and use `q` to toggle the whole filesystem:
-
-```console
-dredge settings set explore.keys.quit Q
-dredge settings set explore.keys.wholeFilesystem q
-```
-
-Arrow keys, `Tab`, `Enter`, `Esc`, and the `Alt` search shortcuts
-cannot be remapped.
-
 ## Settings file schema
 
 ```json
@@ -195,10 +134,6 @@ cannot be remapped.
       "exePath": "",
       "args": "\"{0}\"",
       "terminal": "false"
-    },
-    "keys": {
-      "quit": "<string>",
-      "viewer": "<string>"
     }
   }
 }

@@ -76,13 +76,13 @@ public class ExplorerSourceTests
         v7Manifest = new DockerManifest { Layers = [] };
         Mock<IDockerRegistryClient> client = new() { DefaultValue = DefaultValue.Mock };
         client
-            .Setup(o => o.Manifests.GetAsync("library/image", "latest", It.IsAny<CancellationToken>()))
+            .Setup(static o => o.Manifests.GetAsync("library/image", "latest", It.IsAny<CancellationToken>()))
             .ReturnsAsync(new ManifestInfo("application/index", "sha256:index", list));
         client
-            .Setup(o => o.Manifests.GetAsync("library/image", "sha256:v6", It.IsAny<CancellationToken>()))
+            .Setup(static o => o.Manifests.GetAsync("library/image", "sha256:v6", It.IsAny<CancellationToken>()))
             .ReturnsAsync(new ManifestInfo("application/manifest", "sha256:v6", new DockerManifest { Layers = [] }));
         client
-            .Setup(o => o.Manifests.GetAsync("library/image", "sha256:v7", It.IsAny<CancellationToken>()))
+            .Setup(static o => o.Manifests.GetAsync("library/image", "sha256:v7", It.IsAny<CancellationToken>()))
             .ReturnsAsync(new ManifestInfo("application/manifest", "sha256:v7", v7Manifest));
         return client;
     }

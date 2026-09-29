@@ -9,11 +9,11 @@ internal static class PackageFileLister
 {
     public static IReadOnlyList<string> ListNpm(IReadOnlyList<string> roots, IEnumerable<string> allPaths)
     {
-        string[] prefixes = roots.Select(root => root + "/").ToArray();
-        return allPaths.Where(path => prefixes.Any(prefix =>
+        string[] prefixes = [.. roots.Select(root => root + "/")];
+        return [.. allPaths.Where(path => prefixes.Any(prefix =>
             path.StartsWith(prefix, StringComparison.Ordinal) &&
             !path[prefix.Length..].Contains("node_modules/", StringComparison.Ordinal)))
-            .Order(StringComparer.Ordinal).ToArray();
+            .Order(StringComparer.Ordinal)];
     }
 
     public static async Task<IReadOnlyList<string>> ListAsync(
@@ -51,7 +51,7 @@ internal static class PackageFileLister
                 throw new NotSupportedException(
                     "NuGet dependency metadata identifies packages but does not establish deployed file ownership.");
             case InstalledPackageEcosystem.Dpkg:
-                string[] lists = allPaths
+                string[] lists = [.. allPaths
                     .Where(path => path.StartsWith("var/lib/dpkg/info/", StringComparison.Ordinal) &&
                         path.EndsWith(".list", StringComparison.Ordinal))
                     .Where(path =>
@@ -59,14 +59,14 @@ internal static class PackageFileLister
                         string file = path["var/lib/dpkg/info/".Length..^".list".Length];
                         int colon = file.IndexOf(':');
                         return (colon < 0 ? file : file[..colon]) == name;
-                    }).Order(StringComparer.Ordinal).ToArray();
+                    }).Order(StringComparer.Ordinal)];
                 HashSet<string> dpkgFiles = new(StringComparer.Ordinal);
                 foreach (string list in lists)
                 {
                     cancellationToken.ThrowIfCancellationRequested();
                     dpkgFiles.UnionWith(await ReadListAsync(list, ParseDpkgList));
                 }
-                return dpkgFiles.Order(StringComparer.Ordinal).ToArray();
+                return [.. dpkgFiles.Order(StringComparer.Ordinal)];
             case InstalledPackageEcosystem.Apk:
                 return await ReadListAsync("lib/apk/db/installed", content => ParseApkInstalled(content, name));
             case InstalledPackageEcosystem.Pip:
@@ -89,7 +89,7 @@ internal static class PackageFileLister
                     string root = ImagePath.GetDirectoryName(ImagePath.GetDirectoryName(record));
                     pipFiles.UnionWith(await ReadListAsync(record, content => ParsePipRecord(content, root)));
                 }
-                return pipFiles.Order(StringComparer.Ordinal).ToArray();
+                return [.. pipFiles.Order(StringComparer.Ordinal)];
             default:
                 throw new ArgumentOutOfRangeException(nameof(ecosystem), ecosystem,
                     "The ecosystem does not provide supported file ownership metadata.");
@@ -97,10 +97,10 @@ internal static class PackageFileLister
     }
 
     internal static IReadOnlyList<string> ParseDpkgList(string content) =>
-        content.Split('\n')
-            .Select(line => line.TrimEnd('\r').Trim('/'))
-            .Where(line => line.Length > 0 && line != ".")
-            .Distinct(StringComparer.Ordinal).Order(StringComparer.Ordinal).ToArray();
+        [.. content.Split('\n')
+            .Select(static line => line.TrimEnd('\r').Trim('/'))
+            .Where(static line => line.Length > 0 && line != ".")
+            .Distinct(StringComparer.Ordinal).Order(StringComparer.Ordinal)];
 
     internal static IReadOnlyList<string> ParseApkInstalled(string content, string name)
     {
@@ -129,7 +129,7 @@ internal static class PackageFileLister
                 files.Add(directory.Length == 0 ? line[2..] : directory + "/" + line[2..]);
             }
         }
-        return files.Order(StringComparer.Ordinal).ToArray();
+        return [.. files.Order(StringComparer.Ordinal)];
     }
 
     internal static IReadOnlyList<string> ParsePipRecord(string content, string root)
@@ -155,7 +155,7 @@ internal static class PackageFileLister
             }
             files.Add(string.Join('/', parts));
         }
-        return files.Distinct(StringComparer.Ordinal).Order(StringComparer.Ordinal).ToArray();
+        return [.. files.Distinct(StringComparer.Ordinal).Order(StringComparer.Ordinal)];
     }
 
     private static IEnumerable<string> ReadRecordPaths(string content)

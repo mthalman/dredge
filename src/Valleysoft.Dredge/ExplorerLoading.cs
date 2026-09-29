@@ -106,10 +106,10 @@ internal sealed class ExplorerSource
             string? os = Coalesce(options.Os, settings.Os);
             string? architecture = Coalesce(options.Architecture, settings.Architecture);
             string? osVersion = Coalesce(options.OsVersion, settings.OsVersion);
-            ExplorerPlatform[] matches = platforms.Where(candidate =>
+            ExplorerPlatform[] matches = [.. platforms.Where(candidate =>
                 (os is null || candidate.Os == os) &&
                 (architecture is null || candidate.Architecture == architecture) &&
-                (osVersion is null || candidate.OsVersion == osVersion)).ToArray();
+                (osVersion is null || candidate.OsVersion == osVersion))];
             if (matches.Length == 1)
             {
                 platform = matches[0];
@@ -158,9 +158,9 @@ internal sealed class ExplorerSource
     internal static IReadOnlyList<ExplorerPlatform> GetPlatforms(IManifest manifest) =>
         manifest is IManifestList list
             ? list.Manifests
-                .Where(item => item.Platform is { } platform &&
+                .Where(static item => item.Platform is { } platform &&
                     string.Equals(platform.Os, "linux", StringComparison.OrdinalIgnoreCase))
-                .Select(item => ToPlatform(item.Platform!))
+                .Select(static item => ToPlatform(item.Platform!))
                 .Distinct()
                 .ToArray()
             : [];
@@ -180,7 +180,7 @@ internal enum ExplorerLayerState { Waiting, Indexing, Ready, Failed }
 // prioritized layer jumps the queue. Failures stay failed until retried.
 internal sealed class ExplorerLayerIndexer
 {
-    private readonly object sync = new();
+    private readonly Lock sync = new();
     private readonly Func<int, IProgress<long>, CancellationToken, Task<StoredLayerIndex>> indexAsync;
     private readonly int layerCount;
     private readonly int concurrency;
@@ -206,7 +206,7 @@ internal sealed class ExplorerLayerIndexer
         this.layerCount = layerCount;
         this.indexAsync = indexAsync;
         this.concurrency = concurrency;
-        pending = Enumerable.Range(0, layerCount).ToList();
+        pending = [.. Enumerable.Range(0, layerCount)];
         states = new ExplorerLayerState[layerCount];
     }
 
@@ -394,7 +394,7 @@ internal sealed class ExplorerLayerIndexer
         {
             stopping = true;
             pending.Clear();
-            return stoppingTask ??= StopCoreAsync(workers.ToArray());
+            return stoppingTask ??= StopCoreAsync([.. workers]);
         }
     }
 

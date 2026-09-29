@@ -41,7 +41,7 @@ public class SaveLayersCommandTests : IAsyncDisposable
             Assert.Contains("is not empty", error.ToString());
             Assert.Contains("--force", error.ToString());
             factory.Verify(
-                item => item.GetClientAsync(It.IsAny<string?>(), It.IsAny<CancellationToken>()),
+                static item => item.GetClientAsync(It.IsAny<string?>(), It.IsAny<CancellationToken>()),
                 Times.Never);
         }
         finally
@@ -78,13 +78,13 @@ public class SaveLayersCommandTests : IAsyncDisposable
         File.CreateSymbolicLink(linkPath, linkTargetPath);
         Mock<IDockerRegistryClient> client = CreateClient(
             digest,
-            () => CreateLayer(
+            static () => CreateLayer(
                 ("overwrite.txt", "new"),
                 ("directory/new.txt", "new"),
                 ("link.txt", "new"),
                 (".wh.delete.txt", string.Empty)));
         Mock<IDockerRegistryClientFactory> factory = new();
-        factory.Setup(item => item.GetClientAsync(null, It.IsAny<CancellationToken>())).ReturnsAsync(client.Object);
+        factory.Setup(static item => item.GetClientAsync(null, It.IsAny<CancellationToken>())).ReturnsAsync(client.Object);
         TestSaveLayersCommand command = new(factory.Object, TextWriter.Null, cache.Paths)
         {
             Options = new SaveLayersOptions
@@ -183,9 +183,9 @@ public class SaveLayersCommandTests : IAsyncDisposable
         Directory.CreateSymbolicLink(linkPath, Path.Combine(outputPath, "missing"));
         Mock<IDockerRegistryClient> client = CreateClient(
             digest,
-            () => CreateSymbolicLinkLayer("link", "target.txt"));
+            static () => CreateSymbolicLinkLayer("link", "target.txt"));
         Mock<IDockerRegistryClientFactory> factory = new();
-        factory.Setup(item => item.GetClientAsync(null, It.IsAny<CancellationToken>())).ReturnsAsync(client.Object);
+        factory.Setup(static item => item.GetClientAsync(null, It.IsAny<CancellationToken>())).ReturnsAsync(client.Object);
         TestSaveLayersCommand command = new(factory.Object, TextWriter.Null, cache.Paths)
         {
             Options = new SaveLayersOptions
@@ -242,7 +242,7 @@ public class SaveLayersCommandTests : IAsyncDisposable
             Assert.Equal(1, exception.ExitCode);
             Assert.Contains("is an existing file", error.ToString());
             factory.Verify(
-                item => item.GetClientAsync(It.IsAny<string?>(), It.IsAny<CancellationToken>()),
+                static item => item.GetClientAsync(It.IsAny<string?>(), It.IsAny<CancellationToken>()),
                 Times.Never);
         }
         finally
@@ -287,7 +287,7 @@ public class SaveLayersCommandTests : IAsyncDisposable
                 sentinelPath,
                 TestContext.Current.CancellationToken));
             factory.Verify(
-                item => item.GetClientAsync(It.IsAny<string?>(), It.IsAny<CancellationToken>()),
+                static item => item.GetClientAsync(It.IsAny<string?>(), It.IsAny<CancellationToken>()),
                 Times.Never);
         }
         finally

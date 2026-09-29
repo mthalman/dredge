@@ -75,7 +75,7 @@ public class SettingsSourceGenerator : IIncrementalGenerator
 
         if (diagnostics.Count != 0)
         {
-            return new Analysis(null, diagnostics.ToImmutableArray());
+            return new Analysis(null, [.. diagnostics]);
         }
 
         var containers = new Stack<INamedTypeSymbol>();
@@ -95,8 +95,8 @@ public class SettingsSourceGenerator : IIncrementalGenerator
             type.ContainingNamespace.IsGlobalNamespace ? null : type.ContainingNamespace.ToDisplayString(),
             declarations,
             containers.Count,
-            properties.Select(property => new SettingsPropertyModel(
-                property.JsonName, property.Symbol.Name, property.NestedType is not null)).ToImmutableArray());
+            [.. properties.Select(property => new SettingsPropertyModel(
+                property.JsonName, property.Symbol.Name, property.NestedType is not null))]);
 
         return new Analysis(model, []);
     }
@@ -214,7 +214,7 @@ public class SettingsSourceGenerator : IIncrementalGenerator
             properties.Add(new Property(property, jsonName, nestedType));
         }
 
-        return properties.OrderBy(property => property.JsonName, StringComparer.Ordinal).ToList();
+        return [.. properties.OrderBy(property => property.JsonName, StringComparer.Ordinal)];
     }
 
     private static bool IsValidNestedGraph(
@@ -263,7 +263,7 @@ public class SettingsSourceGenerator : IIncrementalGenerator
 
         int parameterCount = name == "GetProperty" ? 1 : 2;
         if (method.Arity != 0 || method.Parameters.Length != parameterCount ||
-            method.Parameters.Any(parameter => parameter.RefKind != RefKind.None))
+            method.Parameters.Any(static parameter => parameter.RefKind != RefKind.None))
         {
             return false;
         }
@@ -286,7 +286,7 @@ public class SettingsSourceGenerator : IIncrementalGenerator
             _ => "internal"
         };
         string parameters = type.TypeParameters.Length == 0 ? "" :
-            "<" + string.Join(", ", type.TypeParameters.Select(parameter => Identifier(parameter.Name))) + ">";
+            "<" + string.Join(", ", type.TypeParameters.Select(static parameter => Identifier(parameter.Name))) + ">";
         return $"{accessibility} {(type.IsStatic ? "static " : "")}partial class {Identifier(type.Name)}{parameters}\n{{";
     }
 

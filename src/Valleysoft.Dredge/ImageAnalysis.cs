@@ -31,15 +31,15 @@ internal sealed record ImageAnalysisResult(
     public IReadOnlyList<HiddenFile> HiddenFiles { get; init; } = [];
 
     public IReadOnlyList<ImagePotentialSaving> FindPotentialSavings() =>
-        LiveEntries.Values
-            .Where(entry => entry.Type == ImageFileType.File && entry.Size > 0)
-            .Select(entry => (Entry: entry, Kind: PotentialKind(entry.Path)))
-            .Where(item => item.Kind is not null)
-            .GroupBy(item => item.Kind!.Value)
-            .Select(group => new ImagePotentialSaving(group.Key,
-                group.Sum(item => item.Entry.Size),
-                group.Select(item => item.Entry.Path).Order(StringComparer.Ordinal).ToArray()))
-            .OrderByDescending(item => item.Bytes).ToArray();
+        [.. LiveEntries.Values
+            .Where(static entry => entry.Type == ImageFileType.File && entry.Size > 0)
+            .Select(static entry => (Entry: entry, Kind: PotentialKind(entry.Path)))
+            .Where(static item => item.Kind is not null)
+            .GroupBy(static item => item.Kind!.Value)
+            .Select(static group => new ImagePotentialSaving(group.Key,
+                group.Sum(static item => item.Entry.Size),
+                [.. group.Select(static item => item.Entry.Path).Order(StringComparer.Ordinal)]))
+            .OrderByDescending(static item => item.Bytes)];
 
     internal static PotentialSavingKind? PotentialKind(string path)
     {
@@ -134,8 +134,7 @@ internal static class ImageAnalysis
             void Delete(string path, bool includePath)
             {
                 string prefix = path + "/";
-                string[] descendants = paths.GetViewBetween(prefix, prefix + '\uffff')
-                    .Where(key => key.StartsWith(prefix, StringComparison.Ordinal)).ToArray();
+                string[] descendants = [.. paths.GetViewBetween(prefix, prefix + '\uffff').Where(key => key.StartsWith(prefix, StringComparison.Ordinal))];
                 foreach (string existing in includePath && live.ContainsKey(path)
                     ? descendants.Prepend(path) : descendants)
                 {
@@ -214,8 +213,7 @@ internal static class ImageAnalysis
             analyses.Add(new(index, layerBytes, 0, changes));
         }
 
-        return new(total, hidden.Sum(), analyses
-            .Select(layer => layer with { HiddenBytes = hidden[layer.Index] }).ToArray())
+        return new(total, hidden.Sum(), [.. analyses.Select(layer => layer with { HiddenBytes = hidden[layer.Index] })])
         {
             LiveEntries = live.ToDictionary(pair => pair.Key, pair => pair.Value.Entry,
                 StringComparer.Ordinal),

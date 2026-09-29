@@ -31,7 +31,7 @@ internal sealed class CliOutputOption<T>
             DefaultValueFactory = _ => defaultName
         };
         Option.CompletionSources.Add(
-            _ => values.Select(item => new CompletionItem(item.Name)).ToArray());
+            _ => [.. values.Select(item => new CompletionItem(item.Name))]);
         Option.Validators.Add(result =>
         {
             string? value = result.GetValueOrDefault<string>();

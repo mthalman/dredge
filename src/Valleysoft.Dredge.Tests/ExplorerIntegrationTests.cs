@@ -80,7 +80,7 @@ public sealed class ExplorerIntegrationTests
             client, factory, image, new PlatformOptionsBase(), null, ct, settingsStore: new EmptySettingsStore());
         Assert.Equal(3, source.LayerCount);
 
-        ExplorerOptions options = new(Layer: 1, Compare: null, Mouse: true, Clipboard: ClipboardMode.Off, Keys: KeyMap.Default,
+        ExplorerOptions options = new(Layer: 1, Compare: null, Mouse: true, Clipboard: ClipboardMode.Off,
             ViewerExePath: "less", ViewerArgs: "\"{0}\"");
         await using ExplorerApp explorer = new(client, factory, source, cacheContext.Store, options, ct);
         ExplorerState state = explorer.Start();
@@ -246,7 +246,7 @@ public sealed class ExplorerIntegrationTests
         ExplorerSource source = await ExplorerSource.OpenAsync(
             client, factory, image, new PlatformOptionsBase(), null, ct, settingsStore: new EmptySettingsStore());
 
-        ExplorerOptions options = new(Layer: null, Compare: "2.0", Mouse: true, Clipboard: ClipboardMode.Off, Keys: KeyMap.Default,
+        ExplorerOptions options = new(Layer: null, Compare: "2.0", Mouse: true, Clipboard: ClipboardMode.Off,
             ViewerExePath: "less", ViewerArgs: "\"{0}\"", Notice: "Saved settings were ignored.");
         await using ExplorerApp explorer = new(client, factory, source, cacheContext.Store, options, ct);
         ExplorerState state = explorer.Start();

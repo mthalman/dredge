@@ -52,21 +52,16 @@ internal static class InstalledPackageReader
         cancellationToken.ThrowIfCancellationRequested();
 
         IReadOnlyList<ImageFileSystemEntry> entries = fileSystem.List(null, true, false);
-        ImageFileSystemEntry[] npmManifests = entries
-            .Where(entry => IsReadableFile(entry) && IsNpmPackageManifestPath(entry.Path))
-            .ToArray();
-        ImageFileSystemEntry[] pipManifests = entries
-            .Where(entry => IsReadableFile(entry) && IsPipMetadataPath(entry.Path))
-            .ToArray();
+        ImageFileSystemEntry[] npmManifests = [.. entries.Where(entry => IsReadableFile(entry) && IsNpmPackageManifestPath(entry.Path))];
+        ImageFileSystemEntry[] pipManifests = [.. entries.Where(entry => IsReadableFile(entry) && IsPipMetadataPath(entry.Path))];
         HashSet<string> nugetCacheDirectories = entries
             .Where(entry => IsReadableFile(entry) &&
                 (entry.Path == ".nupkg.metadata" || entry.Path.EndsWith("/.nupkg.metadata", StringComparison.Ordinal)))
             .Select(entry => ImagePath.GetDirectoryName(entry.Path))
             .ToHashSet(StringComparer.Ordinal);
-        ImageFileSystemEntry[] nugetManifests = entries
+        ImageFileSystemEntry[] nugetManifests = [.. entries
             .Where(entry => IsReadableFile(entry) && IsNuGetDepsPath(entry.Path) &&
-                !IsNuGetCachePath(entry.Path, nugetCacheDirectories))
-            .ToArray();
+                !IsNuGetCachePath(entry.Path, nugetCacheDirectories))];
         ImageFileSystemEntry? dpkgStatus = entries.SingleOrDefault(
             entry => IsReadableFile(entry) && entry.Path == DpkgStatusPath);
         ImageFileSystemEntry? apkInstalled = entries.SingleOrDefault(
@@ -154,8 +149,8 @@ internal static class InstalledPackageReader
             Diagnostics = diagnostics,
             NpmPackageRoots = npmRoots.GroupBy(item => item.Name, StringComparer.Ordinal)
                 .ToDictionary(group => group.Key,
-                    group => (IReadOnlyList<string>)group.Select(item => item.Root)
-                        .Distinct(StringComparer.Ordinal).Order(StringComparer.Ordinal).ToArray(),
+                    group => (IReadOnlyList<string>)[.. group.Select(item => item.Root)
+                        .Distinct(StringComparer.Ordinal).Order(StringComparer.Ordinal)],
                     StringComparer.Ordinal)
         };
     }
@@ -443,15 +438,14 @@ internal static class InstalledPackageReader
         IEnumerable<InstalledPackage> packages)
     {
         Dictionary<string, IReadOnlyList<string>> byName = packages
-            .GroupBy(package => package.Name, StringComparer.Ordinal)
-            .OrderBy(group => group.Key, StringComparer.Ordinal)
+            .GroupBy(static package => package.Name, StringComparer.Ordinal)
+            .OrderBy(static group => group.Key, StringComparer.Ordinal)
             .ToDictionary(
-                group => group.Key,
-                group => (IReadOnlyList<string>)group
-                    .Select(package => package.Version)
+                static group => group.Key,
+                static group => (IReadOnlyList<string>)[.. group
+                    .Select(static package => package.Version)
                     .Distinct(StringComparer.Ordinal)
-                    .OrderBy(version => version, StringComparer.Ordinal)
-                    .ToArray(),
+                    .OrderBy(static version => version, StringComparer.Ordinal)],
                 StringComparer.Ordinal);
 
         return new InstalledPackageEcosystemMetadata(

@@ -75,7 +75,7 @@ internal sealed class Node
         }
     }
 
-    public bool ContainsNote => containsNote ??= Note is not null || Children.Any(child => child.ContainsNote);
+    public bool ContainsNote => containsNote ??= Note is not null || Children.Any(static child => child.ContainsNote);
 
     public int FileCount => Counts.Values.Sum();
 }
@@ -126,8 +126,8 @@ internal sealed class ExplorerImage
         source.Image.ToString(),
         source.Platform?.ToString() ?? $"{source.Config.Os}/{source.Config.Architecture}",
         source.Resolved.ManifestInfo.DockerContentDigest,
-        source.Resolved.Manifest.Layers.Select(layer => layer.Digest ?? "").ToArray(),
-        source.Resolved.Manifest.Layers.Select(layer => layer.Size).ToArray(),
+        [.. source.Resolved.Manifest.Layers.Select(static layer => layer.Digest ?? "")],
+        [.. source.Resolved.Manifest.Layers.Select(static layer => layer.Size)],
         source.Config.History, source.BaseImages, source.BaseWarning)
     {
         PlatformArguments = source.Platforms.Count > 1 && source.Platform is ExplorerPlatform platform
@@ -176,8 +176,8 @@ internal sealed class ExplorerImage
     public ExplorerSession? Session { get; private set; }
     public string? SessionError { get; set; }
     public bool Complete => Session is not null;
-    public bool Loading => !Complete && States.Any(state => state != ExplorerLayerState.Ready);
-    public int ReadyCount => States.Count(state => state == ExplorerLayerState.Ready);
+    public bool Loading => !Complete && States.Any(static state => state != ExplorerLayerState.Ready);
+    public int ReadyCount => States.Count(static state => state == ExplorerLayerState.Ready);
 
     public IEnumerable<int> LayerIndexes => Enumerable.Range(0, LayerCount);
     public bool IsBase(int layer) => layer < (BaseLayerCount ?? 0);
@@ -199,7 +199,7 @@ internal sealed class ExplorerImage
     public long LayerSize(int layer) =>
         IsAnalyzed(layer) ? Analysis!.Layers[layer].FileBytes :
         raw.TryGetValue(layer, out LayerChanges? changes)
-            ? changes.Entries.Where(entry => entry.Type == ImageFileType.File).Sum(entry => entry.Size)
+            ? changes.Entries.Where(static entry => entry.Type == ImageFileType.File).Sum(static entry => entry.Size)
             : 0;
 
     public long TotalSize => Analysis?.FileBytes ?? LayerIndexes.Sum(LayerSize);
@@ -246,8 +246,8 @@ internal sealed class ExplorerImage
     {
         Analysis = analysis;
         Insights = insights;
-        history = history.Select(row => row.Layer is int layer && layer < analysis.Layers.Count
-            ? row with { Reclaimable = analysis.Layers[layer].HiddenBytes } : row).ToList();
+        history = [.. history.Select(row => row.Layer is int layer && layer < analysis.Layers.Count
+            ? row with { Reclaimable = analysis.Layers[layer].HiddenBytes } : row)];
         layerTrees.Clear();
         wholeTrees.Clear();
         searchIndex = null;
@@ -497,7 +497,7 @@ internal sealed class ExplorerImage
         IReadOnlyList<LayerHistory>? configHistory, IReadOnlyList<long> sizes, int? baseLayerCount, DateTime now)
     {
         int baseCount = baseLayerCount ?? 0;
-        string[] instructions = Enumerable.Range(0, sizes.Count).Select(layer => $"Layer {layer}").ToArray();
+        string[] instructions = [.. Enumerable.Range(0, sizes.Count).Select(layer => $"Layer {layer}")];
         List<HistoryRow> rows = [];
         IReadOnlyList<LayerHistory> items = configHistory ?? [];
         if (items.Count(item => !item.IsEmptyLayer) != sizes.Count)
@@ -511,8 +511,7 @@ internal sealed class ExplorerImage
         }
 
         int next = 0;
-        List<(LayerHistory Item, int? Layer)> mapped = items
-            .Select(item => (item, item.IsEmptyLayer ? (int?)null : next++)).ToList();
+        List<(LayerHistory Item, int? Layer)> mapped = [.. items.Select(item => (item, item.IsEmptyLayer ? (int?)null : next++))];
         for (int index = 0; index < mapped.Count; index++)
         {
             (LayerHistory item, int? layer) = mapped[index];
@@ -631,7 +630,7 @@ internal sealed class ExplorerImage
 
         private static void Sort(List<Node> list)
         {
-            list.Sort((left, right) => string.CompareOrdinal(left.Name, right.Name));
+            list.Sort(static (left, right) => string.CompareOrdinal(left.Name, right.Name));
             foreach (Node node in list)
             {
                 Sort(node.Children);

@@ -137,7 +137,7 @@ public class SettingsDiagnosticsTests
         var driver = GeneratorTestHelper.Run(compilation, out _);
         var result = GeneratorTestHelper.Result(driver);
 
-        Assert.Equal(["DRG005", "DRG008"], result.Diagnostics.Select(d => d.Id).Order().ToArray());
+        Assert.Equal(["DRG005", "DRG008"], [.. result.Diagnostics.Select(static d => d.Id).Order()]);
         Assert.Empty(GeneratorTestHelper.Accessors(result));
     }
 

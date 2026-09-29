@@ -98,9 +98,8 @@ internal sealed class LayerStore : IAsyncDisposable
             return cached;
         }
 
-        HashSet<int> ordinals = entryOrdinals.ToHashSet();
-        ScannedEntry[] entries = index.Changes.Entries
-            .Where(entry => ordinals.Contains(entry.EntryIndex)).ToArray();
+        HashSet<int> ordinals = [.. entryOrdinals];
+        ScannedEntry[] entries = [.. index.Changes.Entries.Where(entry => ordinals.Contains(entry.EntryIndex))];
         if (entries.Length != ordinals.Count || entries.Any(entry => entry.Type != ImageFileType.File))
         {
             throw new InvalidDataException("The layer index does not contain the requested content.");
@@ -183,7 +182,7 @@ internal sealed class LayerStore : IAsyncDisposable
             prefix, CompressionMode.Decompress, leaveOpen: true);
         long position = 0;
         byte[] buffer = new byte[81920];
-        foreach (ScannedEntry entry in entries.OrderBy(entry => entry.UncompressedOffset))
+        foreach (ScannedEntry entry in entries.OrderBy(static entry => entry.UncompressedOffset))
         {
             await CopyBytesAsync(gzip, Stream.Null, entry.UncompressedOffset - position, buffer, cancellationToken);
             using IncrementalHash hash = IncrementalHash.CreateHash(HashAlgorithmName.SHA256);
@@ -454,8 +453,8 @@ internal sealed class LayerStore : IAsyncDisposable
         }
         long removed = 0;
         foreach (FileInfo file in files
-            .OrderBy(file => file.Extension is ".tmp" or ".scratch" ? 0 : file.Extension == ".blob" ? 1 : 2)
-            .ThenBy(file => file.LastWriteTimeUtc))
+            .OrderBy(static file => file.Extension is ".tmp" or ".scratch" ? 0 : file.Extension == ".blob" ? 1 : 2)
+            .ThenBy(static file => file.LastWriteTimeUtc))
         {
             cancellationToken.ThrowIfCancellationRequested();
             if (!clear && total <= maxBytes && file.Extension is not (".tmp" or ".scratch"))
@@ -575,7 +574,7 @@ internal sealed class LayerStore : IAsyncDisposable
         if (parts.Length != 2 ||
             parts[0] is not ("sha256" or "sha512") ||
             parts[1].Length != (parts[0] == "sha256" ? 64 : 128) ||
-            parts[1].Any(character => !char.IsAsciiHexDigitLower(character)))
+            parts[1].Any(static character => !char.IsAsciiHexDigitLower(character)))
         {
             throw new InvalidDataException($"Unsupported or invalid layer/manifest digest '{digest}'.");
         }
@@ -607,7 +606,7 @@ internal sealed class LayerStore : IAsyncDisposable
                 entry.UncompressedOffset < 0 || entry.CompressedHighWaterMark <= 0 ||
                 entry.CompressedHighWaterMark > index.BlobLength ||
                 (entry.Type == ImageFileType.File &&
-                    (entry.ContentHash?.Length != 64 || entry.ContentHash.Any(c => !char.IsAsciiHexDigitLower(c)))))
+                    (entry.ContentHash?.Length != 64 || entry.ContentHash.Any(static c => !char.IsAsciiHexDigitLower(c)))))
             {
                 return false;
             }
@@ -615,7 +614,7 @@ internal sealed class LayerStore : IAsyncDisposable
         }
         try
         {
-            foreach (string path in index.Changes.Entries.Select(entry => entry.Path)
+            foreach (string path in index.Changes.Entries.Select(static entry => entry.Path)
                 .Concat(index.Changes.Whiteouts).Concat(index.Changes.OpaqueDirectories))
             {
                 if (string.IsNullOrEmpty(path) || ImagePath.NormalizeArchive(path) != path)

@@ -90,9 +90,9 @@ public class ImageFileSystemTests : IAsyncDisposable
         Assert.Equal(4, analysis.HiddenBytes);
         Assert.Equal(17d / 21, analysis.Efficiency, 10);
         Assert.Equal(new HiddenFile("app/data", 0, 1, LayerChangeKind.Identical, 4), Assert.Single(analysis.HiddenFiles));
-        Assert.DoesNotContain(files.List(null, true, true), entry => entry.Path.Contains(".wh.", StringComparison.Ordinal));
-        Assert.DoesNotContain(analysis.Layers.SelectMany(layer => layer.Changes),
-            change => change.Kind == LayerChangeKind.Deleted);
+        Assert.DoesNotContain(files.List(null, true, true), static entry => entry.Path.Contains(".wh.", StringComparison.Ordinal));
+        Assert.DoesNotContain(analysis.Layers.SelectMany(static layer => layer.Changes),
+            static change => change.Kind == LayerChangeKind.Deleted);
         using MemoryStream output = new();
         await files.CopyFileToAsync("app/later", output, TestContext.Current.CancellationToken);
         Assert.Equal("still indexed", Encoding.UTF8.GetString(output.ToArray()));
@@ -126,7 +126,7 @@ public class ImageFileSystemTests : IAsyncDisposable
         await files.CopyFileToAsync("tree/value", output, TestContext.Current.CancellationToken);
         Assert.Equal("new", Encoding.UTF8.GetString(output.ToArray()));
         Assert.Equal(opaque,
-            files.List(null, true, true).Any(entry => entry.Path == "tree/sibling" && entry.DeletedLayer is not null));
+            files.List(null, true, true).Any(static entry => entry.Path == "tree/sibling" && entry.DeletedLayer is not null));
     }
 
     [Fact]
@@ -298,7 +298,7 @@ public class ImageFileSystemTests : IAsyncDisposable
             entries.Add(Entry.File("app/App.deps.json", cached.Replace("Cached/99", "Deployed/1")));
             entries.Add(Entry.File("opt/restore/tool/10/App.deps.json", cached.Replace("Cached/99", "Sibling/2")));
         }
-        using IDockerRegistryClient client = CreateClient([CreateLayer(entries.ToArray())]).Object;
+        using IDockerRegistryClient client = CreateClient([CreateLayer([.. entries])]).Object;
         await using ImageFileSystem fileSystem = await CreateFileSystemAsync(
             client, ImageName, new PlatformOptionsBase(), TestContext.Current.CancellationToken);
 
@@ -390,8 +390,7 @@ public class ImageFileSystemTests : IAsyncDisposable
             cache.Store, progress: new InlineProgress<ImageIndexProgress>(updates.Add),
             requireLayerIndexes: true);
 
-        Assert.Equal([0, 1], updates.Where(update => update.Indexed)
-            .Select(update => update.LayerIndex).ToArray());
+        Assert.Equal([0, 1], [.. updates.Where(update => update.Indexed).Select(update => update.LayerIndex)]);
         Assert.All(updates, update => Assert.Equal(2, update.LayerCount));
         Assert.Equal(2, warm.Analyze().Layers.Count);
         foreach (byte[] layer in layers)
@@ -535,25 +534,25 @@ public class ImageFileSystemTests : IAsyncDisposable
         Assert.Equal(
             ["etc", "opaque", "recreated"],
             fileSystem.List(null, recursive: false, showDeleted: false)
-                .Select(entry => entry.Path));
+                .Select(static entry => entry.Path));
         IReadOnlyList<ImageFileSystemEntry> all =
             fileSystem.List(null, recursive: true, showDeleted: true);
-        ImageFileSystemEntry config = Assert.Single(all, entry => entry.Path == "etc/config");
+        ImageFileSystemEntry config = Assert.Single(all, static entry => entry.Path == "etc/config");
         Assert.Equal(0, config.IntroducedLayer.Index);
         Assert.Equal(1, config.ModifiedLayer?.Index);
-        ImageFileSystemEntry deleted = Assert.Single(all, entry => entry.Path == "etc/deleted");
+        ImageFileSystemEntry deleted = Assert.Single(all, static entry => entry.Path == "etc/deleted");
         Assert.Equal(1, deleted.DeletedLayer?.Index);
         Assert.Same(
             deleted,
             Assert.Single(fileSystem.List("etc/deleted", recursive: false, showDeleted: true)));
-        Assert.Contains(all, entry => entry.Path == "opaque/old" && entry.DeletedLayer?.Index == 1);
-        ImageFileSystemEntry recreated = Assert.Single(all, entry => entry.Path == "recreated");
+        Assert.Contains(all, static entry => entry.Path == "opaque/old" && entry.DeletedLayer?.Index == 1);
+        ImageFileSystemEntry recreated = Assert.Single(all, static entry => entry.Path == "recreated");
         Assert.Equal(2, recreated.IntroducedLayer.Index);
         Assert.Null(recreated.ModifiedLayer);
         Assert.Null(recreated.DeletedLayer);
         Assert.Equal(
-            all.OrderBy(entry => entry.Path, StringComparer.Ordinal).Select(entry => entry.Path),
-            all.Select(entry => entry.Path));
+            all.OrderBy(static entry => entry.Path, StringComparer.Ordinal).Select(static entry => entry.Path),
+            all.Select(static entry => entry.Path));
     }
 
     [Fact]
@@ -977,9 +976,7 @@ public class ImageFileSystemTests : IAsyncDisposable
         string output = Path.Combine(
             Path.GetTempPath(),
             $"dredge-filesystem-{Guid.NewGuid():N}");
-        Entry[] files = Enumerable.Range(0, 1200)
-            .Select(index => Entry.File($"tree/file-{index}", index.ToString()))
-            .ToArray();
+        Entry[] files = [.. Enumerable.Range(0, 1200).Select(static index => Entry.File($"tree/file-{index}", index.ToString()))];
         using IDockerRegistryClient client =
             CreateClient([CreateLayer(files)]).Object;
         ImageFileSystem fileSystem = await CreateFileSystemAsync(
@@ -1274,7 +1271,7 @@ public class ImageFileSystemTests : IAsyncDisposable
         byte[][] layers = [CreateLayer(Entry.File("file", "value"))];
         Mock<IDockerRegistryClient> client = CreateClient(layers);
         Mock<IDockerRegistryClientFactory> factory = new();
-        factory.Setup(item => item.GetClientAsync("registry.test", It.IsAny<CancellationToken>())).ReturnsAsync(client.Object);
+        factory.Setup(static item => item.GetClientAsync("registry.test", It.IsAny<CancellationToken>())).ReturnsAsync(client.Object);
         StringWriter writer = new();
         IAnsiConsole console = AnsiConsole.Create(new AnsiConsoleSettings
         {
@@ -1311,7 +1308,7 @@ public class ImageFileSystemTests : IAsyncDisposable
                 Entry.SymbolicLink("dir/link", "file"),
                 Entry.File("dir/second", "value"))]);
         Mock<IDockerRegistryClientFactory> factory = new();
-        factory.Setup(item => item.GetClientAsync("registry.test", It.IsAny<CancellationToken>())).ReturnsAsync(client.Object);
+        factory.Setup(static item => item.GetClientAsync("registry.test", It.IsAny<CancellationToken>())).ReturnsAsync(client.Object);
 
         string defaultOutput = await InvokeLsCommandAsync(factory.Object, "/dir");
         string longOutput = await InvokeLsCommandAsync(factory.Object, "/dir", "-l");
@@ -1345,10 +1342,10 @@ public class ImageFileSystemTests : IAsyncDisposable
         Assert.Contains("i=", combinedOutput);
         Assert.All(
             longOutput.Split(Environment.NewLine, StringSplitOptions.RemoveEmptyEntries),
-            line => Assert.Equal(line.TrimEnd(), line));
+            static line => Assert.Equal(line.TrimEnd(), line));
         Assert.All(
             combinedOutput.Split(Environment.NewLine, StringSplitOptions.RemoveEmptyEntries),
-            line => Assert.Equal(line.TrimEnd(), line));
+            static line => Assert.Equal(line.TrimEnd(), line));
     }
 
     [Fact]
@@ -1358,7 +1355,7 @@ public class ImageFileSystemTests : IAsyncDisposable
         Mock<IDockerRegistryClient> client =
             CreateClient([CreateLayer(Entry.File("file", content))]);
         Mock<IDockerRegistryClientFactory> factory = new();
-        factory.Setup(item => item.GetClientAsync("registry.test", It.IsAny<CancellationToken>())).ReturnsAsync(client.Object);
+        factory.Setup(static item => item.GetClientAsync("registry.test", It.IsAny<CancellationToken>())).ReturnsAsync(client.Object);
         using MemoryStream output = new();
         CatCommand command = new TestCatCommand(factory.Object, output, cache.Paths);
 
@@ -1458,9 +1455,7 @@ public class ImageFileSystemTests : IAsyncDisposable
         DockerManifest manifest = new()
         {
             Config = new ManifestConfig { Digest = ConfigDigest },
-            Layers = layers
-                .Select(layer => new ManifestLayer { Digest = LayerCacheTestContext.Digest(layer), Size = layer.Length })
-                .ToArray()
+            Layers = [.. layers.Select(layer => new ManifestLayer { Digest = LayerCacheTestContext.Digest(layer), Size = layer.Length })]
         };
         client
             .Setup(item => item.Manifests.GetAsync(

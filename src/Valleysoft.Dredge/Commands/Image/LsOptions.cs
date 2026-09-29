@@ -26,7 +26,7 @@ public class LsOptions : PlatformOptionsBase
         pathArgument = Add(new Argument<string?>("path")
         {
             Description = "Image path to list",
-            DefaultValueFactory = _ => null
+            DefaultValueFactory = static _ => null
         });
         recursiveOption = Add(new Option<bool>("--recursive")
         {

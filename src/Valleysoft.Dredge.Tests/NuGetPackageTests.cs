@@ -90,7 +90,7 @@ public class NuGetPackageTests
         {
             ExplorerSession template = ExplorerSamples.Session([], [], []);
             Dictionary<InstalledPackageEcosystem, InstalledPackageEcosystemMetadata> ecosystems =
-                template.Packages.Ecosystems.ToDictionary(pair => pair.Key, pair => pair.Value);
+                template.Packages.Ecosystems.ToDictionary(static pair => pair.Key, static pair => pair.Value);
             ecosystems[InstalledPackageEcosystem.NuGet] = InstalledPackageReader.CreateMetadata(true, packages);
             return new ExplorerSession
             {

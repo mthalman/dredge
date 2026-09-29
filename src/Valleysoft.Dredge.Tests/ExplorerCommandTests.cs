@@ -41,7 +41,6 @@ public class ExploreCommandOptionTests
         Assert.True(explorer.Mouse);
         Assert.Equal(Clipboard.Resolve(OperatingSystem.IsWindows(),
             Clipboard.IsRemoteSession(Environment.GetEnvironmentVariable)), explorer.Clipboard);
-        Assert.Equal('q', explorer.Keys[KeyAction.Quit]);
         Assert.Equal(OperatingSystem.IsWindows() ? "cmd.exe" : "less", explorer.ViewerExePath);
         Assert.Equal(OperatingSystem.IsWindows() ? "/d /s /c \"more < \"{0}\"\"" : "-X \"{0}\"", explorer.ViewerArgs);
         Assert.True(explorer.ViewerUsesTerminal);
@@ -102,23 +101,10 @@ public class ExploreCommandOptionTests
     }
 
     [Fact]
-    public void SettingsRemapKeysWithoutChangingClipboardSelection()
-    {
-        ExploreSettings settings = new();
-        settings.Keys.Quit = "Q";
-
-        ExplorerOptions explorer = ExploreCommand.CreateExplorerOptions(Parse("app"), settings);
-
-        Assert.Equal(Clipboard.Resolve(OperatingSystem.IsWindows(),
-            Clipboard.IsRemoteSession(Environment.GetEnvironmentVariable)), explorer.Clipboard);
-        Assert.Equal('Q', explorer.Keys[KeyAction.Quit]);
-    }
-
-    [Fact]
     public void InvalidSettingsAreReportedBeforeTheExplorerStarts()
     {
         Assert.Contains("explore.mouse",
-            Assert.Throws<InvalidOperationException>(() =>
+            Assert.Throws<InvalidOperationException>(static () =>
                 ExploreCommand.CreateExplorerOptions(Parse("app"), new ExploreSettings { Mouse = "yes" })).Message);
     }
 
@@ -141,7 +127,7 @@ public class ExploreCommandOptionTests
     [Fact]
     public void RejectsALayerForAnImageWithoutLayers()
     {
-        InvalidOperationException error = Assert.Throws<InvalidOperationException>(() => ExploreCommand.ValidateLayer(0, 0));
+        InvalidOperationException error = Assert.Throws<InvalidOperationException>(static () => ExploreCommand.ValidateLayer(0, 0));
         Assert.Equal("--layer can't be used with an image that has no layers.", error.Message);
     }
 
@@ -155,7 +141,7 @@ public class ExploreCommandOptionTests
 
     [Fact]
     public void CompareRejectsAnEmptyReference() =>
-        Assert.Throws<ArgumentException>(() => ExploreCommand.ResolveCompareImage(ImageName.Parse("app:1"), " "));
+        Assert.Throws<ArgumentException>(static () => ExploreCommand.ResolveCompareImage(ImageName.Parse("app:1"), " "));
 }
 
 // Opening an image: platform resolution, Linux-only support and base verification.
@@ -298,7 +284,7 @@ public class ExplorerSourceResolutionTests
 
     private static Mock<IDockerRegistryClient> ListClient(params (string Digest, string Architecture)[] entries)
     {
-        ManifestList list = new() { Manifests = entries.Select(e => Reference(e.Digest, "linux", e.Architecture)).ToArray() };
+        ManifestList list = new() { Manifests = [.. entries.Select(e => Reference(e.Digest, "linux", e.Architecture))] };
         Mock<IDockerRegistryClient> client = new() { DefaultValue = DefaultValue.Mock };
         client.Setup(o => o.Manifests.GetAsync("library/image", "latest", It.IsAny<CancellationToken>()))
             .ReturnsAsync(new ManifestInfo("application/index", "sha256:index", list));
@@ -336,7 +322,7 @@ public class ExplorerBaseVerificationTests
         OciImageManifest manifest = new()
         {
             Config = new OciDescriptor { Digest = "sha256:baseconfig" },
-            Layers = layers.Select(Layer).ToArray(),
+            Layers = [.. layers.Select(Layer)],
         };
         client.Setup(o => o.Manifests.GetAsync(repo, tag, It.IsAny<CancellationToken>()))
             .ReturnsAsync(new ManifestInfo("application/vnd.oci.image.manifest.v1+json", digest, manifest));
@@ -368,7 +354,7 @@ public class ExplorerBaseVerificationTests
         foreach (string[] input in new[]
         {
             new[] { "registry.test/base:1", "registry.test/base:2" },
-            new[] { "registry.test/base:2", "registry.test/base:1" }
+            ["registry.test/base:2", "registry.test/base:1"]
         })
         {
             (IReadOnlyList<ExplorerBaseImage> bases, string? warning) = await VerifyChain(
@@ -391,7 +377,7 @@ public class ExplorerBaseVerificationTests
         foreach (string[] chain in new[]
         {
             new[] { "registry.test/base:1", "registry.test/base:1" },
-            new[] { "registry.test/base:same", "registry.test/base:1" }
+            ["registry.test/base:same", "registry.test/base:1"]
         })
         {
             InvalidOperationException error = await Assert.ThrowsAsync<InvalidOperationException>(() =>
@@ -433,7 +419,7 @@ public class ExplorerBaseVerificationTests
                 new DockerManifestReference { Digest = "sha256:v7", Platform = new ManifestPlatform { Os = "linux", Architecture = "arm", Variant = "v7" } },
             ],
         };
-        client.Setup(o => o.Manifests.GetAsync("base", "1", It.IsAny<CancellationToken>()))
+        client.Setup(static o => o.Manifests.GetAsync("base", "1", It.IsAny<CancellationToken>()))
             .ReturnsAsync(new ManifestInfo("application/vnd.docker.distribution.manifest.list.v2+json", "sha256:list", list));
         SetupBase(client, "base", "sha256:v5", "sha256:v5", "sha256:elsewhere");
         SetupBase(client, "base", "sha256:v7", "sha256:v7", "sha256:l0", "sha256:l1");
@@ -511,7 +497,7 @@ public class ExplorerBaseVerificationTests
         Mock<IDockerRegistryClient> other = new() { DefaultValue = DefaultValue.Mock };
         SetupBase(other, "base", "1", "sha256:base", "sha256:l0");
         Mock<IDockerRegistryClientFactory> factory = new();
-        factory.Setup(o => o.GetClientAsync("other.test", It.IsAny<CancellationToken>())).ReturnsAsync(other.Object);
+        factory.Setup(static o => o.GetClientAsync("other.test", It.IsAny<CancellationToken>())).ReturnsAsync(other.Object);
 
         Assert.Equal((1, "other.test/base:1", null),
             await Verify(new Mock<IDockerRegistryClient>(), Target(Annotated("other.test/base:1")), null, factory.Object));
@@ -521,7 +507,7 @@ public class ExplorerBaseVerificationTests
     public async Task UnreachableAnnotatedBaseWarnsInsteadOfFailing()
     {
         Mock<IDockerRegistryClient> client = new() { DefaultValue = DefaultValue.Mock };
-        client.Setup(o => o.Manifests.GetAsync("base", "1", It.IsAny<CancellationToken>()))
+        client.Setup(static o => o.Manifests.GetAsync("base", "1", It.IsAny<CancellationToken>()))
             .ThrowsAsync(new HttpRequestException("connection refused"));
 
         (int? count, _, string? warning) = await Verify(client, Target(Annotated("registry.test/base:1")), null);
@@ -612,9 +598,9 @@ public class ExplorerComparisonTests
         Assert.Equal(
             [("edited", LayerChangeKind.Modified), ("fresh", LayerChangeKind.Added), ("gone", LayerChangeKind.Deleted),
                 ("resized", LayerChangeKind.Modified)],
-            comparison.Files.Select(f => (f.Path, f.Kind)));
-        Assert.Null(comparison.Files.Single(f => f.Path == "fresh").Baseline);
-        Assert.Null(comparison.Files.Single(f => f.Path == "gone").Target);
+            comparison.Files.Select(static f => (f.Path, f.Kind)));
+        Assert.Null(comparison.Files.Single(static f => f.Path == "fresh").Baseline);
+        Assert.Null(comparison.Files.Single(static f => f.Path == "gone").Target);
     }
 
     [Fact]

@@ -6,7 +6,7 @@ internal static class ShellCommand
 
     internal static string Quote(string value, bool powerShell)
     {
-        if (value.Length > 0 && value.All(c => char.IsAsciiLetterOrDigit(c) || "_./:@=-".Contains(c)))
+        if (value.Length > 0 && value.All(static c => char.IsAsciiLetterOrDigit(c) || "_./:@=-".Contains(c)))
         {
             return value;
         }

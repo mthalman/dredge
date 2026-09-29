@@ -42,10 +42,7 @@ internal static class CommandHelper
             ? null
             : CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
 
-        if (timeoutCancellationSource is not null)
-        {
-            timeoutCancellationSource.CancelAfter(timeout);
-        }
+        timeoutCancellationSource?.CancelAfter(timeout);
 
         CancellationToken operationCancellationToken = timeoutCancellationSource?.Token ?? cancellationToken;
 

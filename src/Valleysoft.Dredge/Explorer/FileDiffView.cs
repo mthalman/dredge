@@ -59,10 +59,8 @@ internal sealed class FileDiffDocument
                 IReadOnlyList<DiffLine>? words = TextDiff.Diff(Tokens(left.Text), Tokens(right.Text), maxEdits: 64);
                 if (words is not null)
                 {
-                    before = words.Where(word => word.Op != DiffOp.Insert)
-                        .Select(word => new DiffSpan(word.Text, word.Op == DiffOp.Delete)).ToArray();
-                    after = words.Where(word => word.Op != DiffOp.Delete)
-                        .Select(word => new DiffSpan(word.Text, word.Op == DiffOp.Insert)).ToArray();
+                    before = [.. words.Where(word => word.Op != DiffOp.Insert).Select(word => new DiffSpan(word.Text, word.Op == DiffOp.Delete))];
+                    after = [.. words.Where(word => word.Op != DiffOp.Delete).Select(word => new DiffSpan(word.Text, word.Op == DiffOp.Insert))];
                 }
             }
             VisualDiffLine? oldLine = left is null ? null : new(left, before);
@@ -72,7 +70,7 @@ internal sealed class FileDiffDocument
             pairs.Add(new(oldLine, newLine));
         }
         Split = pairs;
-        Unified = lines.Select(line => rendered[line]).ToArray();
+        Unified = [.. lines.Select(line => rendered[line])];
         NumberWidth = Math.Max(3, lines.Select(line => Math.Max(line.OldLine ?? 0, line.NewLine ?? 0))
             .DefaultIfEmpty().Max().ToString(CultureInfo.InvariantCulture).Length);
         TextWidth = lines.Select(line =>
@@ -140,11 +138,11 @@ internal static class FileDiffView
         int textWidth = Math.Max(1, (state.UnifiedDiff ? width : half) - gutter);
         int maxColumn = Math.Max(0, document.TextWidth - textWidth);
         state.DiffColumn = Math.Clamp(state.DiffColumn, 0, maxColumn);
-        int added = document.Unified.Count(line => line.Source.Op == DiffOp.Insert);
-        int removed = document.Unified.Count(line => line.Source.Op == DiffOp.Delete);
+        int added = document.Unified.Count(static line => line.Source.Op == DiffOp.Insert);
+        int removed = document.Unified.Count(static line => line.Source.Op == DiffOp.Delete);
         List<Line> lines =
         [
-            new Line().Add(state.UnifiedDiff ? "Unified diff" : "Split diff", Theme.S(Theme.Foam, null, Deco.Bold))
+            new Line().Add(state.UnifiedDiff ? "Inline diff" : "Side-by-side diff", Theme.S(Theme.Foam, null, Deco.Bold))
                 .Add(diff.Lines is null ? "" : $"   +{Fmt.N(added)} ", Theme.Kelp)
                 .Add(diff.Lines is null ? "" : $"-{Fmt.N(removed)}", Theme.Garnet).Truncate(width),
             state.UnifiedDiff

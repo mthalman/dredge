@@ -141,7 +141,7 @@ internal sealed class ImageFileSystem : IAsyncDisposable
 
         string resolvedPath = selected?.Path ?? path;
         string prefix = resolvedPath.Length == 0 ? string.Empty : $"{resolvedPath}/";
-        return results
+        return [.. results
             .Where(entry =>
             {
                 if (!entry.Path.StartsWith(prefix, StringComparison.Ordinal) ||
@@ -156,8 +156,7 @@ internal sealed class ImageFileSystem : IAsyncDisposable
             .Select(entry => resolvedPath == path
                 ? entry
                 : entry with { Path = $"{path}/{entry.Path[prefix.Length..]}" })
-            .OrderBy(entry => entry.Path, StringComparer.Ordinal)
-            .ToArray();
+            .OrderBy(entry => entry.Path, StringComparer.Ordinal)];
     }
 
     internal ImageAnalysisResult Analyze()
@@ -167,8 +166,7 @@ internal sealed class ImageFileSystem : IAsyncDisposable
             throw new InvalidOperationException(
                 "The complete image must be indexed before analyzing its layers.");
         }
-        return ImageAnalysis.Analyze(Enumerable.Range(0, manifest.Layers.Length)
-            .Select(index => indexes[index].Changes).ToArray());
+        return ImageAnalysis.Analyze([.. Enumerable.Range(0, manifest.Layers.Length).Select(index => indexes[index].Changes)]);
     }
 
     internal ImageFileSystem CreateLayerSnapshot(int layer, CancellationToken cancellationToken)
@@ -234,7 +232,7 @@ internal sealed class ImageFileSystem : IAsyncDisposable
             }
         }
 
-        foreach (var layer in resolved.GroupBy(item => item.Entry.ContentLayerIndex))
+        foreach (var layer in resolved.GroupBy(static item => item.Entry.ContentLayerIndex))
         {
             Stream? blob = null;
             StoredLayerIndex? index = null;
@@ -243,7 +241,7 @@ internal sealed class ImageFileSystem : IAsyncDisposable
             {
                 index = await GetIndexAsync(layer.Key, cancellationToken);
                 blob = await store.OpenIndexedBlobAsync(client, imageName, index,
-                    layer.Select(item => item.Entry.ContentEntryIndex), cancellationToken);
+                    layer.Select(static item => item.Entry.ContentEntryIndex), cancellationToken);
             }
             catch (Exception exception) when (exception is IOException or InvalidDataException or UnauthorizedAccessException or RegistryException or HttpRequestException)
             {
@@ -252,8 +250,8 @@ internal sealed class ImageFileSystem : IAsyncDisposable
             using (blob)
             using (LayerContentReader? reader = blob is null ? null : new(blob))
             {
-                Dictionary<int, ScannedEntry>? entriesByIndex = index?.Changes.Entries.ToDictionary(entry => entry.EntryIndex);
-                foreach (var content in layer.GroupBy(item => item.Entry.ContentEntryIndex).OrderBy(group => group.Key))
+                Dictionary<int, ScannedEntry>? entriesByIndex = index?.Changes.Entries.ToDictionary(static entry => entry.EntryIndex);
+                foreach (var content in layer.GroupBy(static item => item.Entry.ContentEntryIndex).OrderBy(static group => group.Key))
                 {
                     cancellationToken.ThrowIfCancellationRequested();
                     byte[]? bytes = null;
@@ -346,16 +344,16 @@ internal sealed class ImageFileSystem : IAsyncDisposable
     public ValueTask DisposeAsync() => ownsStore ? store.DisposeAsync() : ValueTask.CompletedTask;
 
     private StoredFileSystem Snapshot() => new(
-        manifest.Layers.Select(layer => layer.Digest!).ToArray(),
-        entries.Values.Select(StoredEntry.FromEntry).ToArray(),
-        deletedEntries.Values.Select(StoredEntry.FromEntry).ToArray());
+        [.. manifest.Layers.Select(static layer => layer.Digest!)],
+        [.. entries.Values.Select(StoredEntry.FromEntry)],
+        [.. deletedEntries.Values.Select(StoredEntry.FromEntry)]);
 
     private bool TryRestore(StoredFileSystem cached)
     {
         try
         {
             if (cached.Layers is null || cached.Entries is null || cached.DeletedEntries is null ||
-                !cached.Layers.SequenceEqual(manifest.Layers.Select(layer => layer.Digest)))
+                !cached.Layers.SequenceEqual(manifest.Layers.Select(static layer => layer.Digest)))
             {
                 throw new InvalidDataException("The cached view has different layer identities.");
             }

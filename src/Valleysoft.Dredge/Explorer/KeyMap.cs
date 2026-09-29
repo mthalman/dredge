@@ -8,10 +8,10 @@ internal enum KeyAction
 }
 
 // Single-character action keys, matched by the typed character so they work
-// on any keyboard layout. Settings under explore.keys.<action> remap them.
+// on any keyboard layout.
 internal sealed class KeyMap
 {
-    private static readonly Dictionary<KeyAction, char> Defaults = new()
+    private readonly Dictionary<KeyAction, char> keys = new()
     {
         [KeyAction.Quit] = 'q',
         [KeyAction.Help] = '?',
@@ -34,16 +34,14 @@ internal sealed class KeyMap
         [KeyAction.Packages] = 'p',
     };
 
-    private readonly Dictionary<KeyAction, char> keys;
     private readonly Dictionary<char, KeyAction> actions;
 
-    private KeyMap(Dictionary<KeyAction, char> keys)
+    private KeyMap()
     {
-        this.keys = keys;
-        actions = keys.ToDictionary(pair => pair.Value, pair => pair.Key);
+        actions = keys.ToDictionary(static pair => pair.Value, static pair => pair.Key);
     }
 
-    public static KeyMap Default { get; } = new(new(Defaults));
+    public static KeyMap Default { get; } = new();
 
     public char this[KeyAction action] => keys[action];
 
@@ -51,55 +49,4 @@ internal sealed class KeyMap
 
     public KeyAction? Lookup(char key) => actions.TryGetValue(key, out KeyAction action) ? action : null;
 
-    public static KeyMap FromSettings(ExploreKeysSettings settings)
-    {
-        Dictionary<KeyAction, char> map = new(Defaults);
-        foreach (KeyAction action in Enum.GetValues<KeyAction>())
-        {
-            string name = char.ToLowerInvariant(action.ToString()[0]) + action.ToString()[1..];
-            string value = Setting(settings, action) ?? "";
-            if (value.Length == 0)
-            {
-                continue;
-            }
-            if (value.Length != 1 || value[0] <= ' ' || value[0] > '~')
-            {
-                throw new InvalidOperationException(
-                    $"Invalid explore.keys.{name} value '{value}'; expected a single printable ASCII character.");
-            }
-            map[action] = value[0];
-        }
-        foreach (IGrouping<char, KeyAction> duplicate in map.GroupBy(pair => pair.Value, pair => pair.Key)
-            .Where(group => group.Count() > 1))
-        {
-            throw new InvalidOperationException(
-                $"The explorer key '{duplicate.Key}' is assigned to more than one action: " +
-                string.Join(", ", duplicate.Select(action => action.ToString())) + ".");
-        }
-        return new(map);
-    }
-
-    private static string? Setting(ExploreKeysSettings settings, KeyAction action) => action switch
-    {
-        KeyAction.Quit => settings.Quit,
-        KeyAction.Help => settings.Help,
-        KeyAction.Insights => settings.Insights,
-        KeyAction.Search => settings.Search,
-        KeyAction.WholeFilesystem => settings.WholeFilesystem,
-        KeyAction.Compare => settings.Compare,
-        KeyAction.FindingsOnly => settings.FindingsOnly,
-        KeyAction.PreviousLayer => settings.PreviousLayer,
-        KeyAction.NextLayer => settings.NextLayer,
-        KeyAction.ToggleAdded => settings.ToggleAdded,
-        KeyAction.ToggleModified => settings.ToggleModified,
-        KeyAction.ToggleIdentical => settings.ToggleIdentical,
-        KeyAction.ToggleDeleted => settings.ToggleDeleted,
-        KeyAction.Extract => settings.Extract,
-        KeyAction.CopyCommand => settings.CopyCommand,
-        KeyAction.Viewer => settings.Viewer,
-        KeyAction.SwapSides => settings.SwapSides,
-        KeyAction.Retry => settings.Retry,
-        KeyAction.Packages => settings.Packages,
-        _ => null
-    };
 }

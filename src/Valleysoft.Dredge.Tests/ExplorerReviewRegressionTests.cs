@@ -16,7 +16,7 @@ public sealed class ExplorerReviewRegressionTests
         ExplorerImage image = new(ExplorerSamples.Reference, "linux/amd64", "sha256:m",
             ["sha256:a"], [100], null, baseWarning: warning);
         using ExplorerUiHarness ui = ExplorerWindowTests.Open(image, new ExplorerState { Notice = notice },
-            session => new FakeExplorerHost { Baseline = session }, out _);
+            static session => new FakeExplorerHost { Baseline = session }, out _);
         Assert.Equal(notice ?? warning, ui.State.Notice);
         if (notice is null)
         {
@@ -62,7 +62,7 @@ public sealed class ExplorerReviewRegressionTests
     {
         ExplorerPresenter presenter = new(ExplorerSamples.Image(), 150, 42);
         Assert.Equal($"dredge image {(directory ? "ls" : "cat")} {presenter.Image.ResolvedReference} '/app/a file.txt'" +
-            (directory ? " --recursive" : ""), presenter.CopyCommandText(new ExplorerState(), "app/a file.txt", directory));
+            (directory ? " --recursive" : ""), presenter.CopyCommandText("app/a file.txt", directory));
     }
 
     [Theory]
@@ -81,7 +81,7 @@ public sealed class ExplorerReviewRegressionTests
     {
         const string path = "app/a 'file' \"$HOME\"; & `text`.txt";
         ExplorerPresenter presenter = new(ExplorerSamples.Image(), 150, 42);
-        string command = presenter.CopyCommandText(new ExplorerState(), path, false);
+        string command = presenter.CopyCommandText(path, false);
         bool windows = OperatingSystem.IsWindows();
         System.Diagnostics.ProcessStartInfo start = new(windows ? "powershell.exe" : "/bin/sh")
         {
@@ -188,7 +188,7 @@ public sealed class ExplorerReviewRegressionTests
         ExplorerState state = new() { Layer = 1, WholeFilesystem = whole, Focus = FocusPane.Right };
         state.Expanded.Add("app");
         using ExplorerUiHarness ui = ExplorerWindowTests.Open(image, state,
-            session => new FakeExplorerHost { Baseline = session }, out _);
+            static session => new FakeExplorerHost { Baseline = session }, out _);
         Node node = ExplorerImage.Find(ui.Window.Presenter.Tree(state), "app/item")!;
         Assert.Equal(Kind.File, node.Kind);
         Assert.Equal(2, node.Size);
@@ -204,7 +204,7 @@ public sealed class ExplorerReviewRegressionTests
     {
         ExplorerImage image = ExplorerSamples.Custom([]);
         using ExplorerUiHarness ui = ExplorerWindowTests.Open(image, new ExplorerState(),
-            session => new FakeExplorerHost { Baseline = session }, out _);
+            static session => new FakeExplorerHost { Baseline = session }, out _);
         Assert.True(ui.Shows("empty filesystem"), ui.Screen());
         foreach (Cmd command in new Cmd[] { new StepLayer(1), new StepLayer(-1), new SelectLayer(0),
             new RetryLayer(0), new Jump(true), new SetWhole(true) })
@@ -212,7 +212,7 @@ public sealed class ExplorerReviewRegressionTests
             ui.Window.Apply(command);
             ui.Pump();
         }
-        Assert.DoesNotContain(ui.Window.Presenter.Hints(ui.State), hint => hint.Label == "Step layer");
+        Assert.DoesNotContain(ui.Window.Presenter.Hints(ui.State), static hint => hint.Label == "Step layer");
         ui.Press(new Key('/'));
         ui.Type("nothing");
         ui.Press(Key.Esc);
@@ -232,7 +232,7 @@ public sealed class ExplorerReviewRegressionTests
             }
         };
         using ExplorerUiHarness ui = ExplorerWindowTests.Open(image, state,
-            session => new FakeExplorerHost { Baseline = session }, out _);
+            static session => new FakeExplorerHost { Baseline = session }, out _);
         foreach (Cmd command in new Cmd[] { new SelectLayer(0), new Move(1), new Jump(true), new Move(-1) })
         {
             ui.Window.Apply(command);

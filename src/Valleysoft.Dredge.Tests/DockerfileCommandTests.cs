@@ -16,7 +16,7 @@ public class DockerfileCommandTests
     {
         DirectoryInfo workingDir = new(Path.Combine(Environment.CurrentDirectory, "TestData", "DockerfileCommand"));
         return workingDir.GetDirectories()
-            .SelectMany(dir => new TestScenario[]
+            .SelectMany(static dir => new TestScenario[]
             {
                 new(
                     dir.Name,
@@ -29,7 +29,7 @@ public class DockerfileCommandTests
                     noFormat: true,
                     Path.Combine(dir.FullName, "expected-output-no-format.txt"))
             })
-            .Select(scenario => new TheoryDataRow<TestScenario>(scenario));
+            .Select(static scenario => new TheoryDataRow<TestScenario>(scenario));
 
     }
 
@@ -125,7 +125,7 @@ public class DockerfileCommandTests
                     Type = "layers",
                     DiffIds = ["baseDiff0", "baseDiff1"]
                 },
-                History = image.History.Take(2).ToArray()
+                History = [.. image.History.Take(2)]
             };
             mcrClientMock
                 .Setup(o => o.Blobs.GetAsync(

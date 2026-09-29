@@ -211,7 +211,7 @@ public class ImageName
                 port = suffix[1..];
             }
 
-            if (host.Any(character => !char.IsAsciiHexDigit(character) && character != ':') ||
+            if (host.Any(static character => !char.IsAsciiHexDigit(character) && character != ':') ||
                 !IPAddress.TryParse(host, out IPAddress? address) ||
                 address.AddressFamily != AddressFamily.InterNetworkV6)
             {
@@ -265,7 +265,7 @@ public class ImageName
             return false;
         }
 
-        if (host.All(character => char.IsAsciiDigit(character) || character == '.'))
+        if (host.All(static character => char.IsAsciiDigit(character) || character == '.'))
         {
             if (IPAddress.TryParse(host, out IPAddress? address) &&
                 address.AddressFamily == AddressFamily.InterNetwork)
@@ -274,11 +274,11 @@ public class ImageName
             }
         }
 
-        return host.Split('.').All(label =>
+        return host.Split('.').All(static label =>
             label.Length is > 0 and <= 63 &&
             char.IsAsciiLetterOrDigit(label[0]) &&
             char.IsAsciiLetterOrDigit(label[^1]) &&
-            label.All(character => char.IsAsciiLetterOrDigit(character) || character == '-'));
+            label.All(static character => char.IsAsciiLetterOrDigit(character) || character == '-'));
     }
 
     private static bool IsValidRepository(string repository, out string? error)
@@ -295,7 +295,7 @@ public class ImageName
             return false;
         }
 
-        if (!repository.Split('/').All(component => RepositoryComponentPattern.IsMatch(component)))
+        if (!repository.Split('/').All(static component => RepositoryComponentPattern.IsMatch(component)))
         {
             error = "each path component must be lowercase, start and end with a letter or digit, and use only periods, underscores, or hyphens as separators.";
             return false;
@@ -337,7 +337,7 @@ public class ImageName
         };
         if (requiredLength is not null &&
             (encoded.Length != requiredLength ||
-                !encoded.All(character =>
+                !encoded.All(static character =>
                     char.IsAsciiDigit(character) || character is >= 'a' and <= 'f')))
         {
             error = $"the encoded value for {algorithm} must contain exactly {requiredLength} lowercase hexadecimal characters.";

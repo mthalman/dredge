@@ -10,7 +10,7 @@ using Valleysoft.Dredge.Commands.Image;
 namespace Valleysoft.Dredge.Explorer.Tui;
 
 internal sealed record ExplorerOptions(
-    int? Layer, string? Compare, bool Mouse, ClipboardMode Clipboard, KeyMap Keys,
+    int? Layer, string? Compare, bool Mouse, ClipboardMode Clipboard,
     string ViewerExePath, string ViewerArgs, string? Notice = null, bool ViewerUsesTerminal = true,
     bool PauseAfterViewer = false);
 
@@ -23,7 +23,7 @@ internal sealed class ExplorerApp : IAsyncDisposable
     // Sizes are shown in decimal units, so a round decimal limit reads as "256 KB".
     internal const int PreviewLimit = 256_000;
 
-    private readonly object sync = new();
+    private readonly Lock sync = new();
     private readonly IDockerRegistryClient client;
     private readonly ExplorerSource source;
     private readonly LayerStore store;
@@ -246,7 +246,7 @@ internal sealed class ExplorerApp : IAsyncDisposable
     {
         WhileAttached(application, generation, () =>
         {
-            Action[] actions = pending.ToArray();
+            Action[] actions = [.. pending];
             pending.Clear();
             foreach (Action action in actions)
             {
@@ -417,8 +417,10 @@ internal sealed class ExplorerApp : IAsyncDisposable
 
     internal static string? RunViewer(string file, string exePath, string args)
     {
-        ProcessStartInfo info = new(exePath, args.Replace("{0}", file, StringComparison.Ordinal));
-        info.UseShellExecute = false;
+        ProcessStartInfo info = new(exePath, args.Replace("{0}", file, StringComparison.Ordinal))
+        {
+            UseShellExecute = false
+        };
         try
         {
             using Process process = Process.Start(info) ??
@@ -520,7 +522,7 @@ internal sealed class ExplorerHost : IExplorerHost, IAsyncDisposable
     private readonly ExplorerOptions options;
     private readonly SemaphoreSlim compareGate = new(1, 1);
     private readonly ExplorerOperationLifetime lifetime = new();
-    private readonly object disposalSync = new();
+    private readonly Lock disposalSync = new();
     private Task? disposal;
     private readonly string viewerRoot;
     private readonly Dictionary<string, ExplorerSession> targets = new(StringComparer.Ordinal);
@@ -545,7 +547,6 @@ internal sealed class ExplorerHost : IExplorerHost, IAsyncDisposable
     }
 
     public ExplorerSession? Session { get; set; }
-    public KeyMap Keys => options.Keys;
     public bool ClipboardEnabled => options.Clipboard != ClipboardMode.Off;
 
     private ExplorerSession Loaded => Session ??
@@ -584,7 +585,7 @@ internal sealed class ExplorerHost : IExplorerHost, IAsyncDisposable
             result.AddRange(page.Value.Tags);
         }
         cancellationToken.ThrowIfCancellationRequested();
-        return tags = result.Distinct(StringComparer.Ordinal).ToArray();
+        return tags = [.. result.Distinct(StringComparer.Ordinal)];
     }
 
     public async Task DescribeTagAsync(TagChoice choice, CancellationToken cancellationToken)
@@ -598,9 +599,9 @@ internal sealed class ExplorerHost : IExplorerHost, IAsyncDisposable
             ResolvedManifest resolved = (await GetTargetSnapshotAsync(name, cancellationToken)).Resolved;
             cancellationToken.ThrowIfCancellationRequested();
             choice.Digest = resolved.ManifestInfo.DockerContentDigest;
-            string[] digests = resolved.Manifest.Layers.Select(layer => layer.Digest ?? "").ToArray();
+            string[] digests = [.. resolved.Manifest.Layers.Select(static layer => layer.Digest ?? "")];
             (choice.Shared, choice.AdditionalDownload) = Describe(img.LayerDigests, digests,
-                resolved.Manifest.Layers.Select(layer => layer.Size).ToArray());
+                [.. resolved.Manifest.Layers.Select(static layer => layer.Size)]);
             choice.LayerCount = digests.Length;
             choice.Note = TagNote(choice.Digest, img.Digest, choice.Shared.Value, img.BaseLayerCount);
             choice.Note = string.Join("; ", new[] { choice.Note, "cached session snapshot; reopen explorer to refresh" }
@@ -674,10 +675,10 @@ internal sealed class ExplorerHost : IExplorerHost, IAsyncDisposable
         {
             if (!targets.TryGetValue(key, out ExplorerSession? target))
             {
-                var snapshot = await GetTargetSnapshotAsync(name, cancellationToken);
-                target = await ExplorerSession.LoadAsync(snapshot.Client, factory, name, PlatformOptions,
-                    store, baseImages: null, cancellationToken, exactPlatform: snapshot.Platform,
-                    resolvedManifest: snapshot.Resolved);
+                var (resolved, platform, targetClient) = await GetTargetSnapshotAsync(name, cancellationToken);
+                target = await ExplorerSession.LoadAsync(targetClient, factory, name, PlatformOptions,
+                    store, baseImages: null, cancellationToken, exactPlatform: platform,
+                    resolvedManifest: resolved);
                 cancellationToken.ThrowIfCancellationRequested();
                 targets[key] = target;
             }
@@ -763,7 +764,7 @@ internal sealed class ExplorerHost : IExplorerHost, IAsyncDisposable
             before.Entry?.UserId != after.Entry?.UserId || before.Entry?.GroupId != after.Entry?.GroupId ||
             before.Entry?.LinkTarget != after.Entry?.LinkTarget)
         {
-            string Metadata(ImageFileSystemEntry? entry) => entry is null ? "missing"
+            static string Metadata(ImageFileSystemEntry? entry) => entry is null ? "missing"
                 : $"{entry.Type}, mode {Convert.ToString(entry.Mode, 8)}, {entry.UserId}:{entry.GroupId}" +
                     (entry.LinkTarget is null ? "" : $", target {entry.LinkTarget}");
             messages.Add($"Metadata: {Metadata(before.Entry)} -> {Metadata(after.Entry)}.");
@@ -774,7 +775,7 @@ internal sealed class ExplorerHost : IExplorerHost, IAsyncDisposable
         {
             messages.Add("Too many changes to show.");
         }
-        else if (lines is not null && lines.All(line => line.Op == DiffOp.Same))
+        else if (lines is not null && lines.All(static line => line.Op == DiffOp.Same))
         {
             messages.Add(before.Entry?.Size > before.Bytes || after.Entry?.Size > after.Bytes
                 ? "No differences in the displayed prefix."
@@ -833,7 +834,7 @@ internal sealed class ExplorerHost : IExplorerHost, IAsyncDisposable
         {
             return (null, "Not UTF-8 text; no preview.", length);
         }
-        List<string> lines = text.Replace("\r\n", "\n").Split('\n').ToList();
+        List<string> lines = [.. text.Replace("\r\n", "\n").Split('\n')];
         if (lines.Count > 0 && lines[^1].Length == 0)
         {
             lines.RemoveAt(lines.Count - 1);
@@ -902,7 +903,7 @@ internal sealed class ExplorerHost : IExplorerHost, IAsyncDisposable
         }
         IReadOnlyList<DiffLine>? lines = TextDiff.Diff(before, after);
         return lines is null
-            ? new TextDiffContent(path, null, "Too many changes to show side by side.")
+            ? new TextDiffContent(path, null, "Too many changes to display a file diff.")
             : new TextDiffContent(path, lines, message);
     }
 
@@ -922,7 +923,7 @@ internal sealed class ExplorerHost : IExplorerHost, IAsyncDisposable
             string label = ReferenceEquals(side, comparison.Baseline) ? "Baseline" : "Target";
             try
             {
-                string[] allPaths = side.Entries.Select(entry => entry.Path).ToArray();
+                string[] allPaths = [.. side.Entries.Select(entry => entry.Path)];
                 IReadOnlyList<string> paths = package.Ecosystem == InstalledPackageEcosystem.Npm
                     ? PackageFileLister.ListNpm(side.Packages.NpmPackageRoots.GetValueOrDefault(package.Name) ?? [], allPaths)
                     : await PackageFileLister.ListAsync(package.Ecosystem, package.Name, allPaths,
@@ -964,11 +965,10 @@ internal sealed class ExplorerHost : IExplorerHost, IAsyncDisposable
                 : "Package file ownership is unavailable.", 0, warnings);
         }
         Dictionary<string, ExplorerFileDifference> changed = comparison.Files.ToDictionary(file => file.Path, StringComparer.Ordinal);
-        List<(string Path, Change Change)> files = owned
+        List<(string Path, Change Change)> files = [.. owned
             .Where(changed.ContainsKey)
             .Order(StringComparer.Ordinal)
-            .Select(path => (path, ExplorerImage.ToChange(changed[path].Kind)))
-            .ToList();
+            .Select(path => (path, ExplorerImage.ToChange(changed[path].Kind)))];
         return new PackageFilesContent(package, files,
             warnings.Count > 0 ? "Ownership is incomplete; showing changed files from readable metadata."
                 : files.Count == 0 ? "None of its files changed." : null, owned.Count, warnings);
@@ -1014,8 +1014,7 @@ internal sealed class ExplorerHost : IExplorerHost, IAsyncDisposable
     internal static string StagedFileName(string path)
     {
         const int MaxLength = 100;
-        string name = new(path.Split('/')[^1]
-            .Select(c => char.IsAsciiLetterOrDigit(c) || c is '.' or '-' or '_' ? c : '_').ToArray());
+        string name = new([.. path.Split('/')[^1].Select(static c => char.IsAsciiLetterOrDigit(c) || c is '.' or '-' or '_' ? c : '_')]);
         name = name.TrimEnd('.');
         if (name.Length > MaxLength)
         {
@@ -1071,7 +1070,7 @@ internal sealed class ExplorerHost : IExplorerHost, IAsyncDisposable
 
 internal sealed class ExplorerOperationLifetime : IAsyncDisposable
 {
-    private readonly object sync = new();
+    private readonly Lock sync = new();
     private readonly CancellationTokenSource cancellation = new();
     private readonly TaskCompletionSource drained = new(TaskCreationOptions.RunContinuationsAsynchronously);
     private int active;

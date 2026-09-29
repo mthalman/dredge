@@ -94,8 +94,7 @@ public sealed class ExplorerNavigationTests
     [InlineData(150, 42)]
     public void FileHistoryOpensEveryVersionAndReturnsWithoutMovingTheFileTree(int width, int height)
     {
-        ExplorerImage image = Custom(Enumerable.Range(0, 40)
-            .Select(i => Layer([File("file", 10, $"hash{i}")])).ToArray());
+        ExplorerImage image = Custom([.. Enumerable.Range(0, 40).Select(i => Layer([File("file", 10, $"hash{i}")]))]);
         using ExplorerUiHarness ui = ExplorerWindowTests.Open(image, new() { Layer = 39 },
             session => new FakeExplorerHost { Baseline = session }, out _, width, height);
         ui.Press(Key.Enter);
@@ -111,9 +110,9 @@ public sealed class ExplorerNavigationTests
         Assert.True(ui.Shows("File history"), ui.Screen());
         ui.Press(Key.End);
         ui.Press(new Key('d').WithAlt);
-        ui.Until(() => ui.Shows("version 38") && ui.Shows("version 39") && ui.Shows("Split diff"), "historical diff");
+        ui.Until(() => ui.Shows("version 38") && ui.Shows("version 39") && ui.Shows("Side-by-side diff"), "historical diff");
         ui.Press(new Key('v').WithAlt);
-        Assert.True(ui.Shows("Unified diff"), ui.Screen());
+        Assert.True(ui.Shows("Inline diff"), ui.Screen());
         ui.Press(Key.Esc);
         Assert.True(ui.Shows("File history"), ui.Screen());
         ui.Press(Key.Esc);
@@ -171,10 +170,9 @@ public sealed class ExplorerNavigationTests
     [Fact]
     public void ShortTerminalGivesFilesRoomAndRestoresTheViewportAfterTabbing()
     {
-        ExplorerImage image = Custom([Layer(Enumerable.Range(0, 50)
-            .Select(i => File($"file{i:D2}", i, $"h{i}")).ToArray())]);
+        ExplorerImage image = Custom([Layer([.. Enumerable.Range(0, 50).Select(static i => File($"file{i:D2}", i, $"h{i}"))])]);
         using ExplorerUiHarness ui = ExplorerWindowTests.Open(image, new(),
-            session => new FakeExplorerHost { Baseline = session }, out _, width: 80, height: 24);
+            static session => new FakeExplorerHost { Baseline = session }, out _, width: 80, height: 24);
         Assert.True(ui.Window.Presenter.TreeRows >= 10);
         Assert.Equal(1, ui.Window.Layers.Frame.Height);
         Assert.True(ui.Shows("Layer 0"), ui.Screen());
@@ -199,30 +197,6 @@ public sealed class ExplorerNavigationTests
         Assert.Equal(9, ui.Window.Layers.Frame.Height);
     }
 
-    [Fact]
-    public void FileOrderingIsUnaffectedByTheRemovedSortShortcutAndHeaderClick()
-    {
-        ExplorerImage image = Custom([Layer([
-            File("a/small", 1, "a"), File("z/a", 2, "za"), File("z/big", 100, "zb"),
-            File("z/c", 2, "zc"), File("middle", 20, "m")])]);
-        ExplorerState state = new();
-        state.Expanded.UnionWith(["a", "z"]);
-        using ExplorerUiHarness ui = ExplorerWindowTests.Open(image, state,
-            session => new FakeExplorerHost { Baseline = session }, out _);
-        string[] original = ui.Window.Presenter.Flatten(state).Select(row => row.Path).ToArray();
-        ui.Window.Apply(new SetCursor(ui.Window.Presenter.IndexOf(state, "a/small")));
-        ui.Press(new Key('s').WithAlt);
-        Assert.Equal(original, ui.Window.Presenter.Flatten(state).Select(row => row.Path));
-        Assert.Equal("a/small", ui.Window.Presenter.Flatten(state)[state.Cursor].Path);
-        Assert.DoesNotContain(ui.Window.Presenter.Hints(state), hint => hint.Key == "Alt+S");
-        Assert.False(ui.Shows("Largest first"), ui.Screen());
-        (int x, int y) = ui.Find("uid:gid");
-        ui.Click(x + 2, y);
-        Assert.Equal(original, ui.Window.Presenter.Flatten(state).Select(row => row.Path));
-        Assert.Equal("a/small", ui.Window.Presenter.Flatten(state)[state.Cursor].Path);
-        Assert.Equal(["a", "z"], state.Expanded.Order());
-    }
-
     [Theory]
     [InlineData(false)]
     [InlineData(true)]
@@ -230,24 +204,23 @@ public sealed class ExplorerNavigationTests
     {
         ExplorerImage image = Custom([Layer([
             File("bin/content", 100, "shared"),
-            .. Enumerable.Range(0, 3).Select(i => File($"usr/link{i}", 0, "") with
+            .. Enumerable.Range(0, 3).Select(static i => File($"usr/link{i}", 0, "") with
                 { Type = ImageFileType.HardLink, LinkTarget = "bin/content" }),
             File("z/content", 150, "other")])]);
         using ExplorerUiHarness ui = ExplorerWindowTests.Open(image, new() { WholeFilesystem = whole },
-            session => new FakeExplorerHost { Baseline = session }, out _);
+            static session => new FakeExplorerHost { Baseline = session }, out _);
         List<FlatRow> rows = ui.Window.Presenter.Flatten(ui.State);
-        Assert.Equal(["bin", "usr", "z"], rows.Select(row => row.Path));
-        Assert.Equal([100L, 100L, 150L], rows.Select(row => row.Node.Size));
+        Assert.Equal(["bin", "usr", "z"], rows.Select(static row => row.Path));
+        Assert.Equal([100L, 100L, 150L], rows.Select(static row => row.Node.Size));
         Assert.Equal(250, Node.TotalSize(ui.Window.Presenter.Tree(ui.State)));
     }
 
     [Fact]
     public void BackFromSearchDrilldownRestoresTheSelectedResultAndViewport()
     {
-        ExplorerImage image = Custom([Layer(Enumerable.Range(0, 60)
-            .Select(i => File($"app/file{i:D2}", i + 1, $"h{i}")).ToArray())]);
+        ExplorerImage image = Custom([Layer([.. Enumerable.Range(0, 60).Select(static i => File($"app/file{i:D2}", i + 1, $"h{i}"))])]);
         using ExplorerUiHarness ui = ExplorerWindowTests.Open(image, new(),
-            session => new FakeExplorerHost { Baseline = session }, out _);
+            static session => new FakeExplorerHost { Baseline = session }, out _);
         ui.Press(new Key('/'));
         ui.Type("file");
         ui.Window.Apply(new Jump(true));
@@ -260,7 +233,7 @@ public sealed class ExplorerNavigationTests
         Assert.Equal(RightView.Inspector, ui.State.View);
         ui.Press(Key.Esc);
         Assert.Equal(RightView.Files, ui.State.View);
-        Assert.Contains(ui.Window.Presenter.Hints(ui.State), hint => hint.Key == "Esc" && hint.Label == "Back to search");
+        Assert.Contains(ui.Window.Presenter.Hints(ui.State), static hint => hint.Key == "Esc" && hint.Label == "Back to search");
         ui.Press(Key.Esc);
         Assert.Equal(RightView.Search, ui.State.View);
         Assert.Equal("file", ui.State.SearchQuery);
@@ -276,7 +249,7 @@ public sealed class ExplorerNavigationTests
         ui.State.Hidden.UnionWith(Enum.GetValues<Change>());
         ui.Press(new Key('i'));
         int index = ui.Window.Presenter.VisibleFindings(ui.State)
-            .FindIndex(finding => finding?.Kind == ExplorerFindingKind.Deleted);
+            .FindIndex(static finding => finding?.Kind == ExplorerFindingKind.Deleted);
         Assert.True(index >= 0);
         ui.Window.Apply(new SelectFinding(index));
         ExplorerFinding finding = ui.Window.Presenter.SelectedFinding(ui.State)!;
@@ -299,7 +272,7 @@ public sealed class ExplorerNavigationTests
         ui.Press(new Key('i'));
         ui.Press(Key.End);
         int layer = ui.State.Layer, finding = ui.State.Finding, scroll = ui.State.FindingScroll;
-        string[] expanded = ui.State.Expanded.Order().ToArray();
+        string[] expanded = [.. ui.State.Expanded.Order()];
         ui.Press(Key.Enter);
         Assert.True(ui.State.FindingsOnly);
         ui.Press(Key.Esc);

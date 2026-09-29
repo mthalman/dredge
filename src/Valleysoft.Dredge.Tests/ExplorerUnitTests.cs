@@ -74,49 +74,11 @@ public sealed class ExplorerKeyMapTests
     public void DefaultsCoverEveryActionWithDistinctKeys()
     {
         KeyAction[] actions = Enum.GetValues<KeyAction>();
-        Assert.Equal(actions.Length, actions.Select(action => KeyMap.Default[action]).Distinct().Count());
+        Assert.Equal(actions.Length, actions.Select(static action => KeyMap.Default[action]).Distinct().Count());
         Assert.Equal(KeyAction.Quit, KeyMap.Default.Lookup('q'));
         Assert.Null(KeyMap.Default.Lookup('Z'));
     }
 
-    [Fact]
-    public void SettingsRemapKeys()
-    {
-        KeyMap map = KeyMap.FromSettings(new ExploreKeysSettings { Quit = "Q", Insights = "I" });
-        Assert.Equal('Q', map[KeyAction.Quit]);
-        Assert.Equal(KeyAction.Insights, map.Lookup('I'));
-        Assert.Null(map.Lookup('q'));
-        Assert.Equal('/', map[KeyAction.Search]);
-    }
-
-    [Theory]
-    [InlineData("qq")]
-    [InlineData(" ")]
-    [InlineData("é")]
-    public void RejectsKeysThatAreNotOnePrintableAsciiCharacter(string value)
-    {
-        InvalidOperationException error = Assert.Throws<InvalidOperationException>(
-            () => KeyMap.FromSettings(new ExploreKeysSettings { Quit = value }));
-        Assert.Contains("explore.keys.quit", error.Message);
-    }
-
-    [Fact]
-    public void RejectsKeysAssignedToTwoActions()
-    {
-        InvalidOperationException error = Assert.Throws<InvalidOperationException>(
-            () => KeyMap.FromSettings(new ExploreKeysSettings { Quit = "i" }));
-        Assert.Contains("'i'", error.Message);
-        Assert.Contains("Quit", error.Message);
-        Assert.Contains("Insights", error.Message);
-    }
-
-    [Fact]
-    public void SwappingTwoKeysIsAllowed()
-    {
-        KeyMap map = KeyMap.FromSettings(new ExploreKeysSettings { Quit = "i", Insights = "q" });
-        Assert.Equal(KeyAction.Quit, map.Lookup('i'));
-        Assert.Equal(KeyAction.Insights, map.Lookup('q'));
-    }
 }
 
 public sealed class ExplorerSettingsTests
@@ -133,7 +95,7 @@ public sealed class ExplorerSettingsTests
 
     [Fact]
     public void RejectsUnknownTheme() =>
-        Assert.Throws<InvalidOperationException>(() => Theme.Parse("Dark", false));
+        Assert.Throws<InvalidOperationException>(static () => Theme.Parse("Dark", false));
 
     [Fact]
     public void ValidatesMouse()
@@ -168,9 +130,8 @@ public sealed class ExplorerSettingsTests
     public void SettingsAreAddressableByPath()
     {
         AppSettings settings = new();
-        settings.SetProperty(new Queue<string>(["explore", "keys", "quit"]), "Q");
         settings.SetProperty(new Queue<string>(["explore", "theme"]), "light");
-        Assert.Equal("Q", settings.GetProperty(new Queue<string>(["explore", "keys", "quit"])));
+        Assert.Equal("light", settings.GetProperty(new Queue<string>(["explore", "theme"])));
         Assert.Equal("light", settings.Explore.Theme);
     }
 }
@@ -268,8 +229,8 @@ public sealed class TextDiffTests
     public void HandlesEmptySides()
     {
         Assert.Empty(TextDiff.Diff([], [])!);
-        Assert.All(TextDiff.Diff([], ["a", "b"])!, line => Assert.Equal(DiffOp.Insert, line.Op));
-        Assert.All(TextDiff.Diff(["a"], [])!, line => Assert.Equal(DiffOp.Delete, line.Op));
+        Assert.All(TextDiff.Diff([], ["a", "b"])!, static line => Assert.Equal(DiffOp.Insert, line.Op));
+        Assert.All(TextDiff.Diff(["a"], [])!, static line => Assert.Equal(DiffOp.Delete, line.Op));
     }
 
     [Fact]
@@ -301,9 +262,9 @@ public sealed class PackageFileListerTests
     [Fact]
     public async Task NpmOwnershipRequiresInstallationRootsInsteadOfMetadataReads()
     {
-        await Assert.ThrowsAsync<ArgumentOutOfRangeException>(() =>
+        await Assert.ThrowsAsync<ArgumentOutOfRangeException>(static () =>
             PackageFileLister.ListAsync(InstalledPackageEcosystem.Npm, "left-pad", [],
-                (_, _) => throw new InvalidOperationException("npm ownership must use cached installation roots."),
+                static (_, _) => throw new InvalidOperationException("npm ownership must use cached installation roots."),
                 CancellationToken.None));
     }
 
@@ -398,13 +359,13 @@ public sealed class ExplorerInsightsTests
         ExplorerInsightsResult result = ExplorerInsights.Build(analysis, ["COPY . /app", "RUN x", "RUN rm"], null);
 
         Assert.Equal(2 * Mb + 10, result.HiddenBytes);
-        ExplorerFinding deleted = Assert.Single(result.Findings, finding => finding.Kind == ExplorerFindingKind.Deleted);
+        ExplorerFinding deleted = Assert.Single(result.Findings, static finding => finding.Kind == ExplorerFindingKind.Deleted);
         Assert.Equal([0, 2], deleted.Layers);
         Assert.Equal(["app/big.bin"], deleted.Roots);
         Assert.Equal("Build in a separate stage", deleted.FixLabel);
         Assert.Equal("deleted in layer 2", deleted.NoteFor(0));
         Assert.Equal("deletes layer 0", deleted.NoteFor(2));
-        ExplorerFinding small = Assert.Single(result.Findings, finding => finding.Title == "Other small overwrites");
+        ExplorerFinding small = Assert.Single(result.Findings, static finding => finding.Title == "Other small overwrites");
         Assert.Equal(10, small.Bytes);
         Assert.Equal(deleted, result.Findings[0]);
     }
@@ -420,11 +381,11 @@ public sealed class ExplorerInsightsTests
         ]);
         ExplorerInsightsResult result = ExplorerInsights.Build(analysis, ["", "", ""], baseLayerCount: 2);
 
-        ExplorerFinding fromBase = Assert.Single(result.Findings, finding => finding.Kind == ExplorerFindingKind.FromBase);
+        ExplorerFinding fromBase = Assert.Single(result.Findings, static finding => finding.Kind == ExplorerFindingKind.FromBase);
         Assert.Equal(2 * Mb, fromBase.Bytes);
         Assert.Equal(fromBase, result.Findings[^1]);
         // Layer 2 replaced 9 MB of base files in one group, above the churn threshold.
-        Assert.Single(result.Findings, finding => finding.Kind == ExplorerFindingKind.BaseReplaced && finding.Bytes == 9 * Mb);
+        Assert.Single(result.Findings, static finding => finding.Kind == ExplorerFindingKind.BaseReplaced && finding.Bytes == 9 * Mb);
         Assert.Equal(0, result.BaseChurnBytes);
     }
 
@@ -457,7 +418,7 @@ public sealed class ExplorerInsightsTests
         Assert.Equal(50 * Mb, result.PotentialBytes);
         Assert.Equal("left behind", npm.NoteFor(0));
         Assert.DoesNotContain(ExplorerInsights.Build(analysis, ["", ""], null, includePotential: false).Findings,
-            finding => finding.Kind == ExplorerFindingKind.Potential);
+            static finding => finding.Kind == ExplorerFindingKind.Potential);
     }
 
     [Fact]
@@ -465,7 +426,7 @@ public sealed class ExplorerInsightsTests
     {
         Assert.Equal(["app/a"], ExplorerInsights.SummarizeRoots(["app/a/x", "app/a/y"]));
         Assert.Equal(["a", "b", "c", "d"], ExplorerInsights.SummarizeRoots(["a/1", "b/1", "c/1", "d/1"]));
-        Assert.Equal("/a, /b, /c +1 more", ExplorerInsights.FormatWhere(["a", "b", "c", "d"], []));
+        Assert.Equal("/a, /b, /c +1 more", ExplorerInsights.FormatWhere(["a", "b", "c", "d"]));
     }
 
     [Theory]
@@ -598,7 +559,7 @@ public sealed class ExplorerImageModelTests
 
         Assert.Equal("app", img.RepoName);
         Assert.Equal(["ADD file:x /", "COPY . /app"], img.Instructions);
-        Assert.Equal([0, null, 1], img.History.Select(row => row.Layer));
+        Assert.Equal([0, null, 1], img.History.Select(static row => row.Layer));
         Assert.True(img.History[0].IsBase);
         // No base layer follows the CMD, so it is attributed to this image.
         Assert.False(img.History[1].IsBase);
@@ -613,7 +574,7 @@ public sealed class ExplorerImageModelTests
         ExplorerImage img = new("app", null, "sha256:m", ["l0", "l1"], [1, 2],
             [new LayerHistory { CreatedBy = "RUN x" }], now: Now);
         Assert.Equal(["Layer 0", "Layer 1"], img.Instructions);
-        Assert.All(img.History, row => Assert.Equal("(no history for this layer)", row.Instruction));
+        Assert.All(img.History, static row => Assert.Equal("(no history for this layer)", row.Instruction));
         Assert.Equal("linux", img.Platform);
     }
 
@@ -631,13 +592,13 @@ public sealed class ExplorerImageModelTests
         img.SetAnalysis(analysis, ExplorerInsights.Build(analysis, img.Instructions, null));
 
         Node app = Assert.Single(img.LayerTree(1));
-        Assert.Equal(["a", "b"], app.Children.Select(child => child.Name));
+        Assert.Equal(["a", "b"], app.Children.Select(static child => child.Name));
         Assert.Equal(Change.Modified, app.Children[0].Change);
         Assert.Equal(Change.Removed, app.Children[1].Change);
         Assert.Equal(11, img.TotalReclaimable);
 
         List<Node> whole = img.WholeTree(1)!;
-        Assert.Equal(["a", "b"], Assert.Single(whole).Children.Select(child => child.Name));
+        Assert.Equal(["a", "b"], Assert.Single(whole).Children.Select(static child => child.Name));
     }
 
     [Fact]

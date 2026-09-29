@@ -17,7 +17,6 @@ internal sealed class TagChoice
 // talks to the registry and the layer store; tests supply a fake.
 internal interface IExplorerHost
 {
-    KeyMap Keys { get; }
     bool ClipboardEnabled { get; }
 
     void Prioritize(int layer);

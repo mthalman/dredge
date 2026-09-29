@@ -92,38 +92,25 @@ Opens a full-screen, interactive explorer for a Linux image. Browse its
 layers, see which files each layer adds, changes, or deletes, find wasted
 space, and compare with another tag.
 
+### Startup
+
 ```console
 dredge image explore <image> [--layer <n>] [--compare <image-or-tag>] [--base-image <image> ...] [--no-mouse] [--os <os>] [--arch <arch>] [--os-version <version>]
 ```
 
-- `--layer <n>` opens with layer `n` selected. Layer numbers are zero-based,
-  the same as `image ls --provenance`.
+- `--layer <n>` opens with layer `n` selected.
 - `--compare <image-or-tag>` opens compare mode with `<image>` as the baseline.
   A bare tag, such as `--compare 2.0`, resolves in the same repository. Both
   images resolve to the same platform.
 - Repeat `--base-image <image>` to identify ancestors in any order, for example
   `--base-image sdk:1 --base-image runtime:1`. Each image must share the
-  explored image's layer prefix and identify a distinct boundary. The explorer
-  sorts them by layer count and labels each ancestor's own layer range. Without
-  this option, it reads the immediate base from
-  `org.opencontainers.image.base.name`. If the annotation is present with
-  explicit ancestors, the image with the most layers must identify that
-  immediate base. Without either, every layer is yours.
+  explored image's layer prefix and identify a distinct boundary. Without
+  this option, the explorer reads the immediate base from
+  `org.opencontainers.image.base.name`.
 - `--no-mouse` leaves the mouse to the terminal, so you can select text without
   a modifier key.
 
-Images with no layers open with an empty filesystem; layer navigation and retry
-actions have no effect.
-
-If an annotated base image cannot be verified, its warning appears at startup
-unless another startup notice takes priority. The warning also remains in
-Insights so that missing base boundaries can be diagnosed.
-
-The explorer opens as soon as the manifest and configuration load. Layers are
-indexed in the background, with focus in the Layers pane and the selected layer
-indexed first. A layer
-that fails to download shows an error in place, and `r` retries it. Indexed
-layers use the [shared layer cache](#shared-layer-cache).
+### Layers and files
 
 The screen has four parts:
 
@@ -150,6 +137,21 @@ The screen has four parts:
   built-in `less`/`more` viewer leaves its output visible until you press Enter
   to return to the explorer.
 
+File-to-directory replacements retain the original file's size and diff access;
+use `Right` to expand their children.
+Folder sizes count shared hard-link content once within each folder, while
+individual links retain their readable file size and are marked as shared.
+All link names remain browsable. This applies to filesystem and comparison
+trees; comparison folders summarize the changed entries. Parent totals also
+deduplicate content shared across child folders, so they need not equal the sum
+of the displayed child sizes. These are unique content bytes, not disk space
+that deleting the folder would free. Layer payload and download sizes are
+unchanged.
+
+### Search and insights
+
+Press `/` to **search** paths across every layer.
+
 Press `i` for **insights**: an efficiency score and findings such as files
 replaced by a later layer, deleted files that still take space, and large
 changes to base image files. Select a finding to open its files. When a base
@@ -164,22 +166,8 @@ different search, insights view, or package inventory starts a new investigation
 Opening a finding temporarily clears change filters so its destination is
 visible; returning to Insights restores the original filters.
 
-Press `/` to **search** paths across every layer. Press `c` to **compare**
-with another tag. Comparison opens with an overview of file-payload and hidden-
-payload changes and additional download bytes. Select **Files** or **Packages**
-and press `Enter`, or click either row, to browse its differences. Files compares
-the final filesystems; the layer pane separately compares layer identities and
-download sizes. `Esc` returns to the overview before leaving comparison.
-Comparison direction is the opened image (baseline) to the selected
-target; headers, layer-size columns, details, and file diffs use that order.
-Layer-size changes are target minus baseline, and `s` reverses both sides.
-The picker accepts a full image reference or a tag and selects an exact
-tag match before substring suggestions. A comparison target is a session
-snapshot: repeated comparisons reuse its first resolved manifest. Once cached,
-its picker statistics describe that same snapshot rather than a newer version
-of a moving tag. The resolved digest identifies the content being compared;
-`Alt+I` shows the full identities of both comparison snapshots. Reopen the
-explorer to obtain fresh snapshots.
+### Packages
+
 Press `p` to view **packages at the selected layer**, without starting a
 comparison. This is the cumulative filesystem inventory through that layer,
 including inherited packages, not just packages changed by that layer. Step
@@ -193,8 +181,7 @@ An unavailable ecosystem is not proof that no packages are installed.
 
 Package metadata is read only when Packages is opened or a comparison starts;
 loading an image for filesystem browsing or insights does not scan packages.
-Comparison always uses the final inventories of both images. Press `Enter` on a
-changed text file to see a diff, and `s` to swap the two sides.
+
 Package-type headings can be collapsed with `Enter` or `Left` and expanded
 with `Enter` or `Right`. Search includes packages inside collapsed groups.
 Types without detected packages are omitted from the Packages tree.
@@ -219,42 +206,28 @@ Python package names use their canonical lowercase form, with runs of `.`, `_`,
 and `-` treated as the same separator. npm ownership follows discovered
 installation locations, including aliases and multiple installations, without
 including nested dependencies.
-Text diffs retain available content when a size limit is reached and show a
-notice identifying the partial preview. Text diffs and file previews use the
-full body width. In a file diff, `Alt+V` switches between split (old/new
-side by side) and unified layouts, keeping the same source line in view where
-space permits. Both layouts show line numbers, `+`/`-` markers, red/green
-changed-line backgrounds, and stronger highlights on changed words.
-Very long or heavily rewritten lines retain line-level highlighting without
-word-level analysis. `NO_COLOR` retains the markers and emphasizes changed words
-with bold/underline instead of color. Use `Left`/`Right` to pan long lines; the preview indicates
-the current column when content extends beyond the viewport.
-Hard-link diffs read the captured file contents. Symbolic links, including hard
-links to symbolic links, compare their target text without following it. Type
-changes and changed hard-link targets are identified in the diff notice.
-In the inspector, `Alt+H` or clicking **History** opens every event in a
-scrollable list. Use arrows, Page Up/Down, or Home/End to select an event and
-`Enter` to preview the filesystem version at that layer. `Alt+D` compares the
-selected event with the previous event, including additions and deletions;
-the first event is compared with an absent file. Metadata-only changes and
-identical content are identified explicitly. Historical reads use the same
-bounded text previews and captured hard-link contents as other file reads.
-When either version is truncated, matching previews mean only that the
-displayed prefixes match, not that the complete files are identical.
-They do not move the selected layer or file-tree viewport. `Esc` retraces
-the historical diff, preview, history list, and original inspector.
-Extraction, external viewers, and copied CLI commands remain final-image
-operations in the original inspector, not historical-version actions.
-File-to-directory replacements retain the original file's size and diff access;
-use `Right` to expand their children.
-Folder sizes count shared hard-link content once within each folder, while
-individual links retain their readable file size and are marked as shared.
-All link names remain browsable. This applies to filesystem and comparison
-trees; comparison folders summarize the changed entries. Parent totals also
-deduplicate content shared across child folders, so they need not equal the sum
-of the displayed child sizes. These are unique content bytes, not disk space
-that deleting the folder would free. Layer payload and download sizes are
-unchanged.
+
+### Compare images
+
+Press `c` to **compare** with another tag. Comparison opens with an overview of
+file-payload and hidden-payload changes and additional download bytes. Select
+**Files** or **Packages** and press `Enter`, or click either row, to browse its
+differences. Files compares the final filesystems; the layer pane separately
+compares layer identities and download sizes. Packages compares the final
+inventories of both images. `Esc` returns to the overview before leaving
+comparison.
+
+Comparison direction is the opened image (baseline) to the selected
+target; headers, layer-size columns, details, and file diffs use that order.
+Layer-size changes are target minus baseline, and `s` reverses both sides.
+The picker accepts a full image reference or a tag and selects an exact
+tag match before substring suggestions. A comparison target is a session
+snapshot: repeated comparisons reuse its first resolved manifest. Once cached,
+its picker statistics describe that same snapshot rather than a newer version
+of a moving tag. The resolved digest identifies the content being compared;
+`Alt+I` shows the full identities of both comparison snapshots. Reopen the
+explorer to obtain fresh snapshots.
+
 Comparison progress stays visible while you browse. Press `Esc` to cancel a
 pending comparison without leaving the explorer.
 Within comparison, `/` searches changed package names and paths, including
@@ -270,18 +243,46 @@ oversized, the explorer retains readable results and displays a warning that
 the list may be incomplete. In comparison, `Alt+W` opens full metadata and
 ownership warning details; `Esc` returns to the previous view.
 
+### File previews and diffs
+
+Press `Enter` on a changed text file in comparison to see a diff, and `s` to
+swap the two sides.
+Text diffs retain available content when a size limit is reached and show a
+notice identifying the partial preview. Text diffs and file previews use the
+full body width. In a file diff, `Alt+V` switches between inline and
+side-by-side layouts, keeping the same source line in view where
+space permits. Both layouts show line numbers, `+`/`-` markers, red/green
+changed-line backgrounds, and stronger highlights on changed words.
+Very long or heavily rewritten lines retain line-level highlighting without
+word-level analysis. `NO_COLOR` retains the markers and emphasizes changed words
+with bold/underline instead of color. Use `Left`/`Right` to pan long lines; the preview indicates
+the current column when content extends beyond the viewport.
+Hard-link diffs read the captured file contents. Symbolic links, including hard
+links to symbolic links, compare their target text without following it. Type
+changes and changed hard-link targets are identified in the diff notice.
+
+### File history
+
+In the inspector, `Alt+H` or clicking **History** opens every event in a
+scrollable list. Use arrows, Page Up/Down, or Home/End to select an event and
+`Enter` to preview the filesystem version at that layer. `Alt+D` compares the
+selected event with the previous event, including additions and deletions;
+the first event is compared with an absent file. Metadata-only changes and
+identical content are identified explicitly. Historical reads use the same
+bounded text previews and captured hard-link contents as other file reads.
+When either version is truncated, matching previews mean only that the
+displayed prefixes match, not that the complete files are identical.
+Historical reads do not move the selected layer or file-tree viewport. `Esc` retraces
+the historical diff, preview, history list, and original inspector.
+Extraction, external viewers, and copied CLI commands remain final-image
+operations in the original inspector, not historical-version actions.
+
+### Extraction and copied commands
+
 Press `x` to extract the selected file or directory, and `Ctrl+C` (shown as
 `^C`) to copy the equivalent `dredge image` command. On macOS, use Control+C;
 Command+C remains the terminal's shortcut for copying selected text.
-If the initial image has multiple matching Linux platforms after applying flags
-and settings, a platform picker opens before layer indexing starts.
-This also resolves variant-only ambiguity, such as `arm/v6` versus `arm/v7`.
-Compare mode opens the other tag on the same platform. Press `?` for help,
-and `q` to quit. Help uses the full screen body and supports scrolling with
-arrows, `PgUp`/`PgDn`, and `Home`/`End`. On narrow terminals, search and insights
-also use the full body rather than competing with the Layers pane.
-Closing help returns to the view, selection, and scroll position you came from.
-The explorer has no command timeout; `operations.timeout` does not apply.
+
 Copied commands quote paths for PowerShell 7.3 or later on Windows, using
 `Standard` or `Windows` native argument passing, and POSIX shells on
 Linux/macOS. These modes preserve spaces, quotes, and shell-special characters
@@ -290,10 +291,23 @@ and PowerShell's `Legacy` argument-passing mode are not supported for this
 copy/paste guarantee; they can remove embedded double quotes before Dredge
 receives the arguments.
 
-When clipboard copying is unavailable or fails, `Ctrl+C` opens the complete command
-in a read-only text field. Use `Left`/`Right` or `Home`/`End` to scroll the
-complete command. Select text with the mouse or `Ctrl+A`;
-`Esc` returns to the original view.
+On local Windows, copying uses the native clipboard. If native clipboard
+copying fails, `Ctrl+C` opens the complete command in a read-only text field.
+Use `Left`/`Right` or `Home`/`End` to scroll the complete command. Select text
+with the mouse or `Ctrl+A`; `Esc` returns to the original view.
+
+On other platforms and over SSH, copying requires terminal support for OSC 52.
+The terminal must allow OSC 52; tmux must be configured to pass it through.
+Dredge cannot detect when a terminal ignores an OSC 52 request, so that does
+not trigger the read-only command fallback.
+
+### Keyboard and mouse controls
+
+Press `?` for help, and `q` to quit. Help uses the full screen body and supports
+scrolling with arrows, `PgUp`/`PgDn`, and `Home`/`End`. On narrow terminals,
+search and insights also use the full body rather than competing with the
+Layers pane. Closing help returns to the view, selection, and scroll position
+you came from.
 
 Keys work only in their applicable pane or view. Navigation keys such as
 arrows, `PgUp`/`PgDn`, and `Home`/`End` remain active even though they aren't
@@ -315,7 +329,7 @@ active commands.
 | `Alt+W` | Full metadata warnings in Packages or comparison; base warning in Insights |
 | `Alt+L` `Alt+D` `Alt+C` | In search: this layer only, include deleted paths, exact case |
 | `c` `s` | Compare with a tag; swap compared sides |
-| `Alt+V` | Toggle split/unified layout in a file diff |
+| `Alt+V` | Toggle inline/side-by-side layout in a file diff |
 | `Alt+H` | Browse file history from the inspector |
 | `Alt+D` | In file history: diff selected event against its predecessor |
 | `r` | Retry a failed layer or package scan |
@@ -325,15 +339,10 @@ active commands.
 With the mouse enabled, click a row, chip, or footer hint to use it, and
 double-click a row to open it. The wheel scrolls the pane under the pointer.
 
-You can remap the single-character keys and configure the theme, mouse, and
-text viewer through the
-[`explore` settings](../settings.md#configure-the-explorer).
+You can configure the theme, mouse, and text viewer through the
+[`explore` settings](../settings.md).
 Column headers, line numbers, and counts use readable secondary text; selected
 rows promote secondary text to the primary foreground in both color themes.
-
-The explorer needs an interactive terminal of at least 80 × 24. If standard
-input or output is redirected, it exits with code 1; use `image ls` or the
-`image compare` commands for text output. Windows images are not supported.
 
 ## Ls
 

@@ -105,16 +105,15 @@ internal sealed partial class ExplorerPresenter
     private (int Version, List<SearchHit> Hits)? searchCache;
     private int version;
 
-    public ExplorerPresenter(ExplorerImage img, int width, int height, KeyMap? keys = null)
+    public ExplorerPresenter(ExplorerImage img, int width, int height)
     {
         this.img = img;
         Width = width;
         Height = height;
-        Keys = keys ?? KeyMap.Default;
     }
 
     public ExplorerImage Image => img;
-    public KeyMap Keys { get; }
+    public KeyMap Keys => KeyMap.Default;
     // Whether copying is available, so hints can say "Copy" or "Show".
     public bool Copies { get; init; }
     internal string CopyVerb => Copies ? "Copy" : "Show";
@@ -241,7 +240,7 @@ internal sealed partial class ExplorerPresenter
     // Maps a click on the core bar (header row 1 or 2) back to the stratum under it.
     public int? LayerAtColumn(int col)
     {
-        int[] cells = Allocate(img.LayerIndexes.Select(Weight).ToArray(), Width - 2);
+        int[] cells = Allocate([.. img.LayerIndexes.Select(Weight)], Width - 2);
         int x = col - 1;
         for (int i = 0, start = 0; i < cells.Length; start += cells[i], i++)
         {
@@ -275,12 +274,12 @@ internal sealed partial class ExplorerPresenter
         return colors;
     }
 
-    internal Rgb[] StrataColors() => StrataColors(Allocate(img.LayerIndexes.Select(Weight).ToArray(), Width - 2));
+    internal Rgb[] StrataColors() => StrataColors(Allocate([.. img.LayerIndexes.Select(Weight)], Width - 2));
 
     // The "core sample": one bar for the whole image, one stratum per layer.
     private (Line Bar, Line Brackets) CoreBar(ExplorerState s, int width)
     {
-        long[] sizes = img.LayerIndexes.Select(Weight).ToArray();
+        long[] sizes = [.. img.LayerIndexes.Select(Weight)];
         int[] cells = Allocate(sizes, width);
 
         Rgb[] strata = StrataColors(cells);
@@ -391,8 +390,8 @@ internal sealed partial class ExplorerPresenter
             return one;
         }
         int remaining = width - nonzero;
-        double[] exact = sizes.Select(size => size > 0 ? (double)size / total * remaining : 0).ToArray();
-        int[] cells = sizes.Select((size, i) => size > 0 ? 1 + (int)exact[i] : 0).ToArray();
+        double[] exact = [.. sizes.Select(size => size > 0 ? (double)size / total * remaining : 0)];
+        int[] cells = [.. sizes.Select((size, i) => size > 0 ? 1 + (int)exact[i] : 0)];
         int left = width - cells.Sum();
         foreach (int i in Enumerable.Range(0, sizes.Length)
             .Where(i => sizes[i] > 0)
@@ -455,7 +454,7 @@ internal sealed partial class ExplorerPresenter
             ],
             RightView.History when s.HistoryDiff is not null =>
             [
-                new("Alt+V", s.HistoryDiff.UnifiedDiff ? "Split diff" : "Unified diff", new ToggleDiffLayout()),
+                new("Alt+V", s.HistoryDiff.UnifiedDiff ? "Side-by-side diff" : "Inline diff", new ToggleDiffLayout()),
                 new("↑↓", "Scroll", ShowInFooter: false), new("←→", "Pan text", ShowInFooter: false),
                 new("Esc", s.HistoryLayer is null ? "Back to history" : "Back to version", new Back()), page, ends, keys, quit,
             ],
@@ -509,7 +508,7 @@ internal sealed partial class ExplorerPresenter
     // Keeps as many hints as fit; help and quit stay so they are always discoverable.
     internal List<Hint> Fit(List<Hint> hints, int room, Func<Hint, int> cost)
     {
-        List<Hint> pinned = hints.Where(h => h.Cmd is Quit or Back || (h.Cmd is ShowView { View: RightView.Keys })).ToList();
+        List<Hint> pinned = [.. hints.Where(static h => h.Cmd is Quit or Back || (h.Cmd is ShowView { View: RightView.Keys }))];
         int used = pinned.Sum(cost);
         List<Hint> kept = [];
         foreach (Hint h in hints.Except(pinned))
@@ -713,7 +712,7 @@ internal sealed partial class ExplorerPresenter
         (int)Math.Round(from.B + (to.B - from.B) * amount));
 
     public List<ExplorerFinding> RelatedFindings(int layer) =>
-        img.Complete ? img.Findings.Where(f => f.Layers.Contains(layer) && !f.FromBase).ToList() : [];
+        img.Complete ? [.. img.Findings.Where(f => f.Layers.Contains(layer) && !f.FromBase)] : [];
 
     public PaneContent DetailsPane(ExplorerState s)
     {
@@ -766,7 +765,7 @@ internal sealed partial class ExplorerPresenter
         {
             lines.Add(Line.Blank);
             string what = related.Count == 1 ? "1 finding involves this layer" : $"{related.Count} findings involve this layer";
-            lines.Add(new Line().Add("▲ ", Theme.Garnet).Add($"{what}, {Fmt.Size(related.Sum(f => f.Bytes))}", Theme.Garnet));
+            lines.Add(new Line().Add("▲ ", Theme.Garnet).Add($"{what}, {Fmt.Size(related.Sum(static f => f.Bytes))}", Theme.Garnet));
             foreach (ExplorerFinding finding in related.Take(2))
             {
                 lines.Add(Line.Of($"  {finding.Title}, {Fmt.Size(finding.Bytes)}", Theme.Silt));

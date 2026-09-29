@@ -58,11 +58,11 @@ public class CompareMetadataCommand : RegistryCommandBase<CompareMetadataOptions
         List<MetadataComparison> comparisons = Compare(baseDocument, targetDocument);
 
         CompareMetadataSummary summary = new(
-            areEqual: comparisons.All(comparison => comparison.Diff == CompareDiff.Equal),
-            equal: comparisons.Count(comparison => comparison.Diff == CompareDiff.Equal),
-            changed: comparisons.Count(comparison => comparison.Diff == CompareDiff.NotEqual),
-            added: comparisons.Count(comparison => comparison.Diff == CompareDiff.Added),
-            removed: comparisons.Count(comparison => comparison.Diff == CompareDiff.Removed));
+            areEqual: comparisons.All(static comparison => comparison.Diff == CompareDiff.Equal),
+            equal: comparisons.Count(static comparison => comparison.Diff == CompareDiff.Equal),
+            changed: comparisons.Count(static comparison => comparison.Diff == CompareDiff.NotEqual),
+            added: comparisons.Count(static comparison => comparison.Diff == CompareDiff.Added),
+            removed: comparisons.Count(static comparison => comparison.Diff == CompareDiff.Removed));
 
         return new CompareMetadataResult(summary, comparisons);
     }
@@ -271,9 +271,9 @@ public class CompareMetadataCommand : RegistryCommandBase<CompareMetadataOptions
         // Platform identity makes index ordering irrelevant; the suffix keeps duplicate/unknown platform descriptors distinct.
         foreach (IGrouping<string, IManifestReference> platformGroup in manifestList.Manifests
             .GroupBy(GetPlatformId)
-            .OrderBy(group => group.Key, StringComparer.Ordinal))
+            .OrderBy(static group => group.Key, StringComparer.Ordinal))
         {
-            IManifestReference[] references = [.. platformGroup.OrderBy(reference => reference.Digest, StringComparer.Ordinal)];
+            IManifestReference[] references = [.. platformGroup.OrderBy(static reference => reference.Digest, StringComparer.Ordinal)];
             for (int i = 0; i < references.Length; i++)
             {
                 string id = references.Length == 1 ? platformGroup.Key : $"{platformGroup.Key}#{i + 1}";
@@ -367,12 +367,12 @@ public class CompareMetadataCommand : RegistryCommandBase<CompareMetadataOptions
         return string.Join(
             "/",
             new[] { platform.Os, platform.Architecture, platform.Variant, platform.OsVersion }
-                .Where(value => !string.IsNullOrEmpty(value)));
+                .Where(static value => !string.IsNullOrEmpty(value)));
     }
 
     private static void AddImageConfig(MetadataDocument document, JsonObject image)
     {
-        foreach ((string name, JsonNode? value) in image.OrderBy(property => property.Key, StringComparer.Ordinal))
+        foreach ((string name, JsonNode? value) in image.OrderBy(static property => property.Key, StringComparer.Ordinal))
         {
             switch (name)
             {
@@ -406,7 +406,7 @@ public class CompareMetadataCommand : RegistryCommandBase<CompareMetadataOptions
         }
 
         foreach ((string name, JsonNode? value) in rootFilesystemObject
-            .OrderBy(property => property.Key, StringComparer.Ordinal))
+            .OrderBy(static property => property.Key, StringComparer.Ordinal))
         {
             string path = name == "diff_ids" ? "diffIds" : LowerFirstCharacter(name);
             document.AddToken("RootFilesystem", path, value);
@@ -429,7 +429,7 @@ public class CompareMetadataCommand : RegistryCommandBase<CompareMetadataOptions
             }
 
             foreach ((string name, JsonNode? value) in historyEntry
-                .OrderBy(property => property.Key, StringComparer.Ordinal))
+                .OrderBy(static property => property.Key, StringComparer.Ordinal))
             {
                 string propertyName = name switch
                 {
@@ -450,7 +450,7 @@ public class CompareMetadataCommand : RegistryCommandBase<CompareMetadataOptions
         }
 
         foreach ((string name, JsonNode? value) in configObject
-            .OrderBy(property => property.Key, StringComparer.Ordinal))
+            .OrderBy(static property => property.Key, StringComparer.Ordinal))
         {
             switch (name)
             {
@@ -486,11 +486,11 @@ public class CompareMetadataCommand : RegistryCommandBase<CompareMetadataOptions
         // Environment order is not significant, but duplicate names remain ordered because the last assignment can affect runtime behavior.
         foreach (IGrouping<string, string> group in environmentArray
             .Select(GetStringValue)
-            .Where(value => value is not null)
+            .Where(static value => value is not null)
             .Cast<string>()
             .Select(ParseEnvironmentVariable)
-            .GroupBy(variable => variable.Name, variable => variable.Value)
-            .OrderBy(group => group.Key, StringComparer.Ordinal))
+            .GroupBy(static variable => variable.Name, static variable => variable.Value)
+            .OrderBy(static group => group.Key, StringComparer.Ordinal))
         {
             string path = $"environment[{JsonHelper.Serialize(group.Key, JsonHelper.Settings)}]";
             string[] values = [.. group];
@@ -499,7 +499,7 @@ public class CompareMetadataCommand : RegistryCommandBase<CompareMetadataOptions
                 path,
                 values.Length == 1
                     ? JsonValue.Create(values[0])
-                    : new JsonArray(values.Select(value => JsonValue.Create(value)).ToArray()));
+                    : new JsonArray(values.Select(static value => JsonValue.Create(value)).ToArray()));
         }
     }
 
@@ -521,7 +521,7 @@ public class CompareMetadataCommand : RegistryCommandBase<CompareMetadataOptions
         List<MetadataComparison> comparisons = [];
         IEnumerable<string> keys = @base.Items.Keys
             .Union(target.Items.Keys, StringComparer.Ordinal)
-            .OrderBy(key => key, StringComparer.Ordinal);
+            .OrderBy(static key => key, StringComparer.Ordinal);
 
         foreach (string key in keys)
         {
@@ -684,7 +684,7 @@ public class CompareMetadataCommand : RegistryCommandBase<CompareMetadataOptions
             if (value is JsonObject valueObject)
             {
                 foreach ((string name, JsonNode? propertyValue) in valueObject
-                    .OrderBy(property => property.Key, StringComparer.Ordinal))
+                    .OrderBy(static property => property.Key, StringComparer.Ordinal))
                 {
                     AddToken(
                         category,
@@ -715,7 +715,7 @@ public class CompareMetadataCommand : RegistryCommandBase<CompareMetadataOptions
             AddSet(
                 category,
                 path,
-                valueArray.Select(GetStringValue).Where(item => item is not null).Cast<string>());
+                valueArray.Select(GetStringValue).Where(static item => item is not null).Cast<string>());
         }
 
         public void AddObjectKeys(string category, string path, JsonNode? value)
@@ -725,7 +725,7 @@ public class CompareMetadataCommand : RegistryCommandBase<CompareMetadataOptions
                 return;
             }
 
-            AddKeys(category, path, valueObject.Select(property => property.Key));
+            AddKeys(category, path, valueObject.Select(static property => property.Key));
         }
 
         public void AddDictionary(
@@ -738,7 +738,7 @@ public class CompareMetadataCommand : RegistryCommandBase<CompareMetadataOptions
                 return;
             }
 
-            foreach ((string key, string value) in values.OrderBy(item => item.Key, StringComparer.Ordinal))
+            foreach ((string key, string value) in values.OrderBy(static item => item.Key, StringComparer.Ordinal))
             {
                 Add(category, $"{path}[{JsonHelper.Serialize(key, JsonHelper.Settings)}]", value);
             }
@@ -756,7 +756,7 @@ public class CompareMetadataCommand : RegistryCommandBase<CompareMetadataOptions
 
         private void AddKeys(string category, string path, IEnumerable<string> values)
         {
-            foreach (string value in values.OrderBy(value => value, StringComparer.Ordinal))
+            foreach (string value in values.OrderBy(static value => value, StringComparer.Ordinal))
             {
                 Add(category, $"{path}[{JsonHelper.Serialize(value, JsonHelper.Settings)}]", true);
             }

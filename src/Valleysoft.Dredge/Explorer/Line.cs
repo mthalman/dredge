@@ -161,7 +161,7 @@ internal sealed class Line
 
     public static Line Of(string text, Sty? style = null) => new Line().Add(text, style);
 
-    public override string ToString() => string.Concat(parts.Select(p => p.Text));
+    public override string ToString() => string.Concat(parts.Select(static p => p.Text));
     public static Line Of(string text, Rgb fg, Deco d = Deco.None) => new Line().Add(text, fg, d);
     public static Line Blank => new();
 }

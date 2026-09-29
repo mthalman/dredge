@@ -118,8 +118,7 @@ public sealed class ExplorerDiveModelTests
         ];
         ExplorerImage image = new("app:1", "linux/amd64", "sha256:image", ["z", "a", "m"],
             [30, 10, 20], history);
-        LayerChanges[] layers = Enumerable.Range(0, 3)
-            .Select(i => Layer([File("app/value", i + 1, $"content-{i}")])).ToArray();
+        LayerChanges[] layers = [.. Enumerable.Range(0, 3).Select(static i => Layer([File("app/value", i + 1, $"content-{i}")]))];
         image.SetIndexed(2, layers[2]);
         Assert.Null(image.IndexedPrefix());
         Assert.Null(image.WholeTree(2));
@@ -131,7 +130,7 @@ public sealed class ExplorerDiveModelTests
         ImageAnalysisResult analysis = ImageAnalysis.Analyze(image.IndexedPrefix()!);
         image.SetAnalysis(analysis, ExplorerInsights.Build(analysis, image.Instructions, null));
 
-        Assert.Equal([null, 0, null, 1, 2, null], image.History.Select(row => row.Layer));
+        Assert.Equal([null, 0, null, 1, 2, null], image.History.Select(static row => row.Layer));
         Assert.Equal(["COPY first /app/value", "COPY second /app/value", "COPY third /app/value"], image.Instructions);
         for (int i = 0; i < layers.Length; i++)
         {
@@ -151,12 +150,12 @@ public sealed class ExplorerDiveModelTests
     public void InconsistentHistoryFallsBackWithoutInventingLayerAssociations(int historyCount)
     {
         ExplorerImage image = new("app:1", "linux/amd64", "sha256:image", ["first", "last"], [7, 11],
-            Enumerable.Range(0, historyCount).Select(i => new LayerHistory { CreatedBy = $"COPY {i} /" }).ToArray());
+            [.. Enumerable.Range(0, historyCount).Select(static i => new LayerHistory { CreatedBy = $"COPY {i} /" })]);
 
         Assert.Equal(["Layer 0", "Layer 1"], image.Instructions);
-        Assert.Equal([0, 1], image.History.Select(row => row.Layer!.Value));
-        Assert.Equal([7L, 11L], image.History.Select(row => row.Download));
-        Assert.All(image.History, row => Assert.Equal("(no history for this layer)", row.Instruction));
+        Assert.Equal([0, 1], image.History.Select(static row => row.Layer!.Value));
+        Assert.Equal([7L, 11L], image.History.Select(static row => row.Download));
+        Assert.All(image.History, static row => Assert.Equal("(no history for this layer)", row.Instruction));
     }
 
     [Fact]
@@ -165,10 +164,8 @@ public sealed class ExplorerDiveModelTests
     [Trait("Upstream", "wagoodman/dive#592")]
     public async Task ConcurrentDownloadsKeepManifestIndexesWhenTheyFinishInReverseOrder()
     {
-        TaskCompletionSource[] gates = Enumerable.Range(0, 3)
-            .Select(_ => new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously)).ToArray();
-        TaskCompletionSource[] indexed = Enumerable.Range(0, 3)
-            .Select(_ => new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously)).ToArray();
+        TaskCompletionSource[] gates = [.. Enumerable.Range(0, 3).Select(_ => new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously))];
+        TaskCompletionSource[] indexed = [.. Enumerable.Range(0, 3).Select(_ => new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously))];
         TaskCompletionSource started = new(TaskCreationOptions.RunContinuationsAsynchronously);
         TaskCompletionSource<IReadOnlyDictionary<int, StoredLayerIndex>> complete =
             new(TaskCreationOptions.RunContinuationsAsynchronously);

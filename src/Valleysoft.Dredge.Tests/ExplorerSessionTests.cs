@@ -31,10 +31,10 @@ public sealed class ExplorerSessionTests
     private static OciImageManifest Manifest(params string[] digests) => new()
     {
         Config = new OciDescriptor { Digest = "config" },
-        Layers = digests.Select(digest => new OciDescriptor
+        Layers = [.. digests.Select(static digest => new OciDescriptor
         {
             Digest = digest,
             Size = 1
-        }).ToArray()
+        })]
     };
 }

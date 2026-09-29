@@ -137,7 +137,7 @@ internal sealed class ExplorerSession
         }
 
         HashSet<string> baselineDigests = baseline.Resolved.Manifest.Layers
-            .Select(layer => layer.Digest ?? throw new InvalidDataException("Layer digest is missing."))
+            .Select(static layer => layer.Digest ?? throw new InvalidDataException("Layer digest is missing."))
             .ToHashSet(StringComparer.Ordinal);
         long additional = 0;
         foreach (IDescriptor layer in target.Resolved.Manifest.Layers)
@@ -151,9 +151,9 @@ internal sealed class ExplorerSession
         }
 
         Dictionary<string, ImageFileSystemEntry> before = baseline.Entries
-            .ToDictionary(entry => entry.Path, StringComparer.Ordinal);
+            .ToDictionary(static entry => entry.Path, StringComparer.Ordinal);
         Dictionary<string, ImageFileSystemEntry> after = target.Entries
-            .ToDictionary(entry => entry.Path, StringComparer.Ordinal);
+            .ToDictionary(static entry => entry.Path, StringComparer.Ordinal);
         List<ExplorerFileDifference> differences = [];
         foreach (string path in before.Keys.Concat(after.Keys).Distinct(StringComparer.Ordinal)
             .Order(StringComparer.Ordinal))
@@ -298,7 +298,7 @@ internal sealed class ExplorerSession
             throw new InvalidOperationException(
                 $"The base annotation digest '{annotatedDigest}' does not match '{deepest.Name}'.");
         }
-        return (verified.Select(entry => entry.Base).ToArray(), null);
+        return ([.. verified.Select(entry => entry.Base)], null);
 
         async Task<ResolvedManifest> ResolveAsync(ImageName name)
         {

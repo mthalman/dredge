@@ -21,14 +21,14 @@ public sealed class ExplorerNativeArgvTests
         {
             const string path = "app/a 'file' \"$HOME\"; & `text` \u754c.txt";
             ExplorerPresenter presenter = new(ExplorerSamples.Image(), 150, 42);
-            arguments = presenter.CopyCommandText(new(), path, false)["dredge ".Length..];
+            arguments = presenter.CopyCommandText(path, false)["dredge ".Length..];
             expected = ["image", "cat", presenter.Image.ResolvedReference, "/" + path];
         }
         else
         {
             expected = ["", "plain", "\"double quotes\"", "'single quotes'", @"C:\path with spaces\",
                 "$HOME; & `code`", "line one\nline two", "\u754c \ud83d\udc1f"];
-            arguments = string.Join(" ", expected.Select(value => ShellCommand.Quote(value, powerShell: true)));
+            arguments = string.Join(" ", expected.Select(static value => ShellCommand.Quote(value, powerShell: true)));
         }
         string receiver = Path.Combine(AppContext.BaseDirectory, "TestData", "Explorer", "NativeArgv.ps1");
         string script = "$ErrorActionPreference='Stop'; " +

@@ -83,7 +83,6 @@ internal sealed class SettingsCommandIntegrationScenarios
     {
         string tempRoot = GetTempPath();
         string settingsPath = Path.Combine(tempRoot, "settings.json");
-        ProcessStartInfo? launched = null;
         using StringWriter output = new();
         try
         {
@@ -95,7 +94,7 @@ internal sealed class SettingsCommandIntegrationScenarios
                 output);
 
             int exitCode = await InvokeAsync(command);
-            launched = processLauncher.StartInfo;
+            ProcessStartInfo? launched = processLauncher.StartInfo;
 
             Assert.Equal(0, exitCode);
             Assert.True(File.Exists(settingsPath));
