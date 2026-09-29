@@ -7,6 +7,35 @@ namespace Valleysoft.Dredge.Tests;
 public sealed class ExplorerDiveModelTests
 {
     [Theory]
+    [InlineData("mode")]
+    [InlineData("uid")]
+    [InlineData("gid")]
+    public void ChangedNonemptyDirectoriesSurviveHidingUnchangedChildren(string field)
+    {
+        ScannedEntry directory = File("app", 0, "") with { Type = ImageFileType.Directory };
+        ScannedEntry changed = field switch
+        {
+            "mode" => directory with { Mode = 0x1ED },
+            "uid" => directory with { UserId = 1000 },
+            _ => directory with { GroupId = 2000 }
+        };
+        ExplorerImage image = Custom([
+            Layer([directory, File("app/file", 1, "same"), File("synthetic/file", 1, "same")]),
+            Layer([changed])]);
+        ExplorerPresenter presenter = new(image, 150, 42);
+        ExplorerState state = new() { Layer = 1, WholeFilesystem = true };
+        state.Expanded.UnionWith(["app", "synthetic"]);
+        state.Hidden.Add(Change.None);
+
+        FlatRow row = Assert.Single(presenter.Flatten(state));
+        Assert.Equal("app", row.Path);
+        Assert.Equal(Change.Modified, row.Node.Change);
+        state.Hidden.Add(Change.Modified);
+        presenter.Invalidate();
+        Assert.Empty(presenter.Flatten(state));
+    }
+
+    [Theory]
     [Trait("Upstream", "wagoodman/dive#124")]
     [Trait("Upstream", "wagoodman/dive#160")]
     [Trait("Upstream", "wagoodman/dive#316")]

@@ -3,6 +3,35 @@ namespace Valleysoft.Dredge.Tests;
 public class ImageAnalysisTests
 {
     [Theory]
+    [InlineData(false, false)]
+    [InlineData(false, true)]
+    [InlineData(true, false)]
+    [InlineData(true, true)]
+    public void HardLinksCompareCapturedSymbolicTargets(bool chain, bool changed)
+    {
+        ScannedEntry original = File("original", 0, "") with
+            { Type = ImageFileType.SymbolicLink, LinkTarget = "before" };
+        ScannedEntry saved = File("saved", 0, "") with
+            { Type = ImageFileType.HardLink, LinkTarget = "original" };
+        ScannedEntry last = saved with { Path = "chain", LinkTarget = "saved" };
+        ScannedEntry[] Entries(ScannedEntry target) => chain ? [target, saved, last] : [target, saved];
+        ImageAnalysisResult result = ImageAnalysis.Analyze(
+        [
+            Layer(Entries(original)),
+            Layer(Entries(original with { LinkTarget = changed ? "after" : "before" }))
+        ]);
+
+        foreach (string path in chain ? new[] { "saved", "chain" } : ["saved"])
+        {
+            Assert.Equal(changed ? LayerChangeKind.Modified : LayerChangeKind.Identical,
+                Assert.Single(result.Layers[1].Changes, change => change.Path == path).Kind);
+        }
+        Assert.Equal(0, result.FileBytes);
+        Assert.Equal(0, result.HiddenBytes);
+        Assert.Empty(result.HiddenFiles);
+    }
+
+    [Theory]
     [Trait("Upstream", "wagoodman/dive#684")]
     [Trait("Upstream", "wagoodman/dive#696")]
     [InlineData(1, false)]

@@ -161,6 +161,8 @@ press `Esc` to return to its file tree, then `Esc` again to return to the same
 search result or finding, including its selection and scroll position. The
 footer labels this action **Back to search** or **Back to insights**. Starting a
 different search, insights view, or package inventory starts a new investigation.
+Opening a finding temporarily clears change filters so its destination is
+visible; returning to Insights restores the original filters.
 
 Press `/` to **search** paths across every layer. Press `c` to **compare**
 with another tag. Comparison opens with an overview of file-payload and hidden-
@@ -237,6 +239,8 @@ selected event with the previous event, including additions and deletions;
 the first event is compared with an absent file. Metadata-only changes and
 identical content are identified explicitly. Historical reads use the same
 bounded text previews and captured hard-link contents as other file reads.
+When either version is truncated, matching previews mean only that the
+displayed prefixes match, not that the complete files are identical.
 They do not move the selected layer or file-tree viewport. `Esc` retraces
 the historical diff, preview, history list, and original inspector.
 Extraction, external viewers, and copied CLI commands remain final-image

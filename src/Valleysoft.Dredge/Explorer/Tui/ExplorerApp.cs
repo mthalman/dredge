@@ -776,7 +776,9 @@ internal sealed class ExplorerHost : IExplorerHost, IAsyncDisposable
         }
         else if (lines is not null && lines.All(line => line.Op == DiffOp.Same))
         {
-            messages.Add("No text differences; content is identical.");
+            messages.Add(before.Entry?.Size > before.Bytes || after.Entry?.Size > after.Bytes
+                ? "No differences in the displayed prefix."
+                : "No text differences; content is identical.");
         }
         return new(path, lines, messages.Count == 0 ? null : string.Join(" ", messages));
     }

@@ -270,6 +270,28 @@ public sealed class ExplorerNavigationTests
     }
 
     [Fact]
+    public void FindingDrilldownRevealsFilteredDestinationAndBackRestoresFilters()
+    {
+        using ExplorerUiHarness ui = ExplorerWindowTests.Open(out _);
+        ui.State.Hidden.UnionWith(Enum.GetValues<Change>());
+        ui.Press(new Key('i'));
+        int index = ui.Window.Presenter.VisibleFindings(ui.State)
+            .FindIndex(finding => finding?.Kind == ExplorerFindingKind.Deleted);
+        Assert.True(index >= 0);
+        ui.Window.Apply(new SelectFinding(index));
+        ExplorerFinding finding = ui.Window.Presenter.SelectedFinding(ui.State)!;
+        ui.Press(Key.Enter);
+
+        Assert.Equal(RightView.Files, ui.State.View);
+        Assert.Empty(ui.State.Hidden);
+        Assert.Equal(finding.Roots[0], ui.Window.Presenter.Flatten(ui.State)[ui.State.Cursor].Path);
+        ui.Press(Key.Esc);
+        Assert.Equal(RightView.Insights, ui.State.View);
+        Assert.Equal(index, ui.State.Finding);
+        Assert.Equal(Enum.GetValues<Change>(), ui.State.Hidden.Order());
+    }
+
+    [Fact]
     public void BackFromFindingRestoresLayerFiltersAndFindingSelection()
     {
         using ExplorerUiHarness ui = ExplorerWindowTests.Open(out _);

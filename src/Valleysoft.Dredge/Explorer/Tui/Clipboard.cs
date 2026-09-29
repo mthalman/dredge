@@ -42,27 +42,24 @@ internal static partial class Clipboard
 
     private const uint CF_UNICODETEXT = 13;
     private const uint GMEM_MOVEABLE = 0x0002;
+    private const int HWND_MESSAGE = -3;
 
-    private static bool TryWriteWindows(string text)
+    private static bool TryWriteWindows(string text) => TryWriteWindows(text, OpenClipboard);
+
+    internal static bool TryWriteWindows(string text, Func<IntPtr, bool> openClipboard)
     {
-        // Another program can hold the clipboard open briefly, so retry a few times.
-        bool opened = false;
-        for (int attempt = 0; attempt < 10 && !(opened = OpenClipboard(IntPtr.Zero)); attempt++)
-        {
-            Thread.Sleep(10);
-        }
-        if (!opened)
+        // EmptyClipboard requires an owned HWND for SetClipboardData to succeed.
+        IntPtr owner = CreateWindowEx(0, "STATIC", "", 0, 0, 0, 0, 0, new IntPtr(HWND_MESSAGE),
+            IntPtr.Zero, IntPtr.Zero, IntPtr.Zero);
+        if (owner == IntPtr.Zero)
         {
             return false;
         }
+        bool opened = false;
         IntPtr memory = IntPtr.Zero;
         try
         {
-            if (!EmptyClipboard())
-            {
-                return false;
-            }
-            int bytes = (text.Length + 1) * sizeof(char);
+            int bytes = checked((text.Length + 1) * sizeof(char));
             memory = GlobalAlloc(GMEM_MOVEABLE, (nuint)bytes);
             if (memory == IntPtr.Zero)
             {
@@ -82,6 +79,16 @@ internal static partial class Clipboard
             {
                 GlobalUnlock(memory);
             }
+            // Prepare the replacement before clearing the user's clipboard.
+            // Another program can hold the clipboard open briefly, so retry a few times.
+            for (int attempt = 0; attempt < 10 && !(opened = openClipboard(owner)); attempt++)
+            {
+                Thread.Sleep(10);
+            }
+            if (!opened || !EmptyClipboard())
+            {
+                return false;
+            }
             if (SetClipboardData(CF_UNICODETEXT, memory) == IntPtr.Zero)
             {
                 return false;
@@ -96,9 +103,22 @@ internal static partial class Clipboard
             {
                 GlobalFree(memory);
             }
-            CloseClipboard();
+            if (opened)
+            {
+                CloseClipboard();
+            }
+            DestroyWindow(owner);
         }
     }
+
+    [LibraryImport("user32.dll", EntryPoint = "CreateWindowExW", StringMarshalling = StringMarshalling.Utf16,
+        SetLastError = true)]
+    private static partial IntPtr CreateWindowEx(uint extendedStyle, string className, string windowName,
+        uint style, int x, int y, int width, int height, IntPtr parent, IntPtr menu, IntPtr instance, IntPtr parameter);
+
+    [LibraryImport("user32.dll", SetLastError = true)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static partial bool DestroyWindow(IntPtr window);
 
     [LibraryImport("user32.dll", SetLastError = true)]
     [return: MarshalAs(UnmanagedType.Bool)]

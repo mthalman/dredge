@@ -40,7 +40,8 @@ internal sealed partial class ExplorerPresenter
             }
             // Replacements can retain removed descendants even when the replacement itself is filtered out.
             bool result = n.Children.Any(Visible) ||
-                ((n.Kind != Kind.Dir || n.Children.Count == 0) && !s.Hidden.Contains(n.Change));
+                ((n.Kind != Kind.Dir || n.Children.Count == 0 || (n.Entry is not null && n.Change != Change.None)) &&
+                    !s.Hidden.Contains(n.Change));
             visibleCache[n] = result;
             return result;
         }

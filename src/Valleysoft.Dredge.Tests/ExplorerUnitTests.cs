@@ -1,9 +1,56 @@
+using System.Runtime.InteropServices;
 using System.Text;
 using Valleysoft.DockerRegistryClient.Models.Images;
 using Valleysoft.Dredge.Explorer;
 using Valleysoft.Dredge.Explorer.Tui;
 
 namespace Valleysoft.Dredge.Tests;
+
+public sealed class ExplorerClipboardTests
+{
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void NativeClipboardUsesAnOwnedWindowAndReleasesItOnFailure(bool throws)
+    {
+        Assert.SkipUnless(OperatingSystem.IsWindows(), "Validates Windows clipboard owner lifetime without opening the clipboard.");
+        IntPtr owner = IntPtr.Zero;
+        int attempts = 0;
+        bool Open(IntPtr window)
+        {
+            Assert.NotEqual(IntPtr.Zero, window);
+            Assert.NotEqual(0u, GetWindowThreadProcessId(window, out uint processId));
+            Assert.Equal((uint)Environment.ProcessId, processId);
+            if (owner != IntPtr.Zero)
+            {
+                Assert.Equal(owner, window);
+            }
+            owner = window;
+            attempts++;
+            if (throws)
+            {
+                throw new InvalidOperationException("Simulated clipboard failure");
+            }
+            return false;
+        }
+
+        if (throws)
+        {
+            Assert.Equal("Simulated clipboard failure",
+                Assert.Throws<InvalidOperationException>(() => Clipboard.TryWriteWindows("command", Open)).Message);
+        }
+        else
+        {
+            Assert.False(Clipboard.TryWriteWindows("command", Open));
+        }
+        Assert.True(attempts > 0);
+        Assert.NotEqual(IntPtr.Zero, owner);
+        Assert.Equal(0u, GetWindowThreadProcessId(owner, out _));
+    }
+
+    [DllImport("user32.dll")]
+    private static extern uint GetWindowThreadProcessId(IntPtr window, out uint processId);
+}
 
 // The UI tests prove the explorer works without Terminal.Gui's Markdown and
 // syntax-highlighting dependencies only if those assemblies are really absent.

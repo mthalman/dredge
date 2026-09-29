@@ -1061,6 +1061,7 @@ internal sealed class ExplorerWindow : Window
         s.Investigation = InvestigationContext.Capture(s);
         SelectLayerCore(finding.Layers[^1]);
         s.View = RightView.Files;
+        s.Hidden.Clear();
         s.FindingsOnly = true;
         foreach (string root in finding.Roots)
         {

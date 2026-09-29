@@ -97,7 +97,7 @@ internal sealed record ImagePotentialSaving(PotentialSavingKind Kind, long Bytes
 
 internal static class ImageAnalysis
 {
-    private sealed record LiveEntry(ScannedEntry Entry, int Layer, FileContent? Content);
+    private sealed record LiveEntry(ScannedEntry Entry, int Layer, FileContent? Content, string? ContentLinkTarget);
 
     private sealed class FileContent(ScannedEntry entry, int layer)
     {
@@ -180,9 +180,12 @@ internal static class ImageAnalysis
                 }
 
                 LayerChangeKind kind = LayerChangeKind.Added;
+                LiveEntry? hardLinkTarget = entry.Type == ImageFileType.HardLink
+                    ? GetHardLinkTarget(entry, live) : null;
                 FileContent? content = entry.Type == ImageFileType.File
-                    ? new(entry, index)
-                    : entry.Type == ImageFileType.HardLink ? GetHardLinkContent(entry, live) : null;
+                    ? new(entry, index) : hardLinkTarget?.Content;
+                string? contentLinkTarget = entry.Type == ImageFileType.SymbolicLink
+                    ? entry.LinkTarget : hardLinkTarget?.ContentLinkTarget;
                 if (content is not null)
                 {
                     content.References++;
@@ -190,12 +193,13 @@ internal static class ImageAnalysis
                 if (live.TryGetValue(entry.Path, out LiveEntry? previous))
                 {
                     kind = Same(previous.Entry, entry) &&
-                        (entry.Type != ImageFileType.HardLink || SameContent(previous.Content, content))
+                        (entry.Type != ImageFileType.HardLink ||
+                            (SameContent(previous.Content, content) && previous.ContentLinkTarget == contentLinkTarget))
                         ? LayerChangeKind.Identical : LayerChangeKind.Modified;
                     Charge(previous, entry.Type == ImageFileType.HardLink ? LayerChangeKind.Modified : kind,
                         entry.Type == ImageFileType.HardLink ? entry.Path : null);
                 }
-                live[entry.Path] = new(entry, index, content);
+                live[entry.Path] = new(entry, index, content, contentLinkTarget);
                 paths.Add(entry.Path);
                 changes.Add(new(entry.Path, index, kind, entry.Type, content?.Entry.Size ?? entry.Size, entry)
                     { ContentId = content?.Id });
@@ -222,7 +226,7 @@ internal static class ImageAnalysis
             HiddenFiles = hiddenFiles
         };
     }
-    private static FileContent? GetHardLinkContent(ScannedEntry entry, IReadOnlyDictionary<string, LiveEntry> live)
+    private static LiveEntry GetHardLinkTarget(ScannedEntry entry, IReadOnlyDictionary<string, LiveEntry> live)
     {
         string path = ImagePath.ResolveLinkTarget("", entry.LinkTarget ??
             throw new InvalidDataException($"Hard link '/{entry.Path}' has no target."), "", entry.Path);
@@ -247,7 +251,7 @@ internal static class ImageAnalysis
             if (!followed)
             {
                 return live.TryGetValue(path, out LiveEntry? target)
-                    ? target.Content
+                    ? target
                     : throw new InvalidDataException($"Hard link '/{entry.Path}' targets missing path '/{path}'.");
             }
         }

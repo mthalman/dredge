@@ -86,6 +86,32 @@ public sealed class ExplorerDefenseHostTests : IAsyncDisposable
     }
 
     [Theory]
+    [InlineData(false, false)]
+    [InlineData(false, true)]
+    [InlineData(true, false)]
+    [InlineData(true, true)]
+    public async Task HistoricalDiffDoesNotClaimEqualityBeyondDisplayedPrefix(bool truncateBefore, bool truncateAfter)
+    {
+        string prefix = new('x', ExplorerApp.PreviewLimit);
+        TestImage image = await CreateAsync(
+            Blob(("file", prefix + (truncateBefore ? "before" : ""))),
+            Blob(("file", prefix + (truncateAfter ? "after!" : ""))));
+        TextDiffContent diff = await Host(image).DiffVersionAsync("file", 0, 1, Token);
+
+        Assert.Equal(DiffOp.Same, Assert.Single(diff.Lines!).Op);
+        if (truncateBefore || truncateAfter)
+        {
+            Assert.Contains("first", diff.Message);
+            Assert.Contains("No differences in the displayed prefix.", diff.Message);
+            Assert.DoesNotContain("content is identical", diff.Message);
+        }
+        else
+        {
+            Assert.Equal("No text differences; content is identical.", diff.Message);
+        }
+    }
+
+    [Theory]
     [InlineData(true)]
     [InlineData(false)]
     public async Task HistoricalDiffRetainsBinaryAndTruncationNotices(bool binary)
