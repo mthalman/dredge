@@ -1,4 +1,4 @@
-<img src="dredge-logo.png" width="250" alt="Dredge">
+<img src="dredge-logo.svg" width="250" alt="Dredge">
 
 # Dredge
 
