@@ -248,11 +248,42 @@ public sealed class ExplorerDiveScenarioTests
         }
         long allocated = GC.GetAllocatedBytesForCurrentThread() - start;
 
-        Assert.True(allocated < 64_000_000, $"Ten moves allocated {allocated:N0} bytes.");
+        Assert.True(allocated < 20_000_000, $"Ten moves allocated {allocated:N0} bytes.");
         Assert.True(elapsed.Elapsed < TimeSpan.FromSeconds(10), $"Ten moves took {elapsed.Elapsed}.");
         Assert.Same(tree, image.LayerTree(2));
         Assert.Equal("app/f00010", ui.Window.Presenter.Flatten(state)[state.Cursor].Path);
         Assert.Equal(2 * files * 64L, image.TotalReclaimable);
+    }
+
+    [Fact]
+    public void CachedFileRowsFollowFiltersExpansionLayerAndAnalysis()
+    {
+        ExplorerImage image = Custom(
+        [
+            Layer([File("app/first", 1, "first")]),
+            Layer([File("app/second", 2, "second")])
+        ]);
+        ExplorerPresenter presenter = new(image, 150, 42);
+        ExplorerState state = new();
+        Assert.Equal(["app"], presenter.Flatten(state).Select(static row => row.Path));
+        state.Expanded.Add("app");
+        Assert.Equal(["app", "app/first"], presenter.Flatten(state).Select(static row => row.Path));
+        state.Hidden.Add(Change.Added);
+        Assert.Empty(presenter.Flatten(state));
+        state.Hidden.Clear();
+        state.Layer = 1;
+        Assert.Equal(["app", "app/second"], presenter.Flatten(state).Select(static row => row.Path));
+        state.WholeFilesystem = true;
+        Assert.Equal(["app", "app/first", "app/second"], presenter.Flatten(state).Select(static row => row.Path));
+        state.FindingsOnly = true;
+        Assert.Empty(presenter.Flatten(state));
+        state.FindingsOnly = false;
+        state.Expanded.Clear();
+        Assert.Equal(["app"], presenter.Flatten(state).Select(static row => row.Path));
+
+        image.SetAnalysis(ImageAnalysis.Analyze(
+            [Layer([File("replacement", 1, "replacement")]), Layer([])]), ExplorerInsightsResult.Empty);
+        Assert.Equal(["replacement"], presenter.Flatten(state).Select(static row => row.Path));
     }
 
     [Fact]

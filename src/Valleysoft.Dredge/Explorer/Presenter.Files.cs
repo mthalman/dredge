@@ -3,6 +3,9 @@ namespace Valleysoft.Dredge.Explorer;
 internal sealed partial class ExplorerPresenter
 {
     private (List<Node> Tree, long Size)? treeSizeCache;
+    private (List<Node> Tree, bool FindingsOnly, List<FlatRow> Rows)? flatCache;
+    private readonly HashSet<string> flatExpanded = new(StringComparer.Ordinal);
+    private readonly HashSet<Change> flatHidden = [];
 
     // The whole filesystem needs the analysis of every layer up to this one; until
     // then the pane falls back to this layer's changes and says why.
@@ -13,12 +16,18 @@ internal sealed partial class ExplorerPresenter
 
     public List<FlatRow> Flatten(ExplorerState s)
     {
-        if (flatCache is { } cached && cached.Version == version)
+        List<Node> tree = Tree(s);
+        if (flatCache is { } cached && cached.Tree == tree && cached.FindingsOnly == s.FindingsOnly &&
+            flatExpanded.SetEquals(s.Expanded) && flatHidden.SetEquals(s.Hidden))
         {
             return cached.Rows;
         }
-        List<FlatRow> rows = Flatten(Tree(s), s);
-        flatCache = (version, rows);
+        List<FlatRow> rows = Flatten(tree, s);
+        flatExpanded.Clear();
+        flatExpanded.UnionWith(s.Expanded);
+        flatHidden.Clear();
+        flatHidden.UnionWith(s.Hidden);
+        flatCache = (tree, s.FindingsOnly, rows);
         return rows;
     }
 
