@@ -65,19 +65,23 @@ internal sealed class CompareView
 {
     private readonly ExplorerPresenter presenter;
     private readonly CompareState c;
-    private readonly int width;
-    private readonly int height;
+    private int width => presenter.Width;
+    private int height => presenter.Height;
     private List<CompareRow>? rows;
-    private List<string>? warnings;
+    private ExplorerComparison? cachedComparison;
+    private FileTree? fileTree;
+    private PackageFilesContent? rowPackageFiles;
+    private string rowQuery = "";
+    private bool rowOverview;
+    private readonly HashSet<string> rowExpanded = new(StringComparer.Ordinal);
 
     public CompareView(ExplorerPresenter presenter, CompareState state)
     {
         this.presenter = presenter;
         c = state;
-        width = presenter.Width;
-        height = presenter.Height;
     }
 
+    public CompareState State => c;
     private bool Narrow => presenter.Narrow;
     private int RightInner => presenter.RightInner;
     private int RightInnerHeight => presenter.RightInnerHeight;
@@ -86,7 +90,7 @@ internal sealed class CompareView
     public bool IsOverview => c.Overview && !c.Searching && c.SearchQuery.Length == 0 &&
         c.Diff is null && c.PackageFiles is null;
 
-    public IReadOnlyList<string> Warnings() => warnings ??=
+    public IReadOnlyList<string> Warnings() =>
     [
         .. c.Comparison.Baseline.Packages.Diagnostics.Select(static d => $"Baseline /{d.Path}: {d.Message}"),
         .. c.Comparison.Target.Packages.Diagnostics.Select(static d => $"Target /{d.Path}: {d.Message}"),
@@ -176,6 +180,7 @@ internal sealed class CompareView
     private string[]? baselineInstructions, targetInstructions;
     private string Instruction(int layer)
     {
+        EnsureComparison();
         targetInstructions ??= Instructions(c.Comparison.Target);
         baselineInstructions ??= Instructions(c.Comparison.Baseline);
         return layer < targetInstructions.Length ? targetInstructions[layer]
@@ -286,10 +291,17 @@ internal sealed class CompareView
 
     public List<CompareRow> Rows()
     {
-        if (rows is not null)
+        EnsureComparison();
+        if (rows is not null && rowPackageFiles == c.PackageFiles &&
+            rowQuery == c.SearchQuery && rowOverview == IsOverview && rowExpanded.SetEquals(c.Expanded))
         {
             return rows;
         }
+        rowPackageFiles = c.PackageFiles;
+        rowQuery = c.SearchQuery;
+        rowOverview = IsOverview;
+        rowExpanded.Clear();
+        rowExpanded.UnionWith(c.Expanded);
         if (IsOverview)
         {
             return rows =
@@ -308,6 +320,18 @@ internal sealed class CompareView
             .Where(row => row.Kind is CompareRowKind.File or CompareRowKind.Package &&
                 (row.Path ?? row.Name).Contains(c.SearchQuery, StringComparison.OrdinalIgnoreCase))];
         return rows;
+    }
+
+    private void EnsureComparison()
+    {
+        if (ReferenceEquals(cachedComparison, c.Comparison))
+        {
+            return;
+        }
+        cachedComparison = c.Comparison;
+        fileTree = null;
+        rows = null;
+        baselineInstructions = targetInstructions = null;
     }
 
     private List<CompareRow> BuildRows()
@@ -387,7 +411,7 @@ internal sealed class CompareView
             Expandable: true, Expanded: filesOpen, Files: c.Comparison.Files.Count));
         if (filesOpen)
         {
-            FileTree tree = FileTree.Build(c.Comparison.Files);
+            FileTree tree = fileTree ??= FileTree.Build(c.Comparison.Files);
             void Walk(List<FileTree> nodes, string guide)
             {
                 for (int i = 0; i < nodes.Count; i++)

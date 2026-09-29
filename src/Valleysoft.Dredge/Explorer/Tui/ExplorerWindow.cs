@@ -138,7 +138,8 @@ internal sealed class ExplorerWindow : Window
     public ExplorerExit Exit { get; private set; } = new(ExplorerExitKind.Quit);
     internal void ViewerFailed(string error) => Notice(error, error: true);
     private bool Comparing => s.Compare is not null;
-    private CompareView Compare => compareView ??= new CompareView(ex, s.Compare!);
+    private CompareView Compare => compareView is { } view && view.State == s.Compare
+        ? view : compareView = new CompareView(ex, s.Compare!);
     private string? pendingExtract;
 
     private List<Line> HeaderLines() =>
@@ -352,7 +353,6 @@ internal sealed class ExplorerWindow : Window
         ex.CompactLayers = UseCompactLayers();
         bool inspector = UsesFullWidth();
         ex.FullWidthContent = inspector;
-        compareView = null;
         if (tooSmall != ex.TooSmall)
         {
             tooSmall = ex.TooSmall;
@@ -409,13 +409,16 @@ internal sealed class ExplorerWindow : Window
     // Brings the footer and every pane up to date with the state; each repaints only if it changed.
     private void Refresh()
     {
+        if (s.Compare is null)
+        {
+            compareView = null;
+        }
         EnsurePackages();
         if (!ex.TooSmall && (inspecting != UsesFullWidth() || ex.CompactLayers != UseCompactLayers()))
         {
             Relayout();
             return;
         }
-        compareView = null;
         bool extracting = pendingExtract is not null;
         commandText.Visible = s.View == RightView.Command && !ex.TooSmall;
         bool searching = Searching && !ex.TooSmall && !extracting;
@@ -1669,7 +1672,6 @@ internal sealed class ExplorerWindow : Window
         string key = packages ? "section:packages" : "section:files";
         comparison.Expanded.Add(key);
         comparison.Scroll = 0;
-        compareView = null;
         List<CompareRow> rows = Compare.Rows();
         comparison.Cursor = Math.Min(rows.Count - 1, Math.Max(0, rows.FindIndex(row => row.Key == key) + 1));
         right.SetFocus();
