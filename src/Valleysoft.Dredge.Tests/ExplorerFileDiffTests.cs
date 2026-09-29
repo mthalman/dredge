@@ -146,6 +146,51 @@ public sealed class ExplorerFileDiffTests
     [Theory]
     [InlineData(false)]
     [InlineData(true)]
+    public void LargeRewritesBoundAllocationsIncludingWordHighlights(bool json)
+    {
+        string[] before = [.. Enumerable.Range(0, 2_000).Select(i => json
+            ? $"{{\"id\":{i},\"values\":[0,1,2,3,4,5,6,7,8,9]}}"
+            : new string('!', 32) + i)];
+        string[] after = [.. Enumerable.Range(0, 2_000).Select(i => json
+            ? $"{{\"id\":{i},\"values\":[10,11,12,13,14,15,16,17,18,19]}}"
+            : new string('?', 32) + i)];
+        _ = new TextDiffContent("warmup", TextDiff.Diff(["old"], ["new"]), null);
+        long start = GC.GetAllocatedBytesForCurrentThread();
+        TextDiffContent content = new("file", TextDiff.Diff(before, after), null);
+        long bytes = GC.GetAllocatedBytesForCurrentThread() - start;
+        Assert.True(bytes < 45_000_000, $"Diff and word highlights allocated {bytes:N0} bytes.");
+        Assert.Equal(2_000, content.Document.Split.Count);
+        Assert.All(content.Document.Split, static pair =>
+        {
+            Assert.Contains(pair.Left!.Spans, static span => span.Changed);
+            Assert.Contains(pair.Right!.Spans, static span => span.Changed);
+        });
+        Assert.Equal(before, content.Document.Split.Select(static pair =>
+            string.Concat(pair.Left!.Spans.Select(static span => span.Text))));
+        Assert.Equal(after, content.Document.Split.Select(static pair =>
+            string.Concat(pair.Right!.Spans.Select(static span => span.Text))));
+    }
+
+    [Fact]
+    public void WordHighlightsAreIndependentOfEarlierReplacementSizes()
+    {
+        int[] sizes = [0, 1, 16, 32, 33, 100, 4_097, 2, 32, 1, 0];
+        DiffLine[] before = [.. sizes.Select(static (size, i) =>
+            new DiffLine(DiffOp.Delete, i + 1, null, new string('!', size) + "old"))];
+        DiffLine[] after = [.. sizes.Select(static (size, i) =>
+            new DiffLine(DiffOp.Insert, null, i + 1, new string('?', size) + "new"))];
+        FileDiffDocument document = new([.. before, .. after]);
+        for (int i = 0; i < sizes.Length; i++)
+        {
+            VisualDiffPair expected = Assert.Single(new FileDiffDocument([before[i], after[i]]).Split);
+            Assert.Equal(expected.Left!.Spans, document.Split[i].Left!.Spans);
+            Assert.Equal(expected.Right!.Spans, document.Split[i].Right!.Spans);
+        }
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
     public void EmptyInsertedDeletedAndPartialFilesRemainReadable(bool unified)
     {
         ExplorerPresenter presenter = new(ExplorerSamples.Image(), 80, 24) { FullWidthContent = true };

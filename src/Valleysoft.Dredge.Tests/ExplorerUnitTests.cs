@@ -326,6 +326,24 @@ public sealed class TextDiffTests
     }
 
     [Fact]
+    public void ReusedWorkspaceRetainsNoResultsAfterLimitsOrCancellation()
+    {
+        TextDiff.Workspace workspace = new();
+        using CancellationTokenSource source = new();
+        CancelingLines canceling = new(source, 512);
+        Assert.Throws<OperationCanceledException>(() => TextDiff.Diff(canceling,
+            [.. Enumerable.Repeat("same", canceling.Count)], cancellationToken: source.Token, workspace: workspace));
+        foreach (int count in new[] { 129, 2, 64, 0, 32, 1 })
+        {
+            string[] before = ["prefix", "old", "suffix"];
+            string[] after = ["prefix", .. Enumerable.Range(0, count).Select(static i => $"new-{i}"), "suffix"];
+            Assert.Null(TextDiff.Diff(before, after, maxEdits: count, workspace: workspace));
+            Assert.Equal(TextDiff.Diff(before, after, maxEdits: count + 1),
+                TextDiff.Diff(before, after, maxEdits: count + 1, workspace: workspace));
+        }
+    }
+
+    [Fact]
     public void CustomEditLimitCannotRemoveMemoryBound()
     {
         string[] before = [.. Enumerable.Repeat("before", 10_000)];

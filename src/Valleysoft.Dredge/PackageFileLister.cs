@@ -250,9 +250,27 @@ internal static class TextDiff
     private const int CheckpointInterval = 64;
     private const long MaxTraceBytes = 8 * 1024 * 1024;
 
+    internal sealed class Workspace
+    {
+        private readonly List<int[]> buffers = [];
+
+        public int[] GetBuffer(int index, int length)
+        {
+            while (buffers.Count <= index)
+            {
+                buffers.Add([]);
+            }
+            if (buffers[index].Length < length)
+            {
+                buffers[index] = new int[length];
+            }
+            return buffers[index];
+        }
+    }
+
     public static IReadOnlyList<DiffLine>? Diff(
         IReadOnlyList<string> a, IReadOnlyList<string> b, int maxEdits = 4000,
-        CancellationToken cancellationToken = default)
+        CancellationToken cancellationToken = default, Workspace? workspace = null)
     {
         ArgumentOutOfRangeException.ThrowIfNegative(maxEdits);
         cancellationToken.ThrowIfCancellationRequested();
@@ -264,15 +282,17 @@ internal static class TextDiff
             return null;
         }
         int offset = max + 1;
-        int[] v = new int[(int)frontierLength];
-        List<int[]> checkpoints = [];
+        workspace ??= new();
+        int[] v = workspace.GetBuffer(0, (int)frontierLength);
+        Array.Clear(v);
+        int traceStart = 2 + max / CheckpointInterval;
         int found = -1;
         for (int d = 0; d <= max; d++)
         {
             cancellationToken.ThrowIfCancellationRequested();
             if (d % CheckpointInterval == 0)
             {
-                checkpoints.Add((int[])v.Clone());
+                v.CopyTo(workspace.GetBuffer(1 + d / CheckpointInterval, v.Length), 0);
             }
             if (Advance(d))
             {
@@ -317,12 +337,12 @@ internal static class TextDiff
         int[][] trace = new int[Math.Min(found, CheckpointInterval)][];
         for (int i = 0; i < trace.Length; i++)
         {
-            trace[i] = new int[v.Length];
+            trace[i] = workspace.GetBuffer(traceStart + i, v.Length);
         }
         for (int end = found; end > 0;)
         {
             int start = (end - 1) / CheckpointInterval * CheckpointInterval;
-            checkpoints[start / CheckpointInterval].CopyTo(v, 0);
+            workspace.GetBuffer(1 + start / CheckpointInterval, v.Length).CopyTo(v, 0);
             // Replay only this block; reuse its buffers while walking earlier checkpoints.
             for (int d = start; d < end; d++)
             {

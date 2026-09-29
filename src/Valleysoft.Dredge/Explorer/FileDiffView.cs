@@ -50,6 +50,7 @@ internal sealed class FileDiffDocument
         cancellationToken.ThrowIfCancellationRequested();
         Dictionary<DiffLine, VisualDiffLine> rendered = [];
         List<VisualDiffPair> pairs = [];
+        TextDiff.Workspace wordDiffWorkspace = new();
         foreach (var (left, right) in CompareView.Pair(lines))
         {
             cancellationToken.ThrowIfCancellationRequested();
@@ -59,7 +60,7 @@ internal sealed class FileDiffDocument
                 left.Text.Length <= 4096 && right.Text.Length <= 4096)
             {
                 IReadOnlyList<DiffLine>? words = TextDiff.Diff(Tokens(left.Text), Tokens(right.Text), maxEdits: 64,
-                    cancellationToken: cancellationToken);
+                    cancellationToken: cancellationToken, workspace: wordDiffWorkspace);
                 if (words is not null)
                 {
                     before = [.. words.Where(word => word.Op != DiffOp.Insert).Select(word => new DiffSpan(word.Text, word.Op == DiffOp.Delete))];
