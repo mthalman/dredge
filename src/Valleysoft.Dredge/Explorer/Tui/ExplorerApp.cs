@@ -770,7 +770,7 @@ internal sealed class ExplorerHost : IExplorerHost, IAsyncDisposable
             messages.Add($"Metadata: {Metadata(before.Entry)} -> {Metadata(after.Entry)}.");
         }
         IReadOnlyList<DiffLine>? lines = before.Lines is null || after.Lines is null ? null
-            : TextDiff.Diff(before.Lines, after.Lines);
+            : TextDiff.Diff(before.Lines, after.Lines, cancellationToken: operation.Token);
         if (lines is null && before.Lines is not null && after.Lines is not null)
         {
             messages.Add("Too many changes to show.");
@@ -781,7 +781,7 @@ internal sealed class ExplorerHost : IExplorerHost, IAsyncDisposable
                 ? "No differences in the displayed prefix."
                 : "No text differences; content is identical.");
         }
-        return new(path, lines, messages.Count == 0 ? null : string.Join(" ", messages));
+        return new(path, lines, messages.Count == 0 ? null : string.Join(" ", messages), operation.Token);
     }
 
     internal static string? LanguageFor(string path) =>
@@ -901,10 +901,10 @@ internal sealed class ExplorerHost : IExplorerHost, IAsyncDisposable
         {
             return new TextDiffContent(path, null, message);
         }
-        IReadOnlyList<DiffLine>? lines = TextDiff.Diff(before, after);
+        IReadOnlyList<DiffLine>? lines = TextDiff.Diff(before, after, cancellationToken: cancellationToken);
         return lines is null
             ? new TextDiffContent(path, null, "Too many changes to display a file diff.")
-            : new TextDiffContent(path, lines, message);
+            : new TextDiffContent(path, lines, message, cancellationToken);
     }
 
     public async Task<PackageFilesContent> PackageFilesAsync(

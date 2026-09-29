@@ -236,6 +236,130 @@ public sealed class TextDiffTests
     [Fact]
     public void GivesUpPastTheEditLimit() =>
         Assert.Null(TextDiff.Diff(["a", "b", "c"], ["x", "y", "z"], maxEdits: 3));
+
+    [Theory]
+    [InlineData(2000, true)]
+    [InlineData(4000, false)]
+    public void LargeRewritesUseBoundedWorkingMemory(int count, bool fits)
+    {
+        string[] before = [.. Enumerable.Range(0, count).Select(static i => $"old-{i}")];
+        string[] after = [.. Enumerable.Range(0, count).Select(static i => $"new-{i}")];
+        TextDiff.Diff(["warmup"], ["changed"]);
+        long start = GC.GetAllocatedBytesForCurrentThread();
+        IReadOnlyList<DiffLine>? result = TextDiff.Diff(before, after);
+        long bytes = GC.GetAllocatedBytesForCurrentThread() - start;
+        Assert.True(bytes < 8_000_000, $"Diff allocated {bytes:N0} bytes.");
+        Assert.Equal(fits, result is not null);
+        if (result is not null)
+        {
+            Assert.Equal(before, result.Where(static line => line.Op != DiffOp.Insert).Select(static line => line.Text));
+            Assert.Equal(after, result.Where(static line => line.Op != DiffOp.Delete).Select(static line => line.Text));
+        }
+    }
+
+    [Fact]
+    public void ReconstructionAcrossTraceBlocksPreservesMinimumEditsAndLineNumbers()
+    {
+        Random random = new(531);
+        for (int sample = 0; sample < 12; sample++)
+        {
+            string[] before = [.. Enumerable.Range(0, 90).Select(_ => random.Next(5).ToString())];
+            string[] after = [.. Enumerable.Range(0, 95).Select(_ => random.Next(5).ToString())];
+            int[,] edits = new int[before.Length + 1, after.Length + 1];
+            for (int i = 0; i <= before.Length; i++) edits[i, 0] = i;
+            for (int j = 0; j <= after.Length; j++) edits[0, j] = j;
+            for (int i = 1; i <= before.Length; i++)
+            {
+                for (int j = 1; j <= after.Length; j++)
+                {
+                    edits[i, j] = before[i - 1] == after[j - 1]
+                        ? edits[i - 1, j - 1] : 1 + Math.Min(edits[i - 1, j], edits[i, j - 1]);
+                }
+            }
+            IReadOnlyList<DiffLine> result = TextDiff.Diff(before, after)!;
+            Assert.Equal(edits[before.Length, after.Length], result.Count(static line => line.Op != DiffOp.Same));
+            Assert.Equal(before, result.Where(static line => line.Op != DiffOp.Insert).Select(static line => line.Text));
+            Assert.Equal(after, result.Where(static line => line.Op != DiffOp.Delete).Select(static line => line.Text));
+            Assert.Equal(Enumerable.Range(1, before.Length), result.Where(static line => line.OldLine is not null).Select(static line => line.OldLine!.Value));
+            Assert.Equal(Enumerable.Range(1, after.Length), result.Where(static line => line.NewLine is not null).Select(static line => line.NewLine!.Value));
+        }
+    }
+
+    [Theory]
+    [InlineData(63)]
+    [InlineData(64)]
+    [InlineData(65)]
+    [InlineData(127)]
+    [InlineData(128)]
+    [InlineData(129)]
+    public void InsertionsAtCheckpointBoundariesRetainCommonLines(int count)
+    {
+        string[] after = ["prefix", .. Enumerable.Range(0, count).Select(static i => $"insert-{i}"), "suffix"];
+        IReadOnlyList<DiffLine> result = TextDiff.Diff(["prefix", "suffix"], after, maxEdits: count)!;
+        Assert.Equal(count, result.Count(static line => line.Op == DiffOp.Insert));
+        Assert.Equal(after, result.Select(static line => line.Text));
+        Assert.Equal(new(DiffOp.Same, 2, after.Length, "suffix"), result[^1]);
+        Assert.Null(TextDiff.Diff(["prefix", "suffix"], after, maxEdits: count - 1));
+    }
+
+    [Theory]
+    [InlineData(512)]
+    [InlineData(10_512)]
+    public void CancellationInterruptsMatchingAndReconstruction(int cancelAfterReads)
+    {
+        using CancellationTokenSource source = new();
+        CancelingLines before = new(source, cancelAfterReads);
+        string[] after = [.. Enumerable.Repeat("same", before.Count)];
+        OperationCanceledException exception = Assert.Throws<OperationCanceledException>(() =>
+            TextDiff.Diff(before, after, cancellationToken: source.Token));
+        Assert.Equal(source.Token, exception.CancellationToken);
+        Assert.True(before.Reads < cancelAfterReads + 512);
+    }
+
+    [Fact]
+    public void PreCanceledDiffAndRenderingDoNotStartWork()
+    {
+        using CancellationTokenSource source = new();
+        source.Cancel();
+        Assert.Throws<OperationCanceledException>(() => TextDiff.Diff([], [], cancellationToken: source.Token));
+        Assert.Throws<OperationCanceledException>(() => new TextDiffContent("path", [], null, source.Token));
+    }
+
+    [Fact]
+    public void CustomEditLimitCannotRemoveMemoryBound()
+    {
+        string[] before = [.. Enumerable.Repeat("before", 10_000)];
+        string[] after = [.. Enumerable.Repeat("after", 10_000)];
+        long start = GC.GetAllocatedBytesForCurrentThread();
+        Assert.Null(TextDiff.Diff(before, after, maxEdits: int.MaxValue));
+        Assert.True(GC.GetAllocatedBytesForCurrentThread() - start < 8_000_000);
+    }
+
+    private sealed class CancelingLines : IReadOnlyList<string>
+    {
+        private readonly CancellationTokenSource source;
+        private readonly int cancelAfterReads;
+
+        public CancelingLines(CancellationTokenSource source, int cancelAfterReads)
+        {
+            this.source = source;
+            this.cancelAfterReads = cancelAfterReads;
+        }
+
+        public int Count => 10_000;
+        public int Reads { get; private set; }
+        public string this[int index]
+        {
+            get
+            {
+                if (++Reads == cancelAfterReads) source.Cancel();
+                return "same";
+            }
+        }
+
+        public IEnumerator<string> GetEnumerator() => Enumerable.Repeat("same", Count).GetEnumerator();
+        System.Collections.IEnumerator System.Collections.IEnumerable.GetEnumerator() => GetEnumerator();
+    }
 }
 
 public sealed class PackageFileListerTests

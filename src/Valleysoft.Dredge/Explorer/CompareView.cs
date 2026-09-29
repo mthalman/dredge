@@ -9,10 +9,21 @@ internal sealed record CompareRow(
     ExplorerPackageDifference? Package = null, string? Path = null,
     string? Sharing = null, string? LinkTarget = null);
 
-internal sealed record TextDiffContent(
-    string Path, IReadOnlyList<DiffLine>? Lines, string? Message)
+internal sealed record TextDiffContent
 {
-    public FileDiffDocument Document { get; } = new(Lines ?? []);
+    public TextDiffContent(string path, IReadOnlyList<DiffLine>? lines, string? message,
+        CancellationToken cancellationToken = default)
+    {
+        Path = path;
+        Lines = lines;
+        Message = message;
+        Document = new(lines ?? [], cancellationToken);
+    }
+
+    public string Path { get; }
+    public IReadOnlyList<DiffLine>? Lines { get; }
+    public string? Message { get; }
+    public FileDiffDocument Document { get; }
 }
 
 internal sealed record PackageFilesContent(

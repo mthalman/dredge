@@ -45,18 +45,21 @@ internal class FileDiffState
 
 internal sealed class FileDiffDocument
 {
-    public FileDiffDocument(IReadOnlyList<DiffLine> lines)
+    public FileDiffDocument(IReadOnlyList<DiffLine> lines, CancellationToken cancellationToken = default)
     {
+        cancellationToken.ThrowIfCancellationRequested();
         Dictionary<DiffLine, VisualDiffLine> rendered = [];
         List<VisualDiffPair> pairs = [];
         foreach (var (left, right) in CompareView.Pair(lines))
         {
+            cancellationToken.ThrowIfCancellationRequested();
             IReadOnlyList<DiffSpan> before = left is null ? [] : [new(left.Text, false)];
             IReadOnlyList<DiffSpan> after = right is null ? [] : [new(right.Text, false)];
             if (left?.Op == DiffOp.Delete && right?.Op == DiffOp.Insert &&
                 left.Text.Length <= 4096 && right.Text.Length <= 4096)
             {
-                IReadOnlyList<DiffLine>? words = TextDiff.Diff(Tokens(left.Text), Tokens(right.Text), maxEdits: 64);
+                IReadOnlyList<DiffLine>? words = TextDiff.Diff(Tokens(left.Text), Tokens(right.Text), maxEdits: 64,
+                    cancellationToken: cancellationToken);
                 if (words is not null)
                 {
                     before = [.. words.Where(word => word.Op != DiffOp.Insert).Select(word => new DiffSpan(word.Text, word.Op == DiffOp.Delete))];
@@ -75,6 +78,7 @@ internal sealed class FileDiffDocument
             .DefaultIfEmpty().Max().ToString(CultureInfo.InvariantCulture).Length);
         TextWidth = lines.Select(line =>
         {
+            cancellationToken.ThrowIfCancellationRequested();
             int column = 0;
             return DisplayText.Width(ExpandTabs(line.Text, ref column));
         }).DefaultIfEmpty().Max();

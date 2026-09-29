@@ -248,7 +248,8 @@ ownership warning details; `Esc` returns to the previous view.
 Press `Enter` on a changed text file in comparison to see a diff, and `s` to
 swap the two sides.
 Text diffs retain available content when a size limit is reached and show a
-notice identifying the partial preview. Text diffs and file previews use the
+notice identifying the partial preview. Diffs that exceed the edit-distance or
+working-memory budget show a message instead. Text diffs and file previews use the
 full body width. In a file diff, `Alt+V` switches between inline and
 side-by-side layouts, keeping the same source line in view where
 space permits. Both layouts show line numbers, `+`/`-` markers, red/green

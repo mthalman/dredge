@@ -243,40 +243,40 @@ internal enum DiffOp { Same, Delete, Insert }
 
 internal sealed record DiffLine(DiffOp Op, int? OldLine, int? NewLine, string Text);
 
-// Myers O(ND) line diff. Returns null when the edit distance exceeds maxEdits,
-// so a pathological pair of files can't stall the UI.
+// Myers O(ND) line diff. Checkpoints trade a second pass for bounded trace memory.
+// Returns null when the edit-distance or working-memory limit is exceeded.
 internal static class TextDiff
 {
-    public static IReadOnlyList<DiffLine>? Diff(IReadOnlyList<string> a, IReadOnlyList<string> b, int maxEdits = 4000)
+    private const int CheckpointInterval = 64;
+    private const long MaxTraceBytes = 8 * 1024 * 1024;
+
+    public static IReadOnlyList<DiffLine>? Diff(
+        IReadOnlyList<string> a, IReadOnlyList<string> b, int maxEdits = 4000,
+        CancellationToken cancellationToken = default)
     {
-        int n = a.Count, m = b.Count, max = Math.Min(n + m, maxEdits);
+        ArgumentOutOfRangeException.ThrowIfNegative(maxEdits);
+        cancellationToken.ThrowIfCancellationRequested();
+        int n = a.Count, m = b.Count, max = (int)Math.Min((long)n + m, maxEdits);
+        long frontierLength = 2L * max + 3;
+        long frontierCount = 2L + max / CheckpointInterval + Math.Min(max, CheckpointInterval);
+        if (frontierLength * sizeof(int) * frontierCount > MaxTraceBytes)
+        {
+            return null;
+        }
         int offset = max + 1;
-        int[] v = new int[2 * max + 3];
-        List<int[]> trace = [];
+        int[] v = new int[(int)frontierLength];
+        List<int[]> checkpoints = [];
         int found = -1;
         for (int d = 0; d <= max; d++)
         {
-            trace.Add((int[])v.Clone());
-            for (int k = -d; k <= d; k += 2)
+            cancellationToken.ThrowIfCancellationRequested();
+            if (d % CheckpointInterval == 0)
             {
-                int x = k == -d || (k != d && v[offset + k - 1] < v[offset + k + 1])
-                    ? v[offset + k + 1]
-                    : v[offset + k - 1] + 1;
-                int y = x - k;
-                while (x < n && y < m && a[x] == b[y])
-                {
-                    x++;
-                    y++;
-                }
-                v[offset + k] = x;
-                if (x >= n && y >= m)
-                {
-                    found = d;
-                    break;
-                }
+                checkpoints.Add((int[])v.Clone());
             }
-            if (found >= 0)
+            if (Advance(d))
             {
+                found = d;
                 break;
             }
         }
@@ -285,39 +285,93 @@ internal static class TextDiff
             return null;
         }
 
+        bool Advance(int d)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            for (int k = -d; k <= d; k += 2)
+            {
+                int x = k == -d || (k != d && v[offset + k - 1] < v[offset + k + 1])
+                    ? v[offset + k + 1]
+                    : v[offset + k - 1] + 1;
+                int y = x - k;
+                while (x < n && y < m && a[x] == b[y])
+                {
+                    if ((x & 255) == 0)
+                    {
+                        cancellationToken.ThrowIfCancellationRequested();
+                    }
+                    x++;
+                    y++;
+                }
+                v[offset + k] = x;
+                if (x >= n && y >= m)
+                {
+                    return true;
+                }
+            }
+            return false;
+        }
+
         List<DiffLine> result = [];
         int cx = n, cy = m;
-        for (int d = found; d > 0; d--)
+        int[][] trace = new int[Math.Min(found, CheckpointInterval)][];
+        for (int i = 0; i < trace.Length; i++)
         {
-            int[] pv = trace[d];
-            int k = cx - cy;
-            int prevK = k == -d || (k != d && pv[offset + k - 1] < pv[offset + k + 1]) ? k + 1 : k - 1;
-            int prevX = pv[offset + prevK];
-            int prevY = prevX - prevK;
-            while (cx > prevX && cy > prevY)
+            trace[i] = new int[v.Length];
+        }
+        for (int end = found; end > 0;)
+        {
+            int start = (end - 1) / CheckpointInterval * CheckpointInterval;
+            checkpoints[start / CheckpointInterval].CopyTo(v, 0);
+            // Replay only this block; reuse its buffers while walking earlier checkpoints.
+            for (int d = start; d < end; d++)
             {
-                cx--;
-                cy--;
-                result.Add(new(DiffOp.Same, cx + 1, cy + 1, a[cx]));
+                Advance(d);
+                v.CopyTo(trace[d - start], 0);
             }
-            if (cx == prevX)
+            for (int d = end; d > start; d--)
             {
-                cy--;
-                result.Add(new(DiffOp.Insert, null, cy + 1, b[cy]));
+                cancellationToken.ThrowIfCancellationRequested();
+                int[] pv = trace[d - start - 1];
+                int k = cx - cy;
+                int prevK = k == -d || (k != d && pv[offset + k - 1] < pv[offset + k + 1]) ? k + 1 : k - 1;
+                int prevX = pv[offset + prevK];
+                int prevY = prevX - prevK;
+                while (cx > prevX && cy > prevY)
+                {
+                    if ((cx & 255) == 0)
+                    {
+                        cancellationToken.ThrowIfCancellationRequested();
+                    }
+                    cx--;
+                    cy--;
+                    result.Add(new(DiffOp.Same, cx + 1, cy + 1, a[cx]));
+                }
+                if (cx == prevX)
+                {
+                    cy--;
+                    result.Add(new(DiffOp.Insert, null, cy + 1, b[cy]));
+                }
+                else
+                {
+                    cx--;
+                    result.Add(new(DiffOp.Delete, cx + 1, null, a[cx]));
+                }
             }
-            else
-            {
-                cx--;
-                result.Add(new(DiffOp.Delete, cx + 1, null, a[cx]));
-            }
+            end = start;
         }
         while (cx > 0 && cy > 0)
         {
+            if ((cx & 255) == 0)
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+            }
             cx--;
             cy--;
             result.Add(new(DiffOp.Same, cx + 1, cy + 1, a[cx]));
         }
         result.Reverse();
+        cancellationToken.ThrowIfCancellationRequested();
         return result;
     }
 }
