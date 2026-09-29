@@ -202,7 +202,6 @@ public sealed class ExplorerFeatureTests
         ui.Window.Apply(new SelectLayer(3));
         ui.State.Expanded.Add("app/cache");
         ui.State.Expanded.Add("app");
-        ui.Window.Presenter.Invalidate();
         ui.Window.Apply(new Redraw());
         ui.Pump();
         AssertShows(ui, "~ 1 modified", "− 1 deleted", "big.bin");
@@ -214,7 +213,6 @@ public sealed class ExplorerFeatureTests
         using ExplorerUiHarness ui = Open(out _);
         ExplorerState s = ui.State;
         s.Expanded.Add("app/src");
-        ui.Window.Presenter.Invalidate();
 
         ui.Window.Apply(new SetCursor(RowOf(ui, "app/src/index.js")));
         ui.Press(Key.CursorLeft);
@@ -256,7 +254,6 @@ public sealed class ExplorerFeatureTests
         ui.Window.Apply(new SelectLayer(3));
         s.Expanded.Add("app");
         s.Expanded.Add("app/cache");
-        ui.Window.Presenter.Invalidate();
         List<string> Paths() => [.. ui.Window.Presenter.Flatten(s).Select(row => row.Path)];
         Assert.Contains("app/cache/big.bin", Paths());
 
@@ -579,7 +576,6 @@ public sealed class ExplorerFeatureTests
         s.Expanded.Add("app/cache");
         s.Expanded.Add("app/node_modules");
         s.Expanded.Add("app/node_modules/left-pad");
-        ui.Window.Presenter.Invalidate();
         ui.Window.Apply(new SetCursor(0));
         ui.Pump();
         (int tx, int ty) = ui.Find("▾ app/");
@@ -637,7 +633,6 @@ public sealed class ExplorerFeatureTests
         ui.Window.Apply(new SetCursor(0));
         s.Expanded.Add("usr");
         s.Expanded.Add("usr/bin");
-        ui.Window.Presenter.Invalidate();
         ui.Window.Apply(new SetCursor(RowOf(ui, "usr/bin/tool")));
         ui.Window.Apply(new OpenInViewer());
         Assert.Equal("The viewer works once every layer is indexed.", s.Notice);
@@ -686,7 +681,6 @@ public sealed class ExplorerFeatureTests
         AssertShows(ui, "Filesystem at layer 1", "etc/", "· 2 unchanged", "in 4 files");
         s.Expanded.Add("usr");
         s.Expanded.Add("usr/lib");
-        ui.Window.Presenter.Invalidate();
         ui.Window.Apply(new Redraw());
         ui.Pump();
         AssertShows(ui, "current.so → v1.so", "lrwxrwxrwx");
@@ -860,7 +854,6 @@ public sealed class ExplorerFeatureTests
         s.Expanded.Add("app");
         s.Expanded.Add("app/src");
         s.Expanded.Add("app/cache");
-        ui.Window.Presenter.Invalidate();
 
         ui.Window.Apply(new SetCursor(RowOf(ui, "app/src/index.js")));
         ui.Press(Key.Enter);
@@ -896,7 +889,6 @@ public sealed class ExplorerFeatureTests
         ui.Window.Apply(new OpenInViewer());
         Assert.Equal("Select a file to open in the viewer.", s.Notice);
         s.Expanded.Add("app/cache");
-        ui.Window.Presenter.Invalidate();
         ui.Window.Apply(new SetCursor(RowOf(ui, "app/cache/big.bin")));
         ui.Window.Apply(new OpenInViewer());
         Assert.Equal("/app/cache/big.bin is not in the final image.", s.Notice);
@@ -1002,7 +994,6 @@ public sealed class ExplorerFeatureTests
         using ExplorerUiHarness ui = Open(out _);
         ui.Window.Apply(new SelectLayer(3));
         ui.State.Expanded.Add("app");
-        ui.Window.Presenter.Invalidate();
         ui.Window.Apply(new SetCursor(RowOf(ui, "app/package.json")));
         ui.Press(new Key('x'));
         Assert.True(ui.Window.ExtractField.HasFocus);
@@ -1378,7 +1369,6 @@ public sealed class ExplorerFeatureTests
         using ExplorerUiHarness ui = Open(out FakeExplorerHost host);
         ExplorerState s = ui.State;
         s.Expanded.Add("app");
-        ui.Window.Presenter.Invalidate();
         ui.Window.Apply(new Redraw());
 
         // Outside compare with no failed layer, s and r are not offered.
@@ -1453,7 +1443,6 @@ public sealed class ExplorerFeatureTests
         {
             ui.Window.Apply(new SelectLayer(3));
             s.Expanded.Add("app");
-            ui.Window.Presenter.Invalidate();
             ui.Window.Apply(new SetCursor(RowOf(ui, "app/package.json")));
             if (action is "copy" or "viewer")
             {

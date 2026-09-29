@@ -316,7 +316,6 @@ public sealed class ExplorerWindowTests
         ui.Window.Apply(new SelectLayer(2));
 
         s.Expanded.Add("app");
-        ui.Window.Presenter.Invalidate();
         ui.Press(Key.CursorDown);
         Assert.Equal(1, s.Cursor);
         ui.Press(Key.End);
@@ -532,7 +531,6 @@ public sealed class ExplorerWindowTests
 
         ui.Window.Apply(new SelectLayer(3));
         s.Expanded.Add("app");
-        ui.Window.Presenter.Invalidate();
         ui.Window.Apply(new SetCursor(RowOf(ui, "app/package.json")));
         ui.Press(new Key('x'));
         Assert.True(ui.Window.ExtractField.Visible && ui.Window.ExtractField.HasFocus);
@@ -557,7 +555,6 @@ public sealed class ExplorerWindowTests
         Assert.Equal("Select a file to open in the viewer.", ui.State.Notice);
 
         ui.State.Expanded.Add("app/src");
-        ui.Window.Presenter.Invalidate();
         ui.Window.Apply(new SetCursor(RowOf(ui, "app/src/index.js")));
         ui.Window.Apply(new OpenInViewer());
         ui.Until(() => ui.Window.StopRequested, "the viewer exit");
@@ -582,7 +579,6 @@ public sealed class ExplorerWindowTests
         using ExplorerUiHarness ui = new(150, 42, _ =>
             new ExplorerWindow(img, state, host, CancellationToken.None, opened.Add));
         state.Expanded.Add("app/src");
-        ui.Window.Presenter.Invalidate();
         ui.Window.Apply(new SetCursor(ui.Window.Presenter.IndexOf(state, "app/src/index.js")));
 
         ui.Window.Apply(new OpenInViewer());

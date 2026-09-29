@@ -345,19 +345,28 @@ internal sealed partial class ExplorerPresenter
 
     // ───────────────────────────── search ─────────────────────────────
 
+    private readonly record struct SearchCacheKey(
+        IReadOnlyDictionary<string, List<(int Layer, Change Change)>>? Index,
+        string Query, int? Layer, bool IncludeDeleted, bool ExactCase);
+
+    private (SearchCacheKey Key, List<SearchHit> Hits, int Total)? searchCache;
+    private (IReadOnlyDictionary<string, List<(int Layer, Change Change)>> Index, int Layer, int Count)? searchedPathsCache;
+
     public (List<SearchHit> Hits, int Total) SearchResults(ExplorerState s)
     {
-        if (searchCache is { } cached && cached.Version == version)
+        SearchCacheKey key = new(s.SearchQuery.Length == 0 ? null : img.SearchIndex, s.SearchQuery,
+            s.SearchLayerOnly ? s.Layer : null, s.SearchIncludeDeleted, s.SearchExactCase);
+        if (searchCache is { } cached && cached.Key == key)
         {
-            return (cached.Hits, cachedTotal);
+            return (cached.Hits, cached.Total);
         }
         List<SearchHit> hits = [];
         int total = 0;
-        if (s.SearchQuery.Length > 0)
+        if (key.Index is { } index)
         {
             StringComparison comparison = s.SearchExactCase ? StringComparison.Ordinal : StringComparison.OrdinalIgnoreCase;
             IReadOnlyDictionary<string, ScannedEntry>? live = img.Analysis?.LiveEntries;
-            foreach ((string path, List<(int Layer, Change Change)> layers) in img.SearchIndex)
+            foreach ((string path, List<(int Layer, Change Change)> layers) in index)
             {
                 if (!path.Contains(s.SearchQuery, comparison)
                     || (s.SearchLayerOnly && !layers.Any(l => l.Layer == s.Layer))
@@ -385,16 +394,25 @@ internal sealed partial class ExplorerPresenter
             }
             hits.Sort((a, b) => string.CompareOrdinal(a.Path, b.Path));
         }
-        searchCache = (version, hits);
-        cachedTotal = total;
+        searchCache = (key, hits, total);
         return (hits, total);
     }
 
-    private int cachedTotal;
-
-    private int SearchedPaths(ExplorerState s) => s.SearchLayerOnly
-        ? img.SearchIndex.Count(pair => pair.Value.Any(l => l.Layer == s.Layer))
-        : img.SearchIndex.Count;
+    private int SearchedPaths(ExplorerState s)
+    {
+        var index = img.SearchIndex;
+        if (!s.SearchLayerOnly)
+        {
+            return index.Count;
+        }
+        if (searchedPathsCache is { } cached && cached.Index == index && cached.Layer == s.Layer)
+        {
+            return cached.Count;
+        }
+        int count = index.Count(pair => pair.Value.Any(l => l.Layer == s.Layer));
+        searchedPathsCache = (index, s.Layer, count);
+        return count;
+    }
 
     public PaneContent SearchPane(ExplorerState s)
     {

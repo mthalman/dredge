@@ -134,7 +134,6 @@ public sealed class ExplorerIntegrationTests
             // Inspect a file: history and a highlighted preview of its final version.
             ui.Window.Apply(new SelectLayer(2));
             ui.State.Expanded.Add("app");
-            ui.Window.Presenter.Invalidate();
             ui.Window.Apply(new SetCursor(ui.Window.Presenter.IndexOf(ui.State, "app/config.json")));
             ui.Press(Key.Enter);
             Assert.Equal(RightView.Inspector, ui.State.View);

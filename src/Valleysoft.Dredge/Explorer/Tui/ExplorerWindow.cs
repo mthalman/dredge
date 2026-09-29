@@ -230,7 +230,6 @@ internal sealed class ExplorerWindow : Window
     // Called by the app when indexing, analysis, or the session changed the image.
     public void ImageChanged()
     {
-        ex.Invalidate();
         EnsurePreview();
         Refresh();
     }
@@ -688,7 +687,6 @@ internal sealed class ExplorerWindow : Window
         {
             s.View = RightView.Files;
         }
-        ex.Invalidate();
     }
 
     public void Apply(Cmd cmd)
@@ -711,7 +709,6 @@ internal sealed class ExplorerWindow : Window
         {
             s.Notice = null;
             s.NoticeIsError = false;
-            ex.Invalidate();
         }
         if (cmd is ShowView { View: RightView.Keys } && s.View != RightView.Keys)
         {
@@ -787,7 +784,6 @@ internal sealed class ExplorerWindow : Window
         }
         if (!Comparing && s.View == RightView.Packages && ApplyPackages(cmd))
         {
-            ex.Invalidate();
             Refresh();
             return;
         }
@@ -804,7 +800,6 @@ internal sealed class ExplorerWindow : Window
             }
             investigation.Restore(s);
             s.Investigation = null;
-            ex.Invalidate();
             Relayout();
             SyncFocus();
             return;
@@ -1031,7 +1026,6 @@ internal sealed class ExplorerWindow : Window
                 (f.Pane == FocusPane.Layers ? layers : right).SetFocus();
                 break;
         }
-        ex.Invalidate();
         Refresh();
     }
 
@@ -1055,7 +1049,6 @@ internal sealed class ExplorerWindow : Window
         {
             ExpandTo(root);
         }
-        ex.Invalidate();
         if (finding.Roots.Count > 0)
         {
             s.Cursor = Math.Max(0, ex.IndexOf(s, finding.Roots[0]));
@@ -1089,7 +1082,6 @@ internal sealed class ExplorerWindow : Window
         s.Hidden.Clear();
         s.FindingsOnly = false;
         ExpandTo(hit.Path);
-        ex.Invalidate();
         s.Cursor = Math.Max(0, ex.IndexOf(s, hit.Path));
         right.SetFocus();
     }
@@ -1190,7 +1182,6 @@ internal sealed class ExplorerWindow : Window
                 }
                 if (!windowDisposed && !windowStopped)
                 {
-                    ex.Invalidate();
                     Refresh();
                 }
             }, ct, Abandon);
@@ -1606,7 +1597,6 @@ internal sealed class ExplorerWindow : Window
             {
                 s.ComparisonStatus = $"Comparing with {tag}… reading packages";
                 Notice(s.ComparisonStatus);
-                ex.Invalidate();
                 Refresh();
             }
         }, ct), ct), comparison =>

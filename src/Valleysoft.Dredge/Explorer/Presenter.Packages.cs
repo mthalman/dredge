@@ -8,18 +8,22 @@ internal sealed record PackageInventoryRow(
 
 internal sealed partial class ExplorerPresenter
 {
-    private (int Version, List<PackageInventoryRow> Rows)? packageCache;
+    private (InstalledPackageMetadata? Packages, string Query, List<PackageInventoryRow> Rows)? packageCache;
+    private readonly HashSet<InstalledPackageEcosystem> packageCollapsed = [];
 
     public List<PackageInventoryRow> PackageRows(ExplorerState s)
     {
-        if (packageCache is { } cached && cached.Version == version)
+        if (packageCache is { } cached && ReferenceEquals(cached.Packages, s.Packages) &&
+            cached.Query == s.PackageQuery && packageCollapsed.SetEquals(s.CollapsedPackages))
         {
             return cached.Rows;
         }
         List<PackageInventoryRow> rows = [];
+        packageCollapsed.Clear();
+        packageCollapsed.UnionWith(s.CollapsedPackages);
         if (s.Packages is null)
         {
-            packageCache = (version, rows);
+            packageCache = (s.Packages, s.PackageQuery, rows);
             return rows;
         }
         foreach (var (ecosystem, metadata) in s.Packages.Ecosystems.OrderBy(pair => pair.Key))
@@ -42,7 +46,7 @@ internal sealed partial class ExplorerPresenter
                 rows.AddRange(packages);
             }
         }
-        packageCache = (version, rows);
+        packageCache = (s.Packages, s.PackageQuery, rows);
         return rows;
     }
 

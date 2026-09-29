@@ -31,7 +31,6 @@ public sealed class ExplorerDiveModelTests
         Assert.Equal("app", row.Path);
         Assert.Equal(Change.Modified, row.Node.Change);
         state.Hidden.Add(Change.Modified);
-        presenter.Invalidate();
         Assert.Empty(presenter.Flatten(state));
     }
 

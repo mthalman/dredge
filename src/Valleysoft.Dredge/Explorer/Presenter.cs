@@ -101,8 +101,6 @@ internal sealed partial class ExplorerPresenter
     private const string SpinnerFrames = "⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏";
 
     private readonly ExplorerImage img;
-    private (int Version, List<SearchHit> Hits)? searchCache;
-    private int version;
 
     public ExplorerPresenter(ExplorerImage img, int width, int height)
     {
@@ -132,9 +130,6 @@ internal sealed partial class ExplorerPresenter
     private int LayersInnerHeight => Narrow ? NarrowLayersHeight - 2 : BodyHeight - DetailsHeight - 2;
     public int TreeRows => Math.Max(1, RightInnerHeight - 5);
     public int SearchRows => Math.Max(1, RightInnerHeight - 9);
-
-    // Search and package results depend on state beyond the filesystem tree.
-    public void Invalidate() => version++;
 
     public PaneContent RightPane(ExplorerState s) => s.View switch
     {
