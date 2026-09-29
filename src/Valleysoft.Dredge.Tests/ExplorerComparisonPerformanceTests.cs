@@ -5,14 +5,19 @@ namespace Valleysoft.Dredge.Tests;
 [Collection(ExplorerUiCollection.Name)]
 public sealed class ExplorerComparisonPerformanceTests
 {
-    [Fact]
-    public void NavigationDoesNotRebuildLargeComparisonTrees()
+    [Theory]
+    [InlineData(0, false)]
+    [InlineData(5_000, false)]
+    [InlineData(5_000, true)]
+    public void NavigationKeepsLargeComparisonsWithinAllocationBudget(int diagnosticCount, bool overview)
     {
         ExplorerImage image = ExplorerSamples.Custom(
             [ExplorerSamples.Layer([.. Enumerable.Range(0, 20_000)
                 .Select(static i => ExplorerSamples.File($"app/f{i:D5}", 64, $"h{i}"))])]);
-        ExplorerSession empty = ExplorerSamples.Session(["empty"], [ExplorerSamples.Layer([])], []);
-        CompareState compare = new(ExplorerSession.Compare(empty, image.Session!), "before", "after");
+        InstalledPackageDiagnostic[] diagnostics = [.. Enumerable.Range(0, diagnosticCount)
+            .Select(static i => new InstalledPackageDiagnostic($"app/node_modules/pkg{i}/package.json", "Invalid JSON metadata."))];
+        ExplorerSession empty = ExplorerSamples.Session(["empty"], [ExplorerSamples.Layer([])], [], diagnostics: diagnostics);
+        CompareState compare = new(ExplorerSession.Compare(empty, image.Session!), "before", "after") { Overview = overview };
         compare.Expanded.Add("file:app");
         ExplorerState state = new() { Compare = compare };
         using ExplorerUiHarness ui = ExplorerWindowTests.Open(image, state,
@@ -27,7 +32,36 @@ public sealed class ExplorerComparisonPerformanceTests
         }
         long bytes = GC.GetAllocatedBytesForCurrentThread() - start;
         Assert.True(bytes < 20_000_000, $"Ten comparison moves allocated {bytes:N0} bytes.");
-        Assert.Equal(11, compare.Cursor);
+        Assert.Equal(overview ? 1 : 11, compare.Cursor);
+    }
+
+    [Fact]
+    public void WarningCountsAndDetailsFollowComparisonAndPackageResults()
+    {
+        ExplorerSession before = ExplorerSamples.Session(["before"], [ExplorerSamples.Layer([])], new() { ["pkg"] = "1" },
+            diagnostics: [new("before", "first"), new("before", "second")]);
+        ExplorerSession after = ExplorerSamples.Session(["after"], [ExplorerSamples.Layer([])], new() { ["pkg"] = "2" },
+            diagnostics: [new("after", "third")]);
+        ExplorerComparison comparison = ExplorerSession.Compare(before, after);
+        CompareState state = new(comparison, "before", "after");
+        CompareView view = new(new(ExplorerSamples.Image(), 150, 42), state);
+        Assert.Equal(["Baseline /before: first", "Baseline /before: second", "Target /after: third"], view.Warnings());
+        Assert.Contains(view.Diff().Lines, static line => line.ToString().Contains("3 metadata warnings"));
+        state.Overview = true;
+        Assert.Contains(view.Diff().Lines, static line => line.ToString().Contains("3 metadata warnings"));
+        state.PackageFiles = new(comparison.Packages[0], [], null, 0, ["ownership warning"]);
+        Assert.Contains(view.Diff().Lines, static line => line.ToString().Contains("4 metadata warnings"));
+        Assert.Equal("ownership warning", view.Warnings()[^1]);
+        state.PackageFiles = new(comparison.Packages[0], [], null, 0);
+        Assert.DoesNotContain("ownership warning", view.Warnings());
+        Assert.Contains(view.Diff().Lines, static line => line.ToString().Contains("3 metadata warnings"));
+        state.PackageFiles = null;
+        state.Comparison = ExplorerSession.Compare(after, before);
+        Assert.Equal(["Baseline /after: third", "Target /before: first", "Target /before: second"], view.Warnings());
+        ExplorerSession clean = ExplorerSamples.Image().Session!;
+        state.Comparison = ExplorerSession.Compare(clean, clean);
+        Assert.Empty(view.Warnings());
+        Assert.DoesNotContain(view.Diff().Lines, static line => line.ToString().Contains("metadata warning"));
     }
 
     [Fact]

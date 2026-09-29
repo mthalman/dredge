@@ -101,6 +101,9 @@ internal sealed class CompareView
     public bool IsOverview => c.Overview && !c.Searching && c.SearchQuery.Length == 0 &&
         c.Diff is null && c.PackageFiles is null;
 
+    public int WarningCount => c.Comparison.Baseline.Packages.Diagnostics.Count +
+        c.Comparison.Target.Packages.Diagnostics.Count + (c.PackageFiles?.Warnings?.Count ?? 0);
+
     public IReadOnlyList<string> Warnings() =>
     [
         .. c.Comparison.Baseline.Packages.Diagnostics.Select(static d => $"Baseline /{d.Path}: {d.Message}"),
@@ -493,8 +496,8 @@ internal sealed class CompareView
 
         List<Line> lines = [c.PackageFiles is { } package
                 ? Line.Of(package.Message ?? $"{Fmt.Count(package.Total, "file")}, {Fmt.N(package.Files?.Count ?? 0)} changed", Theme.Silt)
-                : Chips(w), Warnings().Count > 0
-                ? Line.Of($"{Fmt.Count(Warnings().Count, "metadata warning")} - Alt+W for full details", Theme.Ochre)
+                : Chips(w), WarningCount > 0
+                ? Line.Of($"{Fmt.Count(WarningCount, "metadata warning")} - Alt+W for full details", Theme.Ochre)
                 : c.SearchQuery.Length == 0 ? Line.Blank : Line.Of($"Filter: {c.SearchQuery} · {list.Count} matches", Theme.Silt),
             new Line().Add("   ").Add(Fmt.Fit(c.BaselineLabel, 8).PadLeft(8), Theme.Silt).Add("    ").Add(Fmt.Fit(c.TargetLabel, 8).PadLeft(8), Theme.Silt).Add("  ")
                 .Add("change".PadLeft(9), Theme.Silt).Add("  ").Add("name".PadRight(28), Theme.Silt).Add("version", Theme.Silt).Truncate(w)];
@@ -567,9 +570,9 @@ internal sealed class CompareView
         }
         lines.Add(Line.Blank);
         lines.Add(Chips(RightInner));
-        if (Warnings().Count > 0)
+        if (WarningCount > 0)
         {
-            lines.Add(Line.Of($"{Fmt.Count(Warnings().Count, "metadata warning")} - Alt+W for details", Theme.Ochre));
+            lines.Add(Line.Of($"{Fmt.Count(WarningCount, "metadata warning")} - Alt+W for details", Theme.Ochre));
         }
         lines.Add(Line.Of("Enter opens the selection. File differences compare the final filesystems.", Theme.Silt));
         return pane;
@@ -722,7 +725,7 @@ internal sealed class CompareView
         return
         [
             new("Alt+I", "Snapshot", new ShowComparisonSnapshot()),
-            .. Warnings().Count > 0 ? new Hint[] { new("Alt+W", "Warnings", new ShowView(RightView.Warning)) } : [],
+            .. WarningCount > 0 ? new Hint[] { new("Alt+W", "Warnings", new ShowView(RightView.Warning)) } : [],
             new("Tab", c.FocusLayers ? "Differences" : "Layers", new FocusOn(c.FocusLayers ? FocusPane.Right : FocusPane.Layers)), new("↑↓", "Move", ShowInFooter: false),
             new($"{k.Label(KeyAction.PreviousLayer)} {k.Label(KeyAction.NextLayer)}", "Next difference"),
             new(k.Label(KeyAction.SwapSides), "Swap sides", new SwapSides()),

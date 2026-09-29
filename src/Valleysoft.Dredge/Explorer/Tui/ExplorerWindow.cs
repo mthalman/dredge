@@ -594,7 +594,7 @@ internal sealed class ExplorerWindow : Window
         if (key.IsAlt && !key.IsCtrl && key.NoAlt.KeyCode == KeyCode.W &&
             (s.View == RightView.Insights && img.BaseWarning is not null ||
                 s.View == RightView.Packages && s.Packages?.Diagnostics.Count > 0 ||
-                Comparing && Compare.Warnings().Count > 0))
+                Comparing && Compare.WarningCount > 0))
         {
             cmd = new ShowView(RightView.Warning);
         }
