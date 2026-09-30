@@ -28,7 +28,7 @@ jobs:
     steps:
       - name: Prepare release
         id: prepare
-        uses: mthalman/release-automation/actions/prepare-release@90551757fe8b061d4dff1a4cab12f10e58f07201 # v1.0.1
+        uses: mthalman/release-automation/actions/prepare-release@dbda9774dde7b70af4eb22be7257ee9cd17c2d6f # v1.0.2
         with:
           token: ${{ secrets.RELEASE_GITHUB_TOKEN || github.token }}
 
@@ -194,7 +194,7 @@ jobs:
       contents: write
     steps:
       - name: Finalize release
-        uses: mthalman/release-automation/actions/finalize-release@90551757fe8b061d4dff1a4cab12f10e58f07201 # v1.0.1
+        uses: mthalman/release-automation/actions/finalize-release@dbda9774dde7b70af4eb22be7257ee9cd17c2d6f # v1.0.2
         with:
           token: ${{ secrets.RELEASE_GITHUB_TOKEN || github.token }}
           context: ${{ needs.prepare.outputs.context }}
