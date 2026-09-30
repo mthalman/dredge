@@ -596,6 +596,7 @@ internal sealed class ExplorerHost : IExplorerHost, IAsyncDisposable
         await compareGate.WaitAsync(cancellationToken);
         try
         {
+            cancellationToken.ThrowIfCancellationRequested();
             ResolvedManifest resolved = (await GetTargetSnapshotAsync(name, cancellationToken)).Resolved;
             cancellationToken.ThrowIfCancellationRequested();
             choice.Digest = resolved.ManifestInfo.DockerContentDigest;
@@ -673,6 +674,7 @@ internal sealed class ExplorerHost : IExplorerHost, IAsyncDisposable
         await compareGate.WaitAsync(cancellationToken);
         try
         {
+            cancellationToken.ThrowIfCancellationRequested();
             if (!targets.TryGetValue(key, out ExplorerSession? target))
             {
                 var (resolved, platform, targetClient) = await GetTargetSnapshotAsync(name, cancellationToken);
