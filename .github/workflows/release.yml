@@ -40,26 +40,44 @@ jobs:
     with:
       source-sha: ${{ needs.prepare.outputs.sha }}
 
+  # Native AOT executables are uploaded directly to the prepared draft release
+  # rather than stored as workflow artifacts.
   exe:
-    name: Build executables
-    runs-on: ubuntu-latest
+    name: Build ${{ matrix.rid }} executable
+    runs-on: ${{ matrix.os }}
     needs: [prepare, verify]
     if: needs.prepare.outputs.already-published != 'true'
+    permissions:
+      contents: write
     defaults:
       run:
-        working-directory: src
+        shell: bash
 
     strategy:
+      fail-fast: false
       matrix:
-        rid:
-          - win-x64
-          - win-arm64
-          - osx-x64
-          - osx-arm64
-          - linux-x64
-          - linux-arm64
-          - linux-musl-x64
-          - linux-musl-arm64
+        include:
+          - rid: win-x64
+            os: windows-latest
+          - rid: win-arm64
+            os: windows-11-arm
+          - rid: osx-x64
+            os: macos-latest
+          - rid: osx-arm64
+            os: macos-latest
+          - rid: linux-x64
+            os: ubuntu-24.04
+          - rid: linux-arm64
+            os: ubuntu-24.04-arm
+          - rid: linux-musl-x64
+            os: ubuntu-24.04
+            musl: true
+          - rid: linux-musl-arm64
+            os: ubuntu-24.04-arm
+            musl: true
+
+    env:
+      RID: ${{ matrix.rid }}
 
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
@@ -69,20 +87,44 @@ jobs:
           persist-credentials: false
 
       - name: Setup .NET SDK
+        if: ${{ !matrix.musl }}
         uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6
 
-      - name: Install dependencies
-        working-directory: src/Valleysoft.Dredge
-        run: dotnet restore --runtime ${{ matrix.rid }}
+      - name: Install Linux Native AOT prerequisites
+        if: ${{ runner.os == 'Linux' && !matrix.musl }}
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends clang zlib1g-dev
 
       - name: Publish
-        working-directory: src/Valleysoft.Dredge
-        run: dotnet publish -f net10.0 -c Release --no-restore -o "$GITHUB_WORKSPACE/publish" --runtime ${{ matrix.rid }} --no-self-contained
+        if: ${{ !matrix.musl }}
+        run: dotnet publish src/Valleysoft.Dredge/Valleysoft.Dredge.csproj -c Release -r "$RID" -p:PublishAot=true -o publish
 
-      - name: Rename output
+      # JavaScript actions cannot run in Alpine job containers on arm64 runners,
+      # so the musl toolchain runs through docker on the native runner instead.
+      - name: Publish in Alpine
+        if: ${{ matrix.musl }}
+        run: |
+          docker build --tag dredge-native-aot-musl --file .github/docker/native-aot-musl.Dockerfile .github/docker
+          docker run --rm \
+            --user "$(id -u):$(id -g)" \
+            --env RID \
+            --env HOME=/tmp/dredge-home \
+            --env DOTNET_CLI_HOME=/tmp/dredge-home \
+            --env NUGET_PACKAGES=/tmp/dredge-home/.nuget/packages \
+            --env DOTNET_CLI_TELEMETRY_OPTOUT=1 \
+            --env DOTNET_NOLOGO=1 \
+            --volume "$GITHUB_WORKSPACE:/workspace" \
+            --workdir /workspace \
+            dredge-native-aot-musl \
+            sh -c 'mkdir -p "$HOME" && dotnet publish src/Valleysoft.Dredge/Valleysoft.Dredge.csproj -c Release -r "$RID" -p:PublishAot=true -o publish'
+
+      - name: Check Native AOT output
+        run: bash .github/scripts/check-native-aot-output.sh publish "$RID"
+
+      - name: Prepare release assets
         env:
           RELEASE_VERSION: ${{ needs.prepare.outputs.version }}
-          RID: ${{ matrix.rid }}
         run: |
           if [[ "$RID" == win-* ]]; then
             dredgeExt=".exe"
@@ -91,24 +133,29 @@ jobs:
           fi
 
           exeName="dredge-${RELEASE_VERSION}-${RID}${dredgeExt}"
-          echo "EXE_NAME=${exeName}" >> "$GITHUB_ENV"
-          mv "$GITHUB_WORKSPACE/publish/dredge${dredgeExt}" "$GITHUB_WORKSPACE/publish/${exeName}"
-      
-      - name: Generate checksum
-        run: sha256sum "$EXE_NAME" >"${EXE_NAME}.sha256sum"
-        working-directory: ${{ github.workspace }}/publish
+          mkdir -p release-assets
+          cp "publish/dredge${dredgeExt}" "release-assets/$exeName"
 
-      - name: Save build binaries
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
-        with:
-          name: dredge-binaries-${{ matrix.rid }}
-          path: |
-            ${{ github.workspace }}/publish/${{ env.EXE_NAME }}
-            ${{ github.workspace }}/publish/${{ env.EXE_NAME }}.sha256sum
-          if-no-files-found: error
+          cd release-assets
+          if command -v sha256sum >/dev/null; then
+            hash="$(sha256sum "$exeName" | cut -d ' ' -f 1)"
+          else
+            hash="$(shasum -a 256 "$exeName" | cut -d ' ' -f 1)"
+          fi
+          printf '%s  %s\n' "$hash" "$exeName" > "${exeName}.sha256sum"
 
-  save-exes:
-    name: Save executables
+          echo "EXE_NAME=$exeName" >> "$GITHUB_ENV"
+
+      - name: Upload executable to the prepared draft
+        working-directory: release-assets
+        env:
+          GH_TOKEN: ${{ secrets.RELEASE_GITHUB_TOKEN || github.token }}
+          GH_REPO: ${{ github.repository }}
+          RELEASE_TAG: ${{ needs.prepare.outputs.tag }}
+        run: gh release upload "$RELEASE_TAG" "$EXE_NAME" "${EXE_NAME}.sha256sum" --clobber
+
+  verify-exes:
+    name: Verify executables
     needs: [prepare, exe]
     if: needs.prepare.outputs.already-published != 'true'
     runs-on: ubuntu-latest
@@ -116,36 +163,43 @@ jobs:
       contents: write
 
     steps:
-      - name: Download build binaries
-        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
-        with:
-          pattern: dredge-binaries-*
-          merge-multiple: true
-          path: ${{ github.workspace }}/publish
-
-      - name: Verify checksums
-        working-directory: ${{ github.workspace }}/publish
-        run: sha256sum --check *.sha256sum
-
-      - name: Save build binaries
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
-        with:
-          name: dredge-binaries
-          path: ${{ github.workspace }}/publish
-          if-no-files-found: error
-
-      - name: Upload executables to the prepared draft
-        working-directory: ${{ github.workspace }}/publish
+      - name: Verify draft release executables
         env:
           GH_TOKEN: ${{ secrets.RELEASE_GITHUB_TOKEN || github.token }}
           GH_REPO: ${{ github.repository }}
           RELEASE_TAG: ${{ needs.prepare.outputs.tag }}
-        run: gh release upload "$RELEASE_TAG" ./* --clobber
+          RELEASE_VERSION: ${{ needs.prepare.outputs.version }}
+        run: |
+          assetDir="$RUNNER_TEMP/release-assets"
+          mkdir -p "$assetDir"
+          cd "$assetDir"
+          gh release download "$RELEASE_TAG" --pattern 'dredge-*'
+
+          expected=()
+          for rid in win-x64 win-arm64 osx-x64 osx-arm64 linux-x64 linux-arm64 linux-musl-x64 linux-musl-arm64; do
+            if [[ "$rid" == win-* ]]; then
+              dredgeExt=".exe"
+            else
+              dredgeExt=""
+            fi
+            exeName="dredge-${RELEASE_VERSION}-${rid}${dredgeExt}"
+            expected+=("$exeName" "${exeName}.sha256sum")
+          done
+
+          expectedList="$(printf '%s\n' "${expected[@]}" | LC_ALL=C sort)"
+          actualList="$(find . -maxdepth 1 -type f -printf '%f\n' | LC_ALL=C sort)"
+          if [ "$actualList" != "$expectedList" ]; then
+            echo "::error::The draft release executables do not match the expected set."
+            diff <(echo "$expectedList") <(echo "$actualList") || true
+            exit 1
+          fi
+
+          sha256sum --check --strict ./*.sha256sum
 
   nuget:
     name: Publish NuGet Package
     runs-on: ubuntu-latest
-    needs: [prepare, save-exes]
+    needs: [prepare, verify-exes]
     if: needs.prepare.outputs.already-published != 'true'
     defaults:
       run:

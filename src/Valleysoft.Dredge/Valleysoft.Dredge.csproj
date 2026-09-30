@@ -15,8 +15,11 @@
   </PropertyGroup>
 
   <PropertyGroup Condition=" '$(IsPack)' != 'true' ">
-    <PublishSingleFile>true</PublishSingleFile>
     <DebugType>embedded</DebugType>
+  </PropertyGroup>
+
+  <PropertyGroup Condition=" '$(IsPack)' != 'true' and '$(PublishAot)' != 'true' ">
+    <PublishSingleFile>true</PublishSingleFile>
   </PropertyGroup>
 
   <PropertyGroup Condition=" '$(IsPack)' == 'true' ">
@@ -55,10 +58,6 @@
   </ItemGroup>
 
   <ItemGroup>
-    <_ILLinkSuppressions Include="DockerRegistryClient.TrimmerSuppressions.xml" />
-  </ItemGroup>
-
-  <ItemGroup>
     <PackageReference Include="MinVer" Version="8.0.0" PrivateAssets="all" />
     <PackageReference Include="Spectre.Console" Version="0.57.2" />
     <PackageReference Include="System.CommandLine" Version="2.0.12" />
@@ -74,7 +73,7 @@
     <PackageReference Include="TextMateSharp.Grammars" Version="2.0.4" ExcludeAssets="runtime" />
     <PackageReference Include="Valleysoft.DockerCredsProvider" Version="3.0.0" />
     <PackageReference Include="Valleysoft.DockerfileModel" Version="3.0.0" />
-    <PackageReference Include="Valleysoft.DockerRegistryClient" Version="7.0.0" />
+    <PackageReference Include="Valleysoft.DockerRegistryClient" Version="8.0.0" />
   </ItemGroup>
 
 </Project>
