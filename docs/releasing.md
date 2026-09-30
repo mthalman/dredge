@@ -35,8 +35,9 @@ target platform:
 The glibc executables inherit their glibc baseline from the Ubuntu 24.04
 runners. Changing those runners changes the documented Linux requirement in
 the [installation guide](installation.md). The musl executables build in the
-image defined by `.github/docker/native-aot-musl.Dockerfile`, which runs
-through `docker` on the native runner. Renovate updates its pinned SDK digest.
+digest-pinned `mcr.microsoft.com/dotnet/sdk:10.0-alpine-aot` image, which
+includes the native toolchain and runs through `docker` on the native runner.
+A Renovate custom manager updates that image's pinned digest.
 
 `.github/scripts/check-native-aot-output.sh` statically checks each publish
 directory. It rejects managed runtime files and checks the executable's file

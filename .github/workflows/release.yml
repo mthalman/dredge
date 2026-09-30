@@ -101,11 +101,13 @@ jobs:
         run: dotnet publish src/Valleysoft.Dredge/Valleysoft.Dredge.csproj -c Release -r "$RID" -p:PublishAot=true -o publish
 
       # JavaScript actions cannot run in Alpine job containers on arm64 runners,
-      # so the musl toolchain runs through docker on the native runner instead.
+      # so the musl build runs the AOT SDK image through docker on the native
+      # runner instead. The image includes the native toolchain and Git.
       - name: Publish in Alpine
         if: ${{ matrix.musl }}
+        env:
+          MUSL_AOT_SDK_IMAGE: mcr.microsoft.com/dotnet/sdk:10.0-alpine-aot@sha256:3d32f66190407b9bcff337dfa4bb591cb7c6378b7cc6b1e5f688d8badf917c71
         run: |
-          docker build --tag dredge-native-aot-musl --file .github/docker/native-aot-musl.Dockerfile .github/docker
           docker run --rm \
             --user "$(id -u):$(id -g)" \
             --env RID \
@@ -116,7 +118,7 @@ jobs:
             --env DOTNET_NOLOGO=1 \
             --volume "$GITHUB_WORKSPACE:/workspace" \
             --workdir /workspace \
-            dredge-native-aot-musl \
+            "$MUSL_AOT_SDK_IMAGE" \
             sh -c 'mkdir -p "$HOME" && dotnet publish src/Valleysoft.Dredge/Valleysoft.Dredge.csproj -c Release -r "$RID" -p:PublishAot=true -o publish'
 
       - name: Check Native AOT output
