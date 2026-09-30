@@ -12,5 +12,16 @@
       "matchPackageNames": ["mthalman/release-automation", "mthalman/release-automation/**"],
       "groupName": "release-automation"
     }
+  ],
+  "customManagers": [
+    {
+      "customType": "regex",
+      "description": "Update digest-pinned images that workflows run with docker",
+      "managerFilePatterns": ["/^\\.github/workflows/[^/]+\\.ya?ml$/"],
+      "matchStrings": [
+        "_IMAGE: (?<depName>[^:\\s]+):(?<currentValue>[^@\\s]+)@(?<currentDigest>sha256:[a-f0-9]{64})"
+      ],
+      "datasourceTemplate": "docker"
+    }
   ]
 }

@@ -2,10 +2,10 @@
 
 Dredge uses [release-automation v1.0.1][installation] to prepare release notes
 and migration guides. A human pushes the prepared tag to start publication.
-The release workflow runs tests, builds eight framework-dependent .NET 10
-executables, uploads them with SHA-256 checksums to the draft, publishes
-`Valleysoft.Dredge` to NuGet, pushes the container image, and finally publishes
-the existing GitHub Release.
+The release workflow runs tests, builds eight Native AOT executables, uploads
+them with SHA-256 checksums to the draft, publishes `Valleysoft.Dredge` to
+NuGet, pushes the container image, and finally publishes the existing GitHub
+Release.
 
 The shared prepare/finalize actions validate the release tag and source against
 the prepared draft. MinVer derives build versions from `v`-prefixed Git tags,
@@ -18,6 +18,38 @@ pass `MinVerVersionOverride` into Docker because the `src` build context has no
 Git metadata. PR containers use MinVer's calculated development version and are
 not pushed. There is no manually maintained version file. Manual release
 dispatch and standalone container publishing are no longer supported.
+
+## Native AOT executables
+
+Each executable is published with `PublishAot=true` on a runner for its
+target platform:
+
+| Runtime identifiers | Runner |
+| --- | --- |
+| `win-x64` | `windows-latest` |
+| `win-arm64` | `windows-11-arm` |
+| `osx-x64`, `osx-arm64` | `macos-latest` |
+| `linux-x64`, `linux-musl-x64` | `ubuntu-24.04` |
+| `linux-arm64`, `linux-musl-arm64` | `ubuntu-24.04-arm` |
+
+The glibc executables inherit their glibc baseline from the Ubuntu 24.04
+runners. Changing those runners changes the documented Linux requirement in
+the [installation guide](installation.md). The musl executables build in the
+digest-pinned `mcr.microsoft.com/dotnet/sdk:10.0-alpine-aot` image, which
+includes the native toolchain and runs through `docker` on the native runner.
+A Renovate custom manager updates that image's pinned digest.
+
+`.github/scripts/check-native-aot-output.sh` statically checks each publish
+directory. It rejects managed runtime files and checks the executable's file
+format, architecture, and Linux libc loader. The workflows never run the
+executables.
+
+Each build job uploads its executable and checksum directly to the draft; the
+executables are not stored as workflow artifacts. **Verify executables** then
+downloads the draft's `dredge-*` assets, requires exactly the eight expected
+executables and checksums, and verifies every checksum before NuGet
+publication. Debug symbols are not published. CI publishes and checks only a
+`linux-x64` executable and does not upload it.
 
 ## Configure the repository
 
@@ -45,8 +77,9 @@ change on `main`; `GITHUB_TOKEN` cannot receive that permission.
 
 If your deployment needs it, configure the optional `RELEASE_GITHUB_TOKEN`
 secret through your normal credential review process. It is used only for
-prepare, draft asset upload, and finalize. The token needs repository Contents
-(write), draft visibility, and Workflows (write) when GitHub requires it.
+prepare, draft asset upload and verification, and finalize. The token needs
+repository Contents (write), draft visibility, and Workflows (write) when
+GitHub requires it.
 See the pinned [credential requirements][credentials] for token types and
 limitations. Do not broaden credentials merely to bypass a failed gate.
 
@@ -89,8 +122,9 @@ limitations. Do not broaden credentials merely to bypass a failed gate.
    Use a human push. A tag created with a workflow's `GITHUB_TOKEN` normally
    does not trigger another push workflow. Both lightweight and annotated
    tags are supported.
-7. Observe **Release**. It must validate preparation, pass tests, build and
-   upload executables, publish NuGet and containers, and finalize successfully.
+7. Observe **Release**. It must validate preparation, pass tests, build,
+   upload, and verify executables, publish NuGet and containers, and finalize
+   successfully.
    Confirm the GitHub Release is published with the reviewed notes and all
    eight executables and checksums. Confirm the NuGet version and container
    tags (`<version>`, `<major>`, and `latest`) match the prepared version.
@@ -110,12 +144,15 @@ and container images are not rolled back.
 
 After diagnosing a transient failure, prefer **Re-run failed jobs** on the
 original tag-creation run so successful publication jobs are not repeated.
-Inspect the external destinations first. Executable uploads use `--clobber`
-to replace matching asset names on a retry, and container pushes can replace
-their tags. NuGet pushes deliberately fail on an existing version rather than
-silently treating an unverified package as success. If a package was accepted
-but its job failed, verify the published package and resolve that partial
-publication before retrying; do not move the tag or blindly rerun every job.
+Inspect the external destinations first. Each executable job uploads its own
+assets, so a failed run can leave only some executables on the draft; NuGet
+publication waits for **Verify executables** to find the complete set.
+Executable uploads use `--clobber` to replace matching asset names on a retry,
+and container pushes can replace their tags. NuGet pushes deliberately fail on
+an existing version rather than silently treating an unverified package as
+success. If a package was accepted but its job failed, verify the published
+package and resolve that partial publication before retrying; do not move the
+tag or blindly rerun every job.
 
 Once the prepared GitHub Release is published, a rerun validates provenance
 and skips all consumer build and publication jobs. That no-op behavior does
