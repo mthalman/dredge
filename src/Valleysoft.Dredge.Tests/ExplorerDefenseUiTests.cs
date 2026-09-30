@@ -467,6 +467,29 @@ public sealed class ExplorerDefenseUiTests
     public void DockerfileHighlightingPreservesEverySourceCharacter(string source) =>
         Assert.Equal(source, string.Concat(Syntax.Dockerfile(source, Theme.Foam).Select(static token => token.Text)));
 
+    [Fact]
+    public void WrapTruncatesOverlongFirstWordWithoutBlankLine()
+    {
+        List<Line> lines = Syntax.Wrap([("sha256:" + new string('a', 64), new Sty(Theme.Foam))], 20, 3);
+
+        Line line = Assert.Single(lines);
+        Assert.Equal(20, line.Length);
+        Assert.StartsWith("sha256:", line.ToString());
+        Assert.EndsWith("…", line.ToString());
+    }
+
+    [Fact]
+    public void WrapTruncatesOverlongWordAfterWrapping()
+    {
+        List<Line> lines = Syntax.Wrap([("prefix " + new string('b', 64), new Sty(Theme.Foam))], 12, 3, indent: 2);
+
+        Assert.Equal(2, lines.Count);
+        Assert.Equal("prefix", lines[0].ToString()!.TrimEnd());
+        Assert.StartsWith("  b", lines[1].ToString());
+        Assert.EndsWith("…", lines[1].ToString());
+        Assert.All(lines, line => Assert.True(line.Length <= 12));
+    }
+
     [Theory]
     [InlineData(false)]
     [InlineData(true)]

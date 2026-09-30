@@ -64,7 +64,8 @@ internal static partial class Syntax
         {
             Line current = lines[^1];
             bool isSpace = string.IsNullOrWhiteSpace(text);
-            if (current.Length + DisplayText.Width(text) > width && !isSpace)
+            int lineStart = lines.Count == 1 ? 0 : indent;
+            if (current.Length + DisplayText.Width(text) > width && !isSpace && current.Length > lineStart)
             {
                 if (lines.Count == maxLines)
                 {
@@ -83,6 +84,10 @@ internal static partial class Syntax
                 continue;
             }
             current.Add(text, style);
+            if (!isSpace && current.Length > width)
+            {
+                current.Truncate(width);
+            }
         }
         return lines;
     }
