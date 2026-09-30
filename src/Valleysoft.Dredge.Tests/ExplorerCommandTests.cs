@@ -769,5 +769,5 @@ public class ExplorerViewerTests
 
     private static (string Exe, string Args) Grep(string pattern) => OperatingSystem.IsWindows()
         ? ("findstr.exe", $"{pattern} \"{{0}}\"")
-        : ("/bin/grep", $"{pattern} \"{{0}}\"");
+        : (OperatingSystem.IsMacOS() ? "/usr/bin/grep" : "/bin/grep", $"{pattern} \"{{0}}\"");
 }
