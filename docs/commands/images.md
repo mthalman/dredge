@@ -88,125 +88,98 @@ dredge image os mcr.microsoft.com/windows/nanoserver:ltsc2022-amd64
 
 ## Explore
 
-Opens a full-screen, interactive explorer for a Linux image. Browse its
-layers, see which files each layer adds, changes, or deletes, find wasted
-space, and compare with another tag.
-
-### Startup
+Opens a full-screen, interactive explorer for a Linux image. You can browse
+its layers, see which files each layer adds, changes, or deletes, find wasted
+space, and compare it with another version of the image.
 
 ```console
 dredge image explore <image> [--layer <n>] [--compare <image-or-tag>] [--base-image <image> ...] [--no-mouse] [--os <os>] [--arch <arch>] [--os-version <version>]
 ```
 
-- `--layer <n>` opens with layer `n` selected.
-- `--compare <image-or-tag>` opens compare mode with `<image>` as the baseline.
-  A bare tag, such as `--compare 2.0`, resolves in the same repository. Both
-  images resolve to the same platform.
-- Repeat `--base-image <image>` to identify ancestors in any order, for example
-  `--base-image sdk:1 --base-image runtime:1`. Each image must share the
-  explored image's layer prefix and identify a distinct boundary. Without
-  this option, the explorer reads the immediate base from
-  `org.opencontainers.image.base.name`.
-- `--no-mouse` leaves the mouse to the terminal, so you can select text without
-  a modifier key.
+- `--layer <n>` starts with layer `n` selected.
+- `--compare <image-or-tag>` starts by comparing the image with another one.
+  A bare tag, such as `--compare 2.0`, refers to the same repository.
+- `--base-image <image>` marks which layers come from a base image. Repeat it
+  to indicate several images comprising an image hierarchy.
+  If you leave it out, the explorer uses the base image recorded in the
+  image's annotations, when there is one.
+- `--no-mouse` turns off mouse support so you can select text in the terminal
+  normally.
 
-### Layers and files
+### Browsing layers and files
 
-Select a layer to browse its changed files. Press `Tab` to switch panes, `a`
-to show the whole filesystem, and `Enter` to preview a file. `Esc` goes back.
-Press `o` to open a file in the configured text viewer.
+The explorer opens with a list of layers on one side and the files they
+change on the other. Select a layer to see its files, press `Tab` to move
+between the two panes, and press `a` to see the whole filesystem instead of
+just that layer's changes. Press `Enter` to preview a file, `o` to open it in
+your text viewer, and `Esc` to go back.
 
-Folder sizes count shared hard-link content once, so parent totals may differ
-from the sum of their children. They are not estimates of space freed by deletion.
+### Searching and finding wasted space
 
-### Search and insights
-
-Press `/` to search paths across layers, or `i` for an efficiency score and
-wasted-space findings. Select a result to browse its files; `Esc` retraces your
-steps back to the results.
+Press `/` to search for a path across every layer. Press `i` to see an
+efficiency score along with the files that waste space, such as files that
+are overwritten or deleted by a later layer. Selecting a result takes you to
+its files, and `Esc` brings you back to the list.
 
 ### Packages
 
-Press `p` to view packages present through the selected layer, including
-inherited packages. Inventory is available after all layers are indexed.
-`/` filters names, versions, or types; `Enter` shows package details.
+Press `p` to see the packages installed as of the selected layer, including
+those inherited from earlier layers. Dredge recognizes npm, dpkg, apk, pip,
+and NuGet packages. Type `/` to filter the list, or press `Enter` to see a
+package's details.
 
-Supported types are npm, dpkg, apk, pip, and NuGet. NuGet uses deployed
-`.deps.json` files and does not support package-file drill-down.
-Missing or unreadable metadata does not mean no packages are installed.
-Use `Alt+W` to inspect metadata warnings.
+### Comparing images
 
-### Compare images
+Press `c`, enter a tag or image reference, and choose whether to compare
+**Files** or **Packages**. The image you opened is the baseline, and `s`
+swaps the two sides. Press `Enter` on a changed file to see a diff, or on a
+changed package to see which of its files changed.
 
-Press `c` and enter a tag or image reference, then choose **Files** or
-**Packages**. Comparison uses both images' final filesystems and inventories.
-The opened image is the baseline; `s` swaps sides.
-
-Use `/` to filter differences and `Enter` to open a file diff or a package's
-changed files. `Alt+W` shows warnings about incomplete metadata or ownership.
-`Esc` goes back or cancels a pending comparison.
-
-Comparison targets are cached for the session. `Alt+I` shows their resolved
-identities; reopen the explorer to refresh moving tags.
-
-### File previews and diffs
-
-In a file diff, `Alt+V` switches between inline and side-by-side layouts.
-Use `Left`/`Right` to pan long lines. Notices identify truncated previews or
-diffs too large to display; matching truncated previews do not prove the full
-files are identical. Symbolic links compare target text without following it.
+In a file diff, `Alt+V` switches between inline and side-by-side views.
 
 ### File history
 
-From a file preview, press `Alt+H` for history, `Enter` to preview a version,
-or `Alt+D` to compare it with the previous event.
-Extraction, external viewers, and copied commands operate on the final image,
-not historical versions.
+While previewing a file, press `Alt+H` to see every layer that touched it.
+Select a version to preview it, or press `Alt+D` to compare it with the
+version before.
 
-### Extraction and copied commands
+### Extracting and copying
 
-Press `x` to extract the selected file or directory, and `Ctrl+C` (shown as
-`^C`) to copy the equivalent `dredge image` command. On macOS, use Control+C;
-Command+C remains the terminal's shortcut for copying selected text.
+Press `x` to extract the selected file or directory to your machine. Press
+`Ctrl+C` to copy the equivalent `dredge image` command so you can run it
+later or share it. On Linux, macOS, and over SSH, copying depends on your
+terminal supporting OSC 52 clipboard access.
 
-Copied commands target POSIX shells on Linux/macOS and PowerShell 7.3+ on
-Windows with `Standard` or `Windows` native argument passing, not `Legacy`.
+### Keys and mouse
 
-Local Windows uses the native clipboard, with a selectable command field as
-fallback on failure. Other platforms and SSH require terminal support for
-OSC 52 (and passthrough in tmux). Dredge cannot detect ignored OSC 52 requests,
-so they do not trigger the fallback.
-
-### Keyboard and mouse controls
-
-Press `?` for help. Keys apply to the current pane or view.
+Press `?` at any time to see the available keys.
 
 | Key | Action |
 |-----|--------|
 | `↑` `↓` `PgUp` `PgDn` `Home` `End` | Move |
 | `Tab` | Switch pane |
-| `[` `]` | Previous or next layer; in compare, previous or next difference |
-| `a` | Toggle the whole filesystem |
-| `←` `→` | Fold or unfold directories and package types |
-| `+` `~` `=` `-` | Show or hide added, modified, identical, or deleted files; `Esc` clears the filters |
-| `w` | Show only paths with findings |
-| `Enter` | Inspect a file, open a finding, fold a package type, show package details, or diff a compared file |
-| `i` `/` `?` | Insights, search, or help |
-| `p` | Packages at the selected layer; `/` filters names, versions, and types |
-| `Alt+W` | Full metadata warnings in Packages or comparison; base warning in Insights |
-| `Alt+L` `Alt+D` `Alt+C` | In search: this layer only, include deleted paths, exact case |
-| `c` `s` | Compare with a tag; swap compared sides |
-| `Alt+V` | Toggle inline/side-by-side layout in a file diff |
-| `Alt+H` | Browse file history from the inspector |
-| `Alt+D` | In file history: diff selected event against its predecessor |
-| `r` | Retry a failed layer or package scan |
-| `x` `^C` `o` | Extract; copy the dredge command (Ctrl+C); open in the text viewer |
-| `Esc` `q` | Back; quit |
+| `[` `]` | Previous or next layer, or next difference when comparing |
+| `←` `→` | Collapse or expand a directory |
+| `Enter` | Open the selected item |
+| `Esc` | Go back |
+| `a` | Show the whole filesystem |
+| `+` `~` `=` `-` | Show or hide added, modified, unchanged, or deleted files |
+| `/` | Search or filter |
+| `i` | Efficiency insights |
+| `p` | Packages |
+| `c` | Compare with another image |
+| `s` | Swap compared images |
+| `Alt+V` | Switch diff layout |
+| `Alt+H` | File history |
+| `x` | Extract |
+| `Ctrl+C` | Copy the `dredge` command |
+| `o` | Open in text viewer |
+| `q` | Quit |
 
-With the mouse enabled, click a row, chip, or footer hint to use it, and
-double-click a row to open it. The wheel scrolls the pane under the pointer.
+You can also use the mouse: click to select, double-click to open, and scroll
+with the wheel.
 
-You can configure the theme, mouse, and text viewer through the
+The theme, mouse support, and text viewer can be changed in the
 [`explore` settings](../settings.md).
 
 ## Ls
