@@ -8,7 +8,7 @@ internal sealed class DeleteConfirmation
     private readonly Func<string, TextWriter, CancellationToken, Task<bool>> prompt;
 
     public DeleteConfirmation()
-        : this(() => Console.IsInputRedirected, PromptAsync)
+        : this(static () => Console.IsInputRedirected, PromptAsync)
     {
     }
 

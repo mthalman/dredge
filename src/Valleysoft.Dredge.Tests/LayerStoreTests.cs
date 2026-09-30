@@ -15,6 +15,67 @@ public sealed class LayerStoreTests
     private static readonly ImageName Image = ImageName.Parse("registry.test/repo:tag");
     private static CancellationToken Token => TestContext.Current.CancellationToken;
 
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public async Task Blob_StreamsFullDownloadWithoutBuffering(bool rangeHonored)
+    {
+        await using LayerCacheTestContext cache = new();
+        byte[] bytes = CreateLayer();
+        string digest = LayerCacheTestContext.Digest(bytes);
+        Mock<IDockerRegistryClient> client = Client(bytes);
+        client.Setup(c => c.Blobs.GetAsync(Image.Repo, digest, It.IsAny<CancellationToken>()))
+            .Throws(new InvalidOperationException("Buffered download must not be used."));
+        client.Setup(c => c.Blobs.GetRangeAsync(Image.Repo, digest, 0, null, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(() => new BlobDownloadResult(new MemoryStream(bytes), rangeHonored,
+                rangeHonored ? 0 : null, rangeHonored ? bytes.Length - 1 : null, bytes.Length));
+
+        using Stream blob = await cache.Store.OpenBlobAsync(client.Object, Image, digest, bytes.Length, Token);
+        Assert.Equal(bytes, LayerCacheTestContext.ReadBytes(blob));
+        client.Verify(c => c.Blobs.GetAsync(Image.Repo, digest, It.IsAny<CancellationToken>()), Times.Never);
+    }
+
+    [Fact]
+    public async Task Blob_RejectsIncompleteRangeBeforePublishing()
+    {
+        await using LayerCacheTestContext cache = new();
+        byte[] bytes = CreateLayer();
+        string digest = LayerCacheTestContext.Digest(bytes);
+        Mock<IDockerRegistryClient> client = Client(bytes);
+        client.Setup(c => c.Blobs.GetRangeAsync(Image.Repo, digest, 0, null, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(() => new BlobDownloadResult(new MemoryStream(bytes[..^1]),
+                true, 0, bytes.Length - 2, bytes.Length));
+
+        await Assert.ThrowsAsync<InvalidDataException>(() =>
+            cache.Store.OpenBlobAsync(client.Object, Image, digest, bytes.Length, Token));
+        Assert.Empty(Directory.GetFiles(DataPath(cache)));
+    }
+
+    [Fact]
+    public async Task GetIndex_ReportsDownloadedAndCachedBytes()
+    {
+        await using LayerCacheTestContext cache = new();
+        byte[] bytes = CreateLayer();
+        string digest = LayerCacheTestContext.Digest(bytes);
+        Mock<IDockerRegistryClient> client = Client(bytes);
+        List<long> downloaded = [];
+        StoredLayerIndex first = await cache.Store.GetIndexAsync(
+            client.Object, Image, new(0, digest), bytes.Length, Token,
+            new RecordingProgress(downloaded));
+
+        Assert.Equal(bytes.Length, downloaded[^1]);
+        Assert.All(downloaded, value => Assert.InRange(value, 1, bytes.Length));
+        List<long> cached = [];
+        StoredLayerIndex second = await cache.Store.GetIndexAsync(
+            client.Object, Image, new(0, digest), bytes.Length, Token,
+            new RecordingProgress(cached));
+
+        Assert.Equal(first.Digest, second.Digest);
+        Assert.Equal(first.BlobLength, second.BlobLength);
+        Assert.Equal([bytes.Length], cached);
+        client.Verify(c => c.Blobs.GetRangeAsync(Image.Repo, digest, 0, null, It.IsAny<CancellationToken>()), Times.Once);
+    }
+
     [Fact]
     public void MetadataEnvelope_PreservesLegacyNamesAndReadsCamelCase()
     {
@@ -90,7 +151,7 @@ public sealed class LayerStoreTests
 
         await RunChildAsync(cache.Root, clear: true);
         Assert.False(File.Exists(cache.Store.GetBlobPath(digest)));
-        client.Verify(c => c.Blobs.GetAsync(Image.Repo, digest, It.IsAny<CancellationToken>()), Times.Once);
+        client.Verify(c => c.Blobs.GetRangeAsync(Image.Repo, digest, 0, null, It.IsAny<CancellationToken>()), Times.Once);
     }
 
     [Fact]
@@ -110,14 +171,15 @@ public sealed class LayerStoreTests
         byte[] bytes = await File.ReadAllBytesAsync(Path.Combine(root, "source"), Token);
         string digest = LayerCacheTestContext.Digest(bytes);
         Mock<IDockerRegistryClient> client = Client(bytes);
-        client.Setup(c => c.Blobs.GetAsync(Image.Repo, digest, It.IsAny<CancellationToken>()))
+        client.Setup(c => c.Blobs.GetRangeAsync(Image.Repo, digest, 0, null, It.IsAny<CancellationToken>()))
             .Returns(async () =>
             {
                 await File.AppendAllTextAsync(Path.Combine(root, "downloads"), "download\n", Token);
                 await Task.Delay(200, Token);
-                return Environment.GetEnvironmentVariable("DREDGE_TEST_ABANDON_WRITE") == "1"
+                Stream stream = Environment.GetEnvironmentVariable("DREDGE_TEST_ABANDON_WRITE") == "1"
                     ? new AbandonedWriteStream(bytes)
                     : new MemoryStream(bytes);
+                return new BlobDownloadResult(stream, false, null, null, bytes.Length);
             });
         await using LayerStore store = new(Path.Combine(root, "cache"));
         StoredLayerIndex index = await store.GetIndexAsync(client.Object, Image, new(0, digest), bytes.Length, Token);
@@ -183,12 +245,12 @@ public sealed class LayerStoreTests
         string digest = LayerCacheTestContext.Digest(bytes);
         Mock<IDockerRegistryClient> client = Client(bytes);
         int downloads = 0;
-        client.Setup(c => c.Blobs.GetAsync(Image.Repo, digest, It.IsAny<CancellationToken>()))
+        client.Setup(c => c.Blobs.GetRangeAsync(Image.Repo, digest, 0, null, It.IsAny<CancellationToken>()))
             .Returns(async () =>
             {
                 Interlocked.Increment(ref downloads);
                 await Task.Delay(75, Token);
-                return new MemoryStream(bytes);
+                return new BlobDownloadResult(new MemoryStream(bytes), false, null, null, bytes.Length);
             });
         await using LayerStore second = new(cache.Paths.CachePath);
         Task<Stream> firstRead = cache.Store.OpenBlobAsync(client.Object, Image, digest, bytes.Length, Token);
@@ -208,8 +270,9 @@ public sealed class LayerStoreTests
         byte[] bytes = CreateLayer();
         string digest = LayerCacheTestContext.Digest(bytes);
         Mock<IDockerRegistryClient> client = Client(bytes);
-        client.Setup(c => c.Blobs.GetAsync(Image.Repo, digest, It.IsAny<CancellationToken>()))
-            .ReturnsAsync(() => new MemoryStream(new byte[bytes.Length]));
+        client.Setup(c => c.Blobs.GetRangeAsync(Image.Repo, digest, 0, null, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(() => new BlobDownloadResult(new MemoryStream(new byte[bytes.Length]),
+                false, null, null, bytes.Length));
         await Assert.ThrowsAsync<InvalidDataException>(() =>
             cache.Store.OpenBlobAsync(client.Object, Image, digest, bytes.Length, Token));
         Assert.Empty(Directory.GetFiles(DataPath(cache)));
@@ -231,7 +294,7 @@ public sealed class LayerStoreTests
         await using LayerStore second = new(cache.Paths.CachePath);
         using Stream result = await second.OpenBlobAsync(client.Object, Image, digest, bytes.Length, Token);
         Assert.Equal(bytes, LayerCacheTestContext.ReadBytes(result));
-        client.Verify(c => c.Blobs.GetAsync(Image.Repo, digest, It.IsAny<CancellationToken>()), Times.Exactly(2));
+        client.Verify(c => c.Blobs.GetRangeAsync(Image.Repo, digest, 0, null, It.IsAny<CancellationToken>()), Times.Exactly(2));
     }
 
     [Theory]
@@ -248,7 +311,7 @@ public sealed class LayerStoreTests
         {
             Assert.True(read.CanRead);
         }
-        client.Verify(c => c.Blobs.GetAsync(Image.Repo, digest, It.IsAny<CancellationToken>()), Times.Once);
+        client.Verify(c => c.Blobs.GetRangeAsync(Image.Repo, digest, 0, null, It.IsAny<CancellationToken>()), Times.Once);
         await cache.Store.DisposeAsync();
         Assert.True(new DirectoryInfo(DataPath(cache)).GetFiles().Sum(file => file.Length) <= budget);
     }
@@ -263,7 +326,7 @@ public sealed class LayerStoreTests
         await cache.Store.DisposeAsync();
         Assert.Empty(Directory.GetFiles(DataPath(cache), "*.blob"));
         Assert.Single(Directory.GetFiles(DataPath(cache), "*.index"));
-        Assert.True(new DirectoryInfo(DataPath(cache)).GetFiles().Sum(file => file.Length) <= 32 * 1024);
+        Assert.True(new DirectoryInfo(DataPath(cache)).GetFiles().Sum(static file => file.Length) <= 32 * 1024);
     }
 
     [Theory]
@@ -303,7 +366,7 @@ public sealed class LayerStoreTests
         Assert.Equal("selected content", Encoding.UTF8.GetString(content.ToArray()));
         client.Verify(c => c.Blobs.GetRangeAsync(Image.Repo, digest, 0,
             entry.CompressedHighWaterMark, It.IsAny<CancellationToken>()), Times.Once);
-        client.Verify(c => c.Blobs.GetAsync(Image.Repo, digest, It.IsAny<CancellationToken>()),
+        client.Verify(c => c.Blobs.GetRangeAsync(Image.Repo, digest, 0, null, It.IsAny<CancellationToken>()),
             Times.Exactly(response is "range" or "ignored" ? 1 : 2));
         Assert.Equal(response != "range", File.Exists(cache.Store.GetBlobPath(digest)));
     }
@@ -332,7 +395,7 @@ public sealed class LayerStoreTests
         await File.WriteAllTextAsync(path, damage == "truncated" ? "{" : json.ToJsonString(), Token);
         StoredLayerIndex rebuilt = await cache.Store.GetIndexAsync(client.Object, Image, new(8, digest), bytes.Length, Token);
         Assert.Equal(original.Changes.Entries, rebuilt.Changes.Entries);
-        client.Verify(c => c.Blobs.GetAsync(Image.Repo, digest, It.IsAny<CancellationToken>()), Times.Once);
+        client.Verify(c => c.Blobs.GetRangeAsync(Image.Repo, digest, 0, null, It.IsAny<CancellationToken>()), Times.Once);
     }
 
     [Theory]
@@ -346,7 +409,7 @@ public sealed class LayerStoreTests
         Mock<IDockerRegistryClient> client = Client(bytes);
         StoredLayerIndex index = await cache.Store.GetIndexAsync(client.Object, Image, new(0, digest), bytes.Length, Token);
         await cache.EvictBlobsAsync();
-        client.Setup(c => c.Blobs.GetRangeAsync(Image.Repo, digest, 0, It.IsAny<long?>(), It.IsAny<CancellationToken>()))
+        client.Setup(c => c.Blobs.GetRangeAsync(Image.Repo, digest, 0, It.Is<long?>(length => length.HasValue), It.IsAny<CancellationToken>()))
             .ThrowsAsync(new RegistryException { StatusCode = status });
         if (status == HttpStatusCode.Unauthorized)
         {
@@ -358,7 +421,7 @@ public sealed class LayerStoreTests
             using Stream blob = await cache.Store.OpenIndexedBlobAsync(client.Object, Image, index, [0], Token);
             Assert.Equal(bytes, LayerCacheTestContext.ReadBytes(blob));
         }
-        client.Verify(c => c.Blobs.GetAsync(Image.Repo, digest, It.IsAny<CancellationToken>()),
+        client.Verify(c => c.Blobs.GetRangeAsync(Image.Repo, digest, 0, null, It.IsAny<CancellationToken>()),
             Times.Exactly(status == HttpStatusCode.Unauthorized ? 1 : 2));
     }
 
@@ -383,7 +446,7 @@ public sealed class LayerStoreTests
         string digest = LayerCacheTestContext.Digest(bytes);
         Mock<IDockerRegistryClient> client = Client(bytes);
         StoredLayerIndex index = await cache.Store.GetIndexAsync(client.Object, Image, new(0, digest), bytes.Length, Token);
-        Assert.Equal([0, 1], index.Changes.Entries.Select(entry => entry.EntryIndex));
+        Assert.Equal([0, 1], index.Changes.Entries.Select(static entry => entry.EntryIndex));
         using Stream blob = await cache.Store.OpenIndexedBlobAsync(client.Object, Image, index, [0, 1], Token);
         using LayerContentReader reader = new(blob);
         using MemoryStream result = new();
@@ -550,8 +613,8 @@ public sealed class LayerStoreTests
         byte[] bytes = CreateLayer();
         string digest = LayerCacheTestContext.Digest(bytes);
         Mock<IDockerRegistryClient> client = Client(bytes);
-        client.Setup(c => c.Blobs.GetAsync(Image.Repo, digest, It.IsAny<CancellationToken>()))
-            .ReturnsAsync(() => new CancelingStream(bytes));
+        client.Setup(c => c.Blobs.GetRangeAsync(Image.Repo, digest, 0, null, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(() => new BlobDownloadResult(new CancelingStream(bytes), false, null, null, bytes.Length));
         await Assert.ThrowsAnyAsync<OperationCanceledException>(() =>
             cache.Store.OpenBlobAsync(client.Object, Image, digest, bytes.Length, Token));
         Assert.Empty(Directory.GetFiles(DataPath(cache)));
@@ -566,12 +629,12 @@ public sealed class LayerStoreTests
         Mock<IDockerRegistryClient> client = Client(bytes);
         TaskCompletionSource started = new(TaskCreationOptions.RunContinuationsAsynchronously);
         TaskCompletionSource release = new(TaskCreationOptions.RunContinuationsAsynchronously);
-        client.Setup(c => c.Blobs.GetAsync(Image.Repo, digest, It.IsAny<CancellationToken>()))
+        client.Setup(c => c.Blobs.GetRangeAsync(Image.Repo, digest, 0, null, It.IsAny<CancellationToken>()))
             .Returns(async () =>
             {
                 started.SetResult();
                 await release.Task.WaitAsync(Token);
-                return new MemoryStream(bytes);
+                return new BlobDownloadResult(new MemoryStream(bytes), false, null, null, bytes.Length);
             });
         Task<Stream> writer = cache.Store.OpenBlobAsync(client.Object, Image, digest, bytes.Length, Token);
         await started.Task.WaitAsync(Token);
@@ -622,10 +685,15 @@ public sealed class LayerStoreTests
     private static Mock<IDockerRegistryClient> Client(byte[] bytes)
     {
         Mock<IDockerRegistryClient> client = new() { DefaultValue = DefaultValue.Mock };
-        client.Setup(c => c.Blobs.GetAsync(Image.Repo,
-            LayerCacheTestContext.Digest(bytes), It.IsAny<CancellationToken>()))
-            .ReturnsAsync(() => new MemoryStream(bytes));
+        client.Setup(c => c.Blobs.GetRangeAsync(Image.Repo,
+            LayerCacheTestContext.Digest(bytes), 0, null, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(() => new BlobDownloadResult(new MemoryStream(bytes), false, null, null, bytes.Length));
         return client;
+    }
+
+    private sealed class RecordingProgress(List<long> values) : IProgress<long>
+    {
+        public void Report(long value) => values.Add(value);
     }
 
     private sealed class CancelingStream(byte[] bytes) : MemoryStream(bytes)

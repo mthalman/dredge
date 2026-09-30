@@ -5,6 +5,15 @@ namespace Valleysoft.Dredge.Tests;
 public sealed class CliProcessTests
 {
     [Fact]
+    public async Task ExploreRequiresAnInteractiveTerminal()
+    {
+        ProcessResult result = await InvokeDredgeProcessAsync("image", "explore", "registry.invalid/app:1");
+
+        Assert.Equal(1, result.ExitCode);
+        Assert.Contains("requires an interactive terminal", result.StandardError + result.StandardOutput);
+    }
+
+    [Fact]
     public async Task Help_ListsTopLevelCommands()
     {
         ProcessResult result = await InvokeDredgeProcessAsync("--help");

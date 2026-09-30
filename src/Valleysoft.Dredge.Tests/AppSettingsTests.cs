@@ -34,13 +34,12 @@ public class AppSettingsTests
         string tempDir = Path.Combine(Path.GetTempPath(), Guid.NewGuid().ToString("N"));
         string settingsPath = Path.Combine(tempDir, "settings.json");
         TaskCompletionSource start = new(TaskCreationOptions.RunContinuationsAsynchronously);
-        Task<AppSettings>[] loadTasks = Enumerable.Range(0, 32)
+        Task<AppSettings>[] loadTasks = [.. Enumerable.Range(0, 32)
             .Select(_ => Task.Run(async () =>
             {
                 await start.Task;
                 return AppSettings.Load(settingsPath);
-            }))
-            .ToArray();
+            }))];
 
         try
         {

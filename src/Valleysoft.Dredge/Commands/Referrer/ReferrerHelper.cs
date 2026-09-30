@@ -37,7 +37,7 @@ internal static class ReferrerHelper
             BoundedListHelper.AddItems(manifests, indexPage.Value.Manifests, limit);
         }
 
-        index.Manifests = manifests.ToArray();
+        index.Manifests = [.. manifests];
         return index;
     }
 }

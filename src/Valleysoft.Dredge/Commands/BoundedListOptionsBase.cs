@@ -12,7 +12,7 @@ public abstract class BoundedListOptionsBase : OptionsBase
         {
             Description = "Maximum number of results to return"
         });
-        limitOption.Validators.Add(result =>
+        limitOption.Validators.Add(static result =>
         {
             if (result.GetValueOrDefault<int?>() is <= 0)
             {

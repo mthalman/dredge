@@ -31,7 +31,7 @@ public class SettingsIncrementalTests
         driver = GeneratorTestHelper.Run(compilation, out var output, driver);
 
         Assert.Equal(before, Sources(driver));
-        Assert.All(Reasons(driver), reason => Assert.Equal(IncrementalStepRunReason.Cached, reason));
+        Assert.All(Reasons(driver), static reason => Assert.Equal(IncrementalStepRunReason.Cached, reason));
         AssertSourceOutputsCached(driver);
         GeneratorTestHelper.AssertCompiles(output);
     }
@@ -86,7 +86,7 @@ public class SettingsIncrementalTests
             "public string Value { get; set; } = \"\";", "public int Value { get; set; }"));
         driver = GeneratorTestHelper.Run(compilation, out _, driver);
         var result = GeneratorTestHelper.Result(driver);
-        Assert.Equal(["DRG005", "DRG008"], result.Diagnostics.Select(d => d.Id).Order().ToArray());
+        Assert.Equal(["DRG005", "DRG008"], [.. result.Diagnostics.Select(static d => d.Id).Order()]);
         Assert.Single(GeneratorTestHelper.Accessors(result));
         AssertReused(Reasons(driver)[0]);
 
@@ -144,18 +144,17 @@ public class SettingsIncrementalTests
     }
 
     private static string[] Sources(GeneratorDriver driver) =>
-        GeneratorTestHelper.Accessors(GeneratorTestHelper.Result(driver))
-            .Select(source => source.HintName + source.SourceText.ToString()).ToArray();
+        [.. GeneratorTestHelper.Accessors(GeneratorTestHelper.Result(driver)).Select(static source => source.HintName + source.SourceText.ToString())];
 
     private static IncrementalStepRunReason[] Reasons(GeneratorDriver driver) =>
-        GeneratorTestHelper.Result(driver).TrackedSteps["SettingsModels"]
-            .SelectMany(step => step.Outputs).Select(output => output.Reason).ToArray();
+        [.. GeneratorTestHelper.Result(driver).TrackedSteps["SettingsModels"]
+            .SelectMany(static step => step.Outputs).Select(static output => output.Reason)];
 
     private static void AssertReused(IncrementalStepRunReason reason) =>
         Assert.Contains(reason, new[] { IncrementalStepRunReason.Cached, IncrementalStepRunReason.Unchanged });
 
     private static void AssertSourceOutputsCached(GeneratorDriver driver) =>
-        Assert.All(GeneratorTestHelper.Result(driver).TrackedOutputSteps.SelectMany(pair => pair.Value)
-            .SelectMany(step => step.Outputs),
-            output => Assert.Equal(IncrementalStepRunReason.Cached, output.Reason));
+        Assert.All(GeneratorTestHelper.Result(driver).TrackedOutputSteps.SelectMany(static pair => pair.Value)
+            .SelectMany(static step => step.Outputs),
+            static output => Assert.Equal(IncrementalStepRunReason.Cached, output.Reason));
 }

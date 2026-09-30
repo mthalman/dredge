@@ -40,7 +40,7 @@ public class CompareMetadataCommandTests
         CompareMetadataResult result = await command.GetResultAsync(TestContext.Current.CancellationToken);
 
         Assert.True(result.Summary.AreEqual);
-        Assert.All(result.Comparisons, comparison => Assert.Equal(CompareDiff.Equal, comparison.Diff));
+        Assert.All(result.Comparisons, static comparison => Assert.Equal(CompareDiff.Equal, comparison.Diff));
     }
 
     [Fact]
@@ -523,13 +523,13 @@ public class CompareMetadataCommandTests
 
         Command metadataCommand = Assert.Single(
             compareCommand.Subcommands,
-            command => command.Name == "metadata");
+            static command => command.Name == "metadata");
 
-        Assert.Contains(metadataCommand.Options, option => option.Name == "--output");
-        Assert.Contains(metadataCommand.Options, option => option.Name == "--no-color");
-        Assert.Contains(metadataCommand.Options, option => option.Name == "--os");
-        Assert.Contains(metadataCommand.Options, option => option.Name == "--arch");
-        Assert.Contains(metadataCommand.Options, option => option.Name == "--os-version");
+        Assert.Contains(metadataCommand.Options, static option => option.Name == "--output");
+        Assert.Contains(metadataCommand.Options, static option => option.Name == "--no-color");
+        Assert.Contains(metadataCommand.Options, static option => option.Name == "--os");
+        Assert.Contains(metadataCommand.Options, static option => option.Name == "--arch");
+        Assert.Contains(metadataCommand.Options, static option => option.Name == "--os-version");
     }
 
     private static void AssertComparison(
@@ -560,7 +560,7 @@ public class CompareMetadataCommandTests
 
         Mock<IDockerRegistryClientFactory> factory = new();
         factory
-            .Setup(clientFactory => clientFactory.GetClientAsync(Registry, It.IsAny<CancellationToken>()))
+            .Setup(static clientFactory => clientFactory.GetClientAsync(Registry, It.IsAny<CancellationToken>()))
             .ReturnsAsync(client.Object);
         AppSettings settings = (AppSettings)Activator.CreateInstance(
             typeof(AppSettings),

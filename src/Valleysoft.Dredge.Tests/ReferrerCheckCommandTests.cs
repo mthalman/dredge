@@ -29,15 +29,15 @@ public class ReferrerCheckCommandTests
         };
         Mock<IDockerRegistryClient> client = CreateClient();
         client
-            .Setup(o => o.Manifests.GetAsync("repo", "tag", It.IsAny<CancellationToken>()))
+            .Setup(static o => o.Manifests.GetAsync("repo", "tag", It.IsAny<CancellationToken>()))
             .ReturnsAsync(CreateManifestInfo(ImageDigest));
         client
-            .Setup(o => o.Referrers.GetAsync("repo", ImageDigest, null, It.IsAny<CancellationToken>()))
+            .Setup(static o => o.Referrers.GetAsync("repo", ImageDigest, null, It.IsAny<CancellationToken>()))
             .ReturnsAsync(new Page<OciImageIndex>(
                 new OciImageIndex { Manifests = [sbom] },
                 "next"));
         client
-            .Setup(o => o.Referrers.GetNextAsync("next", It.IsAny<CancellationToken>()))
+            .Setup(static o => o.Referrers.GetNextAsync("next", It.IsAny<CancellationToken>()))
             .ReturnsAsync(new Page<OciImageIndex>(
                 new OciImageIndex { Manifests = [provenance] },
                 null));
@@ -67,10 +67,10 @@ public class ReferrerCheckCommandTests
             """.ReplaceLineEndings(),
             output.ToString());
         client.Verify(
-            o => o.Referrers.GetAsync("repo", ImageDigest, null, It.IsAny<CancellationToken>()),
+            static o => o.Referrers.GetAsync("repo", ImageDigest, null, It.IsAny<CancellationToken>()),
             Times.Once);
         client.Verify(
-            o => o.Referrers.GetNextAsync("next", It.IsAny<CancellationToken>()),
+            static o => o.Referrers.GetNextAsync("next", It.IsAny<CancellationToken>()),
             Times.Once);
     }
 
@@ -79,7 +79,7 @@ public class ReferrerCheckCommandTests
     {
         Mock<IDockerRegistryClient> client = CreateClient();
         client
-            .Setup(o => o.Referrers.GetAsync("repo", ImageDigest, null, It.IsAny<CancellationToken>()))
+            .Setup(static o => o.Referrers.GetAsync("repo", ImageDigest, null, It.IsAny<CancellationToken>()))
             .ReturnsAsync(new Page<OciImageIndex>(
                 new OciImageIndex
                 {
@@ -119,7 +119,7 @@ public class ReferrerCheckCommandTests
             """.ReplaceLineEndings(),
             output.ToString());
         client.Verify(
-            o => o.Manifests.GetAsync(
+            static o => o.Manifests.GetAsync(
                 It.IsAny<string>(),
                 It.IsAny<string>(),
                 It.IsAny<CancellationToken>()),
@@ -131,7 +131,7 @@ public class ReferrerCheckCommandTests
     {
         Mock<IDockerRegistryClient> client = CreateClient();
         client
-            .Setup(o => o.Referrers.GetAsync("repo", ImageDigest, null, It.IsAny<CancellationToken>()))
+            .Setup(static o => o.Referrers.GetAsync("repo", ImageDigest, null, It.IsAny<CancellationToken>()))
             .ReturnsAsync(new Page<OciImageIndex>(
                 new OciImageIndex
                 {
@@ -173,7 +173,7 @@ public class ReferrerCheckCommandTests
     {
         Mock<IDockerRegistryClient> client = CreateClient();
         client
-            .Setup(o => o.Referrers.GetAsync("repo", ImageDigest, null, It.IsAny<CancellationToken>()))
+            .Setup(static o => o.Referrers.GetAsync("repo", ImageDigest, null, It.IsAny<CancellationToken>()))
             .ThrowsAsync(new InvalidOperationException("failure"));
         using StringWriter output = new();
         TestCheckCommand command = new(CreateFactory(client.Object), output)
@@ -196,7 +196,7 @@ public class ReferrerCheckCommandTests
     private static IDockerRegistryClientFactory CreateFactory(IDockerRegistryClient client)
     {
         Mock<IDockerRegistryClientFactory> factory = new();
-        factory.Setup(o => o.GetClientAsync(It.IsAny<string?>(), It.IsAny<CancellationToken>())).ReturnsAsync(client);
+        factory.Setup(static o => o.GetClientAsync(It.IsAny<string?>(), It.IsAny<CancellationToken>())).ReturnsAsync(client);
         return factory.Object;
     }
 

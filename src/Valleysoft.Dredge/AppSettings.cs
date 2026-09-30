@@ -1,4 +1,4 @@
-﻿using System.Globalization;
+using System.Globalization;
 using System.Text.Json.Serialization;
 using IOPath = System.IO.Path;
 
@@ -7,7 +7,7 @@ namespace Valleysoft.Dredge;
 [GenerateSettings]
 internal partial class AppSettings
 {
-    private static readonly object settingsFileLock = new();
+    private static readonly Lock settingsFileLock = new();
     private string settingsPath = SettingsPath;
 
     public static readonly string SettingsPath =
@@ -29,6 +29,9 @@ internal partial class AppSettings
 
     [JsonPropertyName("cache")]
     public CacheSettings Cache { get; set; } = new();
+
+    [JsonPropertyName("explore")]
+    public ExploreSettings Explore { get; set; } = new();
 
     [JsonConstructor]
     internal AppSettings() {}
@@ -177,4 +180,46 @@ internal partial class CacheSettings
                 : xdg,
             "Valleysoft.Dredge");
     }
+}
+
+[GenerateSettings]
+internal partial class ExploreSettings
+{
+    [JsonPropertyName("theme")]
+    public string Theme { get; set; } = "dark";
+
+    [JsonPropertyName("mouse")]
+    public string Mouse { get; set; } = "true";
+
+    [JsonPropertyName("viewer")]
+    public ExploreViewerSettings Viewer { get; set; } = new();
+
+    public bool IsMouseEnabled() => Mouse switch
+    {
+        "true" => true,
+        "false" => false,
+        _ => throw new InvalidOperationException(
+            $"Invalid explore.mouse value '{Mouse}'; expected true or false.")
+    };
+}
+
+[GenerateSettings]
+internal partial class ExploreViewerSettings
+{
+    [JsonPropertyName("exePath")]
+    public string ExePath { get; set; } = string.Empty;
+
+    [JsonPropertyName("args")]
+    public string Args { get; set; } = "\"{0}\"";
+
+    [JsonPropertyName("terminal")]
+    public string Terminal { get; set; } = "false";
+
+    public bool UsesTerminal() => Terminal switch
+    {
+        "true" => true,
+        "false" => false,
+        _ => throw new InvalidOperationException(
+            $"Invalid explore.viewer.terminal value '{Terminal}'; expected true or false.")
+    };
 }

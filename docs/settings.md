@@ -21,12 +21,17 @@ Setting names use dot notation with `dredge settings get` and
 |---------|---------|---------|
 | `fileCompareTool.exePath` | Empty | Executable that `image compare files` starts |
 | `fileCompareTool.args` | Empty | Arguments passed to the comparison executable |
-| `operations.timeout` | `00:30:00` | Maximum duration of a Dredge operation |
+| `operations.timeout` | `00:30:00` | Maximum duration of a Dredge operation, except `image explore` |
 | `platform.os` | Empty | Operating system used for platform resolution |
 | `platform.osVersion` | Empty | Operating system version used for platform resolution |
 | `platform.arch` | Empty | Architecture used for platform resolution |
 | `cache.path` | Empty | Persistent layer cache location; empty uses the platform default |
 | `cache.maxBytes` | `5368709120` | Maximum retained cache bytes (5 GiB); `0` disables retention |
+| `explore.theme` | `dark` | Explorer color theme: `dark` or `light` |
+| `explore.mouse` | `true` | Whether the explorer uses the mouse: `true` or `false` |
+| `explore.viewer.exePath` | Empty | Executable for `o`; empty uses the platform's default text viewer |
+| `explore.viewer.args` | `"{0}"` | Arguments for the text viewer; `{0}` is the staged file path |
+| `explore.viewer.terminal` | `false` | Set to `true` when a configured viewer uses the current terminal |
 
 An empty platform setting does not filter candidate manifests. Command-line
 platform options take precedence over the corresponding settings. See
@@ -121,6 +126,15 @@ requires quoted paths.
   "cache": {
     "path": "<string>",
     "maxBytes": "5368709120"
+  },
+  "explore": {
+    "theme": "dark",
+    "mouse": "true",
+    "viewer": {
+      "exePath": "",
+      "args": "\"{0}\"",
+      "terminal": "false"
+    }
   }
 }
 ```

@@ -12,22 +12,22 @@ internal static class ImageFileSystemExtractor
         Func<int, CancellationToken, Task<StoredLayerIndex>> getIndexAsync,
         CancellationToken cancellationToken)
     {
-        List<(ImageFileSystemEntry Entry, Stream Destination)> requestList = requests.ToList();
+        List<(ImageFileSystemEntry Entry, Stream Destination)> requestList = [.. requests];
         foreach (IGrouping<int, (ImageFileSystemEntry Entry, Stream Destination)> group in
-            requestList.GroupBy(request => request.Entry.ContentLayerIndex))
+            requestList.GroupBy(static request => request.Entry.ContentLayerIndex))
         {
             cancellationToken.ThrowIfCancellationRequested();
             Dictionary<(string Path, int EntryIndex), Queue<Stream>> destinations = group
-                .GroupBy(request => (
+                .GroupBy(static request => (
                     Path: request.Entry.ContentPath ?? request.Entry.Path,
                     EntryIndex: request.Entry.ContentEntryIndex))
                 .ToDictionary(
-                    item => item.Key,
-                    item => new Queue<Stream>(item.Select(request => request.Destination)));
+                    static item => item.Key,
+                    static item => new Queue<Stream>(item.Select(static request => request.Destination)));
 
             StoredLayerIndex index = await getIndexAsync(group.Key, cancellationToken);
             using Stream blob = await store.OpenIndexedBlobAsync(
-                client, imageName, index, destinations.Keys.Select(key => key.EntryIndex), cancellationToken);
+                client, imageName, index, destinations.Keys.Select(static key => key.EntryIndex), cancellationToken);
             using LayerContentReader reader = new(blob);
             foreach (ScannedEntry entry in index.Changes.Entries)
             {
@@ -69,20 +69,20 @@ internal static class ImageFileSystemExtractor
         CancellationToken cancellationToken)
     {
         foreach (IGrouping<int, (ImageFileSystemEntry Entry, string Destination)> group in
-            requests.GroupBy(request => request.Entry.ContentLayerIndex))
+            requests.GroupBy(static request => request.Entry.ContentLayerIndex))
         {
             cancellationToken.ThrowIfCancellationRequested();
             Dictionary<(string Path, int EntryIndex), Queue<string>> destinations = group
-                .GroupBy(request => (
+                .GroupBy(static request => (
                     Path: request.Entry.ContentPath ?? request.Entry.Path,
                     EntryIndex: request.Entry.ContentEntryIndex))
                 .ToDictionary(
-                    item => item.Key,
-                    item => new Queue<string>(item.Select(request => request.Destination)));
+                    static item => item.Key,
+                    static item => new Queue<string>(item.Select(static request => request.Destination)));
 
             StoredLayerIndex index = await getIndexAsync(group.Key, cancellationToken);
             using Stream blob = await store.OpenIndexedBlobAsync(
-                client, imageName, index, destinations.Keys.Select(key => key.EntryIndex), cancellationToken);
+                client, imageName, index, destinations.Keys.Select(static key => key.EntryIndex), cancellationToken);
             using LayerContentReader reader = new(blob);
             foreach (ScannedEntry entry in index.Changes.Entries)
             {
@@ -137,7 +137,7 @@ internal static class ImageFileSystemExtractor
         CancellationToken cancellationToken)
     {
         foreach (ImageFileSystemEntry directory in plan.Entries
-            .Where(entry => entry.Type == ImageFileType.Directory))
+            .Where(static entry => entry.Type == ImageFileType.Directory))
         {
             cancellationToken.ThrowIfCancellationRequested();
             Directory.CreateDirectory(plan.Destinations[directory.Path]);
@@ -149,11 +149,10 @@ internal static class ImageFileSystemExtractor
         ExtractionState state,
         CancellationToken cancellationToken)
     {
-        List<ImageFileSystemEntry> pending = plan.Entries
+        List<ImageFileSystemEntry> pending = [.. plan.Entries
             .Where(entry =>
                 entry.Type == ImageFileType.HardLink &&
-                plan.PreservableHardLinks.Contains(entry.Path))
-            .ToList();
+                plan.PreservableHardLinks.Contains(entry.Path))];
         // Multiple passes allow hard-link chains whose immediate target has not been
         // materialized yet, without replacing them with independent file copies.
         while (pending.Count > 0)
@@ -189,7 +188,7 @@ internal static class ImageFileSystemExtractor
         CancellationToken cancellationToken)
     {
         foreach (ImageFileSystemEntry symbolicLink in plan.Entries
-            .Where(entry => entry.Type == ImageFileType.SymbolicLink))
+            .Where(static entry => entry.Type == ImageFileType.SymbolicLink))
         {
             cancellationToken.ThrowIfCancellationRequested();
             string target = symbolicLink.LinkTarget ??
@@ -209,7 +208,7 @@ internal static class ImageFileSystemExtractor
         CancellationToken cancellationToken)
     {
         foreach (ImageFileSystemEntry hardLink in plan.Entries
-            .Where(entry =>
+            .Where(static entry =>
                 entry.Type == ImageFileType.HardLink &&
                 entry.ContentLinkTarget is not null))
         {

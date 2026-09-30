@@ -206,7 +206,7 @@ public class SettingsShapesTests
 
         Assert.Empty(result.Diagnostics);
         Assert.Equal(expectedSources, sources.Length);
-        Assert.Equal(expectedSources, sources.Select(source => source.HintName).Distinct().Count());
+        Assert.Equal(expectedSources, sources.Select(static source => source.HintName).Distinct().Count());
         GeneratorTestHelper.AssertCompiles(output);
     }
 }

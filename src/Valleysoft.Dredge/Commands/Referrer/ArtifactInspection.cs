@@ -427,7 +427,7 @@ internal static class ArtifactInspectionFactory
             return false;
         }
 
-        return subjects.EnumerateArray().All(subject =>
+        return subjects.EnumerateArray().All(static subject =>
         {
             if (subject.ValueKind != JsonValueKind.Object ||
                 !subject.TryGetProperty("digest", out JsonElement digest) ||
@@ -438,7 +438,7 @@ internal static class ArtifactInspectionFactory
             }
 
             return digest.EnumerateObject().All(
-                property => property.Value.ValueKind == JsonValueKind.String);
+                static property => property.Value.ValueKind == JsonValueKind.String);
         });
     }
 
@@ -537,10 +537,9 @@ internal static class ArtifactInspectionFactory
             return [];
         }
 
-        return property.EnumerateArray()
-            .Where(item => item.ValueKind == JsonValueKind.String)
-            .Select(item => item.GetString()!)
-            .ToArray();
+        return [.. property.EnumerateArray()
+            .Where(static item => item.ValueKind == JsonValueKind.String)
+            .Select(static item => item.GetString()!)];
     }
 
     private static IReadOnlyList<string> GetObjectArrayStrings(
@@ -554,12 +553,11 @@ internal static class ArtifactInspectionFactory
             return [];
         }
 
-        return array.EnumerateArray()
+        return [.. array.EnumerateArray()
             .Where(item => item.ValueKind == JsonValueKind.Object)
             .Select(item => GetString(item, propertyName))
             .Where(value => value is not null)
-            .Select(value => value!)
-            .ToArray();
+            .Select(value => value!)];
     }
 
     private static int GetArrayLength(JsonElement element, string propertyName) =>

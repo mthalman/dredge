@@ -96,10 +96,10 @@ internal sealed class ImageCommandIntegrationScenarios
             Assert.Equal(2, layerDirectories.Length);
             string firstLayerDirectory = Assert.Single(
                 layerDirectories,
-                path => Path.GetFileName(path).StartsWith("layer0-", StringComparison.Ordinal));
+                static path => Path.GetFileName(path).StartsWith("layer0-", StringComparison.Ordinal));
             string secondLayerDirectory = Assert.Single(
                 layerDirectories,
-                path => Path.GetFileName(path).StartsWith("layer1-", StringComparison.Ordinal));
+                static path => Path.GetFileName(path).StartsWith("layer1-", StringComparison.Ordinal));
             Assert.Equal("old", await File.ReadAllTextAsync(
                 Path.Combine(firstLayerDirectory, "app", "value"),
                 TestContext.Current.CancellationToken));
@@ -123,10 +123,10 @@ internal sealed class ImageCommandIntegrationScenarios
             Assert.Equal("new", Encoding.UTF8.GetString(catOutput.ToArray()));
             Assert.Equal(0, listExitCode);
             JsonArray entries = JsonNode.Parse(listOutput.ToString())!.AsArray();
-            Assert.Contains(entries, entry =>
+            Assert.Contains(entries, static entry =>
                 entry?["path"]?.GetValue<string>() == "app/value" &&
                 entry["modifiedLayer"]?["index"]?.GetValue<int>() == 1);
-            Assert.Contains(entries, entry =>
+            Assert.Contains(entries, static entry =>
                 entry?["path"]?.GetValue<string>() == "app/removed" &&
                 entry["deletedLayer"]?["index"]?.GetValue<int>() == 1);
         }
@@ -274,10 +274,10 @@ internal sealed class ImageCommandIntegrationScenarios
         Assert.False(metadata["summary"]!["areEqual"]!.GetValue<bool>());
         Assert.Contains(
             metadata["comparisons"]!.AsArray(),
-            comparison => comparison?["path"]?.GetValue<string>() == "environment[\"VALUE\"]");
+            static comparison => comparison?["path"]?.GetValue<string>() == "environment[\"VALUE\"]");
         Assert.Contains(
             metadata["comparisons"]!.AsArray(),
-            comparison => comparison?["path"]?.GetValue<string>() == "environment[\"ADDED\"]");
+            static comparison => comparison?["path"]?.GetValue<string>() == "environment[\"ADDED\"]");
     }
 
     public async Task CompareFilesCommand_ExtractsLiveImagesForConfiguredTool()

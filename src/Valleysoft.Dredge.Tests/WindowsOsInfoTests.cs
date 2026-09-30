@@ -42,14 +42,14 @@ public class WindowsOsInfoTests
     {
         Mock<IDockerRegistryClient> client = new() { DefaultValue = DefaultValue.Mock };
         client
-            .Setup(o => o.Blobs.ExistsAsync(
+            .Setup(static o => o.Blobs.ExistsAsync(
                 It.IsAny<string>(),
                 It.IsAny<string>(),
                 It.IsAny<CancellationToken>()))
             .ReturnsAsync(false);
         Mock<IDockerRegistryClientFactory> factory = new();
         factory
-            .Setup(o => o.GetClientAsync(RegistryHelper.McrRegistry, It.IsAny<CancellationToken>()))
+            .Setup(static o => o.GetClientAsync(RegistryHelper.McrRegistry, It.IsAny<CancellationToken>()))
             .ReturnsAsync(client.Object);
 
         (WindowsOsInfo Info, string Repo)? result = await OsCommand.GetWindowsOsInfoAsync(

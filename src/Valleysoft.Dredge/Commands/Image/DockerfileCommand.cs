@@ -111,7 +111,7 @@ public partial class DockerfileCommand : RegistryCommandBase<DockerfileOptions>
             // Image history can be ambiguous after the builder discards original quoting.
             // Preserve it verbatim rather than silently dropping text or changing its meaning.
             KeywordToken? keywordToken = dockerfile.Items
-                .SelectMany(construct => construct.Tokens)
+                .SelectMany(static construct => construct.Tokens)
                 .OfType<KeywordToken>()
                 .FirstOrDefault();
             string? keyword = keywordToken?.ToString();
@@ -142,7 +142,7 @@ public partial class DockerfileCommand : RegistryCommandBase<DockerfileOptions>
     private static bool IsParseLossless(string source, Dockerfile dockerfile) =>
         string.Equals(
             source,
-            string.Concat(dockerfile.Items.SelectMany(construct => construct.Tokens)),
+            string.Concat(dockerfile.Items.SelectMany(static construct => construct.Tokens)),
             StringComparison.Ordinal);
 
     private async Task<WindowsImageInfo> GetWindowsInfoAsync(
@@ -288,7 +288,7 @@ public partial class DockerfileCommand : RegistryCommandBase<DockerfileOptions>
         {
             StringBuilder envBuilder = new();
             envBuilder.Append("ENV ");
-            List<string> vars = [.. envInstruction.Variables.Select(variable => $"{variable.Key}={variable.Value} \\")];
+            List<string> vars = [.. envInstruction.Variables.Select(static variable => $"{variable.Key}={variable.Value} \\")];
             for (int i = 0; i < envInstruction.Variables.Count; i++)
             {
                 IKeyValuePair variable = envInstruction.Variables[i];
@@ -322,7 +322,7 @@ public partial class DockerfileCommand : RegistryCommandBase<DockerfileOptions>
 
         StringBuilder formattedLine = new();
         int currentIndex = 0;
-        foreach (Group group in matches.Select(match => match.Groups["whitespace"]))
+        foreach (Group group in matches.Select(static match => match.Groups["whitespace"]))
         {
             formattedLine.Append(line[currentIndex..group.Index]);
             formattedLine.Append(' ');

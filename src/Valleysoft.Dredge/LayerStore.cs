@@ -40,28 +40,31 @@ internal sealed class LayerStore : IAsyncDisposable
 
     public async Task<Stream> OpenBlobAsync(
         IDockerRegistryClient client, ImageName image, string digest, long? expectedSize,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken, IProgress<long>? progress = null)
     {
         string key = GetKey(digest);
         using FileStream layerLock = await LockAsync(key, cancellationToken);
         Stream? cached = await OpenCachedBlobAsync(digest, expectedSize, cancellationToken);
         if (cached is not null)
         {
+            progress?.Report(cached.Length);
             return cached;
         }
 
-        using Stream source = await client.Blobs.GetAsync(image.Repo, digest, cancellationToken);
-        return await PublishBlobAsync(source, digest, expectedSize, cancellationToken);
+        BlobDownloadResult download = await DownloadFullBlobAsync(client, image, digest, cancellationToken);
+        using Stream source = download.Content;
+        return await PublishBlobAsync(source, digest, expectedSize, cancellationToken, progress);
     }
 
     public async Task<StoredLayerIndex> GetIndexAsync(
         IDockerRegistryClient client, ImageName image, ImageLayerReference layer, long? expectedSize,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken, IProgress<long>? progress = null)
     {
         StoredLayerIndex? index = await ReadMetadataAsync<StoredLayerIndex>(
             layer.Digest, "index", cancellationToken);
         if (IsValid(index, layer.Digest, expectedSize))
         {
+            progress?.Report(index!.BlobLength);
             return index!;
         }
         if (index is not null)
@@ -70,7 +73,7 @@ internal sealed class LayerStore : IAsyncDisposable
         }
 
         using Stream blob = await OpenBlobAsync(
-            client, image, layer.Digest, expectedSize, cancellationToken);
+            client, image, layer.Digest, expectedSize, cancellationToken, progress);
         using FileStream indexLock = await LockAsync($"index:{layer.Digest}", cancellationToken);
         index = await ReadMetadataAsync<StoredLayerIndex>(layer.Digest, "index", cancellationToken);
         if (IsValid(index, layer.Digest, expectedSize))
@@ -95,9 +98,8 @@ internal sealed class LayerStore : IAsyncDisposable
             return cached;
         }
 
-        HashSet<int> ordinals = entryOrdinals.ToHashSet();
-        ScannedEntry[] entries = index.Changes.Entries
-            .Where(entry => ordinals.Contains(entry.EntryIndex)).ToArray();
+        HashSet<int> ordinals = [.. entryOrdinals];
+        ScannedEntry[] entries = [.. index.Changes.Entries.Where(entry => ordinals.Contains(entry.EntryIndex))];
         if (entries.Length != ordinals.Count || entries.Any(entry => entry.Type != ImageFileType.File))
         {
             throw new InvalidDataException("The layer index does not contain the requested content.");
@@ -152,8 +154,25 @@ internal sealed class LayerStore : IAsyncDisposable
             }
         }
 
-        using Stream full = await client.Blobs.GetAsync(image.Repo, index.Digest, cancellationToken);
+        BlobDownloadResult fullDownload = await DownloadFullBlobAsync(client, image, index.Digest, cancellationToken);
+        using Stream full = fullDownload.Content;
         return await PublishBlobAsync(full, index.Digest, index.BlobLength, cancellationToken);
+    }
+
+    private static async Task<BlobDownloadResult> DownloadFullBlobAsync(
+        IDockerRegistryClient client, ImageName image, string digest, CancellationToken cancellationToken)
+    {
+        // The registry client's ordinary GetAsync buffers the entire response (at most 2 GB).
+        BlobDownloadResult download = await client.Blobs.GetRangeAsync(
+            image.Repo, digest, 0, null, cancellationToken);
+        if (download.IsRangeHonored &&
+            (download.RangeStart != 0 ||
+                (download.TotalLength is long total && download.RangeEnd != total - 1)))
+        {
+            download.Content.Dispose();
+            throw new InvalidDataException($"The registry returned an incomplete layer '{digest}'.");
+        }
+        return download;
     }
 
     private static async Task ValidatePrefixAsync(
@@ -163,7 +182,7 @@ internal sealed class LayerStore : IAsyncDisposable
             prefix, CompressionMode.Decompress, leaveOpen: true);
         long position = 0;
         byte[] buffer = new byte[81920];
-        foreach (ScannedEntry entry in entries.OrderBy(entry => entry.UncompressedOffset))
+        foreach (ScannedEntry entry in entries.OrderBy(static entry => entry.UncompressedOffset))
         {
             await CopyBytesAsync(gzip, Stream.Null, entry.UncompressedOffset - position, buffer, cancellationToken);
             using IncrementalHash hash = IncrementalHash.CreateHash(HashAlgorithmName.SHA256);
@@ -327,13 +346,29 @@ internal sealed class LayerStore : IAsyncDisposable
     }
 
     private async Task<Stream> PublishBlobAsync(
-        Stream source, string digest, long? expectedSize, CancellationToken cancellationToken)
+        Stream source, string digest, long? expectedSize, CancellationToken cancellationToken,
+        IProgress<long>? progress = null)
     {
         string staging = Path.Combine(dataPath, $"{Guid.NewGuid():N}.tmp");
         try
         {
             await using FileStream output = CacheFileSystem.CreateFile(staging);
-            await source.CopyToAsync(output, cancellationToken);
+            if (progress is null)
+            {
+                await source.CopyToAsync(output, cancellationToken);
+            }
+            else
+            {
+                byte[] buffer = new byte[81_920];
+                long downloaded = 0;
+                int count;
+                while ((count = await source.ReadAsync(buffer, cancellationToken)) != 0)
+                {
+                    await output.WriteAsync(buffer.AsMemory(0, count), cancellationToken);
+                    downloaded += count;
+                    progress.Report(downloaded);
+                }
+            }
             output.Position = 0;
             if ((expectedSize.HasValue && output.Length != expectedSize) ||
                 !await VerifyDigestAsync(output, digest, cancellationToken))
@@ -418,8 +453,8 @@ internal sealed class LayerStore : IAsyncDisposable
         }
         long removed = 0;
         foreach (FileInfo file in files
-            .OrderBy(file => file.Extension is ".tmp" or ".scratch" ? 0 : file.Extension == ".blob" ? 1 : 2)
-            .ThenBy(file => file.LastWriteTimeUtc))
+            .OrderBy(static file => file.Extension is ".tmp" or ".scratch" ? 0 : file.Extension == ".blob" ? 1 : 2)
+            .ThenBy(static file => file.LastWriteTimeUtc))
         {
             cancellationToken.ThrowIfCancellationRequested();
             if (!clear && total <= maxBytes && file.Extension is not (".tmp" or ".scratch"))
@@ -539,7 +574,7 @@ internal sealed class LayerStore : IAsyncDisposable
         if (parts.Length != 2 ||
             parts[0] is not ("sha256" or "sha512") ||
             parts[1].Length != (parts[0] == "sha256" ? 64 : 128) ||
-            parts[1].Any(character => !char.IsAsciiHexDigitLower(character)))
+            parts[1].Any(static character => !char.IsAsciiHexDigitLower(character)))
         {
             throw new InvalidDataException($"Unsupported or invalid layer/manifest digest '{digest}'.");
         }
@@ -571,7 +606,7 @@ internal sealed class LayerStore : IAsyncDisposable
                 entry.UncompressedOffset < 0 || entry.CompressedHighWaterMark <= 0 ||
                 entry.CompressedHighWaterMark > index.BlobLength ||
                 (entry.Type == ImageFileType.File &&
-                    (entry.ContentHash?.Length != 64 || entry.ContentHash.Any(c => !char.IsAsciiHexDigitLower(c)))))
+                    (entry.ContentHash?.Length != 64 || entry.ContentHash.Any(static c => !char.IsAsciiHexDigitLower(c)))))
             {
                 return false;
             }
@@ -579,7 +614,7 @@ internal sealed class LayerStore : IAsyncDisposable
         }
         try
         {
-            foreach (string path in index.Changes.Entries.Select(entry => entry.Path)
+            foreach (string path in index.Changes.Entries.Select(static entry => entry.Path)
                 .Concat(index.Changes.Whiteouts).Concat(index.Changes.OpaqueDirectories))
             {
                 if (string.IsNullOrEmpty(path) || ImagePath.NormalizeArchive(path) != path)

@@ -21,10 +21,10 @@ public class ManifestHelperTests
         DockerManifest resolvedManifest = new() { Layers = [] };
         Mock<IDockerRegistryClient> client = new() { DefaultValue = DefaultValue.Mock };
         client
-            .Setup(o => o.Manifests.GetAsync("library/image", "latest", It.IsAny<CancellationToken>()))
+            .Setup(static o => o.Manifests.GetAsync("library/image", "latest", It.IsAny<CancellationToken>()))
             .ReturnsAsync(new ManifestInfo("application/index", "sha256:index", manifestList));
         client
-            .Setup(o => o.Manifests.GetAsync("library/image", "sha256:arm64", It.IsAny<CancellationToken>()))
+            .Setup(static o => o.Manifests.GetAsync("library/image", "sha256:arm64", It.IsAny<CancellationToken>()))
             .ReturnsAsync(new ManifestInfo("application/manifest", "sha256:arm64", resolvedManifest));
 
         ResolvedManifest result = await ManifestHelper.GetResolvedManifestAsync(
@@ -55,10 +55,10 @@ public class ManifestHelperTests
         DockerManifest resolvedManifest = new() { Layers = [] };
         Mock<IDockerRegistryClient> client = new() { DefaultValue = DefaultValue.Mock };
         client
-            .Setup(o => o.Manifests.GetAsync("library/image", "latest", It.IsAny<CancellationToken>()))
+            .Setup(static o => o.Manifests.GetAsync("library/image", "latest", It.IsAny<CancellationToken>()))
             .ReturnsAsync(new ManifestInfo("application/index", "sha256:index", manifestList));
         client
-            .Setup(o => o.Manifests.GetAsync("library/image", "sha256:arm64", It.IsAny<CancellationToken>()))
+            .Setup(static o => o.Manifests.GetAsync("library/image", "sha256:arm64", It.IsAny<CancellationToken>()))
             .ReturnsAsync(new ManifestInfo("application/manifest", "sha256:arm64", resolvedManifest));
         AppSettings settings = (AppSettings)Activator.CreateInstance(typeof(AppSettings), nonPublic: true)!;
         settings.Platform.Architecture = "arm64";

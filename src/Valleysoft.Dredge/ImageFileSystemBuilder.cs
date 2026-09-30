@@ -37,7 +37,8 @@ internal sealed class ImageFileSystemBuilder
     public async Task<bool> BuildAsync(
         string? contentPath,
         bool extracting,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        IProgress<ImageIndexProgress>? progress = null)
     {
         if (!string.IsNullOrEmpty(ImagePath.NormalizeRequested(contentPath)))
         {
@@ -69,13 +70,19 @@ internal sealed class ImageFileSystemBuilder
 
         for (int i = 0; i < manifest.Layers.Length; i++)
         {
-            StoredLayerIndex index = await GetIndexAsync(i, cancellationToken);
+            int layer = i;
+            IProgress<long>? bytes = progress is null ? null :
+                new InlineProgress<long>(value => progress.Report(
+                    new ImageIndexProgress(layer, manifest.Layers.Length, value, false)));
+            StoredLayerIndex index = await GetIndexAsync(i, cancellationToken, bytes);
             ApplyLayer(index.Changes, new(i, index.Digest), cancellationToken);
+            progress?.Report(new ImageIndexProgress(i, manifest.Layers.Length, index.BlobLength, true));
         }
         return true;
     }
 
-    public async Task<StoredLayerIndex> GetIndexAsync(int layerIndex, CancellationToken cancellationToken)
+    public async Task<StoredLayerIndex> GetIndexAsync(int layerIndex, CancellationToken cancellationToken,
+        IProgress<long>? progress = null)
     {
         if (!indexes.TryGetValue(layerIndex, out StoredLayerIndex? index))
         {
@@ -83,9 +90,10 @@ internal sealed class ImageFileSystemBuilder
             string digest = descriptor.Digest ??
                 throw new InvalidDataException($"Layer digest not set for image '{imageName}'.");
             index = await store.GetIndexAsync(client, imageName, new(layerIndex, digest),
-                descriptor.Size, cancellationToken);
+                descriptor.Size, cancellationToken, progress);
             indexes.Add(layerIndex, index);
         }
+
         return index;
     }
 
@@ -182,11 +190,10 @@ internal sealed class ImageFileSystemBuilder
         ImageLayerReference layer)
     {
         string prefix = $"{path}/";
-        string[] affected = entries.Keys
+        string[] affected = [.. entries.Keys
             .Where(candidate =>
                 (includePath && candidate == path) ||
-                candidate.StartsWith(prefix, StringComparison.Ordinal))
-            .ToArray();
+                candidate.StartsWith(prefix, StringComparison.Ordinal))];
         foreach (string candidate in affected)
         {
             ImageFileSystemEntry removed = entries[candidate] with
@@ -216,4 +223,12 @@ internal sealed class ImageFileSystemBuilder
             }
         }
     }
+
+}
+
+internal sealed record ImageIndexProgress(int LayerIndex, int LayerCount, long Bytes, bool Indexed);
+
+internal sealed class InlineProgress<T>(Action<T> action) : IProgress<T>
+{
+    public void Report(T value) => action(value);
 }

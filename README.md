@@ -2,8 +2,30 @@
 
 # Dredge
 
-Dredge is a .NET command-line tool for interacting with container registry HTTP APIs
-defined by the [OCI Distribution Specification](https://github.com/opencontainers/distribution-spec).
+Dredge is a .NET command-line tool for exploring container images and interacting
+with container registries through the HTTP APIs defined by the
+[OCI Distribution Specification](https://github.com/opencontainers/distribution-spec).
+
+## Explore images in your terminal
+
+See what is inside an image, which layer put it there, and where space is wasted.
+Dredge's full-screen explorer brings layers, files, packages, and comparisons
+together in one keyboard- and mouse-driven view.
+
+![Dredge exploring an ASP.NET image, with layers on the left and the selected layer's file tree on the right](docs/images/image-explorer.png)
+
+```console
+dredge image explore mcr.microsoft.com/dotnet/aspnet:10.0
+```
+
+- **Follow changes through layers.** Browse each layer or the cumulative
+  filesystem, search paths, and inspect file history with text previews and diffs.
+- **Find wasted space.** Use efficiency insights to locate files replaced or
+  deleted by later layers but still shipped in the image.
+- **Compare images and packages.** Compare another tag's filesystem and package
+  inventory, then drill into changed files.
+
+See the [explorer guide](docs/commands/images.md#explore).
 
 ## Features
 
@@ -15,6 +37,8 @@ defined by the [OCI Distribution Specification](https://github.com/opencontainer
 - Inspect and retrieve OCI artifacts or check for required artifact types in CI.
 - Inspect an image's [configuration](docs/commands/images.md#inspect) and
   [operating system information](docs/commands/images.md#os).
+- [Explore a Linux image interactively](docs/commands/images.md#explore):
+  walk its layers, find wasted space, and compare it with another tag.
 - Browse, read, and selectively [extract files from Linux
   images](docs/commands/images.md#ls) with layer provenance.
 - Compare [layers](docs/commands/images.md#compare-layers) or
@@ -47,7 +71,8 @@ docker run --rm ghcr.io/mthalman/dredge --help
 ```
 
 When following command examples, replace `dredge` with
-`docker run --rm ghcr.io/mthalman/dredge`.
+`docker run --rm ghcr.io/mthalman/dredge`. Add `-it` to `docker run` when using
+the interactive explorer.
 
 ### .NET global tool
 

@@ -24,6 +24,382 @@ public class ImageFileSystemTests : IAsyncDisposable
     private const string ConfigDigest = "sha256:config";
     private static readonly ImageName ImageName = ImageName.Parse("registry.test/repo:tag");
 
+    [Theory]
+    [Trait("Upstream", "wagoodman/dive#511")]
+    [Trait("Upstream", "wagoodman/dive#526")]
+    [Trait("Upstream", "wagoodman/dive#76")]
+    [InlineData("empty")]
+    [InlineData("directory")]
+    [InlineData("zero-byte")]
+    [InlineData("content")]
+    public async Task SubKilobyteGzipLayersAreIndexedAndRemainReadable(string contents)
+    {
+        byte[] layer = contents switch
+        {
+            "empty" => Compress(new byte[1024]),
+            "directory" => CreateLayer(Entry.Directory("empty")),
+            "zero-byte" => CreateLayer(Entry.File("./empty", "")),
+            _ => CreateLayer(Entry.File("./value", "small layer")),
+        };
+        Assert.InRange(layer.Length, 1, 1023);
+        using IDockerRegistryClient client = CreateClient([layer]).Object;
+        await using ImageFileSystem files = await ImageFileSystem.CreateAsync(client, ImageName,
+            new PlatformOptionsBase(), TestContext.Current.CancellationToken, cache.Store, requireLayerIndexes: true);
+        ImageAnalysisResult analysis = files.Analyze();
+
+        Assert.Equal(contents == "content" ? 11 : 0, analysis.FileBytes);
+        Assert.Equal(0, analysis.HiddenBytes);
+        Assert.Equal(1, analysis.Efficiency);
+        if (contents == "empty")
+        {
+            Assert.Empty(files.List(null, true, true));
+        }
+        else
+        {
+            ImageFileSystemEntry entry = Assert.Single(files.List(null, true, true));
+            Assert.Equal(contents == "directory" ? ImageFileType.Directory : ImageFileType.File, entry.Type);
+            Assert.Equal(contents == "content" ? "value" : "empty", entry.Path);
+            if (entry.Type == ImageFileType.File)
+            {
+                using MemoryStream output = new();
+                await files.CopyFileToAsync(entry.Path, output, TestContext.Current.CancellationToken);
+                Assert.Equal(contents == "content" ? "small layer" : "", Encoding.UTF8.GetString(output.ToArray()));
+            }
+        }
+    }
+
+    [Theory]
+    [Trait("Upstream", "wagoodman/dive#258")]
+    [Trait("Upstream", "wagoodman/dive#715")]
+    [InlineData(".wh.missing")]
+    [InlineData("missing-parent/.wh.missing")]
+    public async Task DanglingWhiteoutsDoNotAbortSubsequentContentOrWasteAnalysis(string whiteout)
+    {
+        byte[][] layers =
+        [
+            CreateLayer(Entry.File("app/data", "same")),
+            CreateLayer(Entry.File(whiteout, ""), Entry.File("app/data", "same"),
+                Entry.File("app/later", "still indexed"))
+        ];
+        using IDockerRegistryClient client = CreateClient(layers).Object;
+        await using ImageFileSystem files = await ImageFileSystem.CreateAsync(client, ImageName,
+            new PlatformOptionsBase(), TestContext.Current.CancellationToken, cache.Store, requireLayerIndexes: true);
+
+        ImageAnalysisResult analysis = files.Analyze();
+        Assert.Equal(21, analysis.FileBytes);
+        Assert.Equal(4, analysis.HiddenBytes);
+        Assert.Equal(17d / 21, analysis.Efficiency, 10);
+        Assert.Equal(new HiddenFile("app/data", 0, 1, LayerChangeKind.Identical, 4), Assert.Single(analysis.HiddenFiles));
+        Assert.DoesNotContain(files.List(null, true, true), static entry => entry.Path.Contains(".wh.", StringComparison.Ordinal));
+        Assert.DoesNotContain(analysis.Layers.SelectMany(static layer => layer.Changes),
+            static change => change.Kind == LayerChangeKind.Deleted);
+        using MemoryStream output = new();
+        await files.CopyFileToAsync("app/later", output, TestContext.Current.CancellationToken);
+        Assert.Equal("still indexed", Encoding.UTF8.GetString(output.ToArray()));
+    }
+
+    [Theory]
+    [Trait("Upstream", "wagoodman/dive#391")]
+    [InlineData(false, false)]
+    [InlineData(false, true)]
+    [InlineData(true, false)]
+    [InlineData(true, true)]
+    public async Task WhiteoutsOnlyHideLowerLayersRegardlessOfArchiveOrder(bool opaque, bool markerLast)
+    {
+        Entry marker = Entry.File(opaque ? "tree/.wh..wh..opq" : "tree/.wh.value", "");
+        Entry replacement = Entry.File("tree/value", "new");
+        using IDockerRegistryClient client = CreateClient(
+        [
+            CreateLayer(Entry.File("tree/value", "old"), Entry.File("tree/sibling", "kept"),
+                Entry.File("tree-other/value", "outside")),
+            CreateLayer(markerLast ? [replacement, marker] : [marker, replacement])
+        ]).Object;
+        await using ImageFileSystem files = await ImageFileSystem.CreateAsync(client, ImageName,
+            new PlatformOptionsBase(), TestContext.Current.CancellationToken, cache.Store, requireLayerIndexes: true);
+
+        ImageAnalysisResult analysis = files.Analyze();
+        Assert.Equal(opaque ? 7 : 3, analysis.HiddenBytes);
+        Assert.Equal(!opaque, analysis.LiveEntries.ContainsKey("tree/sibling"));
+        Assert.Contains("tree-other/value", analysis.LiveEntries.Keys);
+        Assert.Equal(3, analysis.LiveContents["tree/value"].Size);
+        using MemoryStream output = new();
+        await files.CopyFileToAsync("tree/value", output, TestContext.Current.CancellationToken);
+        Assert.Equal("new", Encoding.UTF8.GetString(output.ToArray()));
+        Assert.Equal(opaque,
+            files.List(null, true, true).Any(static entry => entry.Path == "tree/sibling" && entry.DeletedLayer is not null));
+    }
+
+    [Fact]
+    [Trait("Upstream", "wagoodman/dive#722")]
+    [Trait("Upstream", "wagoodman/dive#723")]
+    public async Task ExtractSelectsPathComponentsRatherThanStringPrefixes()
+    {
+        using IDockerRegistryClient client = CreateClient(
+        [
+            CreateLayer(Entry.File("tree/value", "wanted"), Entry.File("tree-other/value", "unrelated"),
+                Entry.File("tree2/value", "also unrelated"), Entry.File("file", "exact"),
+                Entry.File("file-extra", "prefix"))
+        ]).Object;
+        await using ImageFileSystem files = await CreateFileSystemAsync(client, ImageName,
+            new PlatformOptionsBase(), TestContext.Current.CancellationToken);
+        string directory = Path.Combine(cache.Root, "selected-tree");
+        string file = Path.Combine(cache.Root, "selected-file");
+
+        await files.ExtractAsync("tree", directory, TestContext.Current.CancellationToken);
+        Assert.Equal("wanted", File.ReadAllText(Assert.Single(Directory.GetFiles(directory, "*", SearchOption.AllDirectories))));
+        await files.ExtractAsync("file", file, TestContext.Current.CancellationToken);
+        Assert.Equal("exact", File.ReadAllText(file));
+        Assert.False(Directory.Exists(Path.Combine(cache.Root, "tree-other")));
+        Assert.False(File.Exists(Path.Combine(cache.Root, "file-extra")));
+    }
+
+    [Theory]
+    [Trait("Upstream", "wagoodman/dive#9")]
+    [Trait("Upstream", "wagoodman/dive#128")]
+    [InlineData(100)]
+    [InlineData(600)]
+    public async Task TruncatedTarInsideValidGzipReportsLayerIdentity(int length)
+    {
+        byte[] complete = CreateLayer(TarEntryFormat.Gnu, Entry.File("file", new byte[2048]));
+        using MemoryStream tar = new();
+        using (GZipStream gzip = new(new MemoryStream(complete), CompressionMode.Decompress))
+        {
+            gzip.CopyTo(tar);
+        }
+        byte[] layer = Compress(tar.ToArray()[..length]);
+        using IDockerRegistryClient client = CreateClient([layer]).Object;
+
+        InvalidDataException exception = await Assert.ThrowsAsync<InvalidDataException>(() =>
+            ImageFileSystem.CreateAsync(client, ImageName, new PlatformOptionsBase(),
+                TestContext.Current.CancellationToken, cache.Store, requireLayerIndexes: true));
+
+        Assert.Contains("Layer 0", exception.Message);
+        Assert.Contains(LayerCacheTestContext.Digest(layer), exception.Message);
+        if (length < 512)
+        {
+            Assert.IsType<EndOfStreamException>(exception.InnerException);
+        }
+    }
+
+    [Theory]
+    [Trait("Upstream", "wagoodman/dive#562")]
+    [Trait("Upstream", "wagoodman/dive#583")]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task UnsupportedLayerCompressionFailsWithContext(bool zstd)
+    {
+        byte[] layer = zstd ? [0x28, 0xB5, 0x2F, 0xFD, 0x20, 0x00, 0x01, 0x00, 0x00] : new byte[1024];
+        using IDockerRegistryClient client = CreateClient([layer]).Object;
+
+        InvalidDataException exception = await Assert.ThrowsAsync<InvalidDataException>(() =>
+            ImageFileSystem.CreateAsync(client, ImageName, new PlatformOptionsBase(),
+                TestContext.Current.CancellationToken, cache.Store, requireLayerIndexes: true));
+
+        Assert.Contains("supported gzip-compressed Linux tar layer", exception.Message);
+        Assert.Contains(LayerCacheTestContext.Digest(layer), exception.Message);
+    }
+
+    [Fact]
+    public async Task LayerPackageSnapshotsPreserveLinksAndOpaqueDirectorySemantics()
+    {
+        static string Package(string name, string version) => $$"""{"name":"{{name}}","version":"{{version}}"}""";
+        byte[][] layers =
+        [
+            CreateLayer(Entry.File("original", Package("captured", "1.0")),
+                Entry.File("app/node_modules/removed/package.json", Package("removed", "1.0"))),
+            CreateLayer(Entry.HardLink("app/node_modules/kept/package.json", "original"),
+                Entry.File("original", Package("captured", "2.0"))),
+            CreateLayer(Entry.File("app/node_modules/.wh..wh..opq", ""),
+                Entry.File("app/node_modules/final/package.json", Package("final", "3.0")))
+        ];
+        using IDockerRegistryClient client = CreateClient(layers).Object;
+        await using ImageFileSystem files = await ImageFileSystem.CreateAsync(client, ImageName,
+            new PlatformOptionsBase(), TestContext.Current.CancellationToken, cache.Store, requireLayerIndexes: true);
+        await using ImageFileSystem snapshot = files.CreateLayerSnapshot(1, TestContext.Current.CancellationToken);
+        InstalledPackageMetadata earlier = await InstalledPackageReader.ReadAsync(snapshot, TestContext.Current.CancellationToken);
+        InstalledPackageMetadata final = await InstalledPackageReader.ReadAsync(files, TestContext.Current.CancellationToken);
+
+        Assert.Equal(["captured", "removed"], earlier.Ecosystems[InstalledPackageEcosystem.Npm].Packages.Keys);
+        Assert.Equal(["1.0"], earlier.Ecosystems[InstalledPackageEcosystem.Npm].Packages["captured"]);
+        Assert.Equal(["final"], final.Ecosystems[InstalledPackageEcosystem.Npm].Packages.Keys);
+    }
+
+    [Fact]
+    public async Task NuGetMetadata_UsesFinalDependencyFilesAndSkipsInvalidDocuments()
+    {
+        static string Deps(string version) =>
+            """{"runtimeTarget":{"name":"net"},"targets":{"net":{"Example/VERSION":{}}},"libraries":{"Example/VERSION":{"type":"package"}}}"""
+                .Replace("VERSION", version, StringComparison.Ordinal);
+        byte[][] layers =
+        [
+            CreateLayer(Entry.File("app/App.deps.json", Deps("1.0")),
+                Entry.File("deleted/App.deps.json", Deps("0.1"))),
+            CreateLayer(Entry.File("app/App.deps.json", Deps("2.0")),
+                Entry.File("worker/Worker.deps.json", Deps("3.0")),
+                Entry.File("deleted/.wh.App.deps.json", ""),
+                Entry.File("broken/App.deps.json", "{"),
+                Entry.SymbolicLink("missing/App.deps.json", "/missing"),
+                Entry.File("root/.nuget/packages/cached/1.0/cached.nuspec", "<package/>"))
+        ];
+        using IDockerRegistryClient client = CreateClient(layers).Object;
+        await using ImageFileSystem fileSystem = await CreateFileSystemAsync(
+            client, ImageName, new PlatformOptionsBase(), TestContext.Current.CancellationToken);
+
+        InstalledPackageMetadata metadata = await InstalledPackageReader.ReadAsync(
+            fileSystem, TestContext.Current.CancellationToken);
+
+        InstalledPackageEcosystemMetadata nuget = metadata.Ecosystems[InstalledPackageEcosystem.NuGet];
+        Assert.Equal(InstalledPackageMetadataAvailability.Available, nuget.Availability);
+        Assert.Equal(["example"], nuget.Packages.Keys);
+        Assert.Equal(["2.0", "3.0"], nuget.Packages["example"]);
+    }
+
+    [Theory]
+    [InlineData("{}", false)]
+    [InlineData("""{"runtimeTarget":{"name":"net"},"targets":{"net":{}},"libraries":{}}""",
+        true)]
+    public async Task NuGetMetadata_DistinguishesInvalidFromValidEmpty(
+        string content, bool expectedAvailable)
+    {
+        using IDockerRegistryClient client = CreateClient(
+            [CreateLayer(Entry.File("app/App.deps.json", content))]).Object;
+        await using ImageFileSystem fileSystem = await CreateFileSystemAsync(
+            client, ImageName, new PlatformOptionsBase(), TestContext.Current.CancellationToken);
+
+        InstalledPackageMetadata metadata = await InstalledPackageReader.ReadAsync(
+            fileSystem, TestContext.Current.CancellationToken);
+
+        Assert.Equal(expectedAvailable,
+            metadata.Ecosystems[InstalledPackageEcosystem.NuGet].Availability ==
+                InstalledPackageMetadataAvailability.Available);
+        Assert.Empty(metadata.Ecosystems[InstalledPackageEcosystem.NuGet].Packages);
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task NuGetMetadata_ExcludesValidCachedDependencyFiles(bool includeDeployed)
+    {
+        const string cached = """
+            {"runtimeTarget":{"name":"net"},"targets":{"net":{"Cached/99":{}}},
+             "libraries":{"Cached/99":{"type":"package"}}}
+            """;
+        List<Entry> entries =
+        [
+            Entry.File("root/.nuget/packages/tool/1/tools/Tool.deps.json", cached),
+            Entry.File("usr/share/dotnet/sdk/NuGetFallbackFolder/tool/1/Tool.deps.json", cached),
+            Entry.File("opt/restore/tool/1/.nupkg.metadata", "{}"),
+            Entry.File("opt/restore/tool/1/tools/net10/Tool.deps.json", cached),
+            Entry.File("arbitrary/package/.nupkg.metadata", "{}"),
+            Entry.File("arbitrary/package/App.deps.json", cached)
+        ];
+        if (includeDeployed)
+        {
+            entries.Add(Entry.File("app/App.deps.json", cached.Replace("Cached/99", "Deployed/1")));
+            entries.Add(Entry.File("opt/restore/tool/10/App.deps.json", cached.Replace("Cached/99", "Sibling/2")));
+        }
+        using IDockerRegistryClient client = CreateClient([CreateLayer([.. entries])]).Object;
+        await using ImageFileSystem fileSystem = await CreateFileSystemAsync(
+            client, ImageName, new PlatformOptionsBase(), TestContext.Current.CancellationToken);
+
+        InstalledPackageMetadata metadata = await InstalledPackageReader.ReadAsync(
+            fileSystem, TestContext.Current.CancellationToken);
+        InstalledPackageEcosystemMetadata nuget = metadata.Ecosystems[InstalledPackageEcosystem.NuGet];
+
+        Assert.Equal(includeDeployed, nuget.Availability == InstalledPackageMetadataAvailability.Available);
+        Assert.Equal(includeDeployed ? ["deployed", "sibling"] : Array.Empty<string>(), nuget.Packages.Keys);
+        Assert.Empty(metadata.Diagnostics);
+    }
+
+    [Fact]
+    public async Task PackageMetadata_ReadsEachLayerOnceAndIsolatesInvalidManifests()
+    {
+        byte[] layer = CreateLayer(
+            Entry.File("prefix", new byte[1024 * 1024]),
+            Entry.File("node_modules/z/package.json", """{"name":"z","version":"1"}"""),
+            Entry.File("node_modules/bad/package.json", "{"),
+            Entry.File("node_modules/oversize/package.json", new byte[1024 * 1024 + 1]),
+            Entry.File("node_modules/a/package.json", """{"name":"a","version":"2"}"""),
+            Entry.SymbolicLink("node_modules/alias/package.json", "/node_modules/z/package.json"),
+            Entry.SymbolicLink("node_modules/missing/package.json", "/missing"),
+            Entry.File("python/example-1.dist-info/METADATA", "Name: example\nVersion: 1\n"));
+        Mock<IDockerRegistryClient> client = CreateClient([layer]);
+        await using (ImageFileSystem initial = await CreateFileSystemAsync(
+            client.Object, ImageName, new PlatformOptionsBase(), TestContext.Current.CancellationToken))
+        {
+            Assert.NotEmpty(initial.List(null, true, false));
+        }
+        await cache.EvictBlobsAsync();
+        string digest = LayerCacheTestContext.Digest(layer);
+        client.Setup(c => c.Blobs.GetRangeAsync(ImageName.Repo, digest, 0,
+                It.Is<long?>(length => length != null), It.IsAny<CancellationToken>()))
+            .ReturnsAsync((string _, string _, long _, long? length, CancellationToken _) =>
+                new Valleysoft.DockerRegistryClient.BlobDownloadResult(
+                    new MemoryStream(layer[..checked((int)length!.Value)]),
+                    true, 0, length - 1, layer.Length));
+        await using ImageFileSystem fileSystem = await CreateFileSystemAsync(
+            client.Object, ImageName, new PlatformOptionsBase(), TestContext.Current.CancellationToken);
+
+        InstalledPackageMetadata metadata = await InstalledPackageReader.ReadAsync(
+            fileSystem, TestContext.Current.CancellationToken);
+
+        Assert.Equal(["a", "z"], metadata.Ecosystems[InstalledPackageEcosystem.Npm].Packages.Keys);
+        Assert.Equal(["example"], metadata.Ecosystems[InstalledPackageEcosystem.Pip].Packages.Keys);
+        client.Verify(c => c.Blobs.GetRangeAsync(ImageName.Repo, digest, 0,
+            It.Is<long?>(length => length != null), It.IsAny<CancellationToken>()), Times.Once);
+    }
+
+    [Fact]
+    public async Task Analyze_UsesCachedLayerIndexesForHiddenBytes()
+    {
+        byte[][] layers =
+        [
+            CreateLayer(Entry.File("same", "original"), Entry.File("removed", "old")),
+            CreateLayer(Entry.File("same", "new"), Entry.File(".wh.removed", ""))
+        ];
+        Mock<IDockerRegistryClient> client = CreateClient(layers);
+        await using ImageFileSystem fileSystem = await CreateFileSystemAsync(
+            client.Object, ImageName, new PlatformOptionsBase(),
+            TestContext.Current.CancellationToken);
+
+        ImageAnalysisResult result = fileSystem.Analyze();
+
+        Assert.Equal("original".Length + "old".Length + "new".Length, result.FileBytes);
+        Assert.Equal("original".Length + "old".Length, result.HiddenBytes);
+        Assert.Equal(result.HiddenBytes, result.Layers[0].HiddenBytes);
+    }
+
+    [Fact]
+    public async Task ExplorerIndex_ReportsEveryLayerAndReusesWarmMetadata()
+    {
+        byte[][] layers =
+        [
+            CreateLayer(Entry.File("before", "old")),
+            CreateLayer(Entry.File("after", "new"))
+        ];
+        Mock<IDockerRegistryClient> client = CreateClient(layers);
+        await using (ImageFileSystem initial = await CreateFileSystemAsync(
+            client.Object, ImageName, new PlatformOptionsBase(), TestContext.Current.CancellationToken))
+        {
+            Assert.Equal(2, initial.Analyze().Layers.Count);
+        }
+
+        List<ImageIndexProgress> updates = [];
+        await using ImageFileSystem warm = await ImageFileSystem.CreateAsync(
+            client.Object, ImageName, new PlatformOptionsBase(), TestContext.Current.CancellationToken,
+            cache.Store, progress: new InlineProgress<ImageIndexProgress>(updates.Add),
+            requireLayerIndexes: true);
+
+        Assert.Equal([0, 1], [.. updates.Where(update => update.Indexed).Select(update => update.LayerIndex)]);
+        Assert.All(updates, update => Assert.Equal(2, update.LayerCount));
+        Assert.Equal(2, warm.Analyze().Layers.Count);
+        foreach (byte[] layer in layers)
+        {
+            client.Verify(c => c.Blobs.GetRangeAsync(ImageName.Repo, LayerCacheTestContext.Digest(layer),
+                0, null, It.IsAny<CancellationToken>()), Times.Once);
+        }
+    }
+
     [Fact]
     public async Task Cat_ColdNewestFileSkipsOlderLayersAndWarmViewReusesContent()
     {
@@ -41,8 +417,8 @@ public class ImageFileSystemTests : IAsyncDisposable
             await selective.CopyFileToAsync("newest", output, TestContext.Current.CancellationToken);
             Assert.Equal("new", Encoding.UTF8.GetString(output.ToArray()));
         }
-        client.Verify(c => c.Blobs.GetAsync(ImageName.Repo, LayerCacheTestContext.Digest(layers[0]),
-            It.IsAny<CancellationToken>()), Times.Never);
+        client.Verify(c => c.Blobs.GetRangeAsync(ImageName.Repo, LayerCacheTestContext.Digest(layers[0]),
+            0, null, It.IsAny<CancellationToken>()), Times.Never);
         Assert.Empty(Directory.GetFiles(Path.Combine(cache.Paths.CachePath, "layer-store", "data"), "*.view"));
 
         await using ImageFileSystem complete = await CreateFileSystemAsync(
@@ -57,8 +433,8 @@ public class ImageFileSystemTests : IAsyncDisposable
         Assert.Equal("new", Encoding.UTF8.GetString(content.ToArray()));
         foreach (byte[] layer in layers)
         {
-            client.Verify(c => c.Blobs.GetAsync(ImageName.Repo, LayerCacheTestContext.Digest(layer),
-                It.IsAny<CancellationToken>()), Times.Once);
+            client.Verify(c => c.Blobs.GetRangeAsync(ImageName.Repo, LayerCacheTestContext.Digest(layer),
+                0, null, It.IsAny<CancellationToken>()), Times.Once);
         }
     }
 
@@ -92,8 +468,8 @@ public class ImageFileSystemTests : IAsyncDisposable
         ImageFileSystem fileSystem = await CreateFileSystemAsync(
             second.Object, ImageName, new PlatformOptionsBase(), TestContext.Current.CancellationToken);
         Assert.Equal(1, Assert.Single(fileSystem.List("shared", false, false)).IntroducedLayer.Index);
-        second.Verify(c => c.Blobs.GetAsync(ImageName.Repo, LayerCacheTestContext.Digest(shared),
-            It.IsAny<CancellationToken>()), Times.Never);
+        second.Verify(c => c.Blobs.GetRangeAsync(ImageName.Repo, LayerCacheTestContext.Digest(shared),
+            0, null, It.IsAny<CancellationToken>()), Times.Never);
     }
 
     [Fact]
@@ -110,8 +486,8 @@ public class ImageFileSystemTests : IAsyncDisposable
         ImageFileSystem restored = await CreateFileSystemAsync(
             client.Object, ImageName, new PlatformOptionsBase(), TestContext.Current.CancellationToken);
         Assert.Equal(original.List(null, true, true), restored.List(null, true, true));
-        client.Verify(c => c.Blobs.GetAsync(ImageName.Repo, LayerCacheTestContext.Digest(bytes),
-            It.IsAny<CancellationToken>()), Times.Once);
+        client.Verify(c => c.Blobs.GetRangeAsync(ImageName.Repo, LayerCacheTestContext.Digest(bytes),
+            0, null, It.IsAny<CancellationToken>()), Times.Once);
     }
 
     [Fact]
@@ -125,8 +501,8 @@ public class ImageFileSystemTests : IAsyncDisposable
         string output = Path.Combine(cache.Root, "extracted");
         await fileSystem.ExtractAsync("new", output, TestContext.Current.CancellationToken);
         Assert.Equal("new", await File.ReadAllTextAsync(output, TestContext.Current.CancellationToken));
-        client.Verify(c => c.Blobs.GetAsync(ImageName.Repo, LayerCacheTestContext.Digest(layers[0]),
-            It.IsAny<CancellationToken>()), Times.Never);
+        client.Verify(c => c.Blobs.GetRangeAsync(ImageName.Repo, LayerCacheTestContext.Digest(layers[0]),
+            0, null, It.IsAny<CancellationToken>()), Times.Never);
     }
 
     [Fact]
@@ -158,25 +534,25 @@ public class ImageFileSystemTests : IAsyncDisposable
         Assert.Equal(
             ["etc", "opaque", "recreated"],
             fileSystem.List(null, recursive: false, showDeleted: false)
-                .Select(entry => entry.Path));
+                .Select(static entry => entry.Path));
         IReadOnlyList<ImageFileSystemEntry> all =
             fileSystem.List(null, recursive: true, showDeleted: true);
-        ImageFileSystemEntry config = Assert.Single(all, entry => entry.Path == "etc/config");
+        ImageFileSystemEntry config = Assert.Single(all, static entry => entry.Path == "etc/config");
         Assert.Equal(0, config.IntroducedLayer.Index);
         Assert.Equal(1, config.ModifiedLayer?.Index);
-        ImageFileSystemEntry deleted = Assert.Single(all, entry => entry.Path == "etc/deleted");
+        ImageFileSystemEntry deleted = Assert.Single(all, static entry => entry.Path == "etc/deleted");
         Assert.Equal(1, deleted.DeletedLayer?.Index);
         Assert.Same(
             deleted,
             Assert.Single(fileSystem.List("etc/deleted", recursive: false, showDeleted: true)));
-        Assert.Contains(all, entry => entry.Path == "opaque/old" && entry.DeletedLayer?.Index == 1);
-        ImageFileSystemEntry recreated = Assert.Single(all, entry => entry.Path == "recreated");
+        Assert.Contains(all, static entry => entry.Path == "opaque/old" && entry.DeletedLayer?.Index == 1);
+        ImageFileSystemEntry recreated = Assert.Single(all, static entry => entry.Path == "recreated");
         Assert.Equal(2, recreated.IntroducedLayer.Index);
         Assert.Null(recreated.ModifiedLayer);
         Assert.Null(recreated.DeletedLayer);
         Assert.Equal(
-            all.OrderBy(entry => entry.Path, StringComparer.Ordinal).Select(entry => entry.Path),
-            all.Select(entry => entry.Path));
+            all.OrderBy(static entry => entry.Path, StringComparer.Ordinal).Select(static entry => entry.Path),
+            all.Select(static entry => entry.Path));
     }
 
     [Fact]
@@ -320,6 +696,31 @@ public class ImageFileSystemTests : IAsyncDisposable
     }
 
     [Fact]
+    public async Task InstalledPackages_UnresolvableLinksAreSkippedInsteadOfFailing()
+    {
+        byte[][] layers =
+        [
+            CreateLayer(
+                Entry.File("app/node_modules/good/package.json", """{"name":"good","version":"1.0.0"}"""),
+                Entry.SymbolicLink("app/node_modules/dangling/package.json", "missing.json"),
+                Entry.SymbolicLink("var/lib/dpkg/status", "/nowhere"),
+                Entry.SymbolicLink("lib/apk/db/installed", "installed"))
+        ];
+        using IDockerRegistryClient client = CreateClient(layers).Object;
+        ImageFileSystem fileSystem = await CreateFileSystemAsync(
+            client, ImageName, new PlatformOptionsBase(), TestContext.Current.CancellationToken);
+
+        InstalledPackageMetadata metadata = await InstalledPackageReader.ReadAsync(
+            fileSystem, TestContext.Current.CancellationToken);
+
+        Assert.Equal(["good"], metadata.Ecosystems[InstalledPackageEcosystem.Npm].Packages.Keys);
+        Assert.Equal(InstalledPackageMetadataAvailability.Unavailable,
+            metadata.Ecosystems[InstalledPackageEcosystem.Dpkg].Availability);
+        Assert.Equal(InstalledPackageMetadataAvailability.Unavailable,
+            metadata.Ecosystems[InstalledPackageEcosystem.Apk].Availability);
+    }
+
+    [Fact]
     public async Task CopyFile_RejectsDanglingAndLoopingLinksAndClampsAtRoot()
     {
         byte[][] layers =
@@ -365,7 +766,12 @@ public class ImageFileSystemTests : IAsyncDisposable
     }
 
     [Theory]
+    [Trait("Upstream", "wagoodman/dive#722")]
+    [Trait("Upstream", "wagoodman/dive#723")]
     [InlineData("../escape")]
+    [InlineData("etc/motd/../../../escape")]
+    [InlineData("nested/../../escape")]
+    [InlineData("nested/../sibling")]
     [InlineData("/absolute")]
     [InlineData(@"windows\path")]
     public async Task Index_RejectsUnsafeArchivePaths(string path)
@@ -570,9 +976,7 @@ public class ImageFileSystemTests : IAsyncDisposable
         string output = Path.Combine(
             Path.GetTempPath(),
             $"dredge-filesystem-{Guid.NewGuid():N}");
-        Entry[] files = Enumerable.Range(0, 1200)
-            .Select(index => Entry.File($"tree/file-{index}", index.ToString()))
-            .ToArray();
+        Entry[] files = [.. Enumerable.Range(0, 1200).Select(static index => Entry.File($"tree/file-{index}", index.ToString()))];
         using IDockerRegistryClient client =
             CreateClient([CreateLayer(files)]).Object;
         ImageFileSystem fileSystem = await CreateFileSystemAsync(
@@ -867,7 +1271,7 @@ public class ImageFileSystemTests : IAsyncDisposable
         byte[][] layers = [CreateLayer(Entry.File("file", "value"))];
         Mock<IDockerRegistryClient> client = CreateClient(layers);
         Mock<IDockerRegistryClientFactory> factory = new();
-        factory.Setup(item => item.GetClientAsync("registry.test", It.IsAny<CancellationToken>())).ReturnsAsync(client.Object);
+        factory.Setup(static item => item.GetClientAsync("registry.test", It.IsAny<CancellationToken>())).ReturnsAsync(client.Object);
         StringWriter writer = new();
         IAnsiConsole console = AnsiConsole.Create(new AnsiConsoleSettings
         {
@@ -904,7 +1308,7 @@ public class ImageFileSystemTests : IAsyncDisposable
                 Entry.SymbolicLink("dir/link", "file"),
                 Entry.File("dir/second", "value"))]);
         Mock<IDockerRegistryClientFactory> factory = new();
-        factory.Setup(item => item.GetClientAsync("registry.test", It.IsAny<CancellationToken>())).ReturnsAsync(client.Object);
+        factory.Setup(static item => item.GetClientAsync("registry.test", It.IsAny<CancellationToken>())).ReturnsAsync(client.Object);
 
         string defaultOutput = await InvokeLsCommandAsync(factory.Object, "/dir");
         string longOutput = await InvokeLsCommandAsync(factory.Object, "/dir", "-l");
@@ -938,10 +1342,10 @@ public class ImageFileSystemTests : IAsyncDisposable
         Assert.Contains("i=", combinedOutput);
         Assert.All(
             longOutput.Split(Environment.NewLine, StringSplitOptions.RemoveEmptyEntries),
-            line => Assert.Equal(line.TrimEnd(), line));
+            static line => Assert.Equal(line.TrimEnd(), line));
         Assert.All(
             combinedOutput.Split(Environment.NewLine, StringSplitOptions.RemoveEmptyEntries),
-            line => Assert.Equal(line.TrimEnd(), line));
+            static line => Assert.Equal(line.TrimEnd(), line));
     }
 
     [Fact]
@@ -951,7 +1355,7 @@ public class ImageFileSystemTests : IAsyncDisposable
         Mock<IDockerRegistryClient> client =
             CreateClient([CreateLayer(Entry.File("file", content))]);
         Mock<IDockerRegistryClientFactory> factory = new();
-        factory.Setup(item => item.GetClientAsync("registry.test", It.IsAny<CancellationToken>())).ReturnsAsync(client.Object);
+        factory.Setup(static item => item.GetClientAsync("registry.test", It.IsAny<CancellationToken>())).ReturnsAsync(client.Object);
         using MemoryStream output = new();
         CatCommand command = new TestCatCommand(factory.Object, output, cache.Paths);
 
@@ -1051,9 +1455,7 @@ public class ImageFileSystemTests : IAsyncDisposable
         DockerManifest manifest = new()
         {
             Config = new ManifestConfig { Digest = ConfigDigest },
-            Layers = layers
-                .Select(layer => new ManifestLayer { Digest = LayerCacheTestContext.Digest(layer), Size = layer.Length })
-                .ToArray()
+            Layers = [.. layers.Select(layer => new ManifestLayer { Digest = LayerCacheTestContext.Digest(layer), Size = layer.Length })]
         };
         client
             .Setup(item => item.Manifests.GetAsync(
@@ -1088,6 +1490,16 @@ public class ImageFileSystemTests : IAsyncDisposable
                     new MemoryStream(layers[captured]), false, null, null, layers[captured].Length));
         }
         return client;
+    }
+
+    private static byte[] Compress(byte[] bytes)
+    {
+        using MemoryStream result = new();
+        using (GZipStream gzip = new(result, CompressionMode.Compress, leaveOpen: true))
+        {
+            gzip.Write(bytes);
+        }
+        return result.ToArray();
     }
 
     private static byte[] CreateLayer(params Entry[] entries)

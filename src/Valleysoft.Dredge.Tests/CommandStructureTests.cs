@@ -30,19 +30,19 @@ public class CommandStructureTests
         Mock<IDockerRegistryClientFactory> factory = new();
 
         Assert.Equal(
-            ["compare", "ls", "cat", "extract", "inspect", "os", "save-layers", "dockerfile"],
-            new ImageCommand(factory.Object).Subcommands.Select(command => command.Name));
+            ["compare", "ls", "cat", "extract", "inspect", "os", "save-layers", "dockerfile", "explore"],
+            new ImageCommand(factory.Object).Subcommands.Select(static command => command.Name));
         Assert.Equal(
             ["get", "digest", "resolve", "delete"],
-            new ManifestCommand(factory.Object).Subcommands.Select(command => command.Name));
+            new ManifestCommand(factory.Object).Subcommands.Select(static command => command.Name));
         Assert.Equal(
             ["list", "check", "inspect", "get"],
-            new ReferrerCommand(factory.Object).Subcommands.Select(command => command.Name));
-        Assert.Equal(["list"], new RepoCommand(factory.Object).Subcommands.Select(command => command.Name));
-        Assert.Equal(["list", "delete"], new TagCommand(factory.Object).Subcommands.Select(command => command.Name));
+            new ReferrerCommand(factory.Object).Subcommands.Select(static command => command.Name));
+        Assert.Equal(["list"], new RepoCommand(factory.Object).Subcommands.Select(static command => command.Name));
+        Assert.Equal(["list", "delete"], new TagCommand(factory.Object).Subcommands.Select(static command => command.Name));
         Assert.Equal(
             ["open", "get", "set", "clear-cache"],
-            new SettingsCommand().Subcommands.Select(command => command.Name));
+            new SettingsCommand().Subcommands.Select(static command => command.Name));
     }
 
     [Fact]
@@ -107,7 +107,7 @@ public class CommandStructureTests
         options.SetCommandOptions(command);
         Option outputOption = Assert.Single(
             command.Options,
-            option => option.Name == "--output");
+            static option => option.Name == "--output");
 
         Assert.Equal("text|json", outputOption.HelpName);
         Assert.Empty(command.Parse(["image", "--output", "JSON"]).Errors);
@@ -353,7 +353,7 @@ public class CommandStructureTests
             options.SetCommandOptions(command);
             Option outputOption = Assert.Single(
                 command.Options,
-                option => option.Name == "--output");
+                static option => option.Name == "--output");
 
             Assert.Equal(expectedHelpName, outputOption.HelpName);
         }
@@ -374,7 +374,7 @@ public class CommandStructureTests
         Assert.Single(result.Errors);
         Assert.Equal(
             $"Invalid output value '{value}'. Expected one of: " +
-            $"{string.Join(", ", expectedValues.Select(expected => $"'{expected}'"))}.",
+            $"{string.Join(", ", expectedValues.Select(static expected => $"'{expected}'"))}.",
             result.Errors[0].Message);
     }
 
@@ -503,8 +503,12 @@ public class CommandStructureTests
             string invalidArgumentName = imageOptions is CompareFilesOptions
                 ? CompareOptionsBase.BaseArg
                 : "image";
-            string[] arguments = command.Arguments
-                .Select(argument => argument.Name switch
+            string[] extraArguments = imageOptions is CheckOptions
+                ? ["--artifact-type", "application/test"]
+                : [];
+            string[] arguments =
+            [
+                .. command.Arguments.Select(static argument => argument.Name switch
                 {
                     "image" or "base" => "Invalid/Repo",
                     "target" => "valid/target",
@@ -513,11 +517,9 @@ public class CommandStructureTests
                     "artifact-digest" => "sha256:artifact",
                     _ => throw new InvalidOperationException(
                         $"Unexpected argument '{argument.Name}'.")
-                })
-                .Concat(imageOptions is CheckOptions
-                    ? ["--artifact-type", "application/test"]
-                    : [])
-                .ToArray();
+                }),
+                .. extraArguments
+            ];
 
             ParseResult parseResult = command.Parse(arguments);
 
@@ -695,7 +697,7 @@ public class CommandStructureTests
         Assert.Equal(
             expected,
             command.Arguments.Select(
-                argument => (argument.Name, argument.Description!)).ToArray());
+                static argument => (argument.Name, argument.Description!)).ToArray());
     }
 
     private static TOptions Bind<TOptions>(TOptions options, params string[] args)

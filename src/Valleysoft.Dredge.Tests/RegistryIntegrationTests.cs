@@ -104,18 +104,18 @@ internal sealed class RegistryIntegrationScenarios
         Assert.Equal(
             ["latest", "stable"],
             JsonNode.Parse(tagOutput.ToString())!.AsArray()
-                .Select(value => value!.GetValue<string>()));
+                .Select(static value => value!.GetValue<string>()));
         Assert.Equal(0, limitedTagExitCode);
         string? limitedTag = Assert.Single(
             JsonNode.Parse(limitedTagOutput.ToString())!.AsArray()
-                .Select(value => value!.GetValue<string>()));
+                .Select(static value => value!.GetValue<string>()));
         Assert.NotNull(limitedTag);
         Assert.Contains(limitedTag, new[] { "latest", "stable" });
         Assert.Equal(0, repoExitCode);
         Assert.Contains(
             repository,
             JsonNode.Parse(repoOutput.ToString())!.AsArray()
-                .Select(value => value!.GetValue<string>()));
+                .Select(static value => value!.GetValue<string>()));
     }
 
     public async Task ResolveCommand_SelectsPlatformFromLiveImageIndex()

@@ -226,7 +226,7 @@ public class JsonHelperTests
     [Fact]
     public void FormatJson_RejectsUppercaseUnicodeEscape()
     {
-        Assert.ThrowsAny<JsonException>(() => JsonHelper.FormatJson("\"\\Ud800\""));
+        Assert.ThrowsAny<JsonException>(static () => JsonHelper.FormatJson("\"\\Ud800\""));
     }
 
     private sealed class SerializerContract

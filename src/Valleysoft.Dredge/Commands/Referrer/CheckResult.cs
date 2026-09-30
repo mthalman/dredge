@@ -6,10 +6,10 @@ public class CheckResult
 {
     public CheckResult(IEnumerable<ArtifactTypeCheckResult> results)
     {
-        Results = results.ToArray();
+        Results = [.. results];
     }
 
-    public bool Succeeded => Results.All(result => result.Found);
+    public bool Succeeded => Results.All(static result => result.Found);
     public IReadOnlyList<ArtifactTypeCheckResult> Results { get; }
 }
 
@@ -18,7 +18,7 @@ public class ArtifactTypeCheckResult
     public ArtifactTypeCheckResult(string artifactType, IEnumerable<ManifestReference> referrers)
     {
         ArtifactType = artifactType;
-        Referrers = referrers.ToArray();
+        Referrers = [.. referrers];
     }
 
     public string ArtifactType { get; }

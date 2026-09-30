@@ -761,7 +761,7 @@ public class CompareLayersCommandTests
         SetupDockerRegistryClient(registryClient, targetImageName, setup.Image, setup.Layers);
         Mock<IDockerRegistryClientFactory> clientFactory = new();
         clientFactory
-            .Setup(factory => factory.GetClientAsync(Registry, It.IsAny<CancellationToken>()))
+            .Setup(static factory => factory.GetClientAsync(Registry, It.IsAny<CancellationToken>()))
             .ReturnsAsync(registryClient.Object);
         StringWriter output = new();
         IAnsiConsole console = AnsiConsole.Create(new AnsiConsoleSettings
@@ -839,7 +839,7 @@ public class CompareLayersCommandTests
     {
         Mock<IDockerRegistryClientFactory> clientFactory = new();
         clientFactory
-            .Setup(o => o.GetClientAsync(Registry, It.IsAny<CancellationToken>()))
+            .Setup(static o => o.GetClientAsync(Registry, It.IsAny<CancellationToken>()))
             .ThrowsAsync(new InvalidOperationException("failure"));
         TestCompareLayersCommand command = CreateTestCommand(clientFactory.Object);
         RecordingProcessTerminator processTerminator = new();
@@ -944,7 +944,7 @@ public class CompareLayersCommandTests
 
         Mock<IDockerRegistryClientFactory> clientFactoryMock = new();
         clientFactoryMock
-            .Setup(o => o.GetClientAsync(Registry, It.IsAny<CancellationToken>()))
+            .Setup(static o => o.GetClientAsync(Registry, It.IsAny<CancellationToken>()))
             .ReturnsAsync(registryClientMock.Object);
 
         IAnsiConsole console = AnsiConsole.Create(new AnsiConsoleSettings
@@ -1017,7 +1017,7 @@ public class CompareLayersCommandTests
             targetImageSetup.Layers);
         Mock<IDockerRegistryClientFactory> clientFactory = new();
         clientFactory
-            .Setup(o => o.GetClientAsync(Registry, It.IsAny<CancellationToken>()))
+            .Setup(static o => o.GetClientAsync(Registry, It.IsAny<CancellationToken>()))
             .ReturnsAsync(registryClient.Object);
 
         return CreateTestCommand(clientFactory.Object);
@@ -1047,12 +1047,12 @@ public class CompareLayersCommandTests
 
     private static string[] ToArray(params string?[] strings) =>
         [.. strings
-            .Where(str => str is not null)
+            .Where(static str => str is not null)
             .Cast<string>()];
 
     private static string[][] ToArray(params string[]?[] stringArrays) =>
         [.. stringArrays
-            .Where(str => str is not null)
+            .Where(static str => str is not null)
             .Cast<string[]>()];
 
     private static string[]? EmptyRow(CommandOptions options) =>

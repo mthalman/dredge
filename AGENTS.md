@@ -67,7 +67,7 @@ Unsupported declarations produce compiler errors, and the generator emits no acc
 
 ## Conventions
 
-- C# 12, nullable reference types enabled, implicit usings enabled.
+- C# 14 (the .NET 10 default), nullable reference types enabled, implicit usings enabled.
 - `IDE0290` (primary constructor suggestion) is suppressed — the codebase uses traditional constructors.
 - JSON serialization uses System.Text.Json. Shared settings are in `JsonHelper.Settings`.
 - Console output uses `Spectre.Console` for rich rendering (tables, colors, markup).

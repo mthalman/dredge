@@ -371,7 +371,7 @@ internal static class JsonHelper
         if (endOfDay &&
             (isoDate.Groups["minute"].Value != "00" ||
              isoDate.Groups["second"].Value != "00" ||
-             fraction.Any(character => character != '.' && character != '0')))
+             fraction.Any(static character => character != '.' && character != '0')))
         {
             return false;
         }
@@ -422,7 +422,7 @@ internal static class JsonHelper
         value.ValueKind switch
         {
             JsonValueKind.Object => CreateObject(value),
-            JsonValueKind.Array => new JsonArray(value.EnumerateArray().Select(CreateNode).ToArray()),
+            JsonValueKind.Array => new JsonArray([.. value.EnumerateArray().Select(CreateNode)]),
             JsonValueKind.String => JsonValue.Create(value.GetString()),
             JsonValueKind.Number => JsonNode.Parse(value.GetRawText()),
             JsonValueKind.True => JsonValue.Create(true),
@@ -446,7 +446,7 @@ internal static class JsonHelper
         {
             JsonValueKind.Object => CreateMergedObject(value),
             JsonValueKind.Array => new JsonArray(
-                value.EnumerateArray().Select(CreateMergedNode).ToArray()),
+                [.. value.EnumerateArray().Select(CreateMergedNode)]),
             JsonValueKind.String => JsonValue.Create(value.GetString()),
             JsonValueKind.Number => JsonNode.Parse(value.GetRawText()),
             JsonValueKind.True => JsonValue.Create(true),

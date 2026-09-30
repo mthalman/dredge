@@ -59,7 +59,7 @@ public class CompareLayersCommand : RegistryCommandBase<CompareLayersOptions>
             Options.IsColorDisabled ||
             !ansiConsole.Profile.Capabilities.Ansi ||
             ansiConsole.Profile.Capabilities.ColorSystem == ColorSystem.NoColors;
-        return CompareLayersRenderer.GetOutput(Options, result, isColorDisabled, ansiConsole);
+        return CompareLayersRenderer.GetOutput(Options, result, isColorDisabled);
     }
 
     private async Task<CompareLayersResult> GetCompareLayersResult(CancellationToken cancellationToken)
@@ -76,11 +76,11 @@ public class CompareLayersCommand : RegistryCommandBase<CompareLayersOptions>
 
     private static CompareLayersSummary GetSummary(List<LayerComparison> layerComparisons)
     {
-        bool areEqual = layerComparisons.All(comparison => comparison.LayerDiff == CompareDiff.Equal);
+        bool areEqual = layerComparisons.All(static comparison => comparison.LayerDiff == CompareDiff.Equal);
         bool targetIncludesAllBaseLayers =
             areEqual ||
             !layerComparisons
-                .Any(comparison => comparison.LayerDiff == CompareDiff.NotEqual || comparison.LayerDiff == CompareDiff.Removed);
+                .Any(static comparison => comparison.LayerDiff == CompareDiff.NotEqual || comparison.LayerDiff == CompareDiff.Removed);
         int lastCommonLayerIndex = -1;
         if (areEqual)
         {
@@ -89,7 +89,7 @@ public class CompareLayersCommand : RegistryCommandBase<CompareLayersOptions>
         else
         {
             int equalLayerCount = layerComparisons
-                .TakeWhile(comparison => comparison.LayerDiff == CompareDiff.Equal)
+                .TakeWhile(static comparison => comparison.LayerDiff == CompareDiff.Equal)
                 .Count();
             if (equalLayerCount >= 0)
             {
@@ -295,8 +295,7 @@ public class CompareLayersCommand : RegistryCommandBase<CompareLayersOptions>
         public static IRenderable GetOutput(
             CompareLayersOptions options,
             CompareLayersResult result,
-            bool isColorDisabled,
-            IAnsiConsole ansiConsole)
+            bool isColorDisabled)
         {
             return options.OutputFormat switch
             {
@@ -358,10 +357,10 @@ public class CompareLayersCommand : RegistryCommandBase<CompareLayersOptions>
         }
 
         private static List<IRenderable> GetHistoryRowCells(bool isColorDisabled, LayerComparison layerComparison) =>
-            GetLayerDataRowCells(isColorDisabled, layerComparison, layerInfo => layerInfo?.History);
+            GetLayerDataRowCells(isColorDisabled, layerComparison, static layerInfo => layerInfo?.History);
 
         private static List<IRenderable> GetCompressedSizeRowCells(bool isColorDisabled, LayerComparison layerComparison) =>
-            GetLayerDataRowCells(isColorDisabled, layerComparison, layerInfo => FormatCompressedSize(layerInfo?.CompressedSize));
+            GetLayerDataRowCells(isColorDisabled, layerComparison, static layerInfo => FormatCompressedSize(layerInfo?.CompressedSize));
 
         private static List<IRenderable> GetLayerDataRowCells(bool isColorDisabled, LayerComparison layerComparison, Func<LayerInfo?, string?> getLayerData)
         {

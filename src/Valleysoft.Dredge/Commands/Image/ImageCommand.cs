@@ -15,5 +15,6 @@ public class ImageCommand : Command
         Subcommands.Add(new OsCommand(dockerRegistryClientFactory));
         Subcommands.Add(new SaveLayersCommand(dockerRegistryClientFactory));
         Subcommands.Add(new DockerfileCommand(dockerRegistryClientFactory));
+        Subcommands.Add(new ExploreCommand(dockerRegistryClientFactory));
     }
 }

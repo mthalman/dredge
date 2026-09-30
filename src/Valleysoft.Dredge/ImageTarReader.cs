@@ -34,7 +34,7 @@ internal static class ImageTarReader
                 cancellationToken);
         }
         catch (Exception exception) when (
-            exception is InvalidDataException or NotSupportedException)
+            exception is InvalidDataException or NotSupportedException or EndOfStreamException)
         {
             throw CreateInvalidLayerException(layer, exception);
         }

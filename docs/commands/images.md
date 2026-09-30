@@ -6,6 +6,7 @@ All image commands support [platform resolution](../platform-resolution.md) via 
 |-------------|-------------|
 | [`inspect`](#inspect) | Inspect an image configuration |
 | [`os`](#os) | Show OS information |
+| [`explore`](#explore) | Interactively explore image layers, files, and insights |
 | [`ls`](#ls) | List image filesystem entries and layer provenance |
 | [`cat`](#cat) | Write an image file to standard output |
 | [`extract`](#extract) | Extract an image file or directory |
@@ -84,6 +85,102 @@ dredge image os mcr.microsoft.com/windows/nanoserver:ltsc2022-amd64
   "Version": "10.0.20348.1249"
 }
 ```
+
+## Explore
+
+Opens a full-screen, interactive explorer for a Linux image. You can browse
+its layers, see which files each layer adds, changes, or deletes, find wasted
+space, and compare it with another version of the image.
+
+```console
+dredge image explore <image> [--layer <n>] [--compare <image-or-tag>] [--base-image <image> ...] [--no-mouse] [--os <os>] [--arch <arch>] [--os-version <version>]
+```
+
+- `--layer <n>` starts with layer `n` selected.
+- `--compare <image-or-tag>` starts by comparing the image with another one.
+  A bare tag, such as `--compare 2.0`, refers to the same repository.
+- `--base-image <image>` marks which layers come from a base image. Repeat it
+  to indicate several images comprising an image hierarchy.
+  If you leave it out, the explorer uses the base image recorded in the
+  image's annotations, when there is one.
+- `--no-mouse` turns off mouse support so you can select text in the terminal
+  normally.
+
+### Browsing layers and files
+
+The explorer opens with a list of layers on one side and the files they
+change on the other. Select a layer to see its files, press `Tab` to move
+between the two panes, and press `a` to see the whole filesystem instead of
+just that layer's changes. Press `Enter` to preview a file, `o` to open it in
+your text viewer, and `Esc` to go back.
+
+### Searching and finding wasted space
+
+Press `/` to search for a path across every layer. Press `i` to see an
+efficiency score along with the files that waste space, such as files that
+are overwritten or deleted by a later layer. Selecting a result takes you to
+its files, and `Esc` brings you back to the list.
+
+### Packages
+
+Press `p` to see the packages installed as of the selected layer, including
+those inherited from earlier layers. Dredge recognizes npm, dpkg, apk, pip,
+and NuGet packages. Type `/` to filter the list, or press `Enter` to see a
+package's details.
+
+### Comparing images
+
+Press `c`, enter a tag or image reference, and choose whether to compare
+**Files** or **Packages**. The image you opened is the baseline, and `s`
+swaps the two sides. Press `Enter` on a changed file to see a diff, or on a
+changed package to see which of its files changed.
+
+In a file diff, `Alt+V` switches between inline and side-by-side views.
+
+### File history
+
+While previewing a file, press `Alt+H` to see every layer that touched it.
+Select a version to preview it, or press `Alt+D` to compare it with the
+version before.
+
+### Extracting and copying
+
+Press `x` to extract the selected file or directory to your machine. Press
+`Ctrl+C` to copy the equivalent `dredge image` command so you can run it
+later or share it. On Linux, macOS, and over SSH, copying depends on your
+terminal supporting OSC 52 clipboard access.
+
+### Keys and mouse
+
+Press `?` at any time to see the available keys.
+
+| Key | Action |
+|-----|--------|
+| `↑` `↓` `PgUp` `PgDn` `Home` `End` | Move |
+| `Tab` | Switch pane |
+| `[` `]` | Previous or next layer, or next difference when comparing |
+| `←` `→` | Collapse or expand a directory |
+| `Enter` | Open the selected item |
+| `Esc` | Go back |
+| `a` | Show the whole filesystem |
+| `+` `~` `=` `-` | Show or hide added, modified, unchanged, or deleted files |
+| `/` | Search or filter |
+| `i` | Efficiency insights |
+| `p` | Packages |
+| `c` | Compare with another image |
+| `s` | Swap compared images |
+| `Alt+V` | Switch diff layout |
+| `Alt+H` | File history |
+| `x` | Extract |
+| `Ctrl+C` | Copy the `dredge` command |
+| `o` | Open in text viewer |
+| `q` | Quit |
+
+You can also use the mouse: click to select, double-click to open, and scroll
+with the wheel.
+
+The theme, mouse support, and text viewer can be changed in the
+[`explore` settings](../settings.md).
 
 ## Ls
 
@@ -212,7 +309,7 @@ error.
 
 ### Shared layer cache
 
-`ls`, `cat`, `extract`, `save-layers`, `compare files`, and Linux `os` share a
+`explore`, `ls`, `cat`, `extract`, `save-layers`, `compare files`, and Linux `os` share a
 persistent cache to reduce repeated layer downloads. Registry access is still
 required, even when image layers are cached.
 

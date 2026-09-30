@@ -20,7 +20,7 @@ internal static class ArtifactSummaryWriter
         if (inspection.Manifest.Annotations.Count > 0)
         {
             writer.WriteLine("Annotations:");
-            foreach ((string key, string value) in inspection.Manifest.Annotations.OrderBy(item => item.Key))
+            foreach ((string key, string value) in inspection.Manifest.Annotations.OrderBy(static item => item.Key))
             {
                 writer.WriteLine($"  {key}: {value}");
             }
@@ -82,7 +82,7 @@ internal static class ArtifactSummaryWriter
                             cycloneDx.Component.Type,
                             cycloneDx.Component.Name,
                             cycloneDx.Component.Version
-                        }.Where(value => !string.IsNullOrEmpty(value)));
+                        }.Where(static value => !string.IsNullOrEmpty(value)));
                     WriteValue(writer, "Metadata component", component);
                 }
                 writer.WriteLine($"      Components: {cycloneDx.ComponentCount}");

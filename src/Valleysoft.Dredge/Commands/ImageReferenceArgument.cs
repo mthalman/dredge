@@ -30,7 +30,7 @@ internal static class ImageReferenceArgument
         {
             Description = "Container repository name"
         };
-        argument.Validators.Add(result =>
+        argument.Validators.Add(static result =>
         {
             string? value = result.GetValueOrDefault<string>();
             if (!ImageName.TryParseRepository(value, out _, out string? error))

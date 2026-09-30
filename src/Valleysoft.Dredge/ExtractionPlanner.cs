@@ -70,15 +70,14 @@ internal sealed class ExtractionPlanner
     }
 
     public static List<ImageFileSystemEntry> OrderExtractionEntries(IEnumerable<ImageFileSystemEntry> selected) =>
-        selected
-            .OrderBy(entry => entry.Path.Count(c => c == '/'))
-            .ThenBy(entry => entry.Path, StringComparer.Ordinal)
-            .ToList();
+        [.. selected
+            .OrderBy(static entry => entry.Path.Count(static c => c == '/'))
+            .ThenBy(static entry => entry.Path, StringComparer.Ordinal)];
 
     public static void ValidateExtractionEntries(IEnumerable<ImageFileSystemEntry> selected)
     {
         ImageFileSystemEntry? unsupported = selected.FirstOrDefault(
-            entry => entry.Type == ImageFileType.Other);
+            static entry => entry.Type == ImageFileType.Other);
         if (unsupported is not null)
         {
             throw new NotSupportedException(
@@ -153,14 +152,13 @@ internal sealed class ExtractionPlanner
     }
 
     public static List<(ImageFileSystemEntry Entry, string Destination)> GetContentExtractionRequests(ExtractionPlan plan) =>
-        plan.Entries
+        [.. plan.Entries
             .Where(entry =>
                 entry.Type == ImageFileType.File ||
                 (entry.Type == ImageFileType.HardLink &&
                     !plan.PreservableHardLinks.Contains(entry.Path) &&
                     entry.ContentLinkTarget is null))
-            .Select(entry => (entry, plan.Destinations[entry.Path]))
-            .ToList();
+            .Select(entry => (entry, plan.Destinations[entry.Path]))];
 }
 
 internal sealed record ExtractionPlan(

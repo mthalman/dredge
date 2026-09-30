@@ -1,0 +1,365 @@
+using System.Globalization;
+
+namespace Valleysoft.Dredge;
+
+internal enum ExplorerFindingKind { Replaced, Identical, Deleted, BaseReplaced, FromBase, Potential }
+
+internal sealed record ExplorerFinding(
+    ExplorerFindingKind Kind,
+    string Title,
+    string Category,
+    long Bytes,
+    int FileCount,
+    IReadOnlyList<int> Layers,
+    IReadOnlyList<string> Roots,
+    string Where,
+    string Why,
+    string FixLabel,
+    string Fix,
+    bool FixIsDockerfile,
+    IReadOnlyList<string> Explain)
+{
+    public bool Certain => Kind != ExplorerFindingKind.Potential;
+    public bool FromBase => Kind == ExplorerFindingKind.FromBase;
+
+    // The note a tree row at one of Roots shows in the given layer.
+    public string? NoteFor(int layer) => Kind switch
+    {
+        ExplorerFindingKind.Potential => Title.Contains("cache", StringComparison.OrdinalIgnoreCase) ||
+            Title.Contains("lists", StringComparison.Ordinal) ? "left behind" : "likely unintended",
+        ExplorerFindingKind.Deleted when layer == Layers[0] => $"deleted in layer {Layers[^1]}",
+        ExplorerFindingKind.Deleted => $"deletes layer {Layers[0]}",
+        _ when layer == Layers[0] => $"hidden by layer {Layers[^1]}",
+        _ => $"replaces layer {Layers[0]}",
+    };
+}
+
+internal sealed record ExplorerInsightsResult(
+    IReadOnlyList<ExplorerFinding> Findings,
+    long HiddenBytes,
+    long BaseChurnBytes,
+    long PotentialBytes)
+{
+    public static readonly ExplorerInsightsResult Empty = new([], 0, 0, 0);
+}
+
+// Turns exact hidden-file records and heuristic potential savings into the
+// findings the Insights view lists. Only hidden bytes count toward efficiency.
+internal static class ExplorerInsights
+{
+    internal const long BaseChurnThreshold = 5_000_000;
+    internal const long SmallGroupThreshold = 1_000_000;
+    private const int MaxRoots = 3;
+
+    public static ExplorerInsightsResult Build(
+        ImageAnalysisResult analysis,
+        IReadOnlyList<string> instructions,
+        int? baseLayerCount,
+        bool includePotential = true)
+    {
+        int baseCount = baseLayerCount ?? 0;
+        List<ExplorerFinding> findings = [];
+        long churn = 0;
+        List<HiddenFile> small = [];
+
+        foreach (var group in analysis.HiddenFiles
+            .GroupBy(static file => (file.Layer, file.HiddenBy, file.Reason, LinkReplacement: file.ReplacedByHardLink is not null)))
+        {
+            (int layer, int hiddenBy, LayerChangeKind reason, bool linkReplacement) = group.Key;
+            HiddenFile[] files = [.. group];
+            long bytes = files.Sum(static file => file.Size);
+            if (bytes == 0)
+            {
+                continue;
+            }
+            bool producerIsBase = layer < baseCount;
+            bool hiderIsBase = hiddenBy < baseCount;
+            if (producerIsBase && hiderIsBase)
+            {
+                findings.Add(Create(ExplorerFindingKind.FromBase, files, instructions));
+            }
+            else if (producerIsBase)
+            {
+                if (bytes < BaseChurnThreshold)
+                {
+                    churn += bytes;
+                }
+                else
+                {
+                    findings.Add(Create(ExplorerFindingKind.BaseReplaced, files, instructions));
+                }
+            }
+            else if (bytes < SmallGroupThreshold && !linkReplacement)
+            {
+                small.AddRange(files);
+            }
+            else
+            {
+                findings.Add(Create(reason switch
+                {
+                    LayerChangeKind.Identical => ExplorerFindingKind.Identical,
+                    LayerChangeKind.Deleted => ExplorerFindingKind.Deleted,
+                    _ => ExplorerFindingKind.Replaced
+                }, files, instructions));
+            }
+        }
+
+        if (small.Count > 0)
+        {
+            findings.Add(CreateSmall(small));
+        }
+
+        long potentialBytes = 0;
+        if (includePotential)
+        {
+            foreach (ImagePotentialSaving saving in analysis.FindPotentialSavings())
+            {
+                potentialBytes += saving.Bytes;
+                findings.Add(CreatePotential(saving, analysis.LiveLayers, instructions, baseCount));
+            }
+        }
+
+        List<ExplorerFinding> ordered =
+        [
+            .. findings.Where(static finding => finding.Certain && !finding.FromBase).OrderByDescending(static finding => finding.Bytes),
+            .. findings.Where(static finding => !finding.Certain).OrderByDescending(static finding => finding.Bytes),
+            .. findings.Where(static finding => finding.FromBase).OrderByDescending(static finding => finding.Bytes),
+        ];
+        return new(ordered, analysis.HiddenBytes, churn, potentialBytes);
+    }
+
+    private static ExplorerFinding Create(
+        ExplorerFindingKind kind, HiddenFile[] files, IReadOnlyList<string> instructions)
+    {
+        int layer = files[0].Layer, hiddenBy = files[0].HiddenBy;
+        string[] paths = [.. files.Select(static file => file.Path)];
+        IReadOnlyList<string> roots = SummarizeRoots(paths);
+        string where = FormatWhere(roots);
+        long bytes = files.Sum(static file => file.Size);
+        string producer = Instruction(instructions, layer);
+        string hider = Instruction(instructions, hiddenBy);
+        string count = N(files.Length);
+        string noun = files.Length == 1 ? "file" : "files";
+        bool linkReplacement = files[0].ReplacedByHardLink is not null;
+        (string title, string category) = kind switch
+        {
+            ExplorerFindingKind.Identical => ("Files rewritten with identical bytes", "Replaced by later layers"),
+            ExplorerFindingKind.Deleted => ("Files deleted after they were shipped", "Deleted later"),
+            ExplorerFindingKind.BaseReplaced => ("Base image files replaced", "Base image files replaced"),
+            ExplorerFindingKind.FromBase => ("Hidden inside the base image", "From the base image"),
+            _ => ("Files replaced by a later layer", "Replaced by later layers"),
+        };
+        string why = kind switch
+        {
+            ExplorerFindingKind.Deleted =>
+                $"Layer {hiddenBy} hides them, but their payload remains in layer {layer}.",
+            ExplorerFindingKind.Identical =>
+                $"Layer {hiddenBy} wrote the same bytes layer {layer} already shipped.",
+            ExplorerFindingKind.BaseReplaced =>
+                $"Layer {hiddenBy} replaced files the base image ships in layer {layer}.",
+            ExplorerFindingKind.FromBase =>
+                $"The base image replaces its own files; only the base image can fix this.",
+            _ => $"Layer {hiddenBy} wrote over files layer {layer} already shipped.",
+        };
+        (string fixLabel, string fix, bool dockerfile) = kind switch
+        {
+            ExplorerFindingKind.BaseReplaced or ExplorerFindingKind.FromBase =>
+                ("Use a newer base image", "FROM <base>:<newer tag>", true),
+            _ => Fix(kind, producer, hider, paths),
+        };
+        string verb = kind == ExplorerFindingKind.Deleted ? "deleted" : "wrote";
+        List<string> explain =
+        [
+            $"Layer {layer} shipped {count} {noun} under {where}.",
+            $"Layer {hiddenBy} {verb} {(files.Length == 1 ? "it" : "them")} again, so {Size(bytes)} is hidden.",
+            "",
+            $"The hidden content remains in layer {layer}; {Size(bytes)} measures uncompressed file payload, not exact transfer savings.",
+            "Pulls download compressed layers only when they are not already cached.",
+        ];
+        if (kind == ExplorerFindingKind.Deleted)
+        {
+            explain[1] = $"Layer {hiddenBy} deleted {(files.Length == 1 ? "it" : "them")}, hiding {Size(bytes)}.";
+        }
+        if (linkReplacement)
+        {
+            title = kind is ExplorerFindingKind.BaseReplaced or ExplorerFindingKind.FromBase
+                ? title : "Content hidden by hard-link replacement";
+            why = $"Layer {hiddenBy} replaced the last references to content from layer {layer} with hard links, not new file payload.";
+            explain[1] = $"Layer {hiddenBy} replaced {string.Join(", ", files.Select(static file => "/" + file.ReplacedByHardLink))} with hard links, hiding {Size(bytes)}.";
+            if (kind is not (ExplorerFindingKind.BaseReplaced or ExplorerFindingKind.FromBase))
+            {
+                (fixLabel, fix, dockerfile) = ("Avoid shipping the unused content",
+                    "Omit the original content from COPY, or remove it in the same RUN that creates it.", false);
+            }
+        }
+        return new(kind, title, category, bytes, files.Length, [layer, hiddenBy], roots, where,
+            why, fixLabel, fix, dockerfile, explain);
+    }
+
+    private static ExplorerFinding CreateSmall(List<HiddenFile> files)
+    {
+        string[] paths = [.. files.Select(static file => file.Path)];
+        IReadOnlyList<string> roots = SummarizeRoots(paths);
+        int[] layers = [.. files.SelectMany(static file => new[] { file.Layer, file.HiddenBy }).Distinct().Order()];
+        long bytes = files.Sum(static file => file.Size);
+        return new(ExplorerFindingKind.Replaced, "Other small overwrites", "Replaced by later layers", bytes,
+            files.Count, layers, roots, FormatWhere(roots),
+            "Several layers each hide a little of what earlier layers shipped.",
+            "Write each file in one layer", "Combine the steps that touch these files", false,
+            [
+                $"{Count(files.Count, "file")} {(files.Count == 1 ? "is" : "are")} hidden in groups under {Size(SmallGroupThreshold)} each.",
+                $"Together they contain {Size(bytes)} of hidden uncompressed file payload.",
+                "Transfer savings depend on layer compression and the layers already cached.",
+            ]);
+    }
+
+    private static ExplorerFinding CreatePotential(
+        ImagePotentialSaving saving, IReadOnlyDictionary<string, int> liveLayers,
+        IReadOnlyList<string> instructions, int baseCount)
+    {
+        int[] layers = [.. saving.Paths
+            .Select(path => liveLayers.TryGetValue(path, out int layer) ? layer : -1)
+            .Where(layer => layer >= 0).Distinct().Order()];
+        IReadOnlyList<string> roots = SummarizeRoots(saving.Paths);
+        bool underNodeModules = saving.Paths.Any(path => path.Contains("node_modules/", StringComparison.Ordinal));
+        bool copied = layers.Any(layer => IsCopy(Instruction(instructions, layer)));
+        (string title, string why, string label, string fix, bool dockerfile) = saving.Kind switch
+        {
+            PotentialSavingKind.NpmCache => ("npm cache left in the image",
+                "npm keeps a download cache that the running app never reads.",
+                "Cache it outside the image", "RUN --mount=type=cache,target=/root/.npm npm ci", true),
+            PotentialSavingKind.AptLists => ("apt package lists left in the image",
+                "apt-get update downloads package indexes that are only needed to install.",
+                "Clean up in the same RUN", "RUN ... && rm -rf /var/lib/apt/lists/*", true),
+            PotentialSavingKind.AptCache => ("apt download cache left in the image",
+                "Downloaded .deb archives stay in /var/cache/apt after installing.",
+                "Clean up in the same RUN", "RUN ... && apt-get clean", true),
+            PotentialSavingKind.ApkCache => ("apk cache left in the image",
+                "apk keeps downloaded package indexes and archives.",
+                "Skip the cache", "RUN apk add --no-cache ...", true),
+            PotentialSavingKind.PipCache => ("pip cache left in the image",
+                "pip keeps downloaded wheels that the running app never reads.",
+                "Skip the cache", "RUN pip install --no-cache-dir ...", true),
+            PotentialSavingKind.YarnCache => ("Yarn cache left in the image",
+                "Yarn keeps a package cache that the running app never reads.",
+                "Clean up in the same RUN", "RUN yarn install && yarn cache clean", true),
+            PotentialSavingKind.GitMetadata => ("Git history copied into the image",
+                copied ? "COPY included the repository's .git directory." : "A .git directory is in the image.",
+                "Add to .dockerignore", ".git", false),
+            _ => ("Native files for another OS",
+                "These files are built for macOS or Windows and can't run on Linux.",
+                underNodeModules && copied ? "Add to .dockerignore" : "Install dependencies inside the image",
+                underNodeModules && copied ? "node_modules" : "RUN npm ci", !(underNodeModules && copied)),
+        };
+        string where = FormatWhere(roots);
+        string layerText = layers.Length == 1 ? $"layer {layers[0]}" : $"layers {string.Join(", ", layers)}";
+        List<string> explain =
+        [
+            $"{Count(saving.Paths.Count, "file")} under {where}, from {layerText}.",
+            "",
+            "These bytes are live in the final filesystem, so they only count as savings if your app does not need them.",
+        ];
+        int inheritedCount = saving.Paths.Count(path =>
+            liveLayers.TryGetValue(path, out int layer) && layer < baseCount);
+        if (inheritedCount > 0)
+        {
+            bool allInherited = inheritedCount == saving.Paths.Count;
+            why += $" {Count(inheritedCount, "file")} {(inheritedCount == 1 ? "is" : "are")} inherited from the base image.";
+            label = allInherited ? "Change or rebuild the base image" : "Change the base and derived layers";
+            fix = allInherited
+                ? $"Choose a base without these files, or rebuild the base using this approach: {fix}"
+                : $"Change or rebuild the base for inherited files. Apply this in the producing layers for the remaining files: {fix}";
+            dockerfile = false;
+            explain.Add("Deleting inherited files in a later derived layer only hides them; their payload remains in the base layers.");
+        }
+        return new(ExplorerFindingKind.Potential, title, "Potential savings", saving.Bytes, saving.Paths.Count,
+            layers, roots, where, why, label, fix, dockerfile, explain);
+    }
+
+    private static (string Label, string Fix, bool Dockerfile) Fix(
+        ExplorerFindingKind kind, string producer, string hider, IReadOnlyList<string> paths)
+    {
+        bool nodeModules = paths.Any(static path => path.Contains("node_modules/", StringComparison.Ordinal));
+        if (IsCopy(hider) && nodeModules)
+        {
+            return ("Add to .dockerignore", "node_modules", false);
+        }
+        if (kind == ExplorerFindingKind.Deleted)
+        {
+            return IsCopy(producer)
+                ? ("Build in a separate stage", "COPY --from=build /app/dist ./dist", true)
+                : ("Delete in the same RUN that created them", "RUN ... && rm -rf <paths>", true);
+        }
+        if (IsCopy(hider))
+        {
+            return ("Copy each file once", "COPY only the files this step needs", false);
+        }
+        return ("Combine the steps", "RUN <first step> && <second step>", true);
+    }
+
+    private static bool IsCopy(string instruction) =>
+        instruction.StartsWith("COPY", StringComparison.OrdinalIgnoreCase) ||
+        instruction.StartsWith("ADD", StringComparison.OrdinalIgnoreCase);
+
+    private static string Instruction(IReadOnlyList<string> instructions, int layer) =>
+        layer >= 0 && layer < instructions.Count ? instructions[layer] : "";
+
+    // The most specific set of at most three directories that covers every path.
+    internal static IReadOnlyList<string> SummarizeRoots(IReadOnlyList<string> paths)
+    {
+        if (paths.Count == 0)
+        {
+            return [];
+        }
+        if (paths.Count == 1)
+        {
+            return [paths[0]];
+        }
+        string[][] split = [.. paths.Select(path => path.Split('/'))];
+        string[] best = [.. split.Select(parts => parts[0]).Distinct(StringComparer.Ordinal).Order(StringComparer.Ordinal)];
+        int maxDepth = split.Max(parts => parts.Length);
+        for (int depth = 2; depth <= maxDepth; depth++)
+        {
+            string[] roots = [.. split
+                .Select(parts => string.Join('/', parts.Take(Math.Min(depth, Math.Max(1, parts.Length - 1)))))
+                .Distinct(StringComparer.Ordinal).Order(StringComparer.Ordinal)];
+            if (roots.Length > MaxRoots)
+            {
+                break;
+            }
+            best = roots;
+        }
+        return best;
+    }
+
+    internal static string FormatWhere(IReadOnlyList<string> roots)
+    {
+        if (roots.Count == 0)
+        {
+            return "";
+        }
+        IEnumerable<string> shown = roots.Take(MaxRoots).Select(static root => "/" + root);
+        string text = string.Join(", ", shown);
+        return roots.Count > MaxRoots ? $"{text} +{N(roots.Count - MaxRoots)} more" : text;
+    }
+
+    private static string N(int value) => value.ToString("N0", CultureInfo.InvariantCulture);
+
+    private static string Count(int value, string noun) => $"{N(value)} {noun}{(value == 1 ? "" : "s")}";
+
+    internal static string Size(long bytes)
+    {
+        CultureInfo c = CultureInfo.InvariantCulture;
+        if (bytes < 1000)
+        {
+            return $"{bytes} B";
+        }
+        double kb = bytes / 1000.0;
+        if (kb < 1000)
+        {
+            return kb < 10 ? $"{kb.ToString("0.0", c)} KB" : $"{kb.ToString("0", c)} KB";
+        }
+        double mb = kb / 1000.0;
+        return mb < 1000 ? $"{mb.ToString("0.0", c)} MB" : $"{(mb / 1000.0).ToString("0.00", c)} GB";
+    }
+}

@@ -42,14 +42,14 @@ public class OsCommandTests
         Mock<IDockerRegistryClientFactory> clientFactoryMock = new();
         Mock<IDockerRegistryClient> mcrClientMock = new();
         clientFactoryMock
-            .Setup(o => o.GetClientAsync(RegistryHelper.McrRegistry, It.IsAny<CancellationToken>()))
+            .Setup(static o => o.GetClientAsync(RegistryHelper.McrRegistry, It.IsAny<CancellationToken>()))
             .ReturnsAsync(mcrClientMock.Object);
         mcrClientMock
-            .Setup(o => o.Blobs.ExistsAsync(
+            .Setup(static o => o.Blobs.ExistsAsync(
                 It.IsAny<string>(), "repackedLayerDigest", It.IsAny<CancellationToken>()))
             .ReturnsAsync(false);
         mcrClientMock
-            .Setup(o => o.Manifests.ExistsAsync(
+            .Setup(static o => o.Manifests.ExistsAsync(
                 It.IsAny<string>(), BaseImageTag, It.IsAny<CancellationToken>()))
             .ReturnsAsync(false);
 
@@ -76,7 +76,7 @@ public class OsCommandTests
         Assert.Equal(OsVersion, result.Info.Version);
         Assert.Equal("windows/servercore", result.Repo);
         Assert.Equal(2, result.BaseHistoryCount);
-        mcrClientMock.Verify(o => o.Manifests.ExistsAsync(
+        mcrClientMock.Verify(static o => o.Manifests.ExistsAsync(
             "windows/servercore", BaseImageTag, It.IsAny<CancellationToken>()), Times.Once);
     }
 
@@ -103,16 +103,16 @@ public class OsCommandTests
         Mock<IDockerRegistryClientFactory> clientFactoryMock = new();
         Mock<IDockerRegistryClient> mcrClientMock = new();
         clientFactoryMock
-            .Setup(o => o.GetClientAsync(RegistryHelper.McrRegistry, It.IsAny<CancellationToken>()))
+            .Setup(static o => o.GetClientAsync(RegistryHelper.McrRegistry, It.IsAny<CancellationToken>()))
             .ReturnsAsync(mcrClientMock.Object);
         mcrClientMock
-            .Setup(o => o.Blobs.ExistsAsync(
+            .Setup(static o => o.Blobs.ExistsAsync(
                 It.IsAny<string>(), It.IsAny<string>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(false);
         mcrClientMock
-            .Setup(o => o.Blobs.ExistsAsync(
+            .Setup(static o => o.Blobs.ExistsAsync(
                 "windows/servercore",
-                It.Is<string>(digest => digest == "baseLayer0" || digest == "baseLayer1"),
+                It.Is<string>(static digest => digest == "baseLayer0" || digest == "baseLayer1"),
                 It.IsAny<CancellationToken>()))
             .ReturnsAsync(true);
 
@@ -122,7 +122,7 @@ public class OsCommandTests
         Assert.NotNull(result);
         Assert.Equal(WindowsType.ServerCore, result.Info.Type);
         Assert.Equal(2, result.BaseHistoryCount);
-        mcrClientMock.Verify(o => o.Manifests.ExistsAsync(
+        mcrClientMock.Verify(static o => o.Manifests.ExistsAsync(
             It.IsAny<string>(), It.IsAny<string>(), It.IsAny<CancellationToken>()), Times.Never);
     }
 
@@ -155,9 +155,7 @@ public class OsCommandTests
                 Type = "layers",
                 DiffIds = diffIds
             },
-            History = Enumerable.Range(0, historyCount)
-                .Select(index => new LayerHistory { CreatedBy = $"base instruction {index}" })
-                .ToArray()
+            History = [.. Enumerable.Range(0, historyCount).Select(index => new LayerHistory { CreatedBy = $"base instruction {index}" })]
         };
         mcrClientMock
             .Setup(o => o.Blobs.GetAsync(repo, configDigest, It.IsAny<CancellationToken>()))

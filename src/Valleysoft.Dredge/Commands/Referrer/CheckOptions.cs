@@ -21,7 +21,7 @@ public class CheckOptions : OptionsBase
             Required = true,
             AllowMultipleArgumentsPerToken = false
         });
-        artifactTypeOption.Validators.Add(result =>
+        artifactTypeOption.Validators.Add(static result =>
         {
             if (result.GetValueOrDefault<string[]>().Any(string.IsNullOrWhiteSpace))
             {

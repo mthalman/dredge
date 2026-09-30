@@ -1,0 +1,242 @@
+using Terminal.Gui.Input;
+using Valleysoft.Dredge.Explorer;
+using Valleysoft.Dredge.Explorer.Tui;
+
+namespace Valleysoft.Dredge.Tests;
+
+[Collection(ExplorerUiCollection.Name)]
+public sealed class ExplorerUxTests
+{
+    [Fact]
+    public void ClipboardOffShowsACompleteSelectableCommand()
+    {
+        using ExplorerUiHarness ui = ExplorerWindowTests.Open(out _, width: 80, height: 24);
+        ui.Window.Apply(new SetCursor(ui.Window.Presenter.IndexOf(ui.State, "app/package.json")));
+        ui.Press(Key.Enter);
+        ui.Until(() => ui.State.Preview is not null, "preview");
+        ui.Press(Key.C.WithCtrl);
+        Assert.Equal(RightView.Command, ui.State.View);
+        Assert.Equal("dredge image cat registry.test/shop/storefront@sha256:manifest /app/package.json", ui.Window.CommandText.Text);
+        Assert.True(ui.Window.CommandText.ReadOnly);
+        Assert.True(ui.Window.CommandText.HasFocus);
+        ui.Press(Key.A.WithCtrl);
+        Assert.Equal(ui.Window.CommandText.Text, ui.Window.CommandText.SelectedText);
+        ui.Press(Key.Esc);
+        Assert.Equal(RightView.Inspector, ui.State.View);
+    }
+
+    [Fact]
+    public void LongCommandsScrollWithoutLosingTheirTail()
+    {
+        string path = "app/" + new string('a', 150) + "-tail.txt";
+        ExplorerImage image = ExplorerSamples.Custom([ExplorerSamples.Layer([ExplorerSamples.File(path, 10, "h")])]);
+        using ExplorerUiHarness ui = ExplorerWindowTests.Open(image, new ExplorerState
+        {
+            Layer = 0, View = RightView.Inspector, InspectPath = path, Focus = FocusPane.Right,
+        }, static s => new FakeExplorerHost { Baseline = s }, out _, width: 80, height: 24);
+        ui.Press(Key.C.WithCtrl);
+        Assert.Equal(RightView.Command, ui.State.View);
+        ui.Press(Key.End);
+        Assert.True(ui.Shows("-tail.txt"));
+        ui.Press(Key.A.WithCtrl);
+        Assert.Equal(ui.Window.CommandText.Text, ui.Window.CommandText.SelectedText);
+        Assert.Contains(path, ui.Window.CommandText.SelectedText);
+    }
+
+    [Fact]
+    public void HelpRestoresPreviewAndItsScrollPosition()
+    {
+        using ExplorerUiHarness ui = ExplorerWindowTests.Open(ExplorerSamples.Image(), new ExplorerState
+        {
+            Layer = 2, View = RightView.Inspector, InspectPath = "app/package.json", Focus = FocusPane.Right,
+        }, s => new FakeExplorerHost
+        {
+            Baseline = s, Preview = path => new PreviewContent(path, null,
+                [.. Enumerable.Range(0, 100).Select(i => new string('x', 200) + i)], null, 20100),
+        }, out _);
+        ui.Until(() => ui.State.Preview is not null, "preview");
+        ui.Press(Key.PageDown);
+        ui.Press(Key.CursorRight);
+        int scroll = ui.State.PreviewScroll, column = ui.State.PreviewColumn;
+        ui.Press(new Key('?'));
+        ui.Press(Key.End);
+        ui.Press(Key.Esc);
+        Assert.Equal(RightView.Inspector, ui.State.View);
+        Assert.Equal(scroll, ui.State.PreviewScroll);
+        Assert.Equal(column, ui.State.PreviewColumn);
+        Assert.False(ui.Window.Layers.Visible);
+        Assert.True(ui.Window.Right.HasFocus);
+    }
+
+    [Fact]
+    public void HelpRestoresInsightSelection()
+    {
+        using ExplorerUiHarness ui = ExplorerWindowTests.Open(out _);
+        ui.Press(new Key('i'));
+        ui.Press(Key.CursorDown);
+        int finding = ui.State.Finding;
+        ui.Press(new Key('?'));
+        ui.Press(Key.Esc);
+        Assert.Equal(RightView.Insights, ui.State.View);
+        Assert.Equal(finding, ui.State.Finding);
+    }
+
+    [Fact]
+    public void PreviewAndDiffExposeTheEndsOfLongLines()
+    {
+        using ExplorerUiHarness ui = ExplorerWindowTests.Open(ExplorerSamples.Image(), new ExplorerState
+        {
+            Layer = 2, View = RightView.Inspector, InspectPath = "app/package.json", Focus = FocusPane.Right,
+        }, s => new FakeExplorerHost
+        {
+            Baseline = s,
+            Preview = path => new PreviewContent(path, null, [new string('x', 150) + "preview-tail"], null, 162),
+        }, out _, width: 80, height: 24);
+        ui.Until(() => ui.State.Preview is not null, "preview");
+        Assert.All(ui.Window.Presenter.Hints(ui.State).Where(hint => hint.Label is "Scroll" or "Pan text"),
+            hint => Assert.False(hint.ShowInFooter));
+        Assert.DoesNotContain("Scroll", ui.Row(ui.Height - 1));
+        Assert.DoesNotContain("Pan text", ui.Row(ui.Height - 1));
+        Assert.False(ui.Shows("preview-tail"));
+        for (int i = 0; i < 30; i++) ui.Press(Key.CursorRight);
+        Assert.True(ui.Shows("preview-tail"));
+        ui.Press(Key.Esc);
+        ui.Window.StartCompare("2.0");
+        ui.Until(() => ui.State.Compare is not null, "comparison");
+        ui.State.Compare!.Diff = new TextDiffContent("app/config.json",
+            TextDiff.Diff([new string('x', 100) + "old-tail"], [new string('x', 100) + "new-tail"]), null);
+        ui.Window.ImageChanged();
+        ui.Pump();
+        Assert.False(ui.Window.Layers.Visible);
+        Assert.Equal(80, ui.Window.Right.Frame.Width);
+        Assert.All(new CompareView(ui.Window.Presenter, ui.State.Compare!).Hints()
+            .Where(hint => hint.Label is "Scroll" or "Pan text"), hint => Assert.False(hint.ShowInFooter));
+        Assert.DoesNotContain("Scroll", ui.Row(ui.Height - 1));
+        Assert.DoesNotContain("Pan text", ui.Row(ui.Height - 1));
+        for (int i = 0; i < 30; i++) ui.Press(Key.CursorRight);
+        Assert.True(ui.Shows("old-tail"));
+        Assert.True(ui.Shows("new-tail"));
+    }
+
+    [Fact]
+    public void ComparisonSearchFindsCollapsedFilesAndPackages()
+    {
+        using ExplorerUiHarness ui = ExplorerWindowTests.Open(out FakeExplorerHost host);
+        ui.Window.StartCompare("2.0");
+        ui.Until(() => ui.State.Compare is not null, "comparison");
+        ui.Press(new Key('/'));
+        ui.Type("package.json");
+        Assert.Single(new CompareView(ui.Window.Presenter, ui.State.Compare!).Rows());
+        ui.Press(Key.Enter);
+        ui.Until(() => ui.State.Compare!.Diff is not null, "diff");
+        Assert.Equal(["app/package.json"], host.Diffed);
+        ui.Press(Key.Esc);
+        ui.Press(Key.Esc);
+        ui.Press(new Key('/'));
+        ui.Type("left-pad");
+        ui.Press(Key.Enter);
+        ui.Until(() => ui.State.Compare!.PackageFiles?.Files is not null, "package files");
+        Assert.True(ui.Shows("app/node_modules/left-pad/index.js"));
+        ui.Press(Key.Enter);
+        ui.Until(() => ui.State.Compare!.Diff is not null, "package file diff");
+        Assert.Equal("app/node_modules/left-pad/index.js", host.Diffed[^1]);
+    }
+
+    [Fact]
+    public void AllPackageFilesCanBeNavigated()
+    {
+        using ExplorerUiHarness ui = ExplorerWindowTests.Open(out FakeExplorerHost host);
+        ui.Window.StartCompare("2.0");
+        ui.Until(() => ui.State.Compare is not null, "comparison");
+        CompareState c = ui.State.Compare!;
+        c.PackageFiles = new PackageFilesContent(c.Comparison.Packages[0],
+            [.. Enumerable.Range(0, 50).Select(i => ($"app/file-{i:D2}", Change.Modified))], null, 50);
+        ui.Window.ImageChanged();
+        ui.Press(Key.End);
+        Assert.True(ui.Shows("app/file-49"));
+        ui.Press(Key.Enter);
+        ui.Until(() => c.Diff is not null, "last file diff");
+        Assert.Equal(["app/file-49"], host.Diffed);
+    }
+
+    [Theory]
+    [InlineData(119)]
+    [InlineData(120)]
+    [InlineData(150)]
+    public void FilenameTakesPriorityOverMetadataAndFindingAnnotation(int width)
+    {
+        using ExplorerUiHarness ui = ExplorerWindowTests.Open(out _, width: width, height: 30);
+        Assert.True(ui.Shows("package.json"), ui.Screen());
+        if (width == 120)
+        {
+            Assert.False(ui.Shows("uid:gid"));
+        }
+    }
+
+    [Fact]
+    public void PartialDiffShowsBothNoticeAndAvailableLines()
+    {
+        using ExplorerUiHarness ui = ExplorerWindowTests.Open(out _);
+        ui.Window.StartCompare("2.0");
+        ui.Until(() => ui.State.Compare is not null, "comparison");
+        ui.State.Compare!.Diff = new TextDiffContent("app/config.json",
+            TextDiff.Diff(["old-value"], ["new-value"]), "Showing the first 256 KB.");
+        ui.Window.ImageChanged();
+        ui.Pump();
+        Assert.True(ui.Shows("Showing the first 256 KB."));
+        Assert.True(ui.Shows("old-value"));
+        Assert.True(ui.Shows("new-value"));
+    }
+
+    [Fact]
+    public void CompactAuxiliaryViewsUseTheBodyAndHelpScrolls()
+    {
+        using ExplorerUiHarness ui = ExplorerWindowTests.Open(out _, width: 80, height: 24);
+        ui.Press(new Key('?'));
+        Assert.False(ui.Window.Layers.Visible);
+        ui.Press(Key.End);
+        Assert.True(ui.Shows("NO_COLOR=1"));
+        ui.Press(Key.Home);
+        Assert.True(ui.Shows("Move"));
+        ui.Press(Key.Esc);
+        ui.Press(new Key('i'));
+        Assert.False(ui.Window.Layers.Visible);
+        Assert.True(ui.Shows("COPY --from=build"));
+        ui.Press(Key.Esc);
+        ui.Press(new Key('/'));
+        ui.Type("app");
+        Assert.False(ui.Window.Layers.Visible);
+        Assert.True(ui.Shows("Esc  Close"));
+        Assert.True(ui.Shows("/app/package.json"));
+    }
+
+    [Fact]
+    public void ComparisonProgressSurvivesNavigationAndCanBeCanceled()
+    {
+        TaskCompletionSource<ExplorerComparison> completion = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        using ExplorerUiHarness ui = ExplorerWindowTests.Open(ExplorerSamples.Image(), new ExplorerState { Layer = 2 },
+            s => new FakeExplorerHost { Baseline = s, CompareWork = () => completion.Task }, out FakeExplorerHost host);
+        ui.Window.StartCompare("2.0");
+        ui.Until(() => ui.State.ComparisonStatus?.EndsWith("reading packages") == true, "packages");
+        ui.Press(Key.CursorDown);
+        Assert.True(ui.Shows("reading packages"));
+        ui.Press(Key.Esc);
+        Assert.Null(ui.State.ComparisonStatus);
+        Assert.Equal("Comparison canceled.", ui.State.Notice);
+        completion.SetResult(ExplorerSession.Compare(host.Baseline!, ExplorerSamples.Target()));
+        ui.Pump();
+        Assert.Null(ui.State.Compare);
+    }
+
+    [Fact]
+    public void ExactTagWinsOverSubstringMatches()
+    {
+        using ExplorerUiHarness ui = ExplorerWindowTests.Open(ExplorerSamples.Image(), new ExplorerState { Layer = 2 },
+            s => new FakeExplorerHost { Baseline = s, Tags = ["1.2.0", "2.0", "2.0-rc1"] }, out FakeExplorerHost host);
+        ui.InDialog(() => ui.Press(new Key('c')),
+            DialogStep.When("tags", () => ui.Shows("3 tags."), () => ui.Send("2.0")),
+            DialogStep.When("exact match", () => ui.Shows("▌2.0 "), () => ui.Send(Key.Enter)));
+        ui.Until(() => ui.State.Compare is not null, "comparison");
+        Assert.Equal(["2.0"], host.Compared);
+    }
+}
