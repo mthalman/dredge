@@ -816,18 +816,7 @@ internal sealed class ExplorerHost : IExplorerHost, IAsyncDisposable
         try
         {
             // A truncated read can split a multi-byte character; drop the partial tail.
-            int end = length;
-            if (truncated)
-            {
-                while (end > 0 && end > length - 4 && (data[end - 1] & 0xC0) == 0x80)
-                {
-                    end--;
-                }
-                if (end > 0 && data[end - 1] >= 0xC0)
-                {
-                    end--;
-                }
-            }
+            int end = truncated ? CompleteUtf8PrefixLength(data) : length;
             text = new UTF8Encoding(false, true).GetString(data, 0, end);
         }
         catch (DecoderFallbackException)
@@ -841,6 +830,35 @@ internal sealed class ExplorerHost : IExplorerHost, IAsyncDisposable
         }
         return (lines, truncated ? $"Showing the first {Fmt.SizeShort(ExplorerApp.PreviewLimit)}." : null, length);
     }
+
+    internal static int CompleteUtf8PrefixLength(ReadOnlySpan<byte> data)
+    {
+        int length = data.Length;
+        if (length == 0)
+        {
+            return 0;
+        }
+
+        int lead = length - 1;
+        while (lead > 0 && lead > length - 4 && IsUtf8Continuation(data[lead]))
+        {
+            lead--;
+        }
+
+        int expected = Utf8SequenceLength(data[lead]);
+        return expected > 1 && length - lead < expected ? lead : length;
+    }
+
+    private static bool IsUtf8Continuation(byte value) => (value & 0xC0) == 0x80;
+
+    private static int Utf8SequenceLength(byte lead) =>
+        lead switch
+        {
+            >= 0xC2 and <= 0xDF => 2,
+            >= 0xE0 and <= 0xEF => 3,
+            >= 0xF0 and <= 0xF4 => 4,
+            _ => 1
+        };
 
     public async Task<TextDiffContent> DiffAsync(
         ExplorerComparison comparison, string path, CancellationToken cancellationToken)

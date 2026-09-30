@@ -173,6 +173,33 @@ public sealed class ExplorerHostTests
     }
 
     [Theory]
+    [InlineData("¢")]
+    [InlineData("€")]
+    [InlineData("😀")]
+    public void DecodeKeepsCompleteMultiByteCharacterAtTruncatedBoundary(string value)
+    {
+        (List<string>? lines, string? message, _) = ExplorerHost.Decode(Encoding.UTF8.GetBytes("ok" + value), true);
+        Assert.Equal(["ok" + value], lines);
+        Assert.StartsWith("Showing the first", message);
+    }
+
+    [Theory]
+    [InlineData("¢")]
+    [InlineData("€")]
+    [InlineData("😀")]
+    public void DecodeDropsIncompleteMultiByteCharacterAtTruncatedBoundary(string value)
+    {
+        byte[] bytes = Encoding.UTF8.GetBytes("ok" + value);
+        int valueBytes = Encoding.UTF8.GetByteCount(value);
+        for (int missing = 1; missing < valueBytes; missing++)
+        {
+            (List<string>? lines, string? message, _) = ExplorerHost.Decode(bytes[..^missing], true);
+            Assert.Equal(["ok"], lines);
+            Assert.StartsWith("Showing the first", message);
+        }
+    }
+
+    [Theory]
     [InlineData("app/package.json", "json")]
     [InlineData("src/Dockerfile", "dockerfile")]
     [InlineData("etc/os-release", null)]
