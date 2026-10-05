@@ -134,6 +134,7 @@ internal static class TagPicker
                     await gate.WaitAsync(token).ConfigureAwait(false);
                     try
                     {
+                        token.ThrowIfCancellationRequested();
                         await host.DescribeTagAsync(choice, token).ConfigureAwait(false);
                     }
                     catch (Exception exception) when (!token.IsCancellationRequested)
