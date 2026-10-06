@@ -76,8 +76,9 @@ labels select the largest bump. Review labels before merging.
 ## Document breaking changes
 
 A PR labeled `semver:major` must add a new file directly under `.changes`,
-named `+short-kebab-slug.breaking.md`. Start with one H3 title, then include
-these H4 sections in this order:
+named `+short-kebab-slug.breaking.md`. Start with one H3 title and a brief
+introductory paragraph describing the breaking change, then include these H4
+sections in this order:
 
 - Previous behavior
 - New behavior

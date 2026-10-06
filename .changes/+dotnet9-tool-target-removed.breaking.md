@@ -1,5 +1,8 @@
 ### Remove the .NET 9 tool target
 
+The .NET tool package no longer supports .NET 9, so tool users must install the
+.NET 10 SDK and runtime before upgrading.
+
 #### Previous behavior
 
 The `Valleysoft.Dredge` .NET tool package targeted both `net9.0` and
