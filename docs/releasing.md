@@ -42,7 +42,10 @@ A Renovate custom manager updates that image's pinned digest.
 `.github/scripts/check-native-aot-output.sh` statically checks each publish
 directory. It rejects managed runtime files and checks the executable's file
 format, architecture, and Linux libc loader. The workflows never run the
-executables.
+executables. These checks validate release asset structure, not runtime
+behavior; the behavioral validation requested in
+[issue #342](https://github.com/mthalman/dredge/issues/342) remains separate
+from this publication pipeline.
 
 Each build job uploads its executable and checksum directly to the draft; the
 executables are not stored as workflow artifacts. **Verify executables** then
