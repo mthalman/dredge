@@ -1,8 +1,8 @@
 # Install a release executable
 
-Each [GitHub Release](https://github.com/mthalman/dredge/releases) includes a
-Native AOT executable for each supported platform. The executables are
-self-contained native binaries, so they do not require .NET to be installed.
+Dredge publishes Native AOT executables for each supported platform on the
+[release page](https://github.com/mthalman/dredge/releases). These executables
+are self-contained native binaries, so they do not require .NET to be installed.
 
 ## Choose an executable
 
