@@ -68,12 +68,12 @@
       Excluding their dependencies saves about 7.5 MB and a native library per platform.
       The test project excludes them too, so the explorer UI tests run without them.
     -->
-    <PackageReference Include="Markdig" Version="1.3.2" ExcludeAssets="runtime" />
+    <PackageReference Include="Markdig" Version="1.4.0" ExcludeAssets="runtime" />
     <PackageReference Include="Onigwrap" Version="1.0.11" ExcludeAssets="all" />
     <PackageReference Include="TextMateSharp" Version="2.0.4" ExcludeAssets="runtime" />
     <PackageReference Include="TextMateSharp.Grammars" Version="2.0.4" ExcludeAssets="runtime" />
     <PackageReference Include="Valleysoft.DockerCredsProvider" Version="3.0.0" />
-    <PackageReference Include="Valleysoft.DockerfileModel" Version="2.0.0" />
+    <PackageReference Include="Valleysoft.DockerfileModel" Version="3.0.0" />
     <PackageReference Include="Valleysoft.DockerRegistryClient" Version="7.0.0" />
   </ItemGroup>
 

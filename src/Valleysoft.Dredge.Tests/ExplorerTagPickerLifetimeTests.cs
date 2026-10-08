@@ -39,12 +39,16 @@ public sealed class ExplorerTagPickerLifetimeTests
     {
         TaskCompletionSource<bool> entered = new(TaskCreationOptions.RunContinuationsAsynchronously);
         TaskCompletionSource<bool> release = new(TaskCreationOptions.RunContinuationsAsynchronously);
-        int active = 0, finished = 0;
+        int active = 0, finished = 0, startedAfterCancellation = 0;
         FakeExplorerHost host = new()
         {
             Tags = ["one", "two", "three", "four", "five"],
-            DescribeTagWork = async (_, _) =>
+            DescribeTagWork = async (_, token) =>
             {
+                if (token.IsCancellationRequested)
+                {
+                    Interlocked.Increment(ref startedAfterCancellation);
+                }
                 if (Interlocked.Increment(ref active) == 4)
                 {
                     entered.SetResult(true);
@@ -62,6 +66,7 @@ public sealed class ExplorerTagPickerLifetimeTests
         await closing.WaitAsync(TimeSpan.FromSeconds(10), TestToken);
         Assert.Equal(4, active);
         Assert.Equal(4, finished);
+        Assert.Equal(0, startedAfterCancellation);
     }
 
     [Fact]
