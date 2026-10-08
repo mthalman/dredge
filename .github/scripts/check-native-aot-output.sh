@@ -25,6 +25,25 @@ le_hex() {
   echo "$reversed"
 }
 
+contains_hex_sequence() {
+  local file="$1"
+  local needle="$2"
+
+  od -An -tx1 -v "$file" | awk -v needle="$needle" '
+    {
+      gsub(/[[:space:]]/, "")
+      data = carry $0
+      if (index(data, needle) != 0) {
+        found = 1
+      }
+
+      keep = length(needle) - 1
+      carry = length(data) > keep ? substr(data, length(data) - keep + 1) : data
+    }
+    END { exit found ? 0 : 1 }
+  '
+}
+
 case "$rid" in
   win-*) exe="$publish_dir/dredge.exe" ;;
   *) exe="$publish_dir/dredge" ;;
@@ -78,5 +97,12 @@ case "$rid" in
 esac
 
 [ "$machine" = "$expected_machine" ] || fail "$exe targets machine type 0x$machine, expected 0x$expected_machine for $rid."
+
+# Native AOT modules contain a ReadyToRun header. Framework-dependent
+# apphosts instead contain the fixed .NET single-file bundle signature.
+contains_hex_sequence "$exe" "52545200" || fail "$exe does not contain a Native AOT ReadyToRun header."
+if contains_hex_sequence "$exe" "8b1202b96a612038727b930214d7a03213f5b9e6efae3318ee3b2dce24b36aae"; then
+  fail "$exe contains the .NET apphost bundle signature instead of Native AOT output."
+fi
 
 echo "Verified Native AOT executable for $rid: $exe"
