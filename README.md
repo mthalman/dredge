@@ -62,7 +62,7 @@ Download from the [release page](https://github.com/mthalman/dredge/releases).
 Select the executable for your operating system and architecture.
 
 Release executables are Native AOT builds and do not require .NET. Linux glibc
-executables require glibc 2.39 or later. See
+executables are supported on glibc 2.39 or later. See
 [Install a release executable](docs/installation.md) for platform requirements
 and checksum verification.
 

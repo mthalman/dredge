@@ -25,13 +25,14 @@ The executables support the operating system versions that
 [.NET 10 supports](https://github.com/dotnet/core/blob/main/release-notes/10.0/supported-os.md),
 with this additional Linux requirement:
 
-- **glibc executables** are built on Ubuntu 24.04 and require glibc 2.39 or
-  later. For example, use Ubuntu 24.04, Debian 13, RHEL 10, or later. Run
-  `ldd --version` to check the installed glibc version.
+- **glibc executables** are built on Ubuntu 24.04 and are supported on glibc
+  2.39 or later. For example, use Ubuntu 24.04, Debian 13, RHEL 10, or later.
+  Run `ldd --version` to check the installed glibc version.
 - **musl executables** are built on Alpine Linux and run on musl-based
   distributions.
 
-On older Linux distributions, use the
+Older glibc distributions are unsupported even if a particular build starts
+with their installed library versions. On those distributions, use the
 [.NET tool](../README.md#net-global-tool) or the
 [container image](../README.md#container) instead.
 
