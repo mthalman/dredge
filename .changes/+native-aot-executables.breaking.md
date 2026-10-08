@@ -1,5 +1,9 @@
 ### Publish release executables as Native AOT binaries
 
+Downloaded release executables are now platform-native, self-contained
+binaries. They no longer need .NET installed, but Linux compatibility and
+macOS trust requirements change.
+
 #### Previous behavior
 
 In v6.0.2, downloadable release executables targeted `net9.0` and were
