@@ -30,6 +30,8 @@
     <EnableTrimAnalyzer>true</EnableTrimAnalyzer>
     <EnableAotAnalyzer>true</EnableAotAnalyzer>
     <WarningsAsErrors>$(WarningsAsErrors);IL2026;IL2104;IL3050</WarningsAsErrors>
+    <!-- DockerfileModel 3.0.0 reflects only in structural editing APIs, which Dredge does not use. -->
+    <WarningsNotAsErrors>$(WarningsNotAsErrors);IL2070</WarningsNotAsErrors>
     <TrimmerSingleWarn>false</TrimmerSingleWarn>
   </PropertyGroup>
 
@@ -55,10 +57,6 @@
 
   <ItemGroup>
     <InternalsVisibleTo Include="Valleysoft.Dredge.Tests" />
-  </ItemGroup>
-
-  <ItemGroup>
-    <_ILLinkSuppressions Include="DockerfileModel.TrimmerSuppressions.xml" />
   </ItemGroup>
 
   <ItemGroup>
