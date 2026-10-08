@@ -134,6 +134,7 @@ internal static class TagPicker
                     await gate.WaitAsync(token).ConfigureAwait(false);
                     try
                     {
+                        // A release racing cancellation can still grant the gate to a canceled waiter.
                         token.ThrowIfCancellationRequested();
                         await host.DescribeTagAsync(choice, token).ConfigureAwait(false);
                     }

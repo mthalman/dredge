@@ -93,6 +93,7 @@ internal sealed class ExplorerSession
         await packageGate.WaitAsync(cancellationToken);
         try
         {
+            cancellationToken.ThrowIfCancellationRequested();
             if (layer == finalLayer && packages is not null)
             {
                 return packages;
