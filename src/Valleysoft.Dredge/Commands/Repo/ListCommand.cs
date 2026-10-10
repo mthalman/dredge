@@ -29,9 +29,17 @@ public class ListCommand : RegistryCommandBase<ListOptions>
 
             repoNames.Sort();
 
-            string output = JsonHelper.Serialize(repoNames);
-
-            Output.WriteLine(output);
+            if (Options.OutputFormat == CliOutputFormat.Json)
+            {
+                Output.WriteLine(JsonHelper.Serialize(repoNames));
+            }
+            else
+            {
+                foreach (string repoName in repoNames)
+                {
+                    Output.WriteLine(repoName);
+                }
+            }
         });
     }
 }

@@ -3,6 +3,12 @@ using System.CommandLine.Completions;
 
 namespace Valleysoft.Dredge.Commands;
 
+public enum CliOutputFormat
+{
+    Json,
+    Text
+}
+
 internal interface IJsonOutputOption
 {
 }

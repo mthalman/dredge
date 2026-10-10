@@ -31,9 +31,17 @@ public class ListCommand : RegistryCommandBase<ListOptions>
 
             tags.Sort();
 
-            string output = JsonHelper.Serialize(tags);
-
-            Output.WriteLine(output);
+            if (Options.OutputFormat == CliOutputFormat.Json)
+            {
+                Output.WriteLine(JsonHelper.Serialize(tags));
+            }
+            else
+            {
+                foreach (string tag in tags)
+                {
+                    Output.WriteLine(tag);
+                }
+            }
         });
     }
 }
