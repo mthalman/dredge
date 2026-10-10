@@ -1,4 +1,6 @@
 using System.CommandLine;
+using Valleysoft.DockerRegistryClient;
+using Valleysoft.DockerRegistryClient.Models;
 using Valleysoft.Dredge.Commands;
 
 namespace Valleysoft.Dredge.Tests;
@@ -47,6 +49,30 @@ public class CommandCancellationTests
 
         Assert.Equal(1, exitCode);
         Assert.Equal($"failure{Environment.NewLine}", error.ToString());
+    }
+
+    [Fact]
+    public async Task ExecuteCommandAsyncWritesRegistryErrorCodeWhenJsonOutputIsSelected()
+    {
+        using StringWriter error = new();
+        int? exitCode = null;
+        RegistryException exception = new("failure")
+        {
+            Errors = [new Error { Code = "DENIED", Message = "repository not allowed" }]
+        };
+        ParseResult parseResult = new JsonOutputCommand().Parse(["--output", "json"]);
+        CommandHelper.SetJsonErrorOutput(parseResult);
+
+        await CommandHelper.ExecuteCommandAsync(
+            registry: null,
+            CancellationToken.None,
+            ct => throw exception,
+            error,
+            code => exitCode = code,
+            operationTimeout: Timeout.InfiniteTimeSpan);
+
+        Assert.Equal(1, exitCode);
+        Assert.Equal("{\"error\":{\"code\":\"DENIED\",\"message\":\"repository not allowed\"}}" + Environment.NewLine, error.ToString());
     }
 
     [Fact]
@@ -275,7 +301,7 @@ public class CommandCancellationTests
 
         protected override void GetValues()
         {
-            Output = GetValue(outputOption);
+            Output = GetValue(outputOption) ?? string.Empty;
         }
     }
 
@@ -296,7 +322,7 @@ public class CommandCancellationTests
 
         protected override void GetValues()
         {
-            Output = GetValue(outputOption);
+            Output = GetValue(outputOption) ?? string.Empty;
         }
     }
 }
