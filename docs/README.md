@@ -1,7 +1,9 @@
 # Dredge documentation
 
-Use the command reference to look up syntax and options. Use the guides to
-configure authentication, settings, and platform selection.
+If you are new to Dredge, start with installation, then configure registry
+authentication if your registry requires it. Use the command reference when
+you know which operation you want to run; use the guides to configure settings,
+select an image platform, and interpret command results.
 
 ## Command reference
 
