@@ -26,7 +26,8 @@ internal static class CommandHelper
 
     public static int InvokeRootCommand(
         ParseResult parseResult,
-        InvocationConfiguration? configuration = null)
+        InvocationConfiguration? configuration = null,
+        Action? beforeInvoke = null)
     {
         configuration ??= new InvocationConfiguration();
         configuration.EnableDefaultExceptionHandler = false;
@@ -34,6 +35,7 @@ internal static class CommandHelper
 
         try
         {
+            beforeInvoke?.Invoke();
             return parseResult.Invoke(configuration);
         }
         catch (OperationCanceledException e) when (e.CancellationToken.IsCancellationRequested)

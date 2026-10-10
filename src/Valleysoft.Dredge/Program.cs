@@ -12,7 +12,7 @@ Console.OutputEncoding = Encoding.UTF8;
 
 DockerRegistryClientFactory clientFactory = new();
 RootCommand rootCmd = new(
-    "CLI for executing commands on a container registry's HTTP API. Exit codes: 0 for success and 1 for errors.")
+    "CLI for executing commands on a container registry's HTTP API.")
 {
     new ImageCommand(clientFactory),
     new ManifestCommand(clientFactory),
@@ -22,4 +22,6 @@ RootCommand rootCmd = new(
     new SettingsCommand(),
 };
 
-return CommandHelper.InvokeRootCommand(rootCmd.Parse(args));
+return CommandHelper.InvokeRootCommand(
+    rootCmd.Parse(args.Length == 0 ? ["--help"] : args),
+    beforeInvoke: () => FirstRunExperience.ShowIfNeeded(args, Console.Out));
