@@ -11,6 +11,7 @@ namespace Valleysoft.Dredge;
     WriteIndented = true,
     Converters = new[] { typeof(JsonHelper.NewtonsoftCompatibleStringConverter) })]
 [JsonSerializable(typeof(AppSettings))]
+[JsonSerializable(typeof(ErrorJsonEnvelope))]
 [JsonSerializable(typeof(CompareLayersResult))]
 [JsonSerializable(typeof(CompareMetadataResult))]
 [JsonSerializable(typeof(ImageFileSystemEntry[]))]

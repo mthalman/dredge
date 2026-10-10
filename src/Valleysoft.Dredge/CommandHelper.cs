@@ -1,18 +1,36 @@
 ﻿using System.CommandLine;
+using System.CommandLine.Parsing;
 using System.Globalization;
+using System.Text.Json.Serialization;
+using Valleysoft.Dredge.Commands;
 using Valleysoft.DockerRegistryClient;
 using Valleysoft.DockerRegistryClient.Models;
 
 namespace Valleysoft.Dredge;
 
+internal sealed class ErrorJsonEnvelope
+{
+    [JsonPropertyName("error")]
+    public ErrorJsonPayload Error { get; init; } = new();
+}
+
+internal sealed class ErrorJsonPayload
+{
+    public string? Code { get; init; }
+    public string? Message { get; init; }
+}
+
 internal static class CommandHelper
 {
+    private static readonly AsyncLocal<bool> jsonErrorOutput = new();
+
     public static int InvokeRootCommand(
         ParseResult parseResult,
         InvocationConfiguration? configuration = null)
     {
         configuration ??= new InvocationConfiguration();
         configuration.EnableDefaultExceptionHandler = false;
+        SetJsonErrorOutput(parseResult);
 
         try
         {
@@ -90,6 +108,26 @@ internal static class CommandHelper
         };
     }
 
+    public static void SetJsonErrorOutput(ParseResult parseResult)
+    {
+        jsonErrorOutput.Value = IsJsonOutput(parseResult);
+    }
+
+    private static bool IsJsonOutput(ParseResult parseResult)
+    {
+        foreach (SymbolResult child in parseResult.CommandResult.Children)
+        {
+            if (child is OptionResult optionResult &&
+                optionResult.Option is IJsonOutputOption &&
+                string.Equals(optionResult.GetValueOrDefault<string>(), "json", StringComparison.OrdinalIgnoreCase))
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
     private static void WriteError(Exception e, string? registry, TextWriter? errorWriter)
     {
         ConsoleColor savedColor = Console.ForegroundColor;
@@ -98,9 +136,11 @@ internal static class CommandHelper
             Console.ForegroundColor = ConsoleColor.Red;
 
             string message = e.Message;
+            string? code = null;
             if (e is RegistryException dockerRegistryException)
             {
                 Error? error = dockerRegistryException.Errors.FirstOrDefault();
+                code = error?.Code;
                 if (error?.Code == "UNAUTHORIZED")
                 {
                     string loginCommand = "docker login";
@@ -117,7 +157,24 @@ internal static class CommandHelper
                 }
             }
 
-            (errorWriter ?? Console.Error).WriteLine(message);
+            TextWriter writer = errorWriter ?? Console.Error;
+            if (jsonErrorOutput.Value)
+            {
+                string json = JsonHelper.Serialize(
+                    new ErrorJsonEnvelope
+                    {
+                        Error = new ErrorJsonPayload
+                        {
+                            Code = code,
+                            Message = message,
+                        }
+                    },
+                    JsonHelper.CompactSettings);
+                writer.WriteLine(json);
+                return;
+            }
+
+            writer.WriteLine(message);
         }
         finally
         {

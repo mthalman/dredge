@@ -13,6 +13,7 @@ public abstract class CommandWithOptions<TOptions> : Command
         Options.SetCommandOptions(this);
         this.SetAction((parseResult, cancellationToken) =>
         {
+            CommandHelper.SetJsonErrorOutput(parseResult);
             Options.SetParseResult(parseResult);
             return ExecuteAsync(cancellationToken);
         });

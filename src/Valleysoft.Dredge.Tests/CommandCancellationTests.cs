@@ -1,4 +1,6 @@
 using System.CommandLine;
+using Valleysoft.DockerRegistryClient;
+using Valleysoft.DockerRegistryClient.Models;
 using Valleysoft.Dredge.Commands;
 
 namespace Valleysoft.Dredge.Tests;
@@ -19,6 +21,58 @@ public class CommandCancellationTests
 
         Assert.Equal(1, exitCode);
         Assert.Equal($"failure{Environment.NewLine}", error.ToString());
+    }
+
+    [Fact]
+    public void RootInvocationWritesStructuredJsonErrorWhenOutputIsJson()
+    {
+        JsonOutputCommand command = new();
+        using StringWriter error = new();
+
+        int exitCode = CommandHelper.InvokeRootCommand(
+            command.Parse(["--output", "json"]),
+            new InvocationConfiguration { Error = error });
+
+        Assert.Equal(1, exitCode);
+        Assert.Equal($"{{\"error\":{{\"message\":\"failure\"}}}}{Environment.NewLine}", error.ToString());
+    }
+
+    [Fact]
+    public void RootInvocationDoesNotTreatFileOutputAsJsonOutput()
+    {
+        FileOutputCommand command = new();
+        using StringWriter error = new();
+
+        int exitCode = CommandHelper.InvokeRootCommand(
+            command.Parse(["--output", "json"]),
+            new InvocationConfiguration { Error = error });
+
+        Assert.Equal(1, exitCode);
+        Assert.Equal($"failure{Environment.NewLine}", error.ToString());
+    }
+
+    [Fact]
+    public async Task ExecuteCommandAsyncWritesRegistryErrorCodeWhenJsonOutputIsSelected()
+    {
+        using StringWriter error = new();
+        int? exitCode = null;
+        RegistryException exception = new("failure")
+        {
+            Errors = [new Error { Code = "DENIED", Message = "repository not allowed" }]
+        };
+        ParseResult parseResult = new JsonOutputCommand().Parse(["--output", "json"]);
+        CommandHelper.SetJsonErrorOutput(parseResult);
+
+        await CommandHelper.ExecuteCommandAsync(
+            registry: null,
+            CancellationToken.None,
+            ct => throw exception,
+            error,
+            code => exitCode = code,
+            operationTimeout: Timeout.InfiniteTimeSpan);
+
+        Assert.Equal(1, exitCode);
+        Assert.Equal("{\"error\":{\"code\":\"DENIED\",\"message\":\"repository not allowed\"}}" + Environment.NewLine, error.ToString());
     }
 
     [Fact]
@@ -179,6 +233,28 @@ public class CommandCancellationTests
             throw new InvalidOperationException("failure");
     }
 
+    private sealed class JsonOutputCommand : CommandWithOptions<JsonOutputOptions>
+    {
+        public JsonOutputCommand()
+            : base("json-output", "Command that fails with JSON output")
+        {
+        }
+
+        protected override Task ExecuteAsync(CancellationToken cancellationToken) =>
+            throw new InvalidOperationException("failure");
+    }
+
+    private sealed class FileOutputCommand : CommandWithOptions<FileOutputOptions>
+    {
+        public FileOutputCommand()
+            : base("file-output", "Command that takes a file path for --output")
+        {
+        }
+
+        protected override Task ExecuteAsync(CancellationToken cancellationToken) =>
+            throw new InvalidOperationException("failure");
+    }
+
     private sealed class CancellationCommand : CommandWithOptions<TestOptions>
     {
         public CancellationCommand()
@@ -205,6 +281,48 @@ public class CommandCancellationTests
     {
         protected override void GetValues()
         {
+        }
+    }
+
+    public sealed class JsonOutputOptions : OptionsBase
+    {
+        private readonly Option<string> outputOption;
+
+        public string Output { get; set; } = string.Empty;
+
+        public JsonOutputOptions()
+        {
+            outputOption = Add(new Valleysoft.Dredge.Commands.JsonOutputOption(
+                "Output format",
+                defaultValue: "text",
+                "text",
+                "json"));
+        }
+
+        protected override void GetValues()
+        {
+            Output = GetValue(outputOption) ?? string.Empty;
+        }
+    }
+
+    public sealed class FileOutputOptions : OptionsBase
+    {
+        private readonly Option<string> outputOption;
+
+        public string Output { get; set; } = string.Empty;
+
+        public FileOutputOptions()
+        {
+            outputOption = Add(new Option<string>("--output")
+            {
+                Description = "File path for the payload",
+                DefaultValueFactory = _ => "stdout"
+            });
+        }
+
+        protected override void GetValues()
+        {
+            Output = GetValue(outputOption) ?? string.Empty;
         }
     }
 }
