@@ -385,6 +385,8 @@ The command returns the following exit codes:
 | `1` | The command failed before completing the comparison |
 | `2` | The comparison completed and found layer differences |
 
+See [Exit codes](../exit-codes.md) for the general exit-code convention.
+
 ### Inline output example
 
 ```diff

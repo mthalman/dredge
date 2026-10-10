@@ -9,7 +9,7 @@ public class CheckCommand : RegistryCommandBase<CheckOptions>
         TextWriter? output = null)
         : base(
             "check",
-            "Checks for required OCI referrer artifact types",
+            "Checks for required OCI referrer artifact types. Exit code 2 means one or more required types are missing, not a command failure.",
             dockerRegistryClientFactory,
             output)
     {

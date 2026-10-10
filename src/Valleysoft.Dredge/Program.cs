@@ -11,7 +11,8 @@ using Valleysoft.Dredge.Commands.Tag;
 Console.OutputEncoding = Encoding.UTF8;
 
 DockerRegistryClientFactory clientFactory = new();
-RootCommand rootCmd = new("CLI for executing commands on a container registry's HTTP API.")
+RootCommand rootCmd = new(
+    "CLI for executing commands on a container registry's HTTP API. Exit codes: 0 for success and 1 for errors.")
 {
     new ImageCommand(clientFactory),
     new ManifestCommand(clientFactory),

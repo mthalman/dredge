@@ -18,3 +18,4 @@ configure authentication, settings, and platform selection.
 - [Authenticate to a registry](authentication.md)
 - [Configure Dredge](settings.md)
 - [Resolve a platform-specific image](platform-resolution.md)
+- [Understand exit codes](exit-codes.md)
