@@ -14,6 +14,7 @@ configure authentication, settings, and platform selection.
 
 ## Guides
 
+- [Install a release executable](installation.md)
 - [Authenticate to a registry](authentication.md)
 - [Configure Dredge](settings.md)
 - [Resolve a platform-specific image](platform-resolution.md)

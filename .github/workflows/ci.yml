@@ -177,9 +177,36 @@ jobs:
           name: musl-test-results
           path: src/test-results/musl/*
 
+  native-aot:
+    name: Native AOT (linux-x64)
+    runs-on: ubuntu-24.04
+
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          ref: ${{ inputs.source-sha || github.sha }}
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Setup .NET SDK
+        uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6
+
+      - name: Install Native AOT prerequisites
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends clang zlib1g-dev
+
+      # The executable is checked statically and is not uploaded as an artifact.
+      - name: Publish
+        run: dotnet publish Valleysoft.Dredge/Valleysoft.Dredge.csproj -c Release -r linux-x64 -p:PublishAot=true -o "$RUNNER_TEMP/native-aot" -warnaserror
+
+      - name: Check Native AOT output
+        working-directory: .
+        run: bash .github/scripts/check-native-aot-output.sh "$RUNNER_TEMP/native-aot" linux-x64
+
   ci-success:
     name: CI success
-    needs: [linux, linux-integration, windows, macos, musl]
+    needs: [linux, linux-integration, windows, macos, musl, native-aot]
     if: always()
     runs-on: ubuntu-latest
 
