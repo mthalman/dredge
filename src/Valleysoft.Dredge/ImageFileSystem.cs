@@ -91,8 +91,10 @@ internal sealed class ImageFileSystem : IAsyncDisposable
                 }
             }
             string digest = resolved.ManifestInfo.DockerContentDigest;
-            StoredFileSystem? cached = await fileSystem.store.ReadMetadataAsync<StoredFileSystem>(
-                digest, "view", cancellationToken);
+            StoredFileSystem? cached = maxLayerIndex is null
+                ? await fileSystem.store.ReadMetadataAsync<StoredFileSystem>(
+                    digest, "view", cancellationToken)
+                : null;
             if (maxLayerIndex is null && !requireLayerIndexes && progress is null &&
                 cached is not null && fileSystem.TryRestore(cached))
             {
