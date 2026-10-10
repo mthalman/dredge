@@ -1,10 +1,24 @@
 ﻿using System.CommandLine;
 using System.CommandLine.Parsing;
 using System.Globalization;
+using System.Text.Json.Serialization;
+using Valleysoft.Dredge.Commands;
 using Valleysoft.DockerRegistryClient;
 using Valleysoft.DockerRegistryClient.Models;
 
 namespace Valleysoft.Dredge;
+
+internal sealed class ErrorJsonEnvelope
+{
+    [JsonPropertyName("error")]
+    public ErrorJsonPayload Error { get; init; } = new();
+}
+
+internal sealed class ErrorJsonPayload
+{
+    public string? Code { get; init; }
+    public string? Message { get; init; }
+}
 
 internal static class CommandHelper
 {
@@ -104,7 +118,7 @@ internal static class CommandHelper
         foreach (SymbolResult child in parseResult.CommandResult.Children)
         {
             if (child is OptionResult optionResult &&
-                string.Equals(optionResult.Option.Name.TrimStart('-'), "output", StringComparison.OrdinalIgnoreCase) &&
+                optionResult.Option is IJsonOutputOption &&
                 string.Equals(optionResult.GetValueOrDefault<string>(), "json", StringComparison.OrdinalIgnoreCase))
             {
                 return true;
@@ -147,7 +161,14 @@ internal static class CommandHelper
             if (jsonErrorOutput.Value)
             {
                 string json = JsonHelper.Serialize(
-                    new { error = new { code, message } },
+                    new ErrorJsonEnvelope
+                    {
+                        Error = new ErrorJsonPayload
+                        {
+                            Code = code,
+                            Message = message,
+                        }
+                    },
                     JsonHelper.CompactSettings);
                 writer.WriteLine(json);
                 return;
