@@ -12,11 +12,11 @@ dotnet restore
 dotnet build -c Release --no-restore
 dotnet test --no-restore -v normal -c Release
 
-# Run a single test by fully qualified name
-dotnet test --project Valleysoft.Dredge.Tests/Valleysoft.Dredge.Tests.csproj --no-restore --filter "FullyQualifiedName~Valleysoft.Dredge.Tests.CompareLayersCommandTests.Verify"
+# Run a single test by fully qualified method name
+dotnet test --project Valleysoft.Dredge.Tests/Valleysoft.Dredge.Tests.csproj --no-restore --filter-method Valleysoft.Dredge.Tests.CompareLayersCommandTests.DifferentImages_ExitTwo
 
 # Run a single test class
-dotnet test --project Valleysoft.Dredge.Tests/Valleysoft.Dredge.Tests.csproj --no-restore --filter "ClassName=Valleysoft.Dredge.Tests.CompareLayersCommandTests"
+dotnet test --project Valleysoft.Dredge.Tests/Valleysoft.Dredge.Tests.csproj --no-restore --filter-class Valleysoft.Dredge.Tests.CompareLayersCommandTests
 
 # Run the settings generator test suite
 dotnet test --project Valleysoft.Dredge.Analyzers.Tests/Valleysoft.Dredge.Analyzers.Tests.csproj -c Release --no-restore
