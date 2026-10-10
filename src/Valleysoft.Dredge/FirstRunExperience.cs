@@ -3,6 +3,7 @@ namespace Valleysoft.Dredge;
 internal static class FirstRunExperience
 {
     private const string CompletionFileName = ".first-run-complete";
+    private const string StateDirectoryEnvironmentVariable = "DREDGE_FIRST_RUN_STATE_DIRECTORY";
     private const string Logo = """
       ____  ____  _____ ____   ____ _____
      |  _ \|  _ \| ____|  _ \ / ___| ____|
@@ -21,7 +22,8 @@ internal static class FirstRunExperience
             return;
         }
 
-        stateDirectory ??= Path.GetDirectoryName(AppSettings.SettingsPath)!;
+        stateDirectory ??= Environment.GetEnvironmentVariable(StateDirectoryEnvironmentVariable)
+            ?? Path.GetDirectoryName(AppSettings.SettingsPath)!;
         string completionPath = Path.Combine(stateDirectory, CompletionFileName);
 
         try

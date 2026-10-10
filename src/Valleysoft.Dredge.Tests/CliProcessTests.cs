@@ -131,9 +131,7 @@ public sealed class CliProcessTests
             RedirectStandardInput = true,
             UseShellExecute = false
         };
-        startInfo.Environment["LOCALAPPDATA"] = localDataPath;
-        startInfo.Environment["XDG_DATA_HOME"] = localDataPath;
-        startInfo.Environment["HOME"] = localDataPath;
+        startInfo.Environment["DREDGE_FIRST_RUN_STATE_DIRECTORY"] = localDataPath;
         startInfo.ArgumentList.Add(GetDredgeAssemblyPath());
         foreach (string arg in args)
         {
