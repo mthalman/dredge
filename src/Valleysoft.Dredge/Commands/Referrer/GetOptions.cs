@@ -25,10 +25,8 @@ public class GetOptions : OptionsBase
         {
             Description = "Payload index or digest (required when the artifact has multiple payloads)"
         });
-        outputOption = Add(new Option<string>("--output")
-        {
-            Description = "File path for the payload; writes exact bytes to standard output when omitted"
-        });
+        outputOption = Add(new CliOutputPathOption(
+            "File path for the payload; writes exact bytes to standard output when omitted"));
     }
 
     protected override void GetValues()

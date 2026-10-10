@@ -10,3 +10,4 @@ DRG005 | SettingsGeneration | Error | Unsupported settings property
 DRG006 | SettingsGeneration | Error | Missing or unusable property accessor
 DRG007 | SettingsGeneration | Error | Generated member signature conflict
 DRG008 | SettingsGeneration | Error | Invalid nested settings contract
+DRG009 | Cli | Error | Output options must use the shared helper
