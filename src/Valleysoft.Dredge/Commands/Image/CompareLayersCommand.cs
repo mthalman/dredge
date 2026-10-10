@@ -17,7 +17,10 @@ public class CompareLayersCommand : RegistryCommandBase<CompareLayersOptions>
     public CompareLayersCommand(
         IDockerRegistryClientFactory dockerRegistryClientFactory,
         IAnsiConsole? ansiConsole = null)
-        : base("layers", "Compares two images by layers", dockerRegistryClientFactory)
+        : base(
+            "layers",
+            "Compares two images by layers. Exit code 2 means layer differences were found, not a command failure.",
+            dockerRegistryClientFactory)
     {
         this.ansiConsole = ansiConsole ?? AnsiConsole.Console;
     }

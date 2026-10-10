@@ -23,6 +23,23 @@ public sealed class CliProcessTests
         Assert.Contains("manifest", result.StandardOutput);
         Assert.Contains("referrer", result.StandardOutput);
         Assert.Contains("settings", result.StandardOutput);
+        Assert.Contains("Exit codes:", result.StandardOutput);
+        Assert.Contains("0 for success", result.StandardOutput);
+        Assert.Contains("1 for errors", result.StandardOutput);
+    }
+
+    [Theory]
+    [InlineData("image compare", "layers comparison uses exit code 2")]
+    [InlineData("image compare layers", "layer differences were found")]
+    [InlineData("referrer check", "required types are missing")]
+    public async Task Help_DescribesDifferenceExitCode(string command, string expectedDetails)
+    {
+        ProcessResult result = await InvokeDredgeProcessAsync([..command.Split(' '), "--help"]);
+
+        Assert.Equal(0, result.ExitCode);
+        Assert.Contains("Exit code 2", result.StandardOutput);
+        Assert.Contains("not a command failure", result.StandardOutput);
+        Assert.Contains(expectedDetails, result.StandardOutput);
     }
 
     [Fact]

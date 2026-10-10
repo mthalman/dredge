@@ -69,6 +69,8 @@ dredge referrer check <image> --artifact-type <type> [--artifact-type <type>]...
 | `--artifact-type` | Required artifact media type. Specify once for each required type |
 | `--output` | Output format: `summary` (default) or `json` |
 
+See [Exit codes](../exit-codes.md) for the general exit-code convention.
+
 The summary reports every requested artifact type and the digest of each
 matching referrer:
 
