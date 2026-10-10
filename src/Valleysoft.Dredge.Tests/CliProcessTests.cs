@@ -27,6 +27,18 @@ public sealed class CliProcessTests
         Assert.DoesNotContain("Exit codes:", result.StandardOutput);
     }
 
+    [Fact]
+    public async Task BareLaunch_ShowsWelcomeAndRootHelp()
+    {
+        ProcessResult result = await InvokeDredgeProcessAsync();
+
+        Assert.Equal(0, result.ExitCode);
+        Assert.Contains("Welcome to Dredge", result.StandardOutput);
+        Assert.Contains("Usage:", result.StandardOutput);
+        Assert.Contains("dredge [command] [options]", result.StandardOutput);
+        Assert.Contains("image", result.StandardOutput);
+    }
+
     [Theory]
     [InlineData("image compare", "layers comparison uses exit code 2")]
     [InlineData("image compare layers", "layer differences were found")]
