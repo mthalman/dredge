@@ -3,6 +3,34 @@ using System.CommandLine.Completions;
 
 namespace Valleysoft.Dredge.Commands;
 
+internal interface IJsonOutputOption
+{
+}
+
+internal sealed class JsonOutputOption : Option<string>, IJsonOutputOption
+{
+    public JsonOutputOption(string description, string defaultValue, params string[] values)
+        : base("--output")
+    {
+        string expectedValues = string.Join(", ", values.Select(item => $"'{item}'"));
+
+        Description = description;
+        HelpName = string.Join('|', values);
+        DefaultValueFactory = _ => defaultValue;
+        CompletionSources.Add(
+            _ => [.. values.Select(item => new CompletionItem(item))]);
+        Validators.Add(result =>
+        {
+            string? value = result.GetValueOrDefault<string>();
+            if (value is null || !values.Contains(value, StringComparer.OrdinalIgnoreCase))
+            {
+                result.AddError(
+                    $"Invalid output value '{value}'. Expected one of: {expectedValues}.");
+            }
+        });
+    }
+}
+
 internal sealed class CliOutputOption<T>
     where T : struct, Enum
 {
@@ -22,25 +50,11 @@ internal sealed class CliOutputOption<T>
 
         string defaultName = values.Single(
             item => EqualityComparer<T>.Default.Equals(item.Value, defaultValue)).Name;
-        string expectedValues = string.Join(", ", values.Select(item => $"'{item.Name}'"));
 
-        Option = new Option<string>("--output")
-        {
-            Description = description,
-            HelpName = string.Join('|', values.Select(item => item.Name)),
-            DefaultValueFactory = _ => defaultName
-        };
-        Option.CompletionSources.Add(
-            _ => [.. values.Select(item => new CompletionItem(item.Name))]);
-        Option.Validators.Add(result =>
-        {
-            string? value = result.GetValueOrDefault<string>();
-            if (value is null || !this.values.ContainsKey(value))
-            {
-                result.AddError(
-                    $"Invalid output value '{value}'. Expected one of: {expectedValues}.");
-            }
-        });
+        Option = new JsonOutputOption(
+            description,
+            defaultName,
+            values.Select(item => item.Name).ToArray());
     }
 
     public T GetValue(string? value) =>

@@ -36,6 +36,20 @@ public class CommandCancellationTests
     }
 
     [Fact]
+    public void RootInvocationDoesNotTreatFileOutputAsJsonOutput()
+    {
+        FileOutputCommand command = new();
+        using StringWriter error = new();
+
+        int exitCode = CommandHelper.InvokeRootCommand(
+            command.Parse(["--output", "json"]),
+            new InvocationConfiguration { Error = error });
+
+        Assert.Equal(1, exitCode);
+        Assert.Equal($"failure{Environment.NewLine}", error.ToString());
+    }
+
+    [Fact]
     public void CancellationAtRootReturnsFailureWithoutWritingError()
     {
         CanceledCommand command = new();
@@ -204,6 +218,17 @@ public class CommandCancellationTests
             throw new InvalidOperationException("failure");
     }
 
+    private sealed class FileOutputCommand : CommandWithOptions<FileOutputOptions>
+    {
+        public FileOutputCommand()
+            : base("file-output", "Command that takes a file path for --output")
+        {
+        }
+
+        protected override Task ExecuteAsync(CancellationToken cancellationToken) =>
+            throw new InvalidOperationException("failure");
+    }
+
     private sealed class CancellationCommand : CommandWithOptions<TestOptions>
     {
         public CancellationCommand()
@@ -241,10 +266,31 @@ public class CommandCancellationTests
 
         public JsonOutputOptions()
         {
+            outputOption = Add(new Valleysoft.Dredge.Commands.JsonOutputOption(
+                "Output format",
+                defaultValue: "text",
+                "text",
+                "json"));
+        }
+
+        protected override void GetValues()
+        {
+            Output = GetValue(outputOption);
+        }
+    }
+
+    public sealed class FileOutputOptions : OptionsBase
+    {
+        private readonly Option<string> outputOption;
+
+        public string Output { get; set; } = string.Empty;
+
+        public FileOutputOptions()
+        {
             outputOption = Add(new Option<string>("--output")
             {
-                Description = "Output format",
-                DefaultValueFactory = _ => "text"
+                Description = "File path for the payload",
+                DefaultValueFactory = _ => "stdout"
             });
         }
 
