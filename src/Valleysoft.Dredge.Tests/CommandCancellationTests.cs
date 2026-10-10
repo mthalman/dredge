@@ -22,6 +22,20 @@ public class CommandCancellationTests
     }
 
     [Fact]
+    public void RootInvocationWritesStructuredJsonErrorWhenOutputIsJson()
+    {
+        JsonOutputCommand command = new();
+        using StringWriter error = new();
+
+        int exitCode = CommandHelper.InvokeRootCommand(
+            command.Parse(["--output", "json"]),
+            new InvocationConfiguration { Error = error });
+
+        Assert.Equal(1, exitCode);
+        Assert.Equal($"{{\"error\":{{\"message\":\"failure\"}}}}{Environment.NewLine}", error.ToString());
+    }
+
+    [Fact]
     public void CancellationAtRootReturnsFailureWithoutWritingError()
     {
         CanceledCommand command = new();
@@ -179,6 +193,17 @@ public class CommandCancellationTests
             throw new InvalidOperationException("failure");
     }
 
+    private sealed class JsonOutputCommand : CommandWithOptions<JsonOutputOptions>
+    {
+        public JsonOutputCommand()
+            : base("json-output", "Command that fails with JSON output")
+        {
+        }
+
+        protected override Task ExecuteAsync(CancellationToken cancellationToken) =>
+            throw new InvalidOperationException("failure");
+    }
+
     private sealed class CancellationCommand : CommandWithOptions<TestOptions>
     {
         public CancellationCommand()
@@ -205,6 +230,27 @@ public class CommandCancellationTests
     {
         protected override void GetValues()
         {
+        }
+    }
+
+    public sealed class JsonOutputOptions : OptionsBase
+    {
+        private readonly Option<string> outputOption;
+
+        public string Output { get; set; } = string.Empty;
+
+        public JsonOutputOptions()
+        {
+            outputOption = Add(new Option<string>("--output")
+            {
+                Description = "Output format",
+                DefaultValueFactory = _ => "text"
+            });
+        }
+
+        protected override void GetValues()
+        {
+            Output = GetValue(outputOption);
         }
     }
 }
