@@ -11,18 +11,20 @@ Returns the list of repositories from the specified registry.
 > **Note:** Not supported for Docker Hub.
 
 ```console
-dredge repo list <registry> [--limit <count>]
+dredge repo list <registry> [--limit <count>] [--output <json|text>]
 ```
 
 | Option | Description |
 |--------|-------------|
 | `--limit` | Return at most this many repositories; must be greater than zero |
+| `--output` | Output format: `json` (default) or `text` |
 
 Without `--limit`, Dredge retrieves all result pages. With `--limit <count>`,
 Dredge returns the first `<count>` repositories provided by the registry, then
-sorts those repositories before writing JSON. Dredge stops requesting pages
+sorts those repositories before writing them. Dredge stops requesting pages
 once it has collected the requested number of repositories. The command does
-not return a continuation value for retrieving later repositories.
+not return a continuation value for retrieving later repositories. Text output
+writes one repository per line.
 
 Example:
 

@@ -244,6 +244,35 @@ public class RegistryCommandTests
             JsonSerializer.Deserialize<string[]>(output.ToString())!);
     }
 
+    [Theory]
+    [InlineData(null)]
+    [InlineData("json")]
+    [InlineData("text")]
+    public async Task RepoListCommand_WritesSelectedOutputFormat(string? format)
+    {
+        Mock<IDockerRegistryClient> client = CreateClient();
+        client
+            .Setup(static o => o.Catalog.GetAsync(null, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new Page<Catalog>(
+                new Catalog { RepositoryNames = ["zebra", "alpha"] },
+                null));
+        using StringWriter output = new();
+        TestRepoListCommand command = new(CreateFactory(client.Object), output);
+
+        string[] args = format is null ? [Registry] : [Registry, "--output", format];
+        int exitCode = await command
+            .Parse(args)
+            .InvokeAsync(
+                new InvocationConfiguration(),
+                TestContext.Current.CancellationToken);
+
+        Assert.Equal(0, exitCode);
+        string expected = format == "text"
+            ? $"alpha{Environment.NewLine}zebra{Environment.NewLine}"
+            : JsonHelper.Serialize(new List<string> { "alpha", "zebra" }) + Environment.NewLine;
+        Assert.Equal(expected, output.ToString());
+    }
+
     [Fact]
     public async Task RepoListCommand_LimitWithinFirstPage_TruncatesAndDoesNotRequestNextPage()
     {
@@ -294,6 +323,35 @@ public class RegistryCommandTests
         Assert.Equal(
             ["a", "m", "z"],
             JsonSerializer.Deserialize<string[]>(output.ToString())!);
+    }
+
+    [Theory]
+    [InlineData(null)]
+    [InlineData("json")]
+    [InlineData("text")]
+    public async Task TagListCommand_WritesSelectedOutputFormat(string? format)
+    {
+        Mock<IDockerRegistryClient> client = CreateClient();
+        client
+            .Setup(static o => o.Tags.GetAsync("library/repo", null, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new Page<RepositoryTags>(
+                new RepositoryTags { RepositoryName = "library/repo", Tags = ["z", "a"] },
+                null));
+        using StringWriter output = new();
+        TestTagListCommand command = new(CreateFactory(client.Object), output);
+
+        string[] args = format is null ? ["repo"] : ["repo", "--output", format];
+        int exitCode = await command
+            .Parse(args)
+            .InvokeAsync(
+                new InvocationConfiguration(),
+                TestContext.Current.CancellationToken);
+
+        Assert.Equal(0, exitCode);
+        string expected = format == "text"
+            ? $"a{Environment.NewLine}z{Environment.NewLine}"
+            : JsonHelper.Serialize(new List<string> { "a", "z" }) + Environment.NewLine;
+        Assert.Equal(expected, output.ToString());
     }
 
     [Fact]
