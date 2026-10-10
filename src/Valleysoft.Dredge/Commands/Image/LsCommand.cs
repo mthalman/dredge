@@ -35,22 +35,31 @@ public class LsCommand : RegistryCommandBase<LsOptions>
         {
             using IDockerRegistryClient client =
                 await DockerRegistryClientFactory.GetClientAsync(imageName.Registry, ct);
+            var resolvedManifest =
+                await ManifestHelper.GetResolvedManifestAsync(client, imageName, Options, ct);
+            LayerIndexOption.ValidateLayer(
+                Options.Layer, resolvedManifest.Manifest.Layers.Length);
             await using LayerStore store = LayerStore.Create(paths);
             await using ImageFileSystem fileSystem =
-                await ImageFileSystem.CreateAsync(client, imageName, Options, ct, store);
-            IReadOnlyList<ImageFileSystemEntry> entries =
-                fileSystem.List(Options.Path, Options.Recursive, Options.ShowDeleted);
-
-            if (Options.OutputFormat == LsOutput.Json)
-            {
-                ansiConsole.Profile.Out.Writer.WriteLine(
-                    JsonHelper.Serialize(entries));
-            }
-            else
-            {
-                WriteTextOutput(entries, Options);
-            }
+                await ImageFileSystem.CreateAsync(
+                    client, imageName, Options, ct, store, resolvedManifest: resolvedManifest,
+                    maxLayerIndex: Options.Layer);
+            WriteOutput(fileSystem, Options);
         });
+    }
+
+    private void WriteOutput(ImageFileSystem fileSystem, LsOptions options)
+    {
+        IReadOnlyList<ImageFileSystemEntry> entries =
+            fileSystem.List(options.Path, options.Recursive, options.ShowDeleted);
+        if (options.OutputFormat == LsOutput.Json)
+        {
+            ansiConsole.Profile.Out.Writer.WriteLine(JsonHelper.Serialize(entries));
+        }
+        else
+        {
+            WriteTextOutput(entries, options);
+        }
     }
 
     private void WriteTextOutput(

@@ -36,7 +36,7 @@ public sealed class ExploreCommand : RegistryCommandBase<ExploreOptions>
             ExplorerSource source = await ExplorerSource.OpenAsync(
                 client, DockerRegistryClientFactory, image, Options, Options.BaseImages, ct,
                 choosePlatform: platforms => PlatformPicker.ShowInitial(platforms, explorerOptions.Mouse, ct));
-            ValidateLayer(Options.Layer, source.LayerCount);
+            LayerIndexOption.ValidateLayer(Options.Layer, source.LayerCount);
 
             await using ExplorerApp app = new(client, DockerRegistryClientFactory, source, store, explorerOptions, ct);
             app.Run();
@@ -58,16 +58,6 @@ public sealed class ExploreCommand : RegistryCommandBase<ExploreOptions>
             : settings.Viewer.Args,
         ViewerUsesTerminal: settings.Viewer.UsesTerminal() || string.IsNullOrWhiteSpace(settings.Viewer.ExePath),
         PauseAfterViewer: string.IsNullOrWhiteSpace(settings.Viewer.ExePath));
-
-    internal static void ValidateLayer(int? layer, int layerCount)
-    {
-        if (layer is int value && (value < 0 || value >= layerCount))
-        {
-            throw new InvalidOperationException(
-                layerCount == 0 ? "--layer can't be used with an image that has no layers."
-                    : $"--layer must be between 0 and {layerCount - 1}.");
-        }
-    }
 
     internal static ImageName ResolveCompareImage(ImageName baseline, string input)
     {

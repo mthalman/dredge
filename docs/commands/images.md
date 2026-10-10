@@ -188,7 +188,7 @@ Lists the effective filesystem entries in a Linux image without extracting the
 complete image.
 
 ```console
-dredge image ls <image> [path] [-l|--long] [--provenance] [--recursive] [--show-deleted] [--output <text|json>] [--os <os>] [--arch <arch>] [--os-version <version>]
+dredge image ls <image> [path] [-l|--long] [--provenance] [--recursive] [--show-deleted] [--layer <index>] [--output <text|json>] [--os <os>] [--arch <arch>] [--os-version <version>]
 ```
 
 The command lists direct children of the image root or selected directory by
@@ -228,7 +228,11 @@ filesystem. Removed entries are hidden by default. Use `--show-deleted` to
 include them; combine it with `--provenance` to show the layer that removed
 them.
 
-Layer numbers are zero-based. Use `--output json` for camel-cased
+Use `--layer <index>` to list the filesystem state after applying layers
+through that zero-based index. Without this option, the command lists the final
+image state. The index must refer to a layer in the image.
+
+Use `--output json` for camel-cased
 machine-readable output; text detail options do not alter JSON:
 
 ```console
@@ -257,8 +261,12 @@ Standard output contains only file bytes, so the command is safe to use in a
 pipeline or redirect to a binary file.
 
 ```console
-dredge image cat <image> <path> [--os <os>] [--arch <arch>] [--os-version <version>]
+dredge image cat <image> <path> [--layer <index>] [--os <os>] [--arch <arch>] [--os-version <version>]
 ```
+
+Use `--layer <index>` to read the file contents from the filesystem state after
+applying layers through that zero-based index. Without this option, the command
+reads from the final image state. The index must refer to a layer in the image.
 
 The command follows symbolic links with Linux path semantics and follows hard
 links to their image-layer content. Link resolution cannot escape the image

@@ -51,11 +51,17 @@ internal sealed class ImageFileSystem : IAsyncDisposable
         ResolvedManifest? resolvedManifest = null,
         Image? imageConfig = null,
         bool requireLayerIndexes = false,
-        IReadOnlyDictionary<int, StoredLayerIndex>? layerIndexes = null)
+        IReadOnlyDictionary<int, StoredLayerIndex>? layerIndexes = null,
+        int? maxLayerIndex = null)
     {
         ResolvedManifest resolved =
             resolvedManifest ?? await ManifestHelper.GetResolvedManifestAsync(client, imageName, options, cancellationToken);
         IImageManifest manifest = resolved.Manifest;
+        if (maxLayerIndex is int selectedLayer &&
+            (selectedLayer < 0 || selectedLayer >= manifest.Layers.Length))
+        {
+            throw new ArgumentOutOfRangeException(nameof(maxLayerIndex));
+        }
         string configDigest = manifest.Config?.Digest ??
             throw new NotSupportedException(
                 $"Could not resolve the image config digest of '{imageName}'.");
@@ -87,13 +93,15 @@ internal sealed class ImageFileSystem : IAsyncDisposable
             string digest = resolved.ManifestInfo.DockerContentDigest;
             StoredFileSystem? cached = await fileSystem.store.ReadMetadataAsync<StoredFileSystem>(
                 digest, "view", cancellationToken);
-            if (!requireLayerIndexes && progress is null && cached is not null && fileSystem.TryRestore(cached))
+            if (maxLayerIndex is null && !requireLayerIndexes && progress is null &&
+                cached is not null && fileSystem.TryRestore(cached))
             {
                 return fileSystem;
             }
             bool complete = await fileSystem.BuildIndexAsync(
-                contentPath ?? extractionPath, extractionPath is not null, cancellationToken, progress);
-            if (complete)
+                contentPath ?? extractionPath, extractionPath is not null, cancellationToken, progress,
+                maxLayerIndex);
+            if (complete && maxLayerIndex is null)
             {
                 await fileSystem.store.WriteMetadataAsync(digest, "view", fileSystem.Snapshot(), cancellationToken);
             }
@@ -329,8 +337,9 @@ internal sealed class ImageFileSystem : IAsyncDisposable
     }
 
     private async Task<bool> BuildIndexAsync(string? contentPath, bool extracting,
-        CancellationToken cancellationToken, IProgress<ImageIndexProgress>? progress) =>
-        await builder.BuildAsync(contentPath, extracting, cancellationToken, progress);
+        CancellationToken cancellationToken, IProgress<ImageIndexProgress>? progress,
+        int? maxLayerIndex) =>
+        await builder.BuildAsync(contentPath, extracting, cancellationToken, progress, maxLayerIndex);
 
     private async Task<StoredLayerIndex> GetIndexAsync(int layerIndex, CancellationToken cancellationToken) =>
         await builder.GetIndexAsync(layerIndex, cancellationToken);

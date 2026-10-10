@@ -1349,6 +1349,88 @@ public class ImageFileSystemTests : IAsyncDisposable
     }
 
     [Fact]
+    public async Task LsCommand_LayerOptionListsFilesystemThroughSelectedLayer()
+    {
+        byte[][] layers =
+        [
+            CreateLayer(Entry.File("value", "old"), Entry.File("removed", "remove")),
+            CreateLayer(Entry.File("value", "new"), Entry.File(".wh.removed", ""),
+                Entry.File("later", "later"))
+        ];
+        Mock<IDockerRegistryClient> client = CreateClient(layers);
+        Mock<IDockerRegistryClientFactory> factory = new();
+        factory.Setup(static item => item.GetClientAsync(
+                "registry.test",
+                It.IsAny<CancellationToken>()))
+            .ReturnsAsync(client.Object);
+
+        string selectedOutput = await InvokeLsCommandAsync(
+            factory.Object,
+            "--layer",
+            "0",
+            "--recursive",
+            "--show-deleted",
+            "--output",
+            "json");
+
+        using JsonDocument selected = JsonDocument.Parse(selectedOutput);
+        JsonElement[] selectedEntries = [.. selected.RootElement.EnumerateArray()];
+        Assert.Equal(
+            ["removed", "value"],
+            selectedEntries.Select(static entry => entry.GetProperty("path").GetString()));
+        Assert.All(selectedEntries, static entry =>
+            Assert.Equal(0, entry.GetProperty("introducedLayer").GetProperty("index").GetInt32()));
+        client.Verify(
+            item => item.Blobs.GetRangeAsync(
+                ImageName.Repo,
+                LayerCacheTestContext.Digest(layers[1]),
+                It.IsAny<long>(),
+                It.IsAny<long?>(),
+                It.IsAny<CancellationToken>()),
+            Times.Never);
+
+        string defaultOutput = await InvokeLsCommandAsync(
+            factory.Object,
+            "--recursive",
+            "--show-deleted",
+            "--output",
+            "json");
+        using JsonDocument current = JsonDocument.Parse(defaultOutput);
+        JsonElement[] currentEntries = [.. current.RootElement.EnumerateArray()];
+        Assert.Equal(
+            ["later", "removed", "value"],
+            currentEntries.Select(static entry => entry.GetProperty("path").GetString()));
+        Assert.Equal(
+            1,
+            Assert.Single(currentEntries, static entry =>
+                    entry.GetProperty("path").GetString() == "value")
+                .GetProperty("modifiedLayer").GetProperty("index").GetInt32());
+        client.Verify(
+            item => item.Blobs.GetRangeAsync(
+                ImageName.Repo,
+                LayerCacheTestContext.Digest(layers[1]),
+                It.IsAny<long>(),
+                It.IsAny<long?>(),
+                It.IsAny<CancellationToken>()),
+            Times.Once);
+
+        string selectedAfterCacheOutput = await InvokeLsCommandAsync(
+            factory.Object,
+            "--layer",
+            "0",
+            "--recursive",
+            "--show-deleted",
+            "--output",
+            "json");
+        using JsonDocument selectedAfterCache = JsonDocument.Parse(selectedAfterCacheOutput);
+        Assert.Equal(
+            ["removed", "value"],
+            selectedAfterCache.RootElement
+                .EnumerateArray()
+                .Select(static entry => entry.GetProperty("path").GetString()));
+    }
+
+    [Fact]
     public async Task CatCommand_WritesOnlyBinaryContentToOutputStream()
     {
         byte[] content = [0, 10, 255, 42];
@@ -1367,6 +1449,69 @@ public class ImageFileSystemTests : IAsyncDisposable
 
         Assert.Equal(0, exitCode);
         Assert.Equal(content, output.ToArray());
+    }
+
+    [Fact]
+    public async Task CatCommand_LayerOptionReadsContentThroughSelectedLayer()
+    {
+        byte[][] layers =
+        [
+            CreateLayer(Entry.File("value", "old")),
+            CreateLayer(Entry.File("value", "new"))
+        ];
+        Mock<IDockerRegistryClient> client = CreateClient(layers);
+        Mock<IDockerRegistryClientFactory> factory = new();
+        factory.Setup(static item => item.GetClientAsync(
+                "registry.test",
+                It.IsAny<CancellationToken>()))
+            .ReturnsAsync(client.Object);
+        using MemoryStream output = new();
+        CatCommand command = new TestCatCommand(factory.Object, output, cache.Paths);
+
+        int selectedExitCode = await command
+            .Parse([ImageName.ToString(), "value", "--layer", "0"])
+            .InvokeAsync(
+                new InvocationConfiguration(),
+                TestContext.Current.CancellationToken);
+
+        Assert.Equal(0, selectedExitCode);
+        Assert.Equal("old", Encoding.UTF8.GetString(output.ToArray()));
+        client.Verify(
+            item => item.Blobs.GetRangeAsync(
+                ImageName.Repo,
+                LayerCacheTestContext.Digest(layers[1]),
+                It.IsAny<long>(),
+                It.IsAny<long?>(),
+                It.IsAny<CancellationToken>()),
+            Times.Never);
+
+        output.SetLength(0);
+        int defaultExitCode = await command
+            .Parse([ImageName.ToString(), "value"])
+            .InvokeAsync(
+                new InvocationConfiguration(),
+                TestContext.Current.CancellationToken);
+
+        Assert.Equal(0, defaultExitCode);
+        Assert.Equal("new", Encoding.UTF8.GetString(output.ToArray()));
+        client.Verify(
+            item => item.Blobs.GetRangeAsync(
+                ImageName.Repo,
+                LayerCacheTestContext.Digest(layers[1]),
+                It.IsAny<long>(),
+                It.IsAny<long?>(),
+                It.IsAny<CancellationToken>()),
+            Times.Once);
+
+        output.SetLength(0);
+        int selectedAfterCacheExitCode = await command
+            .Parse([ImageName.ToString(), "value", "--layer", "0"])
+            .InvokeAsync(
+                new InvocationConfiguration(),
+                TestContext.Current.CancellationToken);
+
+        Assert.Equal(0, selectedAfterCacheExitCode);
+        Assert.Equal("old", Encoding.UTF8.GetString(output.ToArray()));
     }
 
     [Fact]
