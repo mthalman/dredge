@@ -27,4 +27,14 @@ internal static class LayerIndexOption
 
         return option;
     }
+
+    public static void ValidateLayer(int? layer, int layerCount)
+    {
+        if (layer is int value && (value < 0 || value >= layerCount))
+        {
+            throw new InvalidOperationException(
+                layerCount == 0 ? "--layer can't be used with an image that has no layers."
+                    : $"--layer must be between 0 and {layerCount - 1}.");
+        }
+    }
 }

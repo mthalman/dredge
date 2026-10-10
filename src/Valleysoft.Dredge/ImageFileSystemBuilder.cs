@@ -38,7 +38,8 @@ internal sealed class ImageFileSystemBuilder
         string? contentPath,
         bool extracting,
         CancellationToken cancellationToken,
-        IProgress<ImageIndexProgress>? progress = null)
+        IProgress<ImageIndexProgress>? progress = null,
+        int? maxLayerIndex = null)
     {
         if (!string.IsNullOrEmpty(ImagePath.NormalizeRequested(contentPath)))
         {
@@ -68,7 +69,8 @@ internal sealed class ImageFileSystemBuilder
             return true;
         }
 
-        for (int i = 0; i < manifest.Layers.Length; i++)
+        int lastLayer = maxLayerIndex ?? (manifest.Layers.Length - 1);
+        for (int i = 0; i <= lastLayer; i++)
         {
             int layer = i;
             IProgress<long>? bytes = progress is null ? null :
@@ -78,7 +80,7 @@ internal sealed class ImageFileSystemBuilder
             ApplyLayer(index.Changes, new(i, index.Digest), cancellationToken);
             progress?.Report(new ImageIndexProgress(i, manifest.Layers.Length, index.BlobLength, true));
         }
-        return true;
+        return maxLayerIndex is null;
     }
 
     public async Task<StoredLayerIndex> GetIndexAsync(int layerIndex, CancellationToken cancellationToken,

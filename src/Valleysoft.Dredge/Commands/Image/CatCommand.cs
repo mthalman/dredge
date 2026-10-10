@@ -30,11 +30,24 @@ public class CatCommand : RegistryCommandBase<CatOptions>
         {
             using IDockerRegistryClient client =
                 await DockerRegistryClientFactory.GetClientAsync(imageName.Registry, ct);
+            var resolvedManifest =
+                await ManifestHelper.GetResolvedManifestAsync(client, imageName, Options, ct);
+            LayerIndexOption.ValidateLayer(
+                Options.Layer, resolvedManifest.Manifest.Layers.Length);
             await using LayerStore store = LayerStore.Create(paths);
             await using ImageFileSystem fileSystem =
-                await ImageFileSystem.CreateAsync(client, imageName, Options, ct, store, Options.Path);
-            await fileSystem.CopyFileToAsync(Options.Path, standardOutput, ct);
-            await standardOutput.FlushAsync(ct);
+                await ImageFileSystem.CreateAsync(
+                    client, imageName, Options, ct, store,
+                    resolvedManifest: resolvedManifest,
+                    contentPath: Options.Layer is null ? Options.Path : null,
+                    maxLayerIndex: Options.Layer);
+            await CopyFileAsync(fileSystem, ct);
         });
+    }
+
+    private async Task CopyFileAsync(ImageFileSystem fileSystem, CancellationToken cancellationToken)
+    {
+        await fileSystem.CopyFileToAsync(Options.Path, standardOutput, cancellationToken);
+        await standardOutput.FlushAsync(cancellationToken);
     }
 }

@@ -56,13 +56,22 @@ public class CommandStructureTests
             "--show-deleted",
             "-l",
             "--provenance",
+            "--layer",
+            "2",
             "--output",
             "json",
             "--os",
             "linux",
             "--arch",
             "arm64");
-        CatOptions cat = Bind(new CatOptions(), "image:tag", "/etc/hosts", "--os-version", "1");
+        CatOptions cat = Bind(
+            new CatOptions(),
+            "image:tag",
+            "/etc/hosts",
+            "--layer",
+            "1",
+            "--os-version",
+            "1");
         ExtractOptions extract = Bind(
             new ExtractOptions(),
             "image:tag",
@@ -76,10 +85,12 @@ public class CommandStructureTests
         Assert.True(ls.ShowDeleted);
         Assert.True(ls.Long);
         Assert.True(ls.ShowProvenance);
+        Assert.Equal(2, ls.Layer);
         Assert.Equal(LsOutput.Json, ls.OutputFormat);
         Assert.Equal("linux", ls.Os);
         Assert.Equal("arm64", ls.Architecture);
         Assert.Equal("/etc/hosts", cat.Path);
+        Assert.Equal(1, cat.Layer);
         Assert.Equal("1", cat.OsVersion);
         Assert.Equal("/etc", extract.Path);
         Assert.Equal("output", extract.OutputPath);
@@ -96,6 +107,7 @@ public class CommandStructureTests
         Assert.False(options.ShowDeleted);
         Assert.False(options.Long);
         Assert.False(options.ShowProvenance);
+        Assert.Null(options.Layer);
         Assert.Equal(LsOutput.Text, options.OutputFormat);
     }
 
@@ -168,6 +180,14 @@ public class CommandStructureTests
         (OptionsBase Options, string OptionName, string ExpectedDescription)[] cases =
         [
             (
+                new LsOptions(),
+                "--layer",
+                "Zero-based index of the image layer to inspect"),
+            (
+                new CatOptions(),
+                "--layer",
+                "Zero-based index of the image layer to inspect"),
+            (
                 new SaveLayersOptions(),
                 "--layer-index",
                 "Zero-based index of the image layer to target"),
@@ -198,6 +218,14 @@ public class CommandStructureTests
         (OptionsBase Options, string[] Arguments, string OptionName)[] cases =
         [
             (
+                new LsOptions(),
+                ["image", "--layer"],
+                "--layer"),
+            (
+                new CatOptions(),
+                ["image", "path", "--layer"],
+                "--layer"),
+            (
                 new SaveLayersOptions(),
                 ["image", "output", "--layer-index"],
                 "--layer-index"),
@@ -227,6 +255,20 @@ public class CommandStructureTests
         }
     }
 
+    [Fact]
+    public void LayerIndexOptions_ValidateIndexesAgainstImageLayerCount()
+    {
+        InvalidOperationException outOfRange =
+            Assert.Throws<InvalidOperationException>(() => LayerIndexOption.ValidateLayer(2, 2));
+        InvalidOperationException noLayers =
+            Assert.Throws<InvalidOperationException>(() => LayerIndexOption.ValidateLayer(0, 0));
+
+        Assert.Equal("--layer must be between 0 and 1.", outOfRange.Message);
+        Assert.Equal("--layer can't be used with an image that has no layers.", noLayers.Message);
+        LayerIndexOption.ValidateLayer(null, 0);
+        LayerIndexOption.ValidateLayer(0, 1);
+    }
+
     [Theory]
     [InlineData("invalid")]
     [InlineData("2147483648")]
@@ -235,6 +277,12 @@ public class CommandStructureTests
     {
         (OptionsBase Options, string[] Arguments)[] cases =
         [
+            (
+                new LsOptions(),
+                ["image", "--layer"]),
+            (
+                new CatOptions(),
+                ["image", "path", "--layer"]),
             (
                 new SaveLayersOptions(),
                 ["image", "output", "--layer-index"]),

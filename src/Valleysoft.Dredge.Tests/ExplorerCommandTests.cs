@@ -113,21 +113,21 @@ public class ExploreCommandOptionTests
     [InlineData(0, 4)]
     [InlineData(3, 4)]
     [InlineData(null, 0)]
-    public void AcceptsLayersInRange(int? layer, int count) => ExploreCommand.ValidateLayer(layer, count);
+    public void AcceptsLayersInRange(int? layer, int count) => LayerIndexOption.ValidateLayer(layer, count);
 
     [Theory]
     [InlineData(-1)]
     [InlineData(4)]
     public void RejectsLayersOutOfRange(int layer)
     {
-        InvalidOperationException error = Assert.Throws<InvalidOperationException>(() => ExploreCommand.ValidateLayer(layer, 4));
+        InvalidOperationException error = Assert.Throws<InvalidOperationException>(() => LayerIndexOption.ValidateLayer(layer, 4));
         Assert.Equal("--layer must be between 0 and 3.", error.Message);
     }
 
     [Fact]
     public void RejectsALayerForAnImageWithoutLayers()
     {
-        InvalidOperationException error = Assert.Throws<InvalidOperationException>(static () => ExploreCommand.ValidateLayer(0, 0));
+        InvalidOperationException error = Assert.Throws<InvalidOperationException>(static () => LayerIndexOption.ValidateLayer(0, 0));
         Assert.Equal("--layer can't be used with an image that has no layers.", error.Message);
     }
 

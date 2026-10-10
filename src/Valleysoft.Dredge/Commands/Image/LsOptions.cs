@@ -10,6 +10,7 @@ public class LsOptions : PlatformOptionsBase
     private readonly Option<bool> showDeletedOption;
     private readonly Option<bool> longOption;
     private readonly Option<bool> provenanceOption;
+    private readonly Option<int?> layerOption;
     private readonly CliOutputOption<LsOutput> outputOption;
 
     public string Image { get; set; } = string.Empty;
@@ -18,6 +19,7 @@ public class LsOptions : PlatformOptionsBase
     public bool ShowDeleted { get; set; }
     public bool Long { get; set; }
     public bool ShowProvenance { get; set; }
+    public int? Layer { get; set; }
     public LsOutput OutputFormat { get; set; }
 
     public LsOptions()
@@ -45,6 +47,9 @@ public class LsOptions : PlatformOptionsBase
         {
             Description = "Show layer provenance"
         });
+        layerOption = Add(LayerIndexOption.Create(
+            "--layer",
+            "index of the image layer to inspect"));
         outputOption = new CliOutputOption<LsOutput>(
             "Output format",
             LsOutput.Text,
@@ -62,6 +67,7 @@ public class LsOptions : PlatformOptionsBase
         ShowDeleted = GetValue(showDeletedOption);
         Long = GetValue(longOption);
         ShowProvenance = GetValue(provenanceOption);
+        Layer = GetValue(layerOption);
         OutputFormat = outputOption.GetValue(GetValue(outputOption.Option));
     }
 }
