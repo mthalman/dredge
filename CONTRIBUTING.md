@@ -23,13 +23,13 @@ dotnet test --no-restore -v normal -c Release
 To run one test class:
 
 ```shell
-dotnet test --no-restore --filter "ClassName=Valleysoft.Dredge.Tests.CompareLayersCommandTests"
+dotnet test --project Valleysoft.Dredge.Tests/Valleysoft.Dredge.Tests.csproj --no-restore --filter-class Valleysoft.Dredge.Tests.CompareLayersCommandTests
 ```
 
-To run tests whose fully qualified names contain a specific value:
+To run one test by its fully qualified method name:
 
 ```shell
-dotnet test --no-restore --filter "FullyQualifiedName~Valleysoft.Dredge.Tests.CompareLayersCommandTests.Verify"
+dotnet test --project Valleysoft.Dredge.Tests/Valleysoft.Dredge.Tests.csproj --no-restore --filter-method Valleysoft.Dredge.Tests.CompareLayersCommandTests.DifferentImages_ExitTwo
 ```
 
 ## Build versions
