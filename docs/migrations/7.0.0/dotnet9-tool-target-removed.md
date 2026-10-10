@@ -16,8 +16,8 @@ multi-targeted `net9.0` and `net10.0`.
 
 The tool package targets only `net10.0`; the `net9.0` target has been
 removed. The main and test projects now target `net10.0` exclusively.
-Downloaded release executables and source builds already required .NET 10 and
-are unaffected by this change.
+Source builds already required .NET 10 and are unaffected by this change.
+Downloaded release executables do not require .NET.
 
 ## Type of breaking change
 
