@@ -55,5 +55,6 @@ internal static class FirstRunExperience
     }
 
     private static bool IsWelcomeInvocation(string[] args) =>
-        args.Length == 0 || args.Any(arg => arg is "--help" or "-h" or "-?");
+        args.Length == 0 ||
+        args.TakeWhile(arg => arg != "--").Any(arg => arg is "--help" or "-h" or "-?");
 }

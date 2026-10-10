@@ -67,6 +67,21 @@ public sealed class FirstRunExperienceTests
     }
 
     [Fact]
+    public void ShowIfNeeded_DoesNotTreatValueAfterEndOfOptionsAsHelp()
+    {
+        string stateDirectory = Path.Combine(Path.GetTempPath(), Guid.NewGuid().ToString("N"));
+        using StringWriter output = new();
+
+        FirstRunExperience.ShowIfNeeded(
+            ["settings", "set", "fileCompareTool.args", "--", "-h"],
+            output,
+            stateDirectory);
+
+        Assert.Empty(output.ToString());
+        Assert.False(Directory.Exists(stateDirectory));
+    }
+
+    [Fact]
     public void ShowIfNeeded_ShowsWelcomeWhenStateDirectoryCannotBeCreated()
     {
         string statePath = Path.Combine(Path.GetTempPath(), Guid.NewGuid().ToString("N"));
