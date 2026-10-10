@@ -65,4 +65,23 @@ public sealed class FirstRunExperienceTests
         Assert.Empty(output.ToString());
         Assert.False(Directory.Exists(stateDirectory));
     }
+
+    [Fact]
+    public void ShowIfNeeded_ShowsWelcomeWhenStateDirectoryCannotBeCreated()
+    {
+        string statePath = Path.Combine(Path.GetTempPath(), Guid.NewGuid().ToString("N"));
+        File.WriteAllText(statePath, "not a directory");
+        using StringWriter output = new();
+
+        try
+        {
+            FirstRunExperience.ShowIfNeeded(["--help"], output, statePath);
+
+            Assert.Contains("Welcome to Dredge", output.ToString());
+        }
+        finally
+        {
+            File.Delete(statePath);
+        }
+    }
 }

@@ -23,9 +23,8 @@ public sealed class CliProcessTests
         Assert.Contains("manifest", result.StandardOutput);
         Assert.Contains("referrer", result.StandardOutput);
         Assert.Contains("settings", result.StandardOutput);
-        Assert.Contains("Exit codes:", result.StandardOutput);
-        Assert.Contains("0 for success", result.StandardOutput);
-        Assert.Contains("1 for errors", result.StandardOutput);
+        Assert.Contains("CLI for executing commands on a container registry's HTTP API.", result.StandardOutput);
+        Assert.DoesNotContain("Exit codes:", result.StandardOutput);
     }
 
     [Theory]

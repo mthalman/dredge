@@ -22,16 +22,25 @@ internal static class FirstRunExperience
         }
 
         stateDirectory ??= Path.GetDirectoryName(AppSettings.SettingsPath)!;
-        Directory.CreateDirectory(stateDirectory);
         string completionPath = Path.Combine(stateDirectory, CompletionFileName);
 
         try
         {
+            Directory.CreateDirectory(stateDirectory);
             using FileStream _ = new(completionPath, FileMode.CreateNew, FileAccess.Write, FileShare.None);
         }
         catch (IOException) when (File.Exists(completionPath))
         {
             return;
+        }
+        catch (IOException)
+        {
+        }
+        catch (UnauthorizedAccessException)
+        {
+        }
+        catch (System.Security.SecurityException)
+        {
         }
 
         output.WriteLine(Logo);
