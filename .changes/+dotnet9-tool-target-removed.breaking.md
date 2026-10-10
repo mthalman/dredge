@@ -7,8 +7,8 @@ The .NET tool package no longer supports .NET 9, so tool users must install the
 
 The `Valleysoft.Dredge` .NET tool package targeted both `net9.0` and
 `net10.0`. Tool users on a .NET 9 SDK/runtime machine could install and run
-the tool using the `net9.0` target, and the main and test projects
-multi-targeted `net9.0` and `net10.0`.
+the tool using the `net9.0` target. The main project multi-targeted
+`net9.0` and `net10.0`; the test project targeted `net10.0`.
 
 #### New behavior
 
