@@ -119,6 +119,11 @@ public sealed class CliProcessTests
 
     private static async Task<ProcessResult> InvokeDredgeProcessAsync(params string[] args)
     {
+        string localDataPath = Path.Combine(
+            Path.GetTempPath(),
+            $"dredge-process-{Guid.NewGuid():N}");
+        Directory.CreateDirectory(localDataPath);
+
         ProcessStartInfo startInfo = new("dotnet")
         {
             RedirectStandardError = true,
@@ -126,29 +131,39 @@ public sealed class CliProcessTests
             RedirectStandardInput = true,
             UseShellExecute = false
         };
+        startInfo.Environment["LOCALAPPDATA"] = localDataPath;
+        startInfo.Environment["XDG_DATA_HOME"] = localDataPath;
+        startInfo.Environment["HOME"] = localDataPath;
         startInfo.ArgumentList.Add(GetDredgeAssemblyPath());
         foreach (string arg in args)
         {
             startInfo.ArgumentList.Add(arg);
         }
 
-        using Process process = Process.Start(startInfo)!;
-        process.StandardInput.Close();
-        Task<string> standardOutput = process.StandardOutput.ReadToEndAsync(
-            TestContext.Current.CancellationToken);
-        Task<string> standardError = process.StandardError.ReadToEndAsync(
-            TestContext.Current.CancellationToken);
         try
         {
-            await process.WaitForExitAsync(TestContext.Current.CancellationToken);
-        }
-        catch (OperationCanceledException)
-        {
-            process.Kill(entireProcessTree: true);
-            throw;
-        }
+            using Process process = Process.Start(startInfo)!;
+            process.StandardInput.Close();
+            Task<string> standardOutput = process.StandardOutput.ReadToEndAsync(
+                TestContext.Current.CancellationToken);
+            Task<string> standardError = process.StandardError.ReadToEndAsync(
+                TestContext.Current.CancellationToken);
+            try
+            {
+                await process.WaitForExitAsync(TestContext.Current.CancellationToken);
+            }
+            catch (OperationCanceledException)
+            {
+                process.Kill(entireProcessTree: true);
+                throw;
+            }
 
-        return new(process.ExitCode, await standardOutput, await standardError);
+            return new(process.ExitCode, await standardOutput, await standardError);
+        }
+        finally
+        {
+            Directory.Delete(localDataPath, recursive: true);
+        }
     }
 
     private static string GetDredgeAssemblyPath()
