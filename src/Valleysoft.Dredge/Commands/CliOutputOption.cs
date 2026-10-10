@@ -31,6 +31,15 @@ internal sealed class JsonOutputOption : Option<string>, IJsonOutputOption
     }
 }
 
+internal sealed class CliOutputPathOption : Option<string>
+{
+    public CliOutputPathOption(string description)
+        : base("--output")
+    {
+        Description = description;
+    }
+}
+
 internal sealed class CliOutputOption<T>
     where T : struct, Enum
 {
