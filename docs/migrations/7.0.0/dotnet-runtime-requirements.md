@@ -17,8 +17,8 @@ In v6.0.2, the `Valleysoft.Dredge` .NET tool package targeted `net8.0` and
 
 The tool package targets only `net10.0`; it no longer contains `net8.0` or
 `net9.0` targets. Source builds require the .NET 10 SDK selected by
-`global.json`. For details about removing the .NET 9 target, see
-[Remove the .NET 9 tool target](dotnet9-tool-target-removed.md).
+`global.json`. A separate migration topic covers the removal of the .NET 9
+target.
 
 These requirements apply when installing, updating to, or building the new
 version. Existing installations and explicitly pinned older versions do not
@@ -36,8 +36,7 @@ include their runtime; the container host does not need .NET installed.
 
 [PR #236](https://github.com/mthalman/dredge/pull/236) moves source builds to
 .NET 10 and drops the .NET 8 tool target. The separate removal of the .NET 9
-tool target completes the transition to a .NET 10-only tool package; see
-[the .NET 9 migration](dotnet9-tool-target-removed.md).
+tool target completes the transition to a .NET 10-only tool package.
 
 ## Recommended action
 
