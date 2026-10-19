@@ -45,7 +45,7 @@ jobs:
         run: dotnet test --no-restore -v normal -c Release --results-directory test-results/linux --filter "Category!=Integration" -- --report-xunit-trx
 
       - name: Upload Test Results
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
         if: always()
         with:
           name: linux-test-results
@@ -75,7 +75,7 @@ jobs:
         run: dotnet test --project Valleysoft.Dredge.Tests/Valleysoft.Dredge.Tests.csproj --no-restore -v normal -c Release --results-directory test-results/integration --filter "Category=Integration" -- --report-xunit-trx
 
       - name: Upload Test Results
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
         if: always()
         with:
           name: integration-test-results
@@ -106,7 +106,7 @@ jobs:
         run: dotnet test --no-restore -v normal -c Release --results-directory test-results/windows --filter "Category!=Integration" -- --report-xunit-trx
 
       - name: Upload Test Results
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
         if: always()
         with:
           name: windows-test-results
@@ -137,7 +137,7 @@ jobs:
         run: dotnet test --no-restore -v normal -c Release --results-directory test-results/macos --filter "Category!=Integration" -- --report-xunit-trx
 
       - name: Upload Test Results
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
         if: always()
         with:
           name: macos-test-results
@@ -171,7 +171,7 @@ jobs:
         run: dotnet test --no-restore -v normal -c Release --results-directory test-results/musl --filter "Category!=Integration" -- --report-xunit-trx
 
       - name: Upload Test Results
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
         if: always()
         with:
           name: musl-test-results
