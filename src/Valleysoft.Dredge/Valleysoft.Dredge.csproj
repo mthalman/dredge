@@ -60,7 +60,7 @@
   <ItemGroup>
     <PackageReference Include="MinVer" Version="8.0.0" PrivateAssets="all" />
     <PackageReference Include="Spectre.Console" Version="0.57.2" />
-    <PackageReference Include="System.CommandLine" Version="2.0.12" />
+    <PackageReference Include="System.CommandLine" Version="2.0.13" />
     <PackageReference Include="Terminal.Gui" Version="2.5.0" />
     <!--
       The explorer does not use Terminal.Gui's Markdown or syntax-highlighting views.
