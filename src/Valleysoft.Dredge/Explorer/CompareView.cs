@@ -36,6 +36,9 @@ internal sealed class CompareState : FileDiffState
         : base(baselineLabel, targetLabel)
     {
         Comparison = comparison;
+        Expanded = new(
+            ["section:packages", "section:files", .. Enum.GetValues<InstalledPackageEcosystem>().Select(static e => $"eco:{e}")],
+            comparison.Baseline.Semantics.Comparer);
         Layer = Differences().DefaultIfEmpty(0).First();
     }
 
@@ -45,9 +48,7 @@ internal sealed class CompareState : FileDiffState
     public bool Overview { get; set; }
     public int Cursor { get; set; }
     public int Scroll { get; set; }
-    public HashSet<string> Expanded { get; } = new(
-        ["section:packages", "section:files", .. Enum.GetValues<InstalledPackageEcosystem>().Select(static e => $"eco:{e}")],
-        StringComparer.Ordinal);
+    public HashSet<string> Expanded { get; }
     public PackageFilesContent? PackageFiles { get; set; }
     public bool Busy { get; set; }
     public bool Searching { get; set; }
@@ -102,12 +103,29 @@ internal sealed class CompareView
         c.Diff is null && c.PackageFiles is null;
 
     public int WarningCount => c.Comparison.Baseline.Packages.Diagnostics.Count +
-        c.Comparison.Target.Packages.Diagnostics.Count + (c.PackageFiles?.Warnings?.Count ?? 0);
+        c.Comparison.Target.Packages.Diagnostics.Count + (c.PackageFiles?.Warnings?.Count ?? 0) +
+        c.Comparison.Limitations.Count + (c.Comparison.Baseline.Files?.DiagnosticCount ?? 0) +
+        (c.Comparison.Target.Files?.DiagnosticCount ?? 0);
+
+    private string? PackageUnavailableReason
+    {
+        get
+        {
+            string? before = c.Comparison.Baseline.Packages.UnavailableReason;
+            string? after = c.Comparison.Target.Packages.UnavailableReason;
+            return before == after ? before
+                : string.Join(" ", new[] { before is null ? null : $"Baseline: {before}",
+                    after is null ? null : $"Target: {after}" }.OfType<string>());
+        }
+    }
 
     public IReadOnlyList<string> Warnings() =>
     [
         .. c.Comparison.Baseline.Packages.Diagnostics.Select(static d => $"Baseline /{d.Path}: {d.Message}"),
         .. c.Comparison.Target.Packages.Diagnostics.Select(static d => $"Target /{d.Path}: {d.Message}"),
+        .. c.Comparison.Limitations,
+        .. c.Comparison.Baseline.Files?.Diagnostics.Select(static d => $"Baseline /{d.Path}: {d.Message}") ?? [],
+        .. c.Comparison.Target.Files?.Diagnostics.Select(static d => $"Target /{d.Path}: {d.Message}") ?? [],
         .. c.PackageFiles?.Warnings ?? [],
     ];
 
@@ -116,10 +134,16 @@ internal sealed class CompareView
         ExplorerSession before = c.Comparison.Baseline, after = c.Comparison.Target;
         return $"Baseline ({c.BaselineLabel})\n" +
             ExplorerImage.DigestReference(before.Image, before.Resolved.ManifestInfo.DockerContentDigest) +
+            PlatformDetails(before) +
             $"\n\nTarget ({c.TargetLabel})\n" +
             ExplorerImage.DigestReference(after.Image, after.Resolved.ManifestInfo.DockerContentDigest) +
+            PlatformDetails(after) +
             "\n\nThis comparison uses session snapshots. Reopen explorer to refresh tags.";
     }
+
+    private static string PlatformDetails(ExplorerSession session) => session.Semantics.IsWindows
+        ? $"\nPlatform: {session.Config.Os}/{session.Config.Architecture} {session.Config.OsVersion}"
+        : "";
 
     public List<Line> Header()
     {
@@ -323,7 +347,7 @@ internal sealed class CompareView
                 new("section:files", CompareRowKind.Section, "", "Files", Change.None, Expandable: true,
                     Files: c.Comparison.Files.Count),
                 new("section:packages", CompareRowKind.Section, "", "Packages", Change.None, Expandable: true,
-                    Files: c.Comparison.Packages.Count)
+                    Files: PackageUnavailableReason is null ? c.Comparison.Packages.Count : null)
             ];
         }
         List<CompareRow> all = c.PackageFiles is { } package
@@ -354,8 +378,13 @@ internal sealed class CompareView
         IReadOnlyList<ExplorerPackageDifference> packages = c.Comparison.Packages;
         bool packagesOpen = c.SearchQuery.Length > 0 || c.Expanded.Contains("section:packages");
         list.Add(new("section:packages", CompareRowKind.Section, "", "Installed packages", Change.None,
-            Expandable: true, Expanded: packagesOpen, Files: packages.Count));
-        if (packagesOpen)
+            Expandable: true, Expanded: packagesOpen, Files: PackageUnavailableReason is null ? packages.Count : null));
+        if (packagesOpen && PackageUnavailableReason is string reason)
+        {
+            list.Add(new("pkg:unavailable", CompareRowKind.Unchanged, "   ",
+                "Package inventory unavailable: " + reason, Change.None));
+        }
+        else if (packagesOpen)
         {
             foreach (InstalledPackageEcosystem ecosystem in Enum.GetValues<InstalledPackageEcosystem>())
             {
@@ -425,7 +454,7 @@ internal sealed class CompareView
             Expandable: true, Expanded: filesOpen, Files: c.Comparison.Files.Count));
         if (filesOpen)
         {
-            FileTree tree = fileTree ??= FileTree.Build(c.Comparison.Files);
+            FileTree tree = fileTree ??= FileTree.Build(c.Comparison.Files, c.Comparison.Baseline.Semantics.Comparer);
             void Walk(List<FileTree> nodes, string guide)
             {
                 for (int i = 0; i < nodes.Count; i++)
@@ -565,7 +594,8 @@ internal sealed class CompareView
             pane.On(lines.Count, new OpenComparisonSection(row.Key == "section:packages"));
             Line line = new Line().Add(i == c.Cursor ? "▌ " : "  ", Theme.Channel)
                 .Add(row.Name, Theme.S(Theme.Foam, null, Deco.Bold))
-                .Add($"  {Fmt.N(row.Files ?? 0)} changed {(i == 0 ? "paths" : "packages")}", Theme.Silt);
+                .Add(row.Files is null ? "  unavailable"
+                    : $"  {Fmt.N(row.Files.Value)} changed {(i == 0 ? "paths" : "packages")}", Theme.Silt);
             lines.Add(i == c.Cursor ? line.WithBackground(Theme.ChannelDeep) : line);
         }
         lines.Add(Line.Blank);
@@ -580,6 +610,10 @@ internal sealed class CompareView
 
     private Line Chips(int w)
     {
+        if (PackageUnavailableReason is string reason)
+        {
+            return Line.Of("Package inventory unavailable: " + reason, Theme.Ochre).Truncate(w);
+        }
         IReadOnlyList<ExplorerPackageDifference> p = c.Comparison.Packages;
         int updated = p.Count(x => x.BaselineVersion is not null && x.TargetVersion is not null);
         int added = p.Count(x => x.BaselineVersion is null);
@@ -769,10 +803,10 @@ internal sealed class CompareView
         public int FileCount;
         public List<FileTree> Children = [];
 
-        public static FileTree Build(IReadOnlyList<ExplorerFileDifference> files)
+        public static FileTree Build(IReadOnlyList<ExplorerFileDifference> files, StringComparer comparer)
         {
             FileTree root = new() { Dir = true };
-            Dictionary<string, FileTree> nodes = new(StringComparer.Ordinal) { [""] = root };
+            Dictionary<string, FileTree> nodes = new(comparer) { [""] = root };
             FileTree Get(string path)
             {
                 if (nodes.TryGetValue(path, out FileTree? node))

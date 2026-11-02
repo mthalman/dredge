@@ -8,6 +8,25 @@ namespace Valleysoft.Dredge;
 
 internal sealed record ExplorerPlatform(string Os, string Architecture, string? Variant, string? OsVersion)
 {
+    internal string? ManifestDigest { get; init; }
+
+    // Digest evidence can prove an omitted variant, but does not change platform identity.
+    public bool Equals(ExplorerPlatform? other) =>
+        other is not null && Os == other.Os && Architecture == other.Architecture &&
+        Variant == other.Variant && OsVersion == other.OsVersion;
+
+    public override int GetHashCode() => HashCode.Combine(Os, Architecture, Variant, OsVersion);
+
+    internal static bool CompatibleVariants(
+        string? before, string? after, string? beforeDigest, string? afterDigest)
+    {
+        before = string.IsNullOrEmpty(before) ? null : before;
+        after = string.IsNullOrEmpty(after) ? null : after;
+        return before == after ||
+            (before is null || after is null) &&
+            !string.IsNullOrEmpty(beforeDigest) && beforeDigest == afterDigest;
+    }
+
     public override string ToString()
     {
         string value = $"{Os}/{Architecture}";
@@ -56,10 +75,21 @@ internal sealed class ExplorerSource
         string configDigest = manifest.Config?.Digest ??
             throw new InvalidDataException($"Image '{image}' has no config digest.");
         Image config = await client.Blobs.GetImageAsync(image.Repo, configDigest, cancellationToken);
-        if (!string.Equals(config.Os, "linux", StringComparison.OrdinalIgnoreCase))
+        if (!string.Equals(config.Os, "linux", StringComparison.OrdinalIgnoreCase) &&
+            !string.Equals(config.Os, "windows", StringComparison.OrdinalIgnoreCase))
         {
             throw new NotSupportedException(
-                $"The image explorer supports Linux images only (found '{config.Os}').");
+                $"The image explorer supports Linux and Windows images (found '{config.Os}').");
+        }
+        if (platform is null && string.Equals(config.Os, "windows", StringComparison.OrdinalIgnoreCase))
+        {
+            platform = new(config.Os, config.Architecture ?? "",
+                string.IsNullOrEmpty(config.Variant) ? null : config.Variant, config.OsVersion);
+            resolvedOptions = ForPlatform(platform);
+        }
+        if (platform is not null && string.Equals(config.Os, "windows", StringComparison.OrdinalIgnoreCase))
+        {
+            platform = platform with { ManifestDigest = resolved.ManifestInfo.DockerContentDigest };
         }
 
         (IReadOnlyList<ExplorerBaseImage> verifiedBases, string? warning) = await ExplorerSession.VerifyBasesAsync(
@@ -82,25 +112,63 @@ internal sealed class ExplorerSource
         IDockerRegistryClient client, ImageName image, PlatformOptionsBase options,
         ExplorerPlatform? exactPlatform, CancellationToken cancellationToken,
         Func<IReadOnlyList<ExplorerPlatform>, ExplorerPlatform?>? choosePlatform = null,
-        IAppSettingsStore? settingsStore = null)
+        IAppSettingsStore? settingsStore = null,
+        bool comparing = false,
+        Func<IReadOnlyList<ExplorerPlatform>, CancellationToken, Task<ExplorerPlatform?>>? chooseComparisonPlatform = null)
     {
         ManifestInfo info = await client.Manifests.GetAsync(
             image.Repo, (image.Tag ?? image.Digest)!, cancellationToken);
-        IReadOnlyList<ExplorerPlatform> platforms = GetPlatforms(info.Manifest);
+        (IManifestReference Reference, ExplorerPlatform Platform)[] candidates = GetPlatformCandidates(info.Manifest);
+        IReadOnlyList<ExplorerPlatform> platforms = [.. candidates.Select(item => item.Platform).Distinct()];
         ExplorerPlatform? platform = null;
         if (info.Manifest is IManifestList && platforms.Count == 0)
         {
-            throw new NotSupportedException($"The image explorer supports Linux images only; '{image}' has no Linux platform.");
+            throw new NotSupportedException($"The image explorer supports Linux and Windows images; '{image}' has no supported platform.");
         }
-        if (info.Manifest is IManifestList exactList && exactPlatform is not null)
+        if (info.Manifest is IManifestList && exactPlatform is not null)
         {
-            platform = platforms.FirstOrDefault(candidate => candidate == exactPlatform) ??
+            var exact = candidates.FirstOrDefault(candidate => candidate.Platform == exactPlatform);
+            IManifestReference reference = exact.Reference;
+            platform = exact.Platform;
+            if (platform is null && comparing && exactPlatform.Os.Equals("windows", StringComparison.OrdinalIgnoreCase))
+            {
+                (IManifestReference Reference, ExplorerPlatform Platform)[] compatible = [.. candidates.Where(candidate =>
+                    string.Equals(candidate.Platform.Os, exactPlatform.Os, StringComparison.OrdinalIgnoreCase) &&
+                    string.Equals(candidate.Platform.Architecture, exactPlatform.Architecture, StringComparison.OrdinalIgnoreCase) &&
+                    ExplorerPlatform.CompatibleVariants(exactPlatform.Variant, candidate.Platform.Variant,
+                        exactPlatform.ManifestDigest, candidate.Reference.Digest))
+                    .DistinctBy(candidate => candidate.Platform)];
+                (IManifestReference Reference, ExplorerPlatform Platform)[] sameVersion = [.. compatible.Where(candidate =>
+                    candidate.Platform.OsVersion == exactPlatform.OsVersion)];
+                if (sameVersion.Length > 0)
+                {
+                    compatible = sameVersion;
+                }
+                platform = compatible.Length == 1 ? compatible[0].Platform :
+                    compatible.Length > 1 && chooseComparisonPlatform is not null
+                        ? await chooseComparisonPlatform([.. compatible.Select(candidate => candidate.Platform)], cancellationToken) ??
+                            throw new OperationCanceledException("No comparison platform was chosen.", cancellationToken)
+                        : null;
+                if (platform is not null)
+                {
+                    var selected = compatible.FirstOrDefault(candidate => candidate.Platform == platform);
+                    if (selected.Platform is null)
+                    {
+                        throw new InvalidOperationException("The selected comparison platform is not compatible.");
+                    }
+                    reference = selected.Reference;
+                    platform = selected.Platform;
+                }
+            }
+            if (platform is null)
+            {
                 throw new InvalidOperationException(
                     $"'{image}' has no {exactPlatform} platform. Available platforms: " +
                     string.Join(", ", platforms.Select(item => item.ToString())));
-            info = await GetPlatformManifestAsync(client, image, exactList, platform, cancellationToken);
+            }
+            info = await GetPlatformManifestAsync(client, image, reference, cancellationToken);
         }
-        else if (info.Manifest is IManifestList list)
+        else if (info.Manifest is IManifestList)
         {
             PlatformSettings settings = (settingsStore ?? new AppSettingsStore()).Load().Platform;
             string? os = Coalesce(options.Os, settings.Os);
@@ -128,7 +196,8 @@ internal sealed class ExplorerSource
                         $"{PlatformOptionsBase.OsOptionName} and {PlatformOptionsBase.ArchOptionName} to choose one: " +
                         string.Join(", ", matches.Select(item => item.ToString())));
             }
-            info = await GetPlatformManifestAsync(client, image, list, platform, cancellationToken);
+            info = await GetPlatformManifestAsync(client, image,
+                candidates.First(candidate => candidate.Platform == platform).Reference, cancellationToken);
         }
         if (info.Manifest is not IImageManifest manifest)
         {
@@ -139,10 +208,8 @@ internal sealed class ExplorerSource
     }
 
     private static Task<ManifestInfo> GetPlatformManifestAsync(IDockerRegistryClient client, ImageName image,
-        IManifestList list, ExplorerPlatform platform, CancellationToken cancellationToken)
+        IManifestReference reference, CancellationToken cancellationToken)
     {
-        IManifestReference reference = list.Manifests.First(manifest =>
-            manifest.Platform is { } value && ToPlatform(value) == platform);
         return client.Manifests.GetAsync(image.Repo,
             reference.Digest ?? throw new InvalidDataException("Manifest digest is missing."),
             cancellationToken);
@@ -156,12 +223,15 @@ internal sealed class ExplorerSource
     };
 
     internal static IReadOnlyList<ExplorerPlatform> GetPlatforms(IManifest manifest) =>
+        [.. GetPlatformCandidates(manifest).Select(item => item.Platform).Distinct()];
+
+    private static (IManifestReference Reference, ExplorerPlatform Platform)[] GetPlatformCandidates(IManifest manifest) =>
         manifest is IManifestList list
             ? list.Manifests
                 .Where(static item => item.Platform is { } platform &&
-                    string.Equals(platform.Os, "linux", StringComparison.OrdinalIgnoreCase))
-                .Select(static item => ToPlatform(item.Platform!))
-                .Distinct()
+                    (string.Equals(platform.Os, "linux", StringComparison.OrdinalIgnoreCase) ||
+                    string.Equals(platform.Os, "windows", StringComparison.OrdinalIgnoreCase)))
+                .Select(static item => (item, ToPlatform(item.Platform!)))
                 .ToArray()
             : [];
 
@@ -217,9 +287,11 @@ internal sealed class ExplorerLayerIndexer
         return new(manifest.Layers.Length, (layer, progress, token) =>
         {
             IDescriptor descriptor = manifest.Layers[layer];
+            ImageFileSystemSemantics semantics = ImageFileSystemSemantics.ForOs(source.Config.Os);
+            semantics.ValidateLayerMediaType(descriptor.MediaType);
             string digest = descriptor.Digest ??
                 throw new InvalidDataException($"Layer {layer} has no digest.");
-            return store.GetIndexAsync(client, source.Image, new(layer, digest), descriptor.Size, token, progress);
+            return store.GetIndexAsync(client, source.Image, new(layer, digest), descriptor.Size, token, progress, semantics);
         }, concurrency);
     }
 

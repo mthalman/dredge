@@ -140,7 +140,12 @@ internal static class ImageFileSystemExtractor
             .Where(static entry => entry.Type == ImageFileType.Directory))
         {
             cancellationToken.ThrowIfCancellationRequested();
-            Directory.CreateDirectory(plan.Destinations[directory.Path]);
+            string destination = plan.Destinations[directory.Path];
+            if (!string.Equals(destination, plan.OutputPath, StringComparison.Ordinal))
+            {
+                ValidateNewDestination(destination);
+                Directory.CreateDirectory(destination);
+            }
         }
     }
 
@@ -335,7 +340,7 @@ internal static class ImageFileSystemExtractor
             }
         }
 
-        if (!OperatingSystem.IsWindows())
+        if (!OperatingSystem.IsWindows() && entry.Windows is null)
         {
             File.SetUnixFileMode(path, (UnixFileMode)(entry.Mode & 0xFFF));
         }

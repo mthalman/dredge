@@ -12,8 +12,8 @@ internal sealed class Node
     private Dictionary<Change, int>? counts;
     private bool? containsNote;
 
-    public required string Name { get; init; }
-    public required string Path { get; init; }
+    public required string Name { get; set; }
+    public required string Path { get; set; }
     public required Kind Kind { get; init; }
     public Change Change { get; set; }
     public long OwnSize { get; set; }
@@ -99,8 +99,10 @@ internal sealed class ExplorerImage
     private readonly Dictionary<int, LayerChanges> raw = [];
     private readonly Dictionary<int, List<Node>> layerTrees = [];
     private readonly LinkedList<(int Layer, List<Node> Tree)> wholeTrees = new();
-    private Dictionary<string, List<(int Layer, Change Change)>>? searchIndex;
+    private Dictionary<string, List<(int Layer, Change Change, string Path)>>? searchIndex;
+    private Dictionary<string, string[]>? exactCaseSearchPaths;
     private List<HistoryRow> history;
+    private readonly string? baseWarning;
 
     public ExplorerImage(
         string reference, string? platform, string digest, IReadOnlyList<string> layerDigests,
@@ -113,7 +115,7 @@ internal sealed class ExplorerImage
         LayerDigests = layerDigests;
         LayerDownloads = layerSizes;
         BaseImages = baseImages ?? [];
-        BaseWarning = baseWarning;
+        this.baseWarning = baseWarning;
         LayerCount = layerDigests.Count;
         States = new ExplorerLayerState[LayerCount];
         Progress = new double[LayerCount];
@@ -130,7 +132,8 @@ internal sealed class ExplorerImage
         [.. source.Resolved.Manifest.Layers.Select(static layer => layer.Size)],
         source.Config.History, source.BaseImages, source.BaseWarning)
     {
-        PlatformArguments = source.Platforms.Count > 1 && source.Platform is ExplorerPlatform platform
+        PlatformArguments = (source.Platforms.Count > 1 || string.Equals(source.Config.Os, "windows", StringComparison.OrdinalIgnoreCase)) &&
+            source.Platform is ExplorerPlatform platform
             ? PlatformArgumentsFor(platform) : "",
     };
 
@@ -153,10 +156,38 @@ internal sealed class ExplorerImage
     internal static string DigestReference(ImageName image, string digest) =>
         new ImageName(image.Registry, image.Repo, tag: null, digest).ToString();
     public string Platform { get; }
+    internal ImageFileSystemSemantics Semantics => Platform.StartsWith("windows", StringComparison.OrdinalIgnoreCase)
+        ? ImageFileSystemSemantics.Windows : ImageFileSystemSemantics.Linux;
     public string Digest { get; }
     public string RepoName { get; }
     public IReadOnlyList<ExplorerBaseImage> BaseImages { get; }
-    public string? BaseWarning { get; }
+    public int WarningCount
+    {
+        get
+        {
+            int count = (baseWarning is null ? 0 : 1) + (Semantics.IsWindows ? 1 : 0);
+            foreach (LayerChanges changes in raw.Values)
+            {
+                count += changes.Diagnostics.Count;
+            }
+            return count;
+        }
+    }
+    public bool HasWarnings => WarningCount > 0;
+    public string? WarningSummary => !HasWarnings ? null : Semantics.IsWindows
+        ? "Windows content-only analysis - Alt+W for limitations."
+        : baseWarning ?? "Image metadata warnings - Alt+W for details.";
+    public string? BaseWarning
+    {
+        get
+        {
+            string[] warnings = [.. new[] { baseWarning,
+                Semantics.IsWindows ? "Windows content-only analysis. ACLs, NTFS metadata, registry/service inspection and package inventory are unavailable. Extraction exports supported files only; payload totals exclude unsupported entries and runtime payloads." : null }.OfType<string>()
+                .Concat(raw.OrderBy(static pair => pair.Key).SelectMany(pair => pair.Value.Diagnostics
+                    .Select(diagnostic => $"Layer {pair.Key}: {diagnostic.Message} {diagnostic.Path}")))];
+            return warnings.Length == 0 ? null : string.Join("\n\n", warnings);
+        }
+    }
     public int? BaseLayerCount => BaseImages.LastOrDefault()?.LayerCount;
     public int LayerCount { get; }
     public IReadOnlyList<string> LayerDigests { get; }
@@ -216,6 +247,7 @@ internal sealed class ExplorerImage
         Errors[layer] = null;
         layerTrees.Remove(layer);
         searchIndex = null;
+        exactCaseSearchPaths = null;
     }
 
     public bool ReconcileIndexes(IReadOnlyDictionary<int, StoredLayerIndex> indexes)
@@ -251,6 +283,7 @@ internal sealed class ExplorerImage
         layerTrees.Clear();
         wholeTrees.Clear();
         searchIndex = null;
+        exactCaseSearchPaths = null;
     }
 
     public void SetSession(ExplorerSession session, ExplorerInsightsResult insights)
@@ -272,7 +305,7 @@ internal sealed class ExplorerImage
         {
             return cached;
         }
-        TreeBuilder builder = new();
+        TreeBuilder builder = new(Semantics);
         if (IsAnalyzed(layer))
         {
             foreach (LayerFileChange change in Analysis!.Layers[layer].Changes)
@@ -282,13 +315,13 @@ internal sealed class ExplorerImage
         }
         else if (raw.TryGetValue(layer, out LayerChanges? changes))
         {
-            foreach (ScannedEntry entry in changes.Entries)
-            {
-                builder.Set(entry.Path, entry, entry.Type, Change.None, entry.Size);
-            }
             foreach (string whiteout in changes.Whiteouts)
             {
                 builder.Set(whiteout, null, ImageFileType.Other, Change.Removed, 0);
+            }
+            foreach (ScannedEntry entry in changes.Entries)
+            {
+                builder.Set(entry.Path, entry, entry.Type, Change.None, entry.Size);
             }
         }
         List<Node> tree = builder.Build();
@@ -316,7 +349,7 @@ internal sealed class ExplorerImage
             return hit.Value.Tree;
         }
 
-        Dictionary<string, LayerFileChange> live = new(StringComparer.Ordinal);
+        Dictionary<string, LayerFileChange> live = new(Semantics.Comparer);
         for (int index = 0; index < layer; index++)
         {
             foreach (LayerFileChange change in Analysis!.Layers[index].Changes)
@@ -331,7 +364,7 @@ internal sealed class ExplorerImage
                 }
             }
         }
-        Dictionary<string, Change> marks = new(StringComparer.Ordinal);
+        Dictionary<string, Change> marks = new(Semantics.Comparer);
         foreach (LayerFileChange change in Analysis!.Layers[layer].Changes)
         {
             marks[change.Path] = ToChange(change.Kind);
@@ -340,7 +373,7 @@ internal sealed class ExplorerImage
                 live[change.Path] = change;
             }
         }
-        TreeBuilder builder = new();
+        TreeBuilder builder = new(Semantics);
         foreach (LayerFileChange change in live.Values)
         {
             builder.Set(change.Path, change.Entry, change.Type,
@@ -370,13 +403,14 @@ internal sealed class ExplorerImage
         }
     }
 
-    public static Node? Find(List<Node> roots, string path)
+    public Node? Find(List<Node> roots, string path)
     {
+        StringComparer comparer = Semantics.Comparer;
         List<Node> level = roots;
         Node? node = null;
         foreach (string part in path.Split('/'))
         {
-            node = level.FirstOrDefault(candidate => candidate.Name == part);
+            node = level.FirstOrDefault(candidate => comparer.Equals(candidate.Name, part));
             if (node is null)
             {
                 return null;
@@ -388,7 +422,7 @@ internal sealed class ExplorerImage
 
     // ───────────────────────────── search ─────────────────────────────
 
-    public IReadOnlyDictionary<string, List<(int Layer, Change Change)>> SearchIndex
+    public IReadOnlyDictionary<string, List<(int Layer, Change Change, string Path)>> SearchIndex
     {
         get
         {
@@ -396,20 +430,20 @@ internal sealed class ExplorerImage
             {
                 return searchIndex;
             }
-            Dictionary<string, List<(int, Change)>> index = new(StringComparer.Ordinal);
+            Dictionary<string, List<(int, Change, string)>> index = new(Semantics.Comparer);
             void Add(string path, int layer, Change change)
             {
-                if (!index.TryGetValue(path, out List<(int, Change)>? list))
+                if (!index.TryGetValue(path, out List<(int, Change, string)>? list))
                 {
                     index[path] = list = [];
                 }
                 if (list.Count > 0 && list[^1].Item1 == layer)
                 {
-                    list[^1] = (layer, change);
+                    list[^1] = (layer, change, path);
                 }
                 else
                 {
-                    list.Add((layer, change));
+                    list.Add((layer, change, path));
                 }
             }
             for (int layer = 0; layer < LayerCount; layer++)
@@ -433,8 +467,24 @@ internal sealed class ExplorerImage
         }
     }
 
+    public IReadOnlyDictionary<string, string[]> ExactCaseSearchPaths
+    {
+        get
+        {
+            if (exactCaseSearchPaths is not null) return exactCaseSearchPaths;
+            Dictionary<string, string[]> paths = new(Semantics.Comparer);
+            foreach (var pair in SearchIndex)
+            {
+                paths.Add(pair.Key, [.. pair.Value.Select(static item => item.Path)
+                    .Reverse().Distinct(StringComparer.Ordinal)]);
+            }
+            return exactCaseSearchPaths = paths;
+        }
+    }
+
     public List<(int Layer, Change Change)> PathHistory(string path) =>
-        SearchIndex.TryGetValue(path, out List<(int Layer, Change Change)>? list) ? list : [];
+        SearchIndex.TryGetValue(path, out var list)
+            ? [.. list.Select(static item => (item.Layer, item.Change))] : [];
 
     // ───────────────────────────── helpers ─────────────────────────────
 
@@ -533,10 +583,10 @@ internal sealed class ExplorerImage
         return (rows, instructions);
     }
 
-    private sealed class TreeBuilder
+    private sealed class TreeBuilder(ImageFileSystemSemantics semantics)
     {
         private readonly List<Node> roots = [];
-        private readonly Dictionary<string, Node> nodes = new(StringComparer.Ordinal);
+        private readonly Dictionary<string, Node> nodes = new(semantics.Comparer);
 
         public void Set(string path, ScannedEntry? entry, ImageFileType type, Change change, long size,
             ImageContentId? contentId = null)
@@ -558,10 +608,12 @@ internal sealed class ExplorerImage
             node.Entry = entry;
             if (entry is not null)
             {
-                node.Mode = FormatMode(entry.Type, entry.Mode);
-                node.Owner = $"{entry.UserId}:{entry.GroupId}";
+                node.Mode = entry.Windows is null ? FormatMode(entry.Type, entry.Mode)
+                    : entry.Windows.Attributes is uint attributes ? $"Windows attributes 0x{attributes:X}" : "Windows attributes unavailable";
+                node.Owner = entry.Windows is null ? $"{entry.UserId}:{entry.GroupId}" : "ACL/owner not interpreted";
                 node.Target = entry.LinkTarget;
                 node.HardLink = entry.Type == ImageFileType.HardLink;
+                node.Note = entry.Windows?.UnsupportedReason;
             }
         }
 
@@ -571,9 +623,14 @@ internal sealed class ExplorerImage
             {
                 if (existing.Kind == kind || (!explicitKind && removed))
                 {
+                    if (explicitKind)
+                    {
+                        existing.Name = ImagePath.GetFileName(path);
+                        existing.Path = path;
+                    }
                     return existing;
                 }
-                Node replacement = new() { Name = existing.Name, Path = path, Kind = kind };
+                Node replacement = new() { Name = ImagePath.GetFileName(path), Path = path, Kind = kind };
                 replacement.Children.AddRange(existing.Children);
                 List<Node> siblings = Parent(path, removed);
                 siblings[siblings.IndexOf(existing)] = replacement;

@@ -14,6 +14,14 @@ public enum ImageFileType
 
 public sealed record ImageLayerReference(int Index, string Digest);
 
+public sealed record WindowsFileMetadata(
+    uint? Attributes, bool IsMountPoint, bool HasSecurityDescriptor,
+    string Fingerprint, string? UnsupportedReason)
+{
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingDefault)]
+    public bool HasAlternateStreams { get; init; }
+}
+
 internal readonly record struct ImageContentId(int Layer, string Path, int EntryIndex);
 
 public sealed record ImageFileSystemEntry
@@ -26,6 +34,7 @@ public sealed record ImageFileSystemEntry
     public long Size { get; init; }
     public DateTime? ModifiedTime { get; init; }
     public string? LinkTarget { get; init; }
+    public WindowsFileMetadata? Windows { get; init; }
     public required ImageLayerReference IntroducedLayer { get; init; }
     public ImageLayerReference? ModifiedLayer { get; init; }
     public ImageLayerReference? DeletedLayer { get; init; }

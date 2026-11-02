@@ -144,7 +144,6 @@ public class ExploreCommandOptionTests
         Assert.Throws<ArgumentException>(static () => ExploreCommand.ResolveCompareImage(ImageName.Parse("app:1"), " "));
 }
 
-// Opening an image: platform resolution, Linux-only support and base verification.
 public class ExplorerSourceResolutionTests
 {
     private static readonly ImageName Image = ImageName.Parse("image");
@@ -231,9 +230,9 @@ public class ExplorerSourceResolutionTests
     }
 
     [Fact]
-    public async Task ManifestListWithoutLinuxIsNotSupported()
+    public async Task ManifestListWithoutSupportedPlatformsIsNotSupported()
     {
-        ManifestList list = new() { Manifests = [Reference("sha256:win", "windows", "amd64")] };
+        ManifestList list = new() { Manifests = [Reference("sha256:other", "other", "amd64")] };
         Mock<IDockerRegistryClient> client = new() { DefaultValue = DefaultValue.Mock };
         client.Setup(o => o.Manifests.GetAsync("library/image", "latest", It.IsAny<CancellationToken>()))
             .ReturnsAsync(new ManifestInfo("application/index", "sha256:index", list));
@@ -241,11 +240,11 @@ public class ExplorerSourceResolutionTests
         NotSupportedException error = await Assert.ThrowsAsync<NotSupportedException>(() => ExplorerSource.ResolveAsync(
             client.Object, Image, new PlatformOptionsBase(), null, TestContext.Current.CancellationToken));
 
-        Assert.Contains("has no Linux platform", error.Message);
+        Assert.Contains("has no supported platform", error.Message);
     }
 
     [Fact]
-    public void PlatformListsOnlyDistinctLinuxEntries()
+    public void PlatformListsDistinctLinuxAndWindowsEntries()
     {
         ManifestList list = new()
         {
@@ -259,14 +258,15 @@ public class ExplorerSourceResolutionTests
         };
 
         Assert.Equal(
-            [new ExplorerPlatform("linux", "amd64", null, null), new ExplorerPlatform("linux", "arm", "v7", null)],
+            [new ExplorerPlatform("linux", "amd64", null, null), new ExplorerPlatform("windows", "amd64", null, null),
+                new ExplorerPlatform("linux", "arm", "v7", null)],
             ExplorerSource.GetPlatforms(list));
         Assert.Empty(ExplorerSource.GetPlatforms(new DockerManifest { Layers = [] }));
         Assert.Equal("linux/arm/v7", new ExplorerPlatform("linux", "arm", "v7", null).ToString());
     }
 
     [Fact]
-    public async Task OpenRejectsWindowsImages()
+    public async Task OpenSupportsWindowsImages()
     {
         Mock<IDockerRegistryClient> client = new() { DefaultValue = DefaultValue.Mock };
         DockerManifest manifest = new() { Config = new ManifestConfig { Digest = "sha256:config" }, Layers = [] };
@@ -275,11 +275,12 @@ public class ExplorerSourceResolutionTests
         client.Setup(o => o.Blobs.GetAsync("library/image", "sha256:config", It.IsAny<CancellationToken>()))
             .ReturnsAsync(() => new MemoryStream(System.Text.Encoding.UTF8.GetBytes("{\"os\":\"windows\",\"architecture\":\"amd64\"}")));
 
-        NotSupportedException error = await Assert.ThrowsAsync<NotSupportedException>(() => ExplorerSource.OpenAsync(
+        ExplorerSource source = await ExplorerSource.OpenAsync(
             client.Object, Mock.Of<IDockerRegistryClientFactory>(), Image, new PlatformOptionsBase(), null,
-            TestContext.Current.CancellationToken));
+            TestContext.Current.CancellationToken);
 
-        Assert.Equal("The image explorer supports Linux images only (found 'windows').", error.Message);
+        Assert.Equal("windows", source.Config.Os);
+        Assert.Equal(new ExplorerPlatform("windows", "amd64", null, null), source.Platform);
     }
 
     private static Mock<IDockerRegistryClient> ListClient(params (string Digest, string Architecture)[] entries)
@@ -571,7 +572,7 @@ public class ExplorerComparisonTests
 
         InvalidOperationException error = Assert.Throws<InvalidOperationException>(() => ExplorerSession.Compare(baseline, target));
 
-        Assert.Contains("same platform", error.Message);
+        Assert.Contains("compatible platforms", error.Message);
     }
 
     [Fact]

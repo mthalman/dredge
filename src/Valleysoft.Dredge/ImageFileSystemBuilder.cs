@@ -14,6 +14,11 @@ internal sealed class ImageFileSystemBuilder
     private readonly Dictionary<string, ImageFileSystemEntry> entries;
     private readonly Dictionary<string, ImageFileSystemEntry> deletedEntries;
     private readonly ImagePathResolver pathResolver;
+    private readonly ImageFileSystemSemantics semantics;
+    private readonly WindowsAlternateStreams? alternateStreams;
+    private readonly SortedSet<string>? paths;
+    private readonly Dictionary<ImageContentId, ImageContentPaths>? contentPaths;
+    private readonly HashSet<ImageContentId>? unreferencedContents;
 
     public ImageFileSystemBuilder(
         IDockerRegistryClient client,
@@ -22,7 +27,8 @@ internal sealed class ImageFileSystemBuilder
         LayerStore store,
         Dictionary<int, StoredLayerIndex> indexes,
         Dictionary<string, ImageFileSystemEntry> entries,
-        Dictionary<string, ImageFileSystemEntry> deletedEntries)
+        Dictionary<string, ImageFileSystemEntry> deletedEntries,
+        ImageFileSystemSemantics? semantics = null)
     {
         this.client = client;
         this.imageName = imageName;
@@ -31,7 +37,16 @@ internal sealed class ImageFileSystemBuilder
         this.indexes = indexes;
         this.entries = entries;
         this.deletedEntries = deletedEntries;
-        this.pathResolver = new(entries);
+        this.semantics = semantics ?? ImageFileSystemSemantics.Linux;
+        alternateStreams = this.semantics.IsWindows ? new() : null;
+        if (this.semantics.IsWindows)
+        {
+            paths = new(entries.Keys, this.semantics.Comparer);
+            contentPaths = [];
+            unreferencedContents = [];
+            foreach (ImageFileSystemEntry entry in entries.Values) TrackContentPath(entry);
+        }
+        this.pathResolver = new(entries, this.semantics);
     }
 
     public async Task<bool> BuildAsync(
@@ -41,7 +56,8 @@ internal sealed class ImageFileSystemBuilder
         IProgress<ImageIndexProgress>? progress = null,
         int? maxLayerIndex = null)
     {
-        if (!string.IsNullOrEmpty(ImagePath.NormalizeRequested(contentPath)))
+        string normalizedPath = semantics.NormalizeRequested(contentPath);
+        if (!semantics.IsWindows && normalizedPath.Length > 0)
         {
             for (int firstLayer = manifest.Layers.Length - 1; firstLayer >= 0; firstLayer--)
             {
@@ -92,7 +108,7 @@ internal sealed class ImageFileSystemBuilder
             string digest = descriptor.Digest ??
                 throw new InvalidDataException($"Layer digest not set for image '{imageName}'.");
             index = await store.GetIndexAsync(client, imageName, new(layerIndex, digest),
-                descriptor.Size, cancellationToken, progress);
+                descriptor.Size, cancellationToken, progress, semantics);
             indexes.Add(layerIndex, index);
         }
 
@@ -136,18 +152,24 @@ internal sealed class ImageFileSystemBuilder
                 previous is not null && previous.IntroducedLayer.Index != layer.Index
                     ? layer
                     : previous?.ModifiedLayer;
+            if (previous is not null &&
+                (previous.Type != ImageFileType.Directory || scanned.Type != ImageFileType.Directory))
+            {
+                RemoveOwnerStreams(scanned.Path, layer);
+            }
             ImageFileSystemEntry current = scanned.ToEntry(introduced, modified, layer);
             if (current.Type == ImageFileType.HardLink)
             {
                 string targetPath = pathResolver.GetHardLinkTargetPath(current, entries);
-                if (!entries.TryGetValue(targetPath, out ImageFileSystemEntry? target) ||
-                    target.Type == ImageFileType.Directory)
-                {
-                    throw new InvalidDataException(
-                        $"Hard link '/{current.Path}' targets missing or invalid path '/{targetPath}'.");
-                }
+                entries.TryGetValue(targetPath, out ImageFileSystemEntry? foundTarget);
+                ImageFileSystemSemantics.ValidateHardLinkTarget(current.Path, targetPath, foundTarget?.Type);
+                ImageFileSystemEntry target = foundTarget!;
                 current = current with
                 {
+                    Type = semantics.IsWindows && target.Type == ImageFileType.Other
+                        ? ImageFileType.Other : current.Type,
+                    Windows = semantics.IsWindows && target.Type == ImageFileType.Other
+                        ? ImageFileSystemSemantics.UnsupportedHardLink(targetPath, current.Windows) : current.Windows,
                     Size = target.Size,
                     ContentLayerIndex = target.ContentLayerIndex,
                     ContentPath = target.ContentPath,
@@ -157,9 +179,68 @@ internal sealed class ImageFileSystemBuilder
                         : target.ContentLinkTarget
                 };
             }
-            entries[scanned.Path] = current;
+            if (alternateStreams is not null && current.Windows is not null &&
+                current.Type is ImageFileType.File or ImageFileType.HardLink &&
+                current.Windows.HasAlternateStreams != alternateStreams.HasStreams(current.ContentId))
+            {
+                current = current with
+                {
+                    Windows = current.Windows with { HasAlternateStreams = alternateStreams.HasStreams(current.ContentId) }
+                };
+            }
+            SetEntry(current);
             deletedEntries.Remove(scanned.Path);
+            if (alternateStreams is not null && scanned.Path.Contains(':'))
+            {
+                alternateStreams.Track(scanned.Path, GetStreamOwner(scanned.Path));
+            }
         }
+        if (alternateStreams is not null)
+        {
+            foreach (ScannedEntry scanned in changes.Entries)
+            {
+                if (entries.TryGetValue(scanned.Path, out ImageFileSystemEntry? owner) &&
+                    owner.Type is ImageFileType.File or ImageFileType.HardLink && owner.ContentLinkTarget is null)
+                {
+                    alternateStreams.BindPending(owner.Path, owner.ContentId);
+                }
+            }
+            // A replacement can briefly remove its own last alias before capturing the same content again.
+            foreach (ImageContentId content in unreferencedContents!)
+            {
+                if (!contentPaths!.ContainsKey(content)) alternateStreams.ForgetContent(content);
+            }
+            unreferencedContents!.Clear();
+            foreach (ImageContentId content in alternateStreams.TakePresenceChanges())
+            {
+                bool hasStreams = alternateStreams.HasStreams(content);
+                if (!contentPaths!.TryGetValue(content, out ImageContentPaths aliases)) continue;
+                foreach (string path in aliases)
+                {
+                    cancellationToken.ThrowIfCancellationRequested();
+                    ImageFileSystemEntry entry = entries[path];
+                    if (entry.Windows is not null && entry.Windows.HasAlternateStreams != hasStreams)
+                    {
+                        entries[path] = entry with
+                        {
+                            Windows = entry.Windows with { HasAlternateStreams = hasStreams },
+                            ModifiedLayer = entry.IntroducedLayer.Index < layer.Index ? layer : entry.ModifiedLayer
+                        };
+                    }
+                }
+            }
+        }
+    }
+
+    private ImageContentId? GetStreamOwner(string path)
+    {
+        string basePath = WindowsAlternateStreams.BasePath(path);
+        if (entries.TryGetValue(basePath, out ImageFileSystemEntry? owner) &&
+            owner.Type is ImageFileType.File or ImageFileType.HardLink && owner.ContentLinkTarget is null)
+        {
+            return owner.ContentId;
+        }
+        return null;
     }
 
     private void EnsureParentDirectories(string path, ImageLayerReference layer)
@@ -171,17 +252,21 @@ internal sealed class ImageFileSystemBuilder
         }
 
         EnsureParentDirectories(parent, layer);
-        if (!entries.TryGetValue(parent, out ImageFileSystemEntry? entry) ||
+        entries.TryGetValue(parent, out ImageFileSystemEntry? entry);
+        semantics.ValidateParent(path, parent, entry?.Type);
+        if (entry is null ||
             entry.Type != ImageFileType.Directory)
         {
-            entries[parent] = new ImageFileSystemEntry
+            if (entry is not null) RemoveOwnerStreams(parent, layer);
+            SetEntry(new ImageFileSystemEntry
             {
                 Path = parent,
                 Type = ImageFileType.Directory,
                 Mode = 0x1ED,
+                Windows = semantics.IsWindows ? new(null, false, false, "", null) : null,
                 IntroducedLayer = layer,
                 ContentLayerIndex = layer.Index
-            };
+            });
             deletedEntries.Remove(parent);
         }
     }
@@ -191,19 +276,40 @@ internal sealed class ImageFileSystemBuilder
         bool includePath,
         ImageLayerReference layer)
     {
+        string[]? removedStreamPaths = null;
+        if (includePath && path.Contains(':') && alternateStreams is not null)
+        {
+            removedStreamPaths = alternateStreams.DeleteStream(path, GetStreamOwner(path));
+        }
+        else if (includePath)
+        {
+            RemoveOwnerStreams(path, layer);
+        }
         string prefix = $"{path}/";
-        string[] affected = [.. entries.Keys
-            .Where(candidate =>
-                (includePath && candidate == path) ||
-                candidate.StartsWith(prefix, StringComparison.Ordinal))];
+        string[] affected;
+        if (paths is not null)
+        {
+            HashSet<string> selected = new(semantics.Descendants(paths, path), semantics.Comparer);
+            if (includePath && entries.ContainsKey(path)) selected.Add(path);
+            if (removedStreamPaths is not null)
+            {
+                foreach (string stream in removedStreamPaths)
+                {
+                    if (entries.ContainsKey(stream)) selected.Add(stream);
+                }
+            }
+            affected = [.. selected];
+        }
+        else
+        {
+            affected = [.. entries.Keys.Where(candidate =>
+                (includePath && semantics.Comparer.Equals(candidate, path)) ||
+                semantics.StartsWith(candidate, prefix))];
+        }
         foreach (string candidate in affected)
         {
-            ImageFileSystemEntry removed = entries[candidate] with
-            {
-                DeletedLayer = layer
-            };
-            entries.Remove(candidate);
-            deletedEntries[candidate] = removed;
+            RemoveOwnerStreams(candidate, layer);
+            RemoveEntry(candidate, layer);
         }
 
         if (includePath && affected.Length == 0)
@@ -218,11 +324,64 @@ internal sealed class ImageFileSystemBuilder
                 {
                     Path = path,
                     Type = ImageFileType.Other,
+                    Windows = semantics.IsWindows ? new(null, false, false, "", null) : null,
                     IntroducedLayer = layer,
                     DeletedLayer = layer,
                     ContentLayerIndex = layer.Index
                 };
             }
+        }
+    }
+
+    private void RemoveOwnerStreams(string path, ImageLayerReference layer)
+    {
+        if (alternateStreams is null) return;
+        foreach (string stream in alternateStreams.PathsForOwner(path))
+        {
+            RemoveEntry(stream, layer);
+        }
+    }
+
+    private void RemoveEntry(string path, ImageLayerReference layer)
+    {
+        if (entries.Remove(path, out ImageFileSystemEntry? entry))
+        {
+            paths?.Remove(path);
+            ForgetContentPath(entry);
+            deletedEntries[path] = entry with { DeletedLayer = layer };
+        }
+        alternateStreams?.Forget(path);
+    }
+
+    private void SetEntry(ImageFileSystemEntry entry)
+    {
+        if (entries.TryGetValue(entry.Path, out ImageFileSystemEntry? previous)) ForgetContentPath(previous);
+        entries[entry.Path] = entry;
+        paths?.Add(entry.Path);
+        TrackContentPath(entry);
+    }
+
+    private void TrackContentPath(ImageFileSystemEntry entry)
+    {
+        if (contentPaths is null || entry.Type is not (ImageFileType.File or ImageFileType.HardLink)) return;
+        contentPaths.TryGetValue(entry.ContentId, out ImageContentPaths aliases);
+        aliases.Add(entry.Path, semantics.Comparer);
+        contentPaths[entry.ContentId] = aliases;
+    }
+
+    private void ForgetContentPath(ImageFileSystemEntry entry)
+    {
+        if (contentPaths is null || entry.Type is not (ImageFileType.File or ImageFileType.HardLink)) return;
+        ImageContentPaths aliases = contentPaths[entry.ContentId];
+        aliases.Remove(entry.Path, semantics.Comparer);
+        if (aliases.Count == 0)
+        {
+            contentPaths.Remove(entry.ContentId);
+            unreferencedContents!.Add(entry.ContentId);
+        }
+        else
+        {
+            contentPaths[entry.ContentId] = aliases;
         }
     }
 

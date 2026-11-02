@@ -88,7 +88,7 @@ dredge image os mcr.microsoft.com/windows/nanoserver:ltsc2022-amd64
 
 ## Explore
 
-Opens a full-screen, interactive explorer for a Linux image. You can browse
+Opens a full-screen, interactive explorer for an image. You can browse
 its layers, see which files each layer adds, changes, or deletes, find wasted
 space, and compare it with another version of the image.
 
@@ -128,6 +128,8 @@ those inherited from earlier layers. Dredge recognizes npm, dpkg, apk, pip,
 and NuGet packages. Type `/` to filter the list, or press `Enter` to see a
 package's details.
 
+Package inventory and package comparison are unavailable for Windows images.
+
 ### Comparing images
 
 Press `c`, enter a tag or image reference, and choose whether to compare
@@ -143,12 +145,21 @@ While previewing a file, press `Alt+H` to see every layer that touched it.
 Select a version to preview it, or press `Alt+D` to compare it with the
 version before.
 
+Windows historical previews show Windows attributes instead of Unix
+permissions and ownership. Historical and cross-image diffs report attribute and raw-metadata
+fingerprint changes even when file contents are identical; they do not
+interpret ACL changes. "No text differences" means the decoded text matches,
+not necessarily the file bytes: encoding signatures and line endings can differ.
+
 ### Extracting and copying
 
 Press `x` to extract the selected file or directory to your machine. Press
 `Ctrl+C` to copy the equivalent `dredge image` command so you can run it
 later or share it. On Linux, macOS, and over SSH, copying depends on your
 terminal supporting OSC 52 clipboard access.
+
+Windows extraction is a content-only export with the limitations described
+under [Windows filesystem support](#windows-filesystem-support).
 
 ### Keys and mouse
 
@@ -184,7 +195,7 @@ The theme, mouse support, and text viewer can be changed in the
 
 ## Ls
 
-Lists the effective filesystem entries in a Linux image without extracting the
+Lists the effective filesystem entries in an image without extracting the
 complete image.
 
 ```console
@@ -202,6 +213,13 @@ size, UTC modification time (marked with `Z`), and symbolic-link target. Use
 `--provenance` independently or with `--long` to show the layer index and an
 abbreviated digest for the layer that introduced, modified, or deleted each
 path. Text output labels these values `i`, `m`, and `d`, respectively.
+
+For Windows entries, long output shows `win:` followed by hexadecimal Windows
+file attributes and `?` for unavailable UID/GID values. It does not interpret
+the tar mode as Windows permissions. JSON adds a `windows` object containing
+available attributes, mountpoint/security-descriptor indicators, a raw-metadata
+fingerprint, and any entry-specific limitation. Legacy `mode`, `userId`, and
+`groupId` JSON fields describe the archive, not Windows security.
 
 For example, list the periodic task directories in Alpine. Piping the output
 shows the redirected, one-name-per-line format:
@@ -256,7 +274,7 @@ $ dredge image ls alpine:3.22.1 /etc/alpine-release --output json
 
 ## Cat
 
-Writes the effective contents of one Linux image file to standard output.
+Writes the effective contents of one image file to standard output.
 Standard output contains only file bytes, so the command is safe to use in a
 pipeline or redirect to a binary file.
 
@@ -273,6 +291,9 @@ links to their image-layer content. Link resolution cannot escape the image
 root and fails for dangling links or link loops. The command rejects
 directories, deleted paths, and unsupported file types.
 
+Windows images use Windows path and link semantics instead; see
+[Windows filesystem support](#windows-filesystem-support).
+
 For example:
 
 ```console
@@ -282,7 +303,7 @@ $ dredge image cat alpine:3.22.1 /etc/alpine-release
 
 ## Extract
 
-Extracts one effective file or a directory subtree from a Linux image. For a
+Extracts one effective file or a directory subtree from an image. For a
 directory, Dredge reads the effective entries from all layers but writes only
 the selected subtree.
 
@@ -290,9 +311,10 @@ the selected subtree.
 dredge image extract <image> <path> <output-path> [--os <os>] [--arch <arch>] [--os-version <version>]
 ```
 
-`output-path` must not exist. Dredge validates all archive paths and
-destinations before writing, and it does not overwrite files. Use `/` as
-`path` to extract the complete effective image filesystem.
+`output-path` must not exist. Dredge validates archive paths and destination
+containment before writing. Destination name collisions are rejected without
+overwriting existing entries. Use `/` as `path` to extract the complete
+effective image filesystem.
 
 For example:
 
@@ -302,7 +324,7 @@ $ cat alpine-release
 3.22.1
 ```
 
-Dredge preserves modification times and, on Unix hosts, available file modes.
+For Linux images, Dredge preserves modification times and, on Unix hosts, available file modes.
 It reports UID and GID through `image ls` but does not apply image
 ownership to the host. Extraction preserves safe hard and symbolic links when
 possible. Symbolic links retain their original targets, including dangling
@@ -311,9 +333,28 @@ also selected remain hard links; otherwise, Dredge materializes their effective
 content. Archive entries and extraction destinations cannot escape their
 respective roots.
 
-The `ls`, `cat`, and `extract` commands support gzip-compressed Linux tar
-layers. They reject Windows image layers with an explicit unsupported-platform
-error.
+The `explore`, `ls`, `cat`, and `extract` commands support gzip-compressed tar
+layers for Linux and the Windows representations described below.
+
+### Windows filesystem support
+
+Paths are case-insensitive. You can use `C:\Windows\System32`,
+`Windows\System32`, or `/Windows/System32`; listings show paths relative to
+the image root.
+
+Keep these limitations in mind:
+
+- Supported images use gzip-compressed tar layers. Unsupported formats report
+  an error.
+- This is a filesystem view, not a complete Windows installation inventory.
+  Registry hives, VM data, installed software, and full Windows security
+  metadata are not inspected. Reported sizes cover supported file contents,
+  not total disk usage.
+- Extraction is content-only: it exports supported files and directories,
+  preserves available modification times, and copies hard-linked file contents.
+  It does not restore permissions, alternate data streams, or Windows links.
+  Subtrees containing unsupported entries or symbolic links/junctions are
+  rejected before output is created. Choose an output path that does not exist.
 
 ### Shared layer cache
 

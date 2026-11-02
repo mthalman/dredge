@@ -21,7 +21,7 @@ internal sealed partial class ExplorerPresenter
         List<PackageInventoryRow> rows = [];
         packageCollapsed.Clear();
         packageCollapsed.UnionWith(s.CollapsedPackages);
-        if (s.Packages is null)
+        if (s.Packages is null || s.Packages.UnavailableReason is not null)
         {
             packageCache = (s.Packages, s.PackageQuery, rows);
             return rows;
@@ -61,6 +61,16 @@ internal sealed partial class ExplorerPresenter
                 : "Reading packages at this layer…");
             return Pane(Syntax.Wrap([(message, Theme.S(s.PackagesError is null ? Theme.Silt : Theme.Ochre))], w, RightInnerHeight),
                 "Packages", s.Focus == FocusPane.Right, layer);
+        }
+        if (s.Packages.UnavailableReason is string reason)
+        {
+            List<Line> unavailable = Syntax.Wrap([(reason, Theme.S(Theme.Ochre))], w, RightInnerHeight);
+            if (s.Packages.Diagnostics.Count > 0)
+            {
+                unavailable.Add(Line.Blank);
+                unavailable.Add(Line.Of("Alt+W for metadata warning details", Theme.Ochre).Truncate(w));
+            }
+            return Pane(unavailable, "Packages", s.Focus == FocusPane.Right, layer);
         }
 
         List<PackageInventoryRow> rows = PackageRows(s);

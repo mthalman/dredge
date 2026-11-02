@@ -1515,7 +1515,7 @@ public class ImageFileSystemTests : IAsyncDisposable
     }
 
     [Fact]
-    public async Task Create_RejectsWindowsImagesBeforeReadingLayers()
+    public async Task Create_RejectsUnsupportedWindowsLayerLayout()
     {
         Mock<IDockerRegistryClient> client =
             CreateClient([CreateLayer(Entry.File("file", "value"))], os: "windows");
@@ -1527,14 +1527,7 @@ public class ImageFileSystemTests : IAsyncDisposable
                 new PlatformOptionsBase(),
                 TestContext.Current.CancellationToken));
 
-        Assert.Contains("Linux", exception.Message);
-        Assert.Contains("Windows", exception.Message);
-        client.Verify(
-            item => item.Blobs.GetAsync(
-                ImageName.Repo,
-                It.Is<string>(digest => digest != ConfigDigest),
-                It.IsAny<CancellationToken>()),
-            Times.Never);
+        Assert.Contains("Windows layer layout", exception.Message);
     }
 
     private async Task<string> InvokeLsCommandAsync(
@@ -1600,7 +1593,11 @@ public class ImageFileSystemTests : IAsyncDisposable
         DockerManifest manifest = new()
         {
             Config = new ManifestConfig { Digest = ConfigDigest },
-            Layers = [.. layers.Select(layer => new ManifestLayer { Digest = LayerCacheTestContext.Digest(layer), Size = layer.Length })]
+            Layers = [.. layers.Select(layer => new ManifestLayer
+            {
+                Digest = LayerCacheTestContext.Digest(layer), Size = layer.Length,
+                MediaType = "application/vnd.docker.image.rootfs.diff.tar.gzip"
+            })]
         };
         client
             .Setup(item => item.Manifests.GetAsync(

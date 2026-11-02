@@ -38,6 +38,8 @@ namespace Valleysoft.Dredge;
 [JsonSerializable(typeof(StoredLayerIndex))]
 [JsonSerializable(typeof(LayerChanges))]
 [JsonSerializable(typeof(ScannedEntry))]
+[JsonSerializable(typeof(WindowsFileMetadata))]
+[JsonSerializable(typeof(LayerDiagnostic))]
 [JsonSerializable(typeof(ImageFileSystemEntry))]
 [JsonSerializable(typeof(ImageFileSystem.StoredFileSystem))]
 [JsonSerializable(typeof(ImageFileSystem.StoredEntry))]

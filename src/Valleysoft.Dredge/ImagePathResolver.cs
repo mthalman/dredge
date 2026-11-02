@@ -5,37 +5,39 @@ internal sealed class ImagePathResolver
     private const int MaximumLinkHops = 40;
 
     private readonly IReadOnlyDictionary<string, ImageFileSystemEntry> entries;
+    private readonly ImageFileSystemSemantics semantics;
 
-    public ImagePathResolver(IReadOnlyDictionary<string, ImageFileSystemEntry> entries)
+    public ImagePathResolver(IReadOnlyDictionary<string, ImageFileSystemEntry> entries,
+        ImageFileSystemSemantics? semantics = null)
     {
         this.entries = entries;
+        this.semantics = semantics ?? ImageFileSystemSemantics.Linux;
     }
 
     public ImageFileSystemEntry ResolveContentEntry(string requestedPath, IReadOnlyDictionary<string, ImageFileSystemEntry> entries)
     {
-        string path = ImagePath.NormalizeRequested(requestedPath);
+        string path = semantics.NormalizeRequested(requestedPath);
         if (path.Length == 0)
         {
             throw new InvalidDataException("The image root is a directory.");
         }
 
-        ImageFileSystemEntry entry = ResolvePath(path, entries);
+        int hops = 0;
+        ImageFileSystemEntry entry = ResolvePath(path, entries, ref hops);
+        while (entry.Type == ImageFileType.HardLink &&
+            entry.ContentLinkTarget is string linkTarget)
+        {
+            CountLinkHop(requestedPath, ref hops);
+            string basePath = semantics.IsAbsolute(linkTarget)
+                ? string.Empty
+                : ImagePath.GetDirectoryName(entry.Path);
+            string targetPath = semantics.ResolveLinkTarget(
+                basePath, linkTarget, string.Empty, entry.Path);
+            entry = ResolvePath(targetPath, entries, ref hops);
+        }
         if (entry.Type == ImageFileType.Directory)
         {
             throw new InvalidDataException($"Path '/{path}' is a directory.");
-        }
-        if (entry.Type == ImageFileType.HardLink &&
-            entry.ContentLinkTarget is string linkTarget)
-        {
-            string basePath = ImagePath.IsAbsolute(linkTarget)
-                ? string.Empty
-                : ImagePath.GetDirectoryName(entry.Path);
-            string targetPath = ImagePath.ResolveLinkTarget(
-                basePath,
-                linkTarget,
-                string.Empty,
-                entry.Path);
-            entry = ResolvePath(targetPath, entries);
         }
         if (entry.Type == ImageFileType.HardLink)
         {
@@ -51,8 +53,32 @@ internal sealed class ImagePathResolver
 
     public ImageFileSystemEntry ResolvePath(string requestedPath, IReadOnlyDictionary<string, ImageFileSystemEntry> entries)
     {
-        string current = ImagePath.NormalizeRequested(requestedPath);
-        for (int hop = 0; hop < MaximumLinkHops; hop++)
+        int hops = 0;
+        return ResolvePath(requestedPath, entries, ref hops);
+    }
+
+    private ImageFileSystemEntry ResolvePath(string requestedPath, IReadOnlyDictionary<string, ImageFileSystemEntry> entries,
+        ref int hops)
+    {
+        string path = ResolvePathName(requestedPath, entries, ref hops);
+        if (path.Length == 0)
+        {
+            throw new InvalidDataException("The image root is a directory.");
+        }
+        return entries[path];
+    }
+
+    private string ResolvePathName(string requestedPath, IReadOnlyDictionary<string, ImageFileSystemEntry> entries)
+    {
+        int hops = 0;
+        return ResolvePathName(requestedPath, entries, ref hops);
+    }
+
+    private string ResolvePathName(string requestedPath, IReadOnlyDictionary<string, ImageFileSystemEntry> entries,
+        ref int hops)
+    {
+        string current = semantics.NormalizeRequested(requestedPath);
+        while (true)
         {
             string[] segments = current.Split('/', StringSplitOptions.RemoveEmptyEntries);
             bool followedLink = false;
@@ -70,31 +96,43 @@ internal sealed class ImagePathResolver
                     continue;
                 }
 
+                CountLinkHop(requestedPath, ref hops);
                 string target = entry.LinkTarget ??
                     throw new InvalidDataException(
                         $"Link '/{candidate}' has no target.");
-                string basePath = !ImagePath.IsAbsolute(target)
+                string basePath = !semantics.IsAbsolute(target)
                     ? ImagePath.GetDirectoryName(candidate)
                     : string.Empty;
                 string remainder = string.Join('/', segments.Skip(i + 1));
-                current = ImagePath.ResolveLinkTarget(basePath, target, remainder, candidate);
+                current = semantics.ResolveLinkTarget(basePath, target, remainder, candidate);
                 followedLink = true;
                 break;
             }
 
             if (!followedLink)
             {
+                if (current.Length == 0)
+                {
+                    return current;
+                }
                 if (!entries.TryGetValue(current, out ImageFileSystemEntry? result))
                 {
                     throw new FileNotFoundException(
                         $"Path '/{requestedPath}' does not exist in the image.");
                 }
-                return result;
+                return result.Path;
             }
         }
 
-        throw new InvalidDataException(
-            $"Link resolution for '/{requestedPath}' exceeded {MaximumLinkHops} hops.");
+    }
+
+    private static void CountLinkHop(string requestedPath, ref int hops)
+    {
+        if (++hops >= MaximumLinkHops)
+        {
+            throw new InvalidDataException(
+                $"Link resolution for '/{requestedPath}' exceeded {MaximumLinkHops} hops.");
+        }
     }
 
     public string ResolveParentComponents(string path, IReadOnlyDictionary<string, ImageFileSystemEntry> entries)
@@ -105,28 +143,29 @@ internal sealed class ImagePathResolver
             return path;
         }
 
-        ImageFileSystemEntry parent = ResolvePath(parentPath, entries);
-        if (parent.Type != ImageFileType.Directory)
+        string resolvedParent = ResolvePathName(parentPath, entries);
+        if (resolvedParent.Length > 0 && entries[resolvedParent].Type != ImageFileType.Directory)
         {
             throw new InvalidDataException(
-                $"Path '/{path}' has a non-directory parent '/{parent.Path}'.");
+                $"Path '/{path}' has a non-directory parent '/{resolvedParent}'.");
         }
-        return $"{parent.Path}/{ImagePath.GetFileName(path)}";
+        return ImagePath.Join(resolvedParent, ImagePath.GetFileName(path));
     }
 
-    public ImageFileSystemEntry? TryResolvePath(string requestedPath, IReadOnlyDictionary<string, ImageFileSystemEntry> entries)
+    public bool ResolvesToDirectory(string requestedPath, IReadOnlyDictionary<string, ImageFileSystemEntry> entries)
     {
         try
         {
-            return ResolvePath(requestedPath, entries);
+            string path = ResolvePathName(requestedPath, entries);
+            return path.Length == 0 || entries[path].Type == ImageFileType.Directory;
         }
         catch (FileNotFoundException)
         {
-            return null;
+            return false;
         }
         catch (InvalidDataException)
         {
-            return null;
+            return false;
         }
     }
 
@@ -134,24 +173,8 @@ internal sealed class ImagePathResolver
     {
         string target = entry.LinkTarget ??
             throw new InvalidDataException($"Hard link '/{entry.Path}' has no target.");
-        string targetPath = ImagePath.ResolveLinkTarget(
-            string.Empty,
-            target,
-            string.Empty,
-            entry.Path);
-        string parentPath = ImagePath.GetDirectoryName(targetPath);
-        if (parentPath.Length == 0)
-        {
-            return targetPath;
-        }
-
-        ImageFileSystemEntry parent = ResolvePath(parentPath, entries);
-        if (parent.Type != ImageFileType.Directory)
-        {
-            throw new InvalidDataException(
-                $"Hard link '/{entry.Path}' targets path '/{targetPath}' with a non-directory parent.");
-        }
-        return $"{parent.Path}/{ImagePath.GetFileName(targetPath)}";
+        string targetPath = semantics.NormalizeHardLinkTarget(target, entry.Path);
+        return ResolveParentComponents(targetPath, entries);
     }
 
     public string? TryGetHardLinkTargetPath(ImageFileSystemEntry entry, IReadOnlyDictionary<string, ImageFileSystemEntry> entries)
@@ -186,20 +209,5 @@ internal sealed class ImagePathResolver
         return source;
     }
 
-    public string ResolveParentComponents(string path)
-    {
-        string parentPath = ImagePath.GetDirectoryName(path);
-        if (parentPath.Length == 0)
-        {
-            return path;
-        }
-
-        ImageFileSystemEntry parent = ResolvePath(parentPath, entries);
-        if (parent.Type != ImageFileType.Directory)
-        {
-            throw new InvalidDataException(
-                $"Path '/{path}' has a non-directory parent '/{parent.Path}'.");
-        }
-        return $"{parent.Path}/{ImagePath.GetFileName(path)}";
-    }
+    public string ResolveParentComponents(string path) => ResolveParentComponents(path, entries);
 }

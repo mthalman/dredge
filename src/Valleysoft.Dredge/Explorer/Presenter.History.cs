@@ -42,8 +42,10 @@ internal sealed partial class ExplorerPresenter
         List<Line> lines = [Line.Of($"Version at layer {layer}", Theme.S(Theme.Foam, null, Deco.Bold))];
         if (preview?.Entry is { } entry)
         {
-            lines.Add(Line.Of($"{entry.Type}  mode {Convert.ToString(entry.Mode, 8)}  " +
-                $"{entry.UserId}:{entry.GroupId}  {Fmt.Size(entry.Size)}" +
+            string metadata = img.Semantics.IsWindows
+                ? $"attributes {(entry.Windows?.Attributes is uint attributes ? $"0x{attributes:X}" : "unknown")}"
+                : $"mode {Convert.ToString(entry.Mode, 8)}  {entry.UserId}:{entry.GroupId}";
+            lines.Add(Line.Of($"{entry.Type}  {metadata}  {Fmt.Size(entry.Size)}" +
                 (entry.LinkTarget is null ? "" : $"  target {entry.LinkTarget}"), Theme.Silt).Truncate(RightInner));
         }
         string? message = preview is null ? "Loading historical version..." : preview.Message;

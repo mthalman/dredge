@@ -113,12 +113,12 @@ public sealed class ExplorerDiveScenarioTests
             Assert.Equal(["app", "app/nested", "app/root"],
                 ui.Window.Presenter.Flatten(state).Select(static row => row.Path));
             Assert.DoesNotContain("app/nested", state.Expanded);
-            Assert.Equal(layer + 1, ExplorerImage.Find(ui.Window.Presenter.Tree(state), "app/nested/value")!.Size);
+            Assert.Equal(layer + 1, image.Find(ui.Window.Presenter.Tree(state), "app/nested/value")!.Size);
             ui.Press(Key.End);
             Assert.Equal("app/root", ui.Window.Presenter.Flatten(state)[state.Cursor].Path);
         }
         Assert.Same(first, image.WholeTree(0));
-        Assert.Equal(1, ExplorerImage.Find(first, "app/nested/value")!.Size);
+        Assert.Equal(1, image.Find(first, "app/nested/value")!.Size);
     }
 
     [Theory]

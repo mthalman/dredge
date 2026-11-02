@@ -58,11 +58,41 @@ internal sealed class ExplorerApp : IAsyncDisposable
         progress = new double[img.LayerCount];
         indexer = ExplorerLayerIndexer.Create(client, source, store);
         host = new ExplorerHost(client, factory, source, store, img, indexer, options);
+        host.ChoosePlatformAsync = ChooseComparisonPlatformAsync;
         pendingCompare = options.Compare;
     }
 
     public ExplorerImage Image => img;
     internal ExplorerHost Host => host;
+
+    private async Task<ExplorerPlatform?> ChooseComparisonPlatformAsync(
+        IReadOnlyList<ExplorerPlatform> platforms, CancellationToken cancellationToken)
+    {
+        TaskCompletionSource<ExplorerPlatform?> completion = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        using CancellationTokenRegistration registration = cancellationToken.Register(() =>
+            completion.TrySetCanceled(cancellationToken));
+        Post(() =>
+        {
+            if (completion.Task.IsCompleted)
+            {
+                return;
+            }
+            try
+            {
+                completion.TrySetResult(app is null ? null :
+                    PlatformPicker.Show(app, platforms, source.Platform, cancellationToken, comparing: true));
+            }
+            catch (Exception exception) when (exception is OperationCanceledException)
+            {
+                completion.TrySetCanceled(cancellationToken);
+            }
+            catch (Exception exception)
+            {
+                completion.TrySetException(exception);
+            }
+        });
+        return await completion.Task;
+    }
 
     public ExplorerExit Run() => Run(RunScreen, file => RunTerminalViewer(file,
         options.ViewerExePath, options.ViewerArgs, options.PauseAfterViewer, Console.In, Console.Out));
@@ -119,7 +149,7 @@ internal sealed class ExplorerApp : IAsyncDisposable
         int layer = options.Layer ?? Math.Max(0, img.LayerCount - 1);
         indexer.Prioritize(layer);
         indexer.Start(cts.Token);
-        return new() { Layer = layer, Focus = FocusPane.Layers, Notice = options.Notice, NoticeIsError = options.Notice is not null };
+        return new(img.Semantics.Comparer) { Layer = layer, Focus = FocusPane.Layers, Notice = options.Notice, NoticeIsError = options.Notice is not null };
     }
 
     private ExplorerExit RunScreen(ExplorerState state)
@@ -307,8 +337,9 @@ internal sealed class ExplorerApp : IAsyncDisposable
         RunBackground(token =>
         {
             token.ThrowIfCancellationRequested();
-            ImageAnalysisResult analysis = ImageAnalysis.Analyze(prefix);
-            ExplorerInsightsResult insights = ExplorerInsights.Build(analysis, img.Instructions, img.BaseLayerCount, includePotential: false);
+            ImageAnalysisResult analysis = ImageAnalysis.Analyze(prefix, img.Semantics);
+            ExplorerInsightsResult insights = ExplorerInsights.Build(analysis, img.Instructions, img.BaseLayerCount,
+                includePotential: false, semantics: img.Semantics);
             token.ThrowIfCancellationRequested();
             Post(() =>
             {
@@ -368,7 +399,7 @@ internal sealed class ExplorerApp : IAsyncDisposable
         {
             ExplorerSession session = await ExplorerSession.CreateAsync(client, source, store, indexes, token);
             ExplorerInsightsResult insights = ExplorerInsights.Build(
-                session.Analysis, img.Instructions, img.BaseLayerCount, includePotential: true);
+                session.Analysis, img.Instructions, img.BaseLayerCount, semantics: img.Semantics);
             lock (sync)
             {
                 if (stopping || token.IsCancellationRequested)
@@ -547,6 +578,7 @@ internal sealed class ExplorerHost : IExplorerHost, IAsyncDisposable
     }
 
     public ExplorerSession? Session { get; set; }
+    internal Func<IReadOnlyList<ExplorerPlatform>, CancellationToken, Task<ExplorerPlatform?>>? ChoosePlatformAsync { get; set; }
     public bool ClipboardEnabled => options.Clipboard != ClipboardMode.Off;
 
     private ExplorerSession Loaded => Session ??
@@ -615,7 +647,7 @@ internal sealed class ExplorerHost : IExplorerHost, IAsyncDisposable
     }
 
     private async Task<(ResolvedManifest Resolved, ExplorerPlatform? Platform, IDockerRegistryClient Client)>
-        GetTargetSnapshotAsync(ImageName name, CancellationToken cancellationToken)
+        GetTargetSnapshotAsync(ImageName name, CancellationToken cancellationToken, bool choosePlatform = false)
     {
         string key = name.ToString();
         if (!targetSnapshots.TryGetValue(key, out var snapshot))
@@ -627,7 +659,8 @@ internal sealed class ExplorerHost : IExplorerHost, IAsyncDisposable
                 ownedClients.Add(targetClient);
             }
             (ResolvedManifest resolved, _, ExplorerPlatform? platform) = await ExplorerSource.ResolveAsync(
-                targetClient, name, PlatformOptions, source.Platform, cancellationToken);
+                targetClient, name, PlatformOptions, source.Platform, cancellationToken,
+                comparing: true, chooseComparisonPlatform: choosePlatform ? ChoosePlatformAsync : null);
             cancellationToken.ThrowIfCancellationRequested();
             snapshot = (resolved, platform, targetClient);
             targetSnapshots.Add(key, snapshot);
@@ -677,7 +710,7 @@ internal sealed class ExplorerHost : IExplorerHost, IAsyncDisposable
             cancellationToken.ThrowIfCancellationRequested();
             if (!targets.TryGetValue(key, out ExplorerSession? target))
             {
-                var (resolved, platform, targetClient) = await GetTargetSnapshotAsync(name, cancellationToken);
+                var (resolved, platform, targetClient) = await GetTargetSnapshotAsync(name, cancellationToken, choosePlatform: true);
                 target = await ExplorerSession.LoadAsync(targetClient, factory, name, PlatformOptions,
                     store, baseImages: null, cancellationToken, exactPlatform: platform,
                     resolvedManifest: resolved);
@@ -725,7 +758,7 @@ internal sealed class ExplorerHost : IExplorerHost, IAsyncDisposable
     {
         using var operation = lifetime.Enter(cancellationToken);
         await using ImageFileSystem snapshot = Loaded.Files.CreateLayerSnapshot(layer, operation.Token);
-        ImageFileSystemEntry? entry = snapshot.List(null, true, false).FirstOrDefault(entry => entry.Path == path);
+        ImageFileSystemEntry? entry = snapshot.FindEntry(path);
         if (entry is null)
         {
             return new(path, null, [], $"Path absent after layer {layer}.", 0);
@@ -762,15 +795,8 @@ internal sealed class ExplorerHost : IExplorerHost, IAsyncDisposable
         List<string> messages = [];
         if (before.Message is not null) messages.Add("Before: " + before.Message);
         if (after.Message is not null) messages.Add("After: " + after.Message);
-        if (before.Entry?.Type != after.Entry?.Type || before.Entry?.Mode != after.Entry?.Mode ||
-            before.Entry?.UserId != after.Entry?.UserId || before.Entry?.GroupId != after.Entry?.GroupId ||
-            before.Entry?.LinkTarget != after.Entry?.LinkTarget)
-        {
-            static string Metadata(ImageFileSystemEntry? entry) => entry is null ? "missing"
-                : $"{entry.Type}, mode {Convert.ToString(entry.Mode, 8)}, {entry.UserId}:{entry.GroupId}" +
-                    (entry.LinkTarget is null ? "" : $", target {entry.LinkTarget}");
-            messages.Add($"Metadata: {Metadata(before.Entry)} -> {Metadata(after.Entry)}.");
-        }
+        string? metadata = MetadataDifference(before.Entry, after.Entry, Loaded.Semantics);
+        if (metadata is not null) messages.Add(metadata);
         IReadOnlyList<DiffLine>? lines = before.Lines is null || after.Lines is null ? null
             : TextDiff.Diff(before.Lines, after.Lines, cancellationToken: operation.Token);
         if (lines is null && before.Lines is not null && after.Lines is not null)
@@ -781,9 +807,28 @@ internal sealed class ExplorerHost : IExplorerHost, IAsyncDisposable
         {
             messages.Add(before.Entry?.Size > before.Bytes || after.Entry?.Size > after.Bytes
                 ? "No differences in the displayed prefix."
-                : "No text differences; content is identical.");
+                : "No text differences.");
         }
         return new(path, lines, messages.Count == 0 ? null : string.Join(" ", messages), operation.Token);
+    }
+
+    private static string? MetadataDifference(
+        ImageFileSystemEntry? before, ImageFileSystemEntry? after, ImageFileSystemSemantics semantics)
+    {
+        bool platformMetadataChanged = semantics.IsWindows ? before?.Windows != after?.Windows
+            : before?.Mode != after?.Mode || before?.UserId != after?.UserId || before?.GroupId != after?.GroupId;
+        if (before?.Type == after?.Type && !platformMetadataChanged && before?.LinkTarget == after?.LinkTarget)
+        {
+            return null;
+        }
+        string Metadata(ImageFileSystemEntry? entry) => entry is null ? "missing"
+            : $"{entry.Type}, " + (semantics.IsWindows
+                ? $"attributes {(entry.Windows?.Attributes is uint attributes ? $"0x{attributes:X}" : "unknown")}, " +
+                    $"metadata fingerprint {entry.Windows?.Fingerprint ?? "unknown"}, " +
+                    $"alternate streams {(entry.Windows?.HasAlternateStreams == true ? "present" : "absent")}"
+                : $"mode {Convert.ToString(entry.Mode, 8)}, {entry.UserId}:{entry.GroupId}") +
+                (entry.LinkTarget is null ? "" : $", target {entry.LinkTarget}");
+        return $"Metadata: {Metadata(before)} -> {Metadata(after)}.";
     }
 
     internal static string? LanguageFor(string path) =>
@@ -810,7 +855,8 @@ internal sealed class ExplorerHost : IExplorerHost, IAsyncDisposable
     internal static (List<string>? Lines, string? Message, long Bytes) Decode(byte[] data, bool truncated)
     {
         int length = data.Length;
-        if (Array.IndexOf(data, (byte)0) >= 0)
+        bool utf16 = length >= 2 && (data[0] == 0xff && data[1] == 0xfe || data[0] == 0xfe && data[1] == 0xff);
+        if (!utf16 && Array.IndexOf(data, (byte)0) >= 0)
         {
             return (null, "Binary file; no preview.", length);
         }
@@ -818,12 +864,38 @@ internal sealed class ExplorerHost : IExplorerHost, IAsyncDisposable
         try
         {
             // A truncated read can split a multi-byte character; drop the partial tail.
-            int end = truncated ? CompleteUtf8PrefixLength(data) : length;
-            text = new UTF8Encoding(false, true).GetString(data, 0, end);
+            if (utf16)
+            {
+                int count = length - 2;
+                if (truncated)
+                {
+                    count &= ~1;
+                    if (count >= 2)
+                    {
+                        int last = data[0] == 0xff
+                            ? data[count] | data[count + 1] << 8 : data[count] << 8 | data[count + 1];
+                        if (char.IsHighSurrogate((char)last))
+                        {
+                            count -= 2;
+                        }
+                    }
+                }
+                text = new UnicodeEncoding(data[0] == 0xfe, false, true).GetString(data, 2, count);
+                if (text.Contains('\0'))
+                {
+                    return (null, "Binary file; no preview.", length);
+                }
+            }
+            else
+            {
+                int end = truncated ? CompleteUtf8PrefixLength(data) : length;
+                int start = end >= 3 && data[0] == 0xef && data[1] == 0xbb && data[2] == 0xbf ? 3 : 0;
+                text = new UTF8Encoding(false, true).GetString(data, start, end - start);
+            }
         }
         catch (DecoderFallbackException)
         {
-            return (null, "Not UTF-8 text; no preview.", length);
+            return (null, utf16 ? "Invalid UTF-16 text; no preview." : "Not UTF-8 text; no preview.", length);
         }
         List<string> lines = [.. text.Replace("\r\n", "\n").Split('\n')];
         if (lines.Count > 0 && lines[^1].Length == 0)
@@ -867,7 +939,8 @@ internal sealed class ExplorerHost : IExplorerHost, IAsyncDisposable
     {
         using var operation = lifetime.Enter(cancellationToken);
         cancellationToken = operation.Token;
-        ExplorerFileDifference? difference = comparison.Files.FirstOrDefault(file => file.Path == path);
+        ExplorerFileDifference? difference = comparison.Files.FirstOrDefault(file =>
+            comparison.Baseline.Semantics.Comparer.Equals(file.Path, path));
         if (difference is null)
         {
             return new TextDiffContent(path, null, "This file is the same in both images.");
@@ -897,17 +970,8 @@ internal sealed class ExplorerHost : IExplorerHost, IAsyncDisposable
         (List<string>? before, string? beforeMessage) = await SideAsync(comparison.Baseline, difference.Baseline);
         (List<string>? after, string? afterMessage) = await SideAsync(comparison.Target, difference.Target);
         List<string> messages = [];
-        if (difference.Baseline?.Type != difference.Target?.Type)
-        {
-            messages.Add($"Entry type: {difference.Baseline?.Type.ToString() ?? "missing"} -> " +
-                $"{difference.Target?.Type.ToString() ?? "missing"}.");
-        }
-        if (difference.Baseline is { Type: ImageFileType.HardLink } oldLink &&
-            difference.Target is { Type: ImageFileType.HardLink } newLink &&
-            oldLink.LinkTarget != newLink.LinkTarget)
-        {
-            messages.Add($"Hard link target: {oldLink.LinkTarget} -> {newLink.LinkTarget}.");
-        }
+        string? metadata = MetadataDifference(difference.Baseline, difference.Target, comparison.Baseline.Semantics);
+        if (metadata is not null) messages.Add(metadata);
         if (beforeMessage is not null)
         {
             messages.Add("Baseline: " + beforeMessage);

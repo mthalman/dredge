@@ -55,8 +55,10 @@ internal static class ExplorerInsights
         ImageAnalysisResult analysis,
         IReadOnlyList<string> instructions,
         int? baseLayerCount,
-        bool includePotential = true)
+        bool includePotential = true,
+        ImageFileSystemSemantics? semantics = null)
     {
+        bool windows = semantics?.IsWindows == true;
         int baseCount = baseLayerCount ?? 0;
         List<ExplorerFinding> findings = [];
         long churn = 0;
@@ -76,7 +78,7 @@ internal static class ExplorerInsights
             bool hiderIsBase = hiddenBy < baseCount;
             if (producerIsBase && hiderIsBase)
             {
-                findings.Add(Create(ExplorerFindingKind.FromBase, files, instructions));
+                findings.Add(Create(ExplorerFindingKind.FromBase, files, instructions, windows));
             }
             else if (producerIsBase)
             {
@@ -86,7 +88,7 @@ internal static class ExplorerInsights
                 }
                 else
                 {
-                    findings.Add(Create(ExplorerFindingKind.BaseReplaced, files, instructions));
+                    findings.Add(Create(ExplorerFindingKind.BaseReplaced, files, instructions, windows));
                 }
             }
             else if (bytes < SmallGroupThreshold && !linkReplacement)
@@ -100,7 +102,7 @@ internal static class ExplorerInsights
                     LayerChangeKind.Identical => ExplorerFindingKind.Identical,
                     LayerChangeKind.Deleted => ExplorerFindingKind.Deleted,
                     _ => ExplorerFindingKind.Replaced
-                }, files, instructions));
+                }, files, instructions, windows));
             }
         }
 
@@ -110,7 +112,7 @@ internal static class ExplorerInsights
         }
 
         long potentialBytes = 0;
-        if (includePotential)
+        if (includePotential && !windows)
         {
             foreach (ImagePotentialSaving saving in analysis.FindPotentialSavings())
             {
@@ -129,7 +131,7 @@ internal static class ExplorerInsights
     }
 
     private static ExplorerFinding Create(
-        ExplorerFindingKind kind, HiddenFile[] files, IReadOnlyList<string> instructions)
+        ExplorerFindingKind kind, HiddenFile[] files, IReadOnlyList<string> instructions, bool windows)
     {
         int layer = files[0].Layer, hiddenBy = files[0].HiddenBy;
         string[] paths = [.. files.Select(static file => file.Path)];
@@ -165,7 +167,7 @@ internal static class ExplorerInsights
         {
             ExplorerFindingKind.BaseReplaced or ExplorerFindingKind.FromBase =>
                 ("Use a newer base image", "FROM <base>:<newer tag>", true),
-            _ => Fix(kind, producer, hider, paths),
+            _ => Fix(kind, producer, hider, paths, windows),
         };
         string verb = kind == ExplorerFindingKind.Deleted ? "deleted" : "wrote";
         List<string> explain =
@@ -277,7 +279,7 @@ internal static class ExplorerInsights
     }
 
     private static (string Label, string Fix, bool Dockerfile) Fix(
-        ExplorerFindingKind kind, string producer, string hider, IReadOnlyList<string> paths)
+        ExplorerFindingKind kind, string producer, string hider, IReadOnlyList<string> paths, bool windows)
     {
         bool nodeModules = paths.Any(static path => path.Contains("node_modules/", StringComparison.Ordinal));
         if (IsCopy(hider) && nodeModules)
@@ -288,13 +290,18 @@ internal static class ExplorerInsights
         {
             return IsCopy(producer)
                 ? ("Build in a separate stage", "COPY --from=build /app/dist ./dist", true)
+                : windows
+                ? ("Delete in the same RUN that created them",
+                    "Remove the files in that RUN using the image's configured shell.", false)
                 : ("Delete in the same RUN that created them", "RUN ... && rm -rf <paths>", true);
         }
         if (IsCopy(hider))
         {
             return ("Copy each file once", "COPY only the files this step needs", false);
         }
-        return ("Combine the steps", "RUN <first step> && <second step>", true);
+        return windows
+            ? ("Combine the steps", "Combine the steps in one RUN using the image's configured shell.", false)
+            : ("Combine the steps", "RUN <first step> && <second step>", true);
     }
 
     private static bool IsCopy(string instruction) =>
