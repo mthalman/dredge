@@ -667,7 +667,7 @@ public sealed class ExplorerDefenseHostTests : IAsyncDisposable
         TextDiffContent diff = await Host(baseline).DiffAsync(await CompareAsync(baseline, target), "current", Token);
 
         Assert.Equal(DiffOp.Same, Assert.Single(diff.Lines!).Op);
-        Assert.Contains("File -> SymbolicLink", diff.Message);
+        Assert.Contains("Metadata: File, mode 644, 0:0 -> SymbolicLink, mode 644, 0:0, target target.", diff.Message);
     }
 
     [Fact]
@@ -682,7 +682,7 @@ public sealed class ExplorerDefenseHostTests : IAsyncDisposable
         TextDiffContent diff = await Host(baseline).DiffAsync(await CompareAsync(baseline, target), "saved", Token);
 
         Assert.Equal(DiffOp.Same, Assert.Single(diff.Lines!).Op);
-        Assert.Contains("first -> second", diff.Message);
+        Assert.Contains("Metadata: HardLink, mode 644, 0:0, target first -> HardLink, mode 644, 0:0, target second.", diff.Message);
     }
 
     [Theory]
