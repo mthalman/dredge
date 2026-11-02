@@ -24,9 +24,22 @@ public sealed class WindowsReviewRoundFiveTests : IAsyncDisposable
         await Check(files);
         Assert.Equal(2, files.Analyze().LiveContents.Count);
         string destination = Path.Combine(cache.Root, "unicode-output");
-        await files.ExtractAsync("", destination, Token);
-        Assert.Equal("FIRST", await System.IO.File.ReadAllTextAsync(Path.Combine(destination, "\U00010400", "value"), Token));
-        Assert.Equal("SECOND", await System.IO.File.ReadAllTextAsync(Path.Combine(destination, "\U00010428", "value"), Token));
+        string probe = Path.Combine(cache.Root, "\U00010400");
+        Directory.CreateDirectory(probe);
+        bool distinctNames = !Directory.Exists(Path.Combine(cache.Root, "\U00010428"));
+        Directory.Delete(probe);
+        if (distinctNames)
+        {
+            await files.ExtractAsync("", destination, Token);
+            Assert.Equal("FIRST", await System.IO.File.ReadAllTextAsync(Path.Combine(destination, "\U00010400", "value"), Token));
+            Assert.Equal("SECOND", await System.IO.File.ReadAllTextAsync(Path.Combine(destination, "\U00010428", "value"), Token));
+            Assert.Equal(2, Directory.GetDirectories(destination).Length);
+        }
+        else
+        {
+            await Assert.ThrowsAsync<IOException>(() => files.ExtractAsync("", destination, Token));
+            Assert.False(Directory.Exists(destination));
+        }
         await using ImageFileSystem restored = await ImageFileSystem.CreateAsync(client.Object, Name, new(), Token, cache.Store);
         await Check(restored);
 
