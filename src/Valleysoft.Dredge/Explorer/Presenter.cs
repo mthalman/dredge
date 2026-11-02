@@ -5,12 +5,17 @@ internal enum RightView { Files, Insights, Inspector, Search, Keys, Command, War
 
 internal sealed class ExplorerState
 {
+    public ExplorerState(StringComparer? pathComparer = null)
+    {
+        Expanded = new(pathComparer ?? StringComparer.Ordinal);
+    }
+
     public int Layer { get; set; }
     public FocusPane Focus { get; set; } = FocusPane.Right;
     public RightView View { get; set; } = RightView.Files;
     public bool WholeFilesystem { get; set; }
     public HashSet<Change> Hidden { get; } = [];
-    public HashSet<string> Expanded { get; } = new(StringComparer.Ordinal);
+    public HashSet<string> Expanded { get; }
     public int Cursor { get; set; }
     public int Scroll { get; set; }
     public int Finding { get; set; }
@@ -420,7 +425,7 @@ internal sealed partial class ExplorerPresenter
         List<Hint> clear = s.Investigation is { } investigation
             ? [new("Esc", investigation.View == RightView.Search ? "Back to search" : "Back to insights", new Back())]
             : s.FindingsOnly || s.Hidden.Count > 0 ? [new("Esc", "Clear filters", new Back())] : [];
-        return s.View switch
+        List<Hint> hints = s.View switch
         {
             RightView.Packages => PackageHints(s),
             RightView.Search =>
@@ -433,7 +438,7 @@ internal sealed partial class ExplorerPresenter
             ],
             RightView.Insights =>
             [
-                .. img.BaseWarning is not null ? new Hint[] { new("Alt+W", "Base warning", new ShowView(RightView.Warning)) } : [],
+                .. img.HasWarnings ? new Hint[] { new("Alt+W", img.Semantics.IsWindows ? "Limitations" : "Base warning", new ShowView(RightView.Warning)) } : [],
                 new("↑↓", "Finding"), new("Enter", "Show files", new Activate()),
                 .. img.LayerCount > 0 ? new Hint[] { new("Tab", "Layers", new FocusOn(FocusPane.Layers)) } : [], back,
                 packages, ends, search, keys, quit,
@@ -478,6 +483,11 @@ internal sealed partial class ExplorerPresenter
                 page, ends, keys, quit,
             ],
         };
+        if (img.Semantics.IsWindows && s.View is not (RightView.Insights or RightView.Warning or RightView.Keys or RightView.Packages))
+        {
+            hints.Insert(0, new("Alt+W", "Limitations", new ShowView(RightView.Warning)));
+        }
+        return hints;
     }
 
     public string? Status(ExplorerState s)

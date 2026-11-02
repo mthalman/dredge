@@ -52,26 +52,38 @@ public class LsCommand : RegistryCommandBase<LsOptions>
     {
         IReadOnlyList<ImageFileSystemEntry> entries =
             fileSystem.List(options.Path, options.Recursive, options.ShowDeleted);
+        foreach (ImageFileSystemEntry entry in entries)
+        {
+            string? limitation = entry.Windows?.UnsupportedReason ??
+                (entry.Windows?.HasAlternateStreams == true
+                    ? "Alternate data streams are excluded from supported file content and size."
+                    : null);
+            if (limitation is not null)
+            {
+                Error.WriteLine($"Warning: {entry.Path}: {TerminalText.EscapeControls(limitation)}");
+            }
+        }
         if (options.OutputFormat == LsOutput.Json)
         {
             ansiConsole.Profile.Out.Writer.WriteLine(JsonHelper.Serialize(entries));
         }
         else
         {
-            WriteTextOutput(entries, options);
+            WriteTextOutput(entries, options, fileSystem.Semantics);
         }
     }
 
     private void WriteTextOutput(
         IEnumerable<ImageFileSystemEntry> entries,
-        LsOptions options)
+        LsOptions options,
+        ImageFileSystemSemantics semantics)
     {
         ImageFileSystemEntry[] entryArray = [.. entries];
-        string listedPath = ImagePath.NormalizeRequested(options.Path);
+        string listedPath = semantics.NormalizeRequested(options.Path);
         if (!options.Long && !options.ShowProvenance)
         {
             IEnumerable<string> namePaths = entryArray.Select(
-                entry => FormatPath(entry, listedPath));
+                entry => FormatPath(entry, listedPath, semantics));
             if (ansiConsole.Profile.Out.IsTerminal)
             {
                 ansiConsole.Write(new Columns(namePaths.Select(path => new Text(path))));
@@ -88,8 +100,8 @@ public class LsCommand : RegistryCommandBase<LsOptions>
 
         string[] paths = [.. entryArray
             .Select(entry => options.Long
-                ? FormatLongPath(entry, listedPath)
-                : FormatPath(entry, listedPath))];
+                ? FormatLongPath(entry, listedPath, semantics)
+                : FormatPath(entry, listedPath, semantics))];
         int userIdWidth = entryArray
             .Select(entry => entry.UserId.ToString(CultureInfo.InvariantCulture).Length)
             .DefaultIfEmpty()
@@ -110,9 +122,9 @@ public class LsCommand : RegistryCommandBase<LsOptions>
             {
                 writer.Write(FormatMode(entry));
                 writer.Write(' ');
-                writer.Write(entry.UserId.ToString(CultureInfo.InvariantCulture).PadLeft(userIdWidth));
+                writer.Write((entry.Windows is null ? entry.UserId.ToString(CultureInfo.InvariantCulture) : "?").PadLeft(userIdWidth));
                 writer.Write(' ');
-                writer.Write(entry.GroupId.ToString(CultureInfo.InvariantCulture).PadLeft(groupIdWidth));
+                writer.Write((entry.Windows is null ? entry.GroupId.ToString(CultureInfo.InvariantCulture) : "?").PadLeft(groupIdWidth));
                 writer.Write(' ');
                 writer.Write(entry.Size.ToString(CultureInfo.InvariantCulture).PadLeft(sizeWidth));
                 writer.Write(' ');
@@ -133,10 +145,11 @@ public class LsCommand : RegistryCommandBase<LsOptions>
 
     private static string FormatPath(
         ImageFileSystemEntry entry,
-        string listedPath)
+        string listedPath,
+        ImageFileSystemSemantics semantics)
     {
         string path = listedPath.Length > 0 &&
-            entry.Path.StartsWith($"{listedPath}/", StringComparison.Ordinal)
+            semantics.StartsWith(entry.Path, $"{listedPath}/")
                 ? entry.Path[(listedPath.Length + 1)..]
                 : entry.Path;
         return $"{path}{(entry.IsDeleted ? " (deleted)" : string.Empty)}";
@@ -144,14 +157,19 @@ public class LsCommand : RegistryCommandBase<LsOptions>
 
     private static string FormatLongPath(
         ImageFileSystemEntry entry,
-        string listedPath)
+        string listedPath,
+        ImageFileSystemSemantics semantics)
     {
-        string path = FormatPath(entry, listedPath);
+        string path = FormatPath(entry, listedPath, semantics);
         return entry.LinkTarget is null ? path : $"{path} -> {entry.LinkTarget}";
     }
 
     private static string FormatMode(ImageFileSystemEntry entry)
     {
+        if (entry.Windows is not null)
+        {
+            return entry.Windows.Attributes is uint attributes ? $"win:{attributes:X6}" : "win:     ?";
+        }
         char type = entry.Type switch
         {
             ImageFileType.Directory => 'd',

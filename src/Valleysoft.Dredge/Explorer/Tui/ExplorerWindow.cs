@@ -60,9 +60,9 @@ internal sealed class ExplorerWindow : Window
         this.lifetime = windowLifetime.Token;
         this.openWindowedViewer = openWindowedViewer;
         s = state;
-        if (s.Notice is null && img.BaseWarning is not null)
+        if (s.Notice is null && img.HasWarnings)
         {
-            s.Notice = img.BaseWarning;
+            s.Notice = img.WarningSummary;
             s.NoticeIsError = true;
         }
         ex = new ExplorerPresenter(img, 150, 42) { Copies = host.ClipboardEnabled };
@@ -506,6 +506,15 @@ internal sealed class ExplorerWindow : Window
 
     protected override bool OnKeyDown(Key key)
     {
+        if (!extractField.HasFocus && pendingExtract is null &&
+            key.IsAlt && !key.IsCtrl && key.NoAlt.KeyCode == KeyCode.W && Listed(key))
+        {
+            if (!ex.TooSmall)
+            {
+                Apply(new ShowView(RightView.Warning));
+            }
+            return true;
+        }
         if (commandText.HasFocus)
         {
             if (IsTab(key))
@@ -590,13 +599,6 @@ internal sealed class ExplorerWindow : Window
         if (key == Key.C.WithCtrl)
         {
             cmd = new CopyCommand();
-        }
-        if (key.IsAlt && !key.IsCtrl && key.NoAlt.KeyCode == KeyCode.W &&
-            (s.View == RightView.Insights && img.BaseWarning is not null ||
-                s.View == RightView.Packages && s.Packages?.Diagnostics.Count > 0 ||
-                Comparing && Compare.WarningCount > 0))
-        {
-            cmd = new ShowView(RightView.Warning);
         }
         if (key.IsAlt && !key.IsCtrl && key.NoAlt.KeyCode == KeyCode.I && Comparing)
         {
@@ -723,7 +725,9 @@ internal sealed class ExplorerWindow : Window
                 : s.View == RightView.Packages ? string.Join("\n\n", s.Packages!.Diagnostics.Select(d => $"/{d.Path}: {d.Message}"))
                 : img.BaseWarning;
             s.WarningTitle = cmd is ShowComparisonSnapshot ? "Comparison snapshot"
-                : Comparing || s.View == RightView.Packages ? "Package metadata warnings" : "Base verification warning";
+                : Comparing || s.View == RightView.Packages
+                    ? img.Semantics.IsWindows ? "Image metadata warnings" : "Package metadata warnings"
+                : img.Semantics.IsWindows ? "Windows analysis warnings" : "Base verification warning";
             s.WarningScroll = 0;
             s.View = RightView.Warning;
             Relayout();
@@ -950,7 +954,7 @@ internal sealed class ExplorerWindow : Window
                 else if (!f.Open && row.Path.Contains('/'))
                 {
                     string parent = row.Path[..row.Path.LastIndexOf('/')];
-                    s.Cursor = Math.Max(0, rows.FindIndex(r => r.Path == parent));
+                    s.Cursor = Math.Max(0, ex.IndexOf(s, parent));
                 }
                 break;
             case ToggleFindingsOnly when !img.Complete:
@@ -1108,11 +1112,11 @@ internal sealed class ExplorerWindow : Window
     private bool IsDirectory(string path) =>
         img.Analysis?.LiveEntries.TryGetValue(path, out ScannedEntry? entry) == true
             ? entry.Type == ImageFileType.Directory
-            : ExplorerImage.Find(ex.Tree(s), path)?.Kind == Kind.Dir;
+            : img.Find(ex.Tree(s), path)?.Kind == Kind.Dir;
 
     private bool Live(string path) =>
         img.Analysis?.LiveEntries.ContainsKey(path) == true ||
-        img.Analysis?.LiveEntries.Keys.Any(key => key.StartsWith(path + "/", StringComparison.Ordinal)) == true;
+        img.Analysis?.LiveEntries.Keys.Any(key => img.Semantics.StartsWith(key, path + "/")) == true;
 
     // ───────────────────────────── actions ─────────────────────────────
 

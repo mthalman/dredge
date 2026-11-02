@@ -189,7 +189,7 @@ public sealed class ExplorerReviewRegressionTests
         state.Expanded.Add("app");
         using ExplorerUiHarness ui = ExplorerWindowTests.Open(image, state,
             static session => new FakeExplorerHost { Baseline = session }, out _);
-        Node node = ExplorerImage.Find(ui.Window.Presenter.Tree(state), "app/item")!;
+        Node node = image.Find(ui.Window.Presenter.Tree(state), "app/item")!;
         Assert.Equal(Kind.File, node.Kind);
         Assert.Equal(2, node.Size);
         Assert.Equal(Change.Removed, Assert.Single(node.Children).Change);

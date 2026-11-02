@@ -14,30 +14,52 @@ internal sealed class ImageFileSystem : IAsyncDisposable
     private readonly LayerStore store;
     private readonly bool ownsStore;
     private readonly Dictionary<int, StoredLayerIndex> indexes = [];
-    private readonly Dictionary<string, ImageFileSystemEntry> entries =
-        new(StringComparer.Ordinal);
-    private readonly Dictionary<string, ImageFileSystemEntry> deletedEntries =
-        new(StringComparer.Ordinal);
+    private readonly Dictionary<string, ImageFileSystemEntry> entries;
+    private readonly Dictionary<string, ImageFileSystemEntry> deletedEntries;
     private readonly ImageFileSystemBuilder builder;
     private readonly ImagePathResolver pathResolver;
     private readonly ExtractionPlanner extractionPlanner;
+    private IReadOnlyList<LayerDiagnostic> restoredDiagnostics = [];
 
     private ImageFileSystem(
         IDockerRegistryClient client,
         ImageName imageName,
         IImageManifest manifest,
         LayerStore store,
-        bool ownsStore)
+        bool ownsStore,
+        ImageFileSystemSemantics? semantics = null)
     {
         this.client = client;
         this.imageName = imageName;
         this.manifest = manifest;
         this.store = store;
         this.ownsStore = ownsStore;
-        this.builder = new(client, imageName, manifest, store, indexes, entries, deletedEntries);
-        this.pathResolver = new(entries);
-        this.extractionPlanner = new(pathResolver, entries);
+        Semantics = semantics ?? ImageFileSystemSemantics.Linux;
+        entries = new(Semantics.Comparer);
+        deletedEntries = new(Semantics.Comparer);
+        this.builder = new(client, imageName, manifest, store, indexes, entries, deletedEntries, Semantics);
+        this.pathResolver = new(entries, Semantics);
+        this.extractionPlanner = new(pathResolver, entries, Semantics);
     }
+
+    internal ImageFileSystemSemantics Semantics { get; }
+    internal ImageFileSystemEntry? FindEntry(string path) => entries.GetValueOrDefault(path);
+
+    internal int DiagnosticCount
+    {
+        get
+        {
+            int count = restoredDiagnostics.Count;
+            foreach (StoredLayerIndex index in indexes.Values)
+            {
+                count += index.Changes.Diagnostics.Count;
+            }
+            return count;
+        }
+    }
+    internal IReadOnlyList<LayerDiagnostic> Diagnostics =>
+        [.. restoredDiagnostics, .. indexes.OrderBy(static pair => pair.Key).SelectMany(pair => pair.Value.Changes.Diagnostics
+            .Select(diagnostic => diagnostic with { Message = $"Layer {pair.Key}: {diagnostic.Message}" }))];
 
     public static async Task<ImageFileSystem> CreateAsync(
         IDockerRegistryClient client,
@@ -69,13 +91,19 @@ internal sealed class ImageFileSystem : IAsyncDisposable
             imageName.Repo,
             configDigest,
             cancellationToken);
-        if (string.Equals(config.Os, "windows", StringComparison.OrdinalIgnoreCase))
+        ImageFileSystemSemantics semantics = ImageFileSystemSemantics.ForOs(config.Os);
+        if (contentPath is not null) _ = semantics.NormalizeRequested(contentPath);
+        if (extractionPath is not null) _ = semantics.NormalizeRequested(extractionPath);
+        if (semantics.IsWindows)
         {
-            throw new NotSupportedException(
-                "Image filesystem commands support Linux image layers only; Windows image layers are not supported.");
+            foreach (IDescriptor layer in manifest.Layers.Take(
+                maxLayerIndex is int lastLayer ? lastLayer + 1 : manifest.Layers.Length))
+            {
+                semantics.ValidateLayerMediaType(layer.MediaType);
+            }
         }
 
-        ImageFileSystem fileSystem = new(client, imageName, manifest, store ?? LayerStore.Create(), store is null);
+        ImageFileSystem fileSystem = new(client, imageName, manifest, store ?? LayerStore.Create(), store is null, semantics);
         try
         {
             if (layerIndexes is not null)
@@ -93,7 +121,7 @@ internal sealed class ImageFileSystem : IAsyncDisposable
             string digest = resolved.ManifestInfo.DockerContentDigest;
             StoredFileSystem? cached = maxLayerIndex is null
                 ? await fileSystem.store.ReadMetadataAsync<StoredFileSystem>(
-                    digest, "view", cancellationToken)
+                    digest, semantics.ViewKind, cancellationToken)
                 : null;
             if (maxLayerIndex is null && !requireLayerIndexes && progress is null &&
                 cached is not null && fileSystem.TryRestore(cached))
@@ -105,7 +133,7 @@ internal sealed class ImageFileSystem : IAsyncDisposable
                 maxLayerIndex);
             if (complete && maxLayerIndex is null)
             {
-                await fileSystem.store.WriteMetadataAsync(digest, "view", fileSystem.Snapshot(), cancellationToken);
+                await fileSystem.store.WriteMetadataAsync(digest, semantics.ViewKind, fileSystem.Snapshot(), cancellationToken);
             }
             return fileSystem;
         }
@@ -121,7 +149,7 @@ internal sealed class ImageFileSystem : IAsyncDisposable
         bool recursive,
         bool showDeleted)
     {
-        string path = ImagePath.NormalizeRequested(requestedPath);
+        string path = Semantics.NormalizeRequested(requestedPath);
         ImageFileSystemEntry? selected = null;
         if (path.Length > 0)
         {
@@ -140,7 +168,7 @@ internal sealed class ImageFileSystem : IAsyncDisposable
 
         if (selected is not null && selected.Type != ImageFileType.Directory)
         {
-            return [selected.Path == path ? selected : selected with { Path = path }];
+            return [Semantics.Comparer.Equals(selected.Path, path) ? selected : selected with { Path = path }];
         }
 
         IEnumerable<ImageFileSystemEntry> results = entries.Values;
@@ -154,7 +182,7 @@ internal sealed class ImageFileSystem : IAsyncDisposable
         return [.. results
             .Where(entry =>
             {
-                if (!entry.Path.StartsWith(prefix, StringComparison.Ordinal) ||
+                if (!Semantics.StartsWith(entry.Path, prefix) ||
                     entry.Path.Length == prefix.Length)
                 {
                     return false;
@@ -163,10 +191,10 @@ internal sealed class ImageFileSystem : IAsyncDisposable
                 string relative = entry.Path[prefix.Length..];
                 return recursive || !relative.Contains('/');
             })
-            .Select(entry => resolvedPath == path
+            .Select(entry => Semantics.Comparer.Equals(resolvedPath, path)
                 ? entry
                 : entry with { Path = $"{path}/{entry.Path[prefix.Length..]}" })
-            .OrderBy(entry => entry.Path, StringComparer.Ordinal)];
+            .OrderBy(entry => entry.Path, Semantics.Comparer)];
     }
 
     internal ImageAnalysisResult Analyze()
@@ -176,23 +204,33 @@ internal sealed class ImageFileSystem : IAsyncDisposable
             throw new InvalidOperationException(
                 "The complete image must be indexed before analyzing its layers.");
         }
-        return ImageAnalysis.Analyze([.. Enumerable.Range(0, manifest.Layers.Length).Select(index => indexes[index].Changes)]);
+        return ImageAnalysis.Analyze([.. Enumerable.Range(0, manifest.Layers.Length).Select(index => indexes[index].Changes)], Semantics);
     }
 
-    internal ImageFileSystem CreateLayerSnapshot(int layer, CancellationToken cancellationToken)
+    internal void ValidateLayerSnapshot(int layer, CancellationToken cancellationToken)
     {
         if (layer < 0 || layer >= manifest.Layers.Length)
         {
             throw new ArgumentOutOfRangeException(nameof(layer));
         }
-        ImageFileSystem snapshot = new(client, imageName, manifest, store, ownsStore: false);
         for (int i = 0; i <= layer; i++)
         {
             cancellationToken.ThrowIfCancellationRequested();
-            if (!indexes.TryGetValue(i, out StoredLayerIndex? index))
+            if (!indexes.ContainsKey(i))
             {
                 throw new InvalidOperationException($"Layer {i} must be indexed before reading its package inventory.");
             }
+        }
+    }
+
+    internal ImageFileSystem CreateLayerSnapshot(int layer, CancellationToken cancellationToken)
+    {
+        ValidateLayerSnapshot(layer, cancellationToken);
+        ImageFileSystem snapshot = new(client, imageName, manifest, store, ownsStore: false, Semantics);
+        for (int i = 0; i <= layer; i++)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            StoredLayerIndex index = indexes[i];
             snapshot.indexes.Add(i, index);
             snapshot.builder.ApplyLayer(index.Changes, new(i, index.Digest), cancellationToken);
         }
@@ -325,7 +363,7 @@ internal sealed class ImageFileSystem : IAsyncDisposable
 
     private ExtractionPlan CreateExtractionPlan(string requestedPath, string outputPath)
     {
-        string sourcePath = ImagePath.NormalizeRequested(requestedPath);
+        string sourcePath = Semantics.NormalizeRequested(requestedPath);
         bool extractingRoot = sourcePath.Length == 0;
         ImageFileSystemEntry? source = extractingRoot
             ? null
@@ -335,7 +373,8 @@ internal sealed class ImageFileSystem : IAsyncDisposable
             outputPath,
             extractingRoot,
             source,
-            entries);
+            entries,
+            useCapturedStreamState: source is { Type: ImageFileType.File or ImageFileType.HardLink });
     }
 
     private async Task<bool> BuildIndexAsync(string? contentPath, bool extracting,
@@ -357,7 +396,7 @@ internal sealed class ImageFileSystem : IAsyncDisposable
     private StoredFileSystem Snapshot() => new(
         [.. manifest.Layers.Select(static layer => layer.Digest!)],
         [.. entries.Values.Select(StoredEntry.FromEntry)],
-        [.. deletedEntries.Values.Select(StoredEntry.FromEntry)]);
+        [.. deletedEntries.Values.Select(StoredEntry.FromEntry)]) { Diagnostics = Diagnostics };
 
     private bool TryRestore(StoredFileSystem cached)
     {
@@ -370,6 +409,7 @@ internal sealed class ImageFileSystem : IAsyncDisposable
             }
             RestoreEntries(cached.Entries, entries);
             RestoreEntries(cached.DeletedEntries, deletedEntries);
+            restoredDiagnostics = cached.Diagnostics;
             return true;
         }
         catch (InvalidDataException exception)
@@ -415,7 +455,10 @@ internal sealed class ImageFileSystem : IAsyncDisposable
         layer.Index >= 0 && layer.Index < manifest.Layers.Length &&
         layer.Digest == manifest.Layers[layer.Index].Digest;
 
-    internal sealed record StoredFileSystem(string[] Layers, StoredEntry[] Entries, StoredEntry[] DeletedEntries);
+    internal sealed record StoredFileSystem(string[] Layers, StoredEntry[] Entries, StoredEntry[] DeletedEntries)
+    {
+        public IReadOnlyList<LayerDiagnostic> Diagnostics { get; init; } = [];
+    }
 
     internal sealed record StoredEntry(
         ImageFileSystemEntry Value, int ContentLayerIndex, int ContentEntryIndex,

@@ -37,9 +37,10 @@ internal sealed partial class ExplorerPresenter
         int w = RightInner;
         bool focused = s.Focus == FocusPane.Right;
         List<Line> items = [];
-        if (img.BaseWarning is not null)
+        if (img.HasWarnings)
         {
-            items.Add(Line.Of("Base verification warning - Alt+W for full details", Theme.Ochre).Truncate(w));
+            items.Add(Line.Of(img.Semantics.IsWindows ? "Windows analysis limitations - Alt+W for full details"
+                : "Base verification warning - Alt+W for full details", Theme.Ochre).Truncate(w));
         }
         if (!img.Complete)
         {
@@ -207,13 +208,13 @@ internal sealed partial class ExplorerPresenter
         List<Line> lines = WarningLines(s);
         s.WarningScroll = Math.Clamp(s.WarningScroll, 0, Math.Max(0, lines.Count - RightInnerHeight));
         return Pane([.. lines.Skip(s.WarningScroll).Take(RightInnerHeight)],
-            s.WarningTitle ?? "Base verification warning", true, "Complete details - Esc returns");
+            s.WarningTitle ?? (img.Semantics.IsWindows ? "Windows analysis warnings" : "Base verification warning"), true, "Complete details - Esc returns");
     }
 
     // ───────────────────────────── inspector ─────────────────────────────
 
     public Node? InspectedNode(ExplorerState s) =>
-        ExplorerImage.Find(Tree(s), s.InspectPath) ?? ExplorerImage.Find(img.LayerTree(s.Layer), s.InspectPath);
+        img.Find(Tree(s), s.InspectPath) ?? img.Find(img.LayerTree(s.Layer), s.InspectPath);
 
     private PaneContent InspectorPane(ExplorerState s)
     {
@@ -346,11 +347,11 @@ internal sealed partial class ExplorerPresenter
     // ───────────────────────────── search ─────────────────────────────
 
     private readonly record struct SearchCacheKey(
-        IReadOnlyDictionary<string, List<(int Layer, Change Change)>>? Index,
+        IReadOnlyDictionary<string, List<(int Layer, Change Change, string Path)>>? Index,
         string Query, int? Layer, bool IncludeDeleted, bool ExactCase);
 
     private (SearchCacheKey Key, List<SearchHit> Hits, int Total)? searchCache;
-    private (IReadOnlyDictionary<string, List<(int Layer, Change Change)>> Index, int Layer, int Count)? searchedPathsCache;
+    private (IReadOnlyDictionary<string, List<(int Layer, Change Change, string Path)>> Index, int Layer, int Count)? searchedPathsCache;
 
     public (List<SearchHit> Hits, int Total) SearchResults(ExplorerState s)
     {
@@ -366,11 +367,44 @@ internal sealed partial class ExplorerPresenter
         {
             StringComparison comparison = s.SearchExactCase ? StringComparison.Ordinal : StringComparison.OrdinalIgnoreCase;
             IReadOnlyDictionary<string, ScannedEntry>? live = img.Analysis?.LiveEntries;
-            foreach ((string path, List<(int Layer, Change Change)> layers) in index)
+            IReadOnlyDictionary<string, string[]>? exactCasePaths =
+                s.SearchExactCase && !s.SearchLayerOnly && img.Semantics.IsWindows ? img.ExactCaseSearchPaths : null;
+            foreach (var pair in index)
             {
-                if (!path.Contains(s.SearchQuery, comparison)
-                    || (s.SearchLayerOnly && !layers.Any(l => l.Layer == s.Layer))
-                    || (!s.SearchIncludeDeleted && layers[^1].Change == Change.Removed))
+                var layers = pair.Value;
+                if (!s.SearchIncludeDeleted && layers[^1].Change == Change.Removed)
+                {
+                    continue;
+                }
+                string? path = null;
+                if (s.SearchLayerOnly)
+                {
+                    for (int i = layers.Count - 1; i >= 0; i--)
+                    {
+                        var occurrence = layers[i];
+                        if (occurrence.Layer == s.Layer && occurrence.Path.Contains(s.SearchQuery, comparison))
+                        {
+                            path = occurrence.Path;
+                            break;
+                        }
+                    }
+                }
+                else if (exactCasePaths is not null)
+                {
+                    foreach (string candidate in exactCasePaths[pair.Key])
+                    {
+                        if (candidate.Contains(s.SearchQuery, comparison))
+                        {
+                            path = candidate;
+                            break;
+                        }
+                    }
+                }
+                else if (layers[^1].Path.Contains(s.SearchQuery, comparison))
+                {
+                    path = layers[^1].Path;
+                }
+                if (path is null)
                 {
                     continue;
                 }
@@ -390,7 +424,8 @@ internal sealed partial class ExplorerPresenter
                     }
                 }
                 long size = img.Analysis?.LiveContents.GetValueOrDefault(path)?.Size ?? entry?.Size ?? 0;
-                hits.Add(new SearchHit(path, entry?.Type == ImageFileType.Directory, size, [.. layers], note));
+                hits.Add(new SearchHit(path, entry?.Type == ImageFileType.Directory, size,
+                    [.. layers.Select(static item => (item.Layer, item.Change))], note));
             }
             hits.Sort((a, b) => string.CompareOrdinal(a.Path, b.Path));
         }

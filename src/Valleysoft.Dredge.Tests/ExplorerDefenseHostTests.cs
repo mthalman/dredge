@@ -64,7 +64,7 @@ public sealed class ExplorerDefenseHostTests : IAsyncDisposable
         Assert.Equal(["old"], (await host.PreviewVersionAsync("saved", 2, Token)).Lines);
         TextDiffContent diff = await host.DiffVersionAsync("saved", 0, 2, Token);
         Assert.Equal(DiffOp.Same, Assert.Single(diff.Lines!).Op);
-        Assert.Contains("identical", diff.Message);
+        Assert.Contains("No text differences.", diff.Message);
     }
 
     [Fact]
@@ -79,10 +79,24 @@ public sealed class ExplorerDefenseHostTests : IAsyncDisposable
         Assert.Equal(DiffOp.Same, Assert.Single(diff.Lines!).Op);
         Assert.Contains("mode 400", diff.Message);
         Assert.Contains("mode 600", diff.Message);
-        Assert.Contains("identical", diff.Message);
+        Assert.Contains("No text differences.", diff.Message);
         TextDiffContent replacement = await host.DiffVersionAsync("file", 1, 2, Token);
         Assert.Equal(new DiffLine(DiffOp.Delete, 1, null, "same"), Assert.Single(replacement.Lines!));
         Assert.Contains("Directory", replacement.Message);
+    }
+
+    [Fact]
+    public async Task HistoricalDiffPreservesUtf8ContentAfterTheEncodingSignature()
+    {
+        TestImage image = await CreateAsync(
+            Blob(("file", "\uFEFF\uFEFFvalue")),
+            Blob(("file", "\uFEFF\uFEFF\uFEFFvalue")));
+        TextDiffContent diff = await Host(image).DiffVersionAsync("file", 0, 1, Token);
+        Assert.Equal(
+            [new DiffLine(DiffOp.Delete, 1, null, "\uFEFFvalue"),
+                new DiffLine(DiffOp.Insert, null, 1, "\uFEFF\uFEFFvalue")],
+            diff.Lines);
+        Assert.DoesNotContain("content is identical", diff.Message ?? "");
     }
 
     [Theory]
@@ -107,7 +121,7 @@ public sealed class ExplorerDefenseHostTests : IAsyncDisposable
         }
         else
         {
-            Assert.Equal("No text differences; content is identical.", diff.Message);
+            Assert.Equal("No text differences.", diff.Message);
         }
     }
 
@@ -653,7 +667,7 @@ public sealed class ExplorerDefenseHostTests : IAsyncDisposable
         TextDiffContent diff = await Host(baseline).DiffAsync(await CompareAsync(baseline, target), "current", Token);
 
         Assert.Equal(DiffOp.Same, Assert.Single(diff.Lines!).Op);
-        Assert.Contains("File -> SymbolicLink", diff.Message);
+        Assert.Contains("Metadata: File, mode 644, 0:0 -> SymbolicLink, mode 644, 0:0, target target.", diff.Message);
     }
 
     [Fact]
@@ -668,7 +682,7 @@ public sealed class ExplorerDefenseHostTests : IAsyncDisposable
         TextDiffContent diff = await Host(baseline).DiffAsync(await CompareAsync(baseline, target), "saved", Token);
 
         Assert.Equal(DiffOp.Same, Assert.Single(diff.Lines!).Op);
-        Assert.Contains("first -> second", diff.Message);
+        Assert.Contains("Metadata: HardLink, mode 644, 0:0, target first -> HardLink, mode 644, 0:0, target second.", diff.Message);
     }
 
     [Theory]
@@ -834,12 +848,12 @@ public sealed class ExplorerDefenseHostTests : IAsyncDisposable
 
         foreach (List<Node> tree in new[] { model.LayerTree(0), model.WholeTree(0)! })
         {
-            Node directory = ExplorerImage.Find(tree, folder)!;
+            Node directory = model.Find(tree, folder)!;
             Assert.Equal(size, directory.Size);
             Assert.Equal(115, directory.FileCount);
             Assert.Equal("115 hard links, 1 shared file", directory.Sharing);
-            Assert.Equal(size, ExplorerImage.Find(tree, folder + "/tool000")!.Size);
-            Assert.Equal(size, ExplorerImage.Find(tree, "usr")!.Size);
+            Assert.Equal(size, model.Find(tree, folder + "/tool000")!.Size);
+            Assert.Equal(size, model.Find(tree, "usr")!.Size);
         }
         ExplorerState searching = new() { SearchQuery = folder + "/" };
         Assert.Equal(115, presenter.SearchResults(searching).Hits.Count);
@@ -881,8 +895,8 @@ public sealed class ExplorerDefenseHostTests : IAsyncDisposable
         Assert.Equal(5, Assert.Single(rows, static row => row.Path == "opt/links/new").After);
 
         List<Node> tree = model.WholeTree(layer)!;
-        Assert.Equal(8, ExplorerImage.Find(tree, "opt/links")!.Size);
-        Assert.Equal(8, ExplorerImage.Find(tree, "usr")!.Size);
+        Assert.Equal(8, model.Find(tree, "opt/links")!.Size);
+        Assert.Equal(8, model.Find(tree, "usr")!.Size);
         ExplorerState browsing = new() { Layer = layer, WholeFilesystem = true };
         Assert.Contains("11 B in", presenter.FilesPane(browsing).Lines[0].ToString());
         Assert.Equal(11, model.TotalSize);
@@ -934,12 +948,12 @@ public sealed class ExplorerDefenseHostTests : IAsyncDisposable
         ExplorerImage model = ExplorerImage.FromSource(image.Source);
         model.SetSession(image.Session, ExplorerInsights.Build(image.Session.Analysis, model.Instructions, null));
 
-        Assert.Equal(7, ExplorerImage.Find(model.WholeTree(1)!, "links")!.Size);
-        Node removed = ExplorerImage.Find(model.LayerTree(2), "links/one")!;
+        Assert.Equal(7, model.Find(model.WholeTree(1)!, "links")!.Size);
+        Node removed = model.Find(model.LayerTree(2), "links/one")!;
         Assert.Equal(Change.Removed, removed.Change);
         Assert.Equal(7, removed.ShippedSize);
-        Assert.Equal(7, ExplorerImage.Find(model.WholeTree(2)!, "links")!.Size);
-        Assert.Equal(7, ExplorerImage.Find(model.WholeTree(2)!, "links")!.ShippedSize);
+        Assert.Equal(7, model.Find(model.WholeTree(2)!, "links")!.Size);
+        Assert.Equal(7, model.Find(model.WholeTree(2)!, "links")!.ShippedSize);
         Assert.Equal(0, model.TotalReclaimable);
     }
 

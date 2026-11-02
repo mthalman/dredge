@@ -4,11 +4,14 @@ internal sealed class ExtractionPlanner
 {
     private readonly ImagePathResolver resolver;
     private readonly IReadOnlyDictionary<string, ImageFileSystemEntry> entries;
+    private readonly ImageFileSystemSemantics semantics;
 
-    public ExtractionPlanner(ImagePathResolver resolver, IReadOnlyDictionary<string, ImageFileSystemEntry> entries)
+    public ExtractionPlanner(ImagePathResolver resolver, IReadOnlyDictionary<string, ImageFileSystemEntry> entries,
+        ImageFileSystemSemantics? semantics = null)
     {
         this.resolver = resolver;
         this.entries = entries;
+        this.semantics = semantics ?? ImageFileSystemSemantics.Linux;
     }
 
     public ExtractionPlan CreatePlan(
@@ -16,9 +19,10 @@ internal sealed class ExtractionPlanner
         string outputPath,
         bool extractingRoot,
         ImageFileSystemEntry? source,
-        IReadOnlyDictionary<string, ImageFileSystemEntry> entries)
+        IReadOnlyDictionary<string, ImageFileSystemEntry> entries,
+        bool useCapturedStreamState = false)
     {
-        string sourcePath = ImagePath.NormalizeRequested(requestedPath);
+        string sourcePath = semantics.NormalizeRequested(requestedPath);
         if (!extractingRoot && source is not null)
         {
             sourcePath = source.Path;
@@ -27,21 +31,34 @@ internal sealed class ExtractionPlanner
         string fullOutputPath = Path.GetFullPath(outputPath);
         ImageFileSystemExtractor.ValidateNewDestination(fullOutputPath);
         string? missingParentRoot = ImageFileSystemExtractor.GetMissingParentRoot(fullOutputPath);
-        List<ImageFileSystemEntry> selected = SelectExtractionEntries(sourcePath, source, extractingRoot, entries);
+        List<ImageFileSystemEntry> selected = SelectExtractionEntries(sourcePath, source, extractingRoot, entries, semantics);
         ValidateExtractionEntries(selected);
+        if (semantics.IsWindows)
+        {
+            ImageFileSystemEntry? unsupported = selected.FirstOrDefault(static entry =>
+                entry.Type == ImageFileType.SymbolicLink || entry.ContentLinkTarget is not null ||
+                entry.Windows?.UnsupportedReason is not null || entry.Windows?.HasAlternateStreams == true);
+            string streamPrefix = sourcePath + ":";
+            if (unsupported is not null || (!useCapturedStreamState &&
+                entries.Keys.Any(path => semantics.StartsWith(path, streamPrefix))))
+            {
+                throw new NotSupportedException($"Windows extraction is content-only; '{unsupported?.Path ?? sourcePath}' has unsupported link or alternate-stream semantics.");
+            }
+        }
         Dictionary<string, string> destinations = CreateExtractionDestinations(
             selected,
             sourcePath,
             fullOutputPath,
-            extractingRoot);
-        Dictionary<string, string> hardLinkTargets = GetExtractionHardLinkTargets(selected);
-        HashSet<string> preservableHardLinks = GetPreservableHardLinks(
+            extractingRoot,
+            semantics);
+        Dictionary<string, string> hardLinkTargets = semantics.IsWindows ? [] : GetExtractionHardLinkTargets(selected);
+        HashSet<string> preservableHardLinks = semantics.IsWindows ? [] : GetPreservableHardLinks(
             selected,
             destinations,
             hardLinkTargets,
             entries);
         IReadOnlyDictionary<string, bool> symbolicLinkDirectoryTargets =
-            GetSymbolicLinkDirectoryTargets(selected);
+            semantics.IsWindows ? new Dictionary<string, bool>() : GetSymbolicLinkDirectoryTargets(selected);
         return new(
             source,
             extractingRoot,
@@ -58,14 +75,16 @@ internal sealed class ExtractionPlanner
         string sourcePath,
         ImageFileSystemEntry? source,
         bool extractingRoot,
-        IReadOnlyDictionary<string, ImageFileSystemEntry> entries)
+        IReadOnlyDictionary<string, ImageFileSystemEntry> entries,
+        ImageFileSystemSemantics? semantics = null)
     {
+        semantics ??= ImageFileSystemSemantics.Linux;
         return extractingRoot
             ? OrderExtractionEntries(entries.Values)
             : source!.Type == ImageFileType.Directory
                 ? OrderExtractionEntries(entries.Values.Where(entry =>
-                    entry.Path == sourcePath ||
-                    entry.Path.StartsWith($"{sourcePath}/", StringComparison.Ordinal)))
+                    semantics.Comparer.Equals(entry.Path, sourcePath) ||
+                    semantics.StartsWith(entry.Path, $"{sourcePath}/")))
                 : [source];
     }
 
@@ -89,17 +108,24 @@ internal sealed class ExtractionPlanner
         IEnumerable<ImageFileSystemEntry> selected,
         string sourcePath,
         string outputPath,
-        bool extractingRoot) =>
-        selected.ToDictionary(
-            entry => entry.Path,
-            entry => !extractingRoot && entry.Path == sourcePath
+        bool extractingRoot,
+        ImageFileSystemSemantics? semantics = null)
+    {
+        semantics ??= ImageFileSystemSemantics.Linux;
+        Dictionary<string, string> destinations = new(semantics.Comparer);
+        foreach (ImageFileSystemEntry entry in selected)
+        {
+            string destination = !extractingRoot && semantics.Comparer.Equals(entry.Path, sourcePath)
                 ? outputPath
-                : ImageFileSystemExtractor.GetContainedDestination(
-                    outputPath,
-                    extractingRoot
-                        ? entry.Path
-                        : entry.Path[(sourcePath.Length + 1)..]),
-            StringComparer.Ordinal);
+                : semantics.IsWindows && destinations.TryGetValue(ImagePath.GetDirectoryName(entry.Path), out string? parent)
+                    ? ImageFileSystemExtractor.GetContainedDestination(parent, ImagePath.GetFileName(entry.Path))
+                    : ImageFileSystemExtractor.GetContainedDestination(
+                        outputPath,
+                        extractingRoot ? entry.Path : entry.Path[(sourcePath.Length + 1)..]);
+            destinations.Add(entry.Path, destination);
+        }
+        return destinations;
+    }
 
     public Dictionary<string, string> GetExtractionHardLinkTargets(IEnumerable<ImageFileSystemEntry> selected) =>
         selected
@@ -146,7 +172,7 @@ internal sealed class ExtractionPlanner
                         ? entry.Path
                         : resolver.TryGetHardLinkTargetPath(entry, entries);
                     return targetPath is not null &&
-                        resolver.TryResolvePath(targetPath, entries)?.Type == ImageFileType.Directory;
+                        resolver.ResolvesToDirectory(targetPath, entries);
                 },
                 StringComparer.Ordinal);
     }

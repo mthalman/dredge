@@ -31,7 +31,7 @@ internal sealed partial class ExplorerPresenter
         return rows;
     }
 
-    public int IndexOf(ExplorerState s, string path) => Flatten(s).FindIndex(r => r.Path == path);
+    public int IndexOf(ExplorerState s, string path) => Flatten(s).FindIndex(r => img.Semantics.Comparer.Equals(r.Path, path));
 
     private static List<FlatRow> Flatten(List<Node> roots, ExplorerState s)
     {

@@ -58,10 +58,12 @@ internal sealed class LayerStore : IAsyncDisposable
 
     public async Task<StoredLayerIndex> GetIndexAsync(
         IDockerRegistryClient client, ImageName image, ImageLayerReference layer, long? expectedSize,
-        CancellationToken cancellationToken, IProgress<long>? progress = null)
+        CancellationToken cancellationToken, IProgress<long>? progress = null,
+        ImageFileSystemSemantics? semantics = null)
     {
+        semantics ??= ImageFileSystemSemantics.Linux;
         StoredLayerIndex? index = await ReadMetadataAsync<StoredLayerIndex>(
-            layer.Digest, "index", cancellationToken);
+            layer.Digest, semantics.IndexKind, cancellationToken);
         if (IsValid(index, layer.Digest, expectedSize))
         {
             progress?.Report(index!.BlobLength);
@@ -74,16 +76,16 @@ internal sealed class LayerStore : IAsyncDisposable
 
         using Stream blob = await OpenBlobAsync(
             client, image, layer.Digest, expectedSize, cancellationToken, progress);
-        using FileStream indexLock = await LockAsync($"index:{layer.Digest}", cancellationToken);
-        index = await ReadMetadataAsync<StoredLayerIndex>(layer.Digest, "index", cancellationToken);
+        using FileStream indexLock = await LockAsync($"{semantics.IndexKind}:{layer.Digest}", cancellationToken);
+        index = await ReadMetadataAsync<StoredLayerIndex>(layer.Digest, semantics.IndexKind, cancellationToken);
         if (IsValid(index, layer.Digest, expectedSize))
         {
             return index!;
         }
 
-        LayerChanges changes = await ImageLayerScanner.ScanAsync(blob, layer, cancellationToken);
+        LayerChanges changes = await ImageLayerScanner.ScanAsync(blob, layer, cancellationToken, semantics);
         index = new(layer.Digest, blob.Length, changes);
-        await WriteMetadataAsync(layer.Digest, "index", index, cancellationToken);
+        await WriteMetadataAsync(layer.Digest, semantics.IndexKind, index, cancellationToken);
         return index;
     }
 
@@ -545,11 +547,14 @@ internal sealed class LayerStore : IAsyncDisposable
 
     private string MetadataPath(string digest, string kind)
     {
-        if (kind is not ("index" or "view"))
+        string suffix = kind switch
         {
-            throw new ArgumentException("Unknown cache metadata kind.", nameof(kind));
-        }
-        return Path.Combine(dataPath, $"{GetKey(digest)}.{kind}");
+            "index" or "view" => kind,
+            ImageFileSystemSemantics.WindowsIndexKind => ImageFileSystemSemantics.WindowsInterpretation + ".index",
+            ImageFileSystemSemantics.WindowsViewKind => ImageFileSystemSemantics.WindowsInterpretation + ".view",
+            _ => throw new ArgumentException("Unknown cache metadata kind.", nameof(kind))
+        };
+        return Path.Combine(dataPath, $"{GetKey(digest)}.{suffix}");
     }
 
     private static bool IsSharingViolation(IOException exception)

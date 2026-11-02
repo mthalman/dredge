@@ -380,10 +380,10 @@ internal static class PlatformPicker
     }
 
     public static ExplorerPlatform? Show(IApplication app, IReadOnlyList<ExplorerPlatform> platforms,
-        ExplorerPlatform? current, CancellationToken cancellationToken = default)
+        ExplorerPlatform? current, CancellationToken cancellationToken = default, bool comparing = false)
     {
         cancellationToken.ThrowIfCancellationRequested();
-        using Dialog dialog = Create(platforms, current, out Func<ExplorerPlatform?> chosen);
+        using Dialog dialog = Create(platforms, current, out Func<ExplorerPlatform?> chosen, comparing);
         using CancellationTokenRegistration registration = cancellationToken.Register(() =>
             app.Invoke(() => app.RequestStop()));
         app.Run(dialog);
@@ -392,9 +392,11 @@ internal static class PlatformPicker
         return result;
     }
 
-    public static Dialog Create(IReadOnlyList<ExplorerPlatform> platforms, ExplorerPlatform? current, out Func<ExplorerPlatform?> chosen)
+    public static Dialog Create(IReadOnlyList<ExplorerPlatform> platforms, ExplorerPlatform? current,
+        out Func<ExplorerPlatform?> chosen, bool comparing = false)
     {
-        Dialog dialog = Dialogs.Create("Choose platform", 60, Math.Min(22, platforms.Count + 8));
+        Dialog dialog = Dialogs.Create(comparing ? "Choose comparison platform" : "Choose platform",
+            60, Math.Min(22, platforms.Count + 8));
         List<ExplorerPlatform> items = [.. platforms];
         ListView list = new()
         {
@@ -410,7 +412,12 @@ internal static class PlatformPicker
             Highlight = Paint.Attr(Theme.Foam, Theme.ChannelDeep, Deco.Bold),
         });
         list.SelectedItem = Math.Max(0, current is null ? 0 : items.IndexOf(current));
-        Label hint = new() { X = 1, Y = Pos.Bottom(list) + 1, Width = Dim.Fill(2), Text = "The explorer reloads on the chosen platform." };
+        Label hint = new()
+        {
+            X = 1, Y = Pos.Bottom(list) + 1, Width = Dim.Fill(2),
+            Text = comparing ? "Choose the target version; the baseline is unchanged."
+                : "The explorer reloads on the chosen platform."
+        };
         hint.SetScheme(new Scheme(Paint.Attr(Theme.Silt, Theme.Graphite)));
         dialog.Add(list, hint);
         Dialogs.AddButtons(dialog, "Open");

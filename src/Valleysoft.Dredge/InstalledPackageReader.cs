@@ -30,6 +30,7 @@ internal sealed record InstalledPackageEcosystemMetadata(
 internal sealed record InstalledPackageMetadata(
     IReadOnlyDictionary<InstalledPackageEcosystem, InstalledPackageEcosystemMetadata> Ecosystems)
 {
+    public string? UnavailableReason { get; init; }
     public IReadOnlyList<InstalledPackageDiagnostic> Diagnostics { get; init; } = [];
     public IReadOnlyDictionary<string, IReadOnlyList<string>> NpmPackageRoots { get; init; } =
         new Dictionary<string, IReadOnlyList<string>>(StringComparer.Ordinal);
@@ -50,6 +51,18 @@ internal static class InstalledPackageReader
     {
         ArgumentNullException.ThrowIfNull(fileSystem);
         cancellationToken.ThrowIfCancellationRequested();
+
+        if (fileSystem.Semantics.IsWindows)
+        {
+            const string reason = "Package inventory is unavailable for Windows images; Windows installed-software, registry and service inspection are not implemented.";
+            return new(Enum.GetValues<InstalledPackageEcosystem>().ToDictionary(
+                static ecosystem => ecosystem,
+                static _ => CreateMetadata(false, [])))
+            {
+                UnavailableReason = reason,
+                Diagnostics = [new("", reason)]
+            };
+        }
 
         IReadOnlyList<ImageFileSystemEntry> entries = fileSystem.List(null, true, false);
         ImageFileSystemEntry[] npmManifests = [.. entries.Where(entry => IsReadableFile(entry) && IsNpmPackageManifestPath(entry.Path))];

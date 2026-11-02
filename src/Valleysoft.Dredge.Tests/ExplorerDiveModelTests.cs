@@ -62,17 +62,17 @@ public sealed class ExplorerDiveModelTests
             Layer([changed]),
             Layer([File("unrelated", 1, "other")])
         ]);
-        Node early = ExplorerImage.Find(image.WholeTree(0)!, original.Path)!;
+        Node early = image.Find(image.WholeTree(0)!, original.Path)!;
         Assert.Equal(LayerChangeKind.Modified, Assert.Single(image.Analysis!.Layers[1].Changes).Kind);
 
         foreach (List<Node> tree in new[] { image.LayerTree(1), image.WholeTree(1)!, image.WholeTree(2)! })
         {
-            Node node = ExplorerImage.Find(tree, original.Path)!;
+            Node node = image.Find(tree, original.Path)!;
             Assert.Equal(field == "mode" ? (directory ? "drwxr-xr-x" : "-rwxr-xr-x")
                 : (directory ? "drw-r--r--" : "-rw-r--r--"), node.Mode);
             Assert.Equal($"{changed.UserId}:{changed.GroupId}", node.Owner);
         }
-        Assert.Equal(Change.Modified, ExplorerImage.Find(image.LayerTree(1), original.Path)!.Change);
+        Assert.Equal(Change.Modified, image.Find(image.LayerTree(1), original.Path)!.Change);
         Assert.Equal(directory ? "drw-r--r--" : "-rw-r--r--", early.Mode);
         Assert.Equal("0:0", early.Owner);
         Assert.Equal(directory ? 0 : 42, image.TotalReclaimable);
@@ -121,7 +121,7 @@ public sealed class ExplorerDiveModelTests
         image.SetIndexed(2, layers[2]);
         Assert.Null(image.IndexedPrefix());
         Assert.Null(image.WholeTree(2));
-        Assert.Equal(3, ExplorerImage.Find(image.LayerTree(2), "app/value")!.Size);
+        Assert.Equal(3, image.Find(image.LayerTree(2), "app/value")!.Size);
         image.SetIndexed(0, layers[0]);
         Assert.Equal(layers.Take(1), image.IndexedPrefix()!);
         image.SetIndexed(1, layers[1]);
@@ -133,7 +133,7 @@ public sealed class ExplorerDiveModelTests
         Assert.Equal(["COPY first /app/value", "COPY second /app/value", "COPY third /app/value"], image.Instructions);
         for (int i = 0; i < layers.Length; i++)
         {
-            Node node = ExplorerImage.Find(image.WholeTree(i)!, "app/value")!;
+            Node node = image.Find(image.WholeTree(i)!, "app/value")!;
             Assert.Equal(i + 1, node.Size);
             Assert.Equal($"content-{i}", node.Entry!.ContentHash);
             Assert.Equal(i == 0 ? Change.Added : Change.Modified, node.Change);

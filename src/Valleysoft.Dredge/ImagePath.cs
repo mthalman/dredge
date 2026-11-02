@@ -103,7 +103,7 @@ internal static class ImagePath
         return string.Join('/', segments);
     }
 
-    private static string Join(string first, string second) =>
+    internal static string Join(string first, string second) =>
         first.Length == 0 ? second :
         second.Length == 0 ? first :
         $"{first}/{second}";

@@ -41,7 +41,8 @@ public class ExplorerSourceTests
         Assert.Same(v7, resolved.Manifest);
         Assert.Equal(new ExplorerPlatform("linux", "arm", "v7", null), platform);
         Assert.Equal(
-            [new ExplorerPlatform("linux", "arm", "v6", null), new ExplorerPlatform("linux", "arm", "v7", null)],
+            [new ExplorerPlatform("linux", "arm", "v6", null), new ExplorerPlatform("linux", "arm", "v7", null),
+                new ExplorerPlatform("windows", "amd64", null, null)],
             platforms);
     }
 

@@ -17,7 +17,10 @@ internal sealed record ExplorerPackageDifference(
 internal sealed record ExplorerComparison(
     ExplorerSession Baseline, ExplorerSession Target, long AdditionalDownloadBytes,
     IReadOnlyList<ExplorerFileDifference> Files,
-    IReadOnlyList<ExplorerPackageDifference> Packages);
+    IReadOnlyList<ExplorerPackageDifference> Packages)
+{
+    public IReadOnlyList<string> Limitations { get; init; } = [];
+}
 
 internal sealed class ExplorerSession
 {
@@ -31,6 +34,8 @@ internal sealed class ExplorerSession
     public required ImageFileSystem Files { get; init; }
     public required ImageAnalysisResult Analysis { get; init; }
     public required IReadOnlyList<ImageFileSystemEntry> Entries { get; init; }
+    public ExplorerPlatform? Platform { get; init; }
+    internal ImageFileSystemSemantics Semantics => ImageFileSystemSemantics.ForOs(Config.Os);
     public InstalledPackageMetadata Packages
     {
         get => packages ?? throw new InvalidOperationException("Package metadata has not been loaded.");
@@ -69,6 +74,7 @@ internal sealed class ExplorerSession
                 Files = files,
                 Analysis = analysis,
                 Entries = files.List(null, true, false),
+                Platform = source.Platform,
             };
         }
         catch
@@ -94,29 +100,29 @@ internal sealed class ExplorerSession
         try
         {
             cancellationToken.ThrowIfCancellationRequested();
-            if (layer == finalLayer && packages is not null)
+            if (Files.Semantics.IsWindows && layer != finalLayer)
             {
+                Files.ValidateLayerSnapshot(layer, cancellationToken);
+            }
+            if (Files.Semantics.IsWindows || layer == finalLayer)
+            {
+                if (packages is null)
+                {
+                    InstalledPackageMetadata metadata = await InstalledPackageReader.ReadAsync(Files, cancellationToken);
+                    cancellationToken.ThrowIfCancellationRequested();
+                    packages = metadata;
+                }
                 return packages;
             }
             if (layerPackages.TryGetValue(layer, out InstalledPackageMetadata? cached))
             {
                 return cached;
             }
-            InstalledPackageMetadata metadata;
-            if (layer == finalLayer)
-            {
-                metadata = await InstalledPackageReader.ReadAsync(Files, cancellationToken);
-                cancellationToken.ThrowIfCancellationRequested();
-                packages = metadata;
-            }
-            else
-            {
-                await using ImageFileSystem snapshot = Files.CreateLayerSnapshot(layer, cancellationToken);
-                metadata = await InstalledPackageReader.ReadAsync(snapshot, cancellationToken);
-                cancellationToken.ThrowIfCancellationRequested();
-                layerPackages.Add(layer, metadata);
-            }
-            return metadata;
+            await using ImageFileSystem snapshot = Files.CreateLayerSnapshot(layer, cancellationToken);
+            InstalledPackageMetadata historical = await InstalledPackageReader.ReadAsync(snapshot, cancellationToken);
+            cancellationToken.ThrowIfCancellationRequested();
+            layerPackages.Add(layer, historical);
+            return historical;
         }
         finally
         {
@@ -126,15 +132,17 @@ internal sealed class ExplorerSession
 
     internal static ExplorerComparison Compare(ExplorerSession baseline, ExplorerSession target)
     {
+        ImageFileSystemSemantics semantics = baseline.Semantics;
         if (!string.Equals(baseline.Config.Os, target.Config.Os, StringComparison.OrdinalIgnoreCase) ||
             !string.Equals(baseline.Config.Architecture, target.Config.Architecture,
                 StringComparison.OrdinalIgnoreCase) ||
-            !string.Equals(baseline.Config.OsVersion, target.Config.OsVersion,
+            semantics.IsWindows && !CompatibleWindowsVariants(baseline, target) ||
+            !semantics.IsWindows && !string.Equals(baseline.Config.OsVersion, target.Config.OsVersion,
                 StringComparison.OrdinalIgnoreCase))
         {
             throw new InvalidOperationException(
-                $"Images must use the same platform: {baseline.Config.Os}/{baseline.Config.Architecture} " +
-                $"and {target.Config.Os}/{target.Config.Architecture}.");
+                $"Images must use compatible platforms: {baseline.Config.Os}/{baseline.Config.Architecture} {baseline.Config.OsVersion} " +
+                $"and {target.Config.Os}/{target.Config.Architecture} {target.Config.OsVersion}.");
         }
 
         HashSet<string> baselineDigests = baseline.Resolved.Manifest.Layers
@@ -152,17 +160,26 @@ internal sealed class ExplorerSession
         }
 
         Dictionary<string, ImageFileSystemEntry> before = baseline.Entries
-            .ToDictionary(static entry => entry.Path, StringComparer.Ordinal);
+            .ToDictionary(static entry => entry.Path, semantics.Comparer);
         Dictionary<string, ImageFileSystemEntry> after = target.Entries
-            .ToDictionary(static entry => entry.Path, StringComparer.Ordinal);
+            .ToDictionary(static entry => entry.Path, semantics.Comparer);
         List<ExplorerFileDifference> differences = [];
-        foreach (string path in before.Keys.Concat(after.Keys).Distinct(StringComparer.Ordinal)
-            .Order(StringComparer.Ordinal))
+        List<string> limitations = [];
+        foreach (string path in before.Keys.Concat(after.Keys).Distinct(semantics.Comparer)
+            .Order(semantics.Comparer))
         {
             before.TryGetValue(path, out ImageFileSystemEntry? old);
             after.TryGetValue(path, out ImageFileSystemEntry? current);
+            if (semantics.IsWindows && (old?.Type == ImageFileType.Other || current?.Type == ImageFileType.Other))
+            {
+                if (limitations.Count < 64)
+                {
+                    limitations.Add($"File comparison unavailable for '/{path}': {current?.Windows?.UnsupportedReason ?? old?.Windows?.UnsupportedReason ?? "unsupported entry type"}");
+                }
+                continue;
+            }
             if (old is null || current is null ||
-                !SameFile(old, current, baseline.Analysis.LiveContents, target.Analysis.LiveContents))
+                !SameFile(old, current, baseline.Analysis.LiveContents, target.Analysis.LiveContents, semantics))
             {
                 differences.Add(new(path, old is null ? LayerChangeKind.Added :
                     current is null ? LayerChangeKind.Deleted : LayerChangeKind.Modified, old, current));
@@ -191,17 +208,28 @@ internal sealed class ExplorerSession
                 }
             }
         }
-        return new(baseline, target, additional, differences, packages);
+        return new(baseline, target, additional, differences, packages) { Limitations = limitations };
+    }
+
+    private static bool CompatibleWindowsVariants(ExplorerSession baseline, ExplorerSession target)
+    {
+        string? before = baseline.Platform?.Variant ?? baseline.Config.Variant;
+        string? after = target.Platform?.Variant ?? target.Config.Variant;
+        return ExplorerPlatform.CompatibleVariants(before, after,
+            baseline.Resolved.ManifestInfo.DockerContentDigest,
+            target.Resolved.ManifestInfo.DockerContentDigest);
     }
 
     private static bool SameFile(
         ImageFileSystemEntry left, ImageFileSystemEntry right,
         IReadOnlyDictionary<string, ScannedEntry> oldEntries,
-        IReadOnlyDictionary<string, ScannedEntry> newEntries)
+        IReadOnlyDictionary<string, ScannedEntry> newEntries,
+        ImageFileSystemSemantics semantics)
     {
-        if (left.Type != right.Type || left.Mode != right.Mode ||
-            left.UserId != right.UserId || left.GroupId != right.GroupId ||
-            left.Size != right.Size || left.LinkTarget != right.LinkTarget)
+        if (left.Type != right.Type ||
+            !semantics.IsWindows && (left.Mode != right.Mode ||
+                left.UserId != right.UserId || left.GroupId != right.GroupId) ||
+            left.Size != right.Size || left.LinkTarget != right.LinkTarget || left.Windows != right.Windows)
         {
             return false;
         }
