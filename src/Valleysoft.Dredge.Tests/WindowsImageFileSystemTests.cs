@@ -423,13 +423,13 @@ internal static class WindowsImageTestData
             LinkName = target, ModificationTime = DateTimeOffset.FromUnixTimeSeconds(1)
         };
 
-    public static byte[] Layer(params PaxTarEntry[] entries)
+    public static byte[] Layer(params TarEntry[] entries)
     {
         using MemoryStream output = new();
         using (GZipStream gzip = new(output, CompressionMode.Compress, leaveOpen: true))
         using (TarWriter writer = new(gzip, TarEntryFormat.Pax, leaveOpen: true))
         {
-            foreach (PaxTarEntry entry in entries)
+            foreach (TarEntry entry in entries)
             {
                 writer.WriteEntry(entry);
                 entry.DataStream?.Dispose();
