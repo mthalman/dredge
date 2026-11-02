@@ -4,7 +4,7 @@ using static Valleysoft.Dredge.Tests.WindowsImageTestData;
 
 namespace Valleysoft.Dredge.Tests;
 
-public sealed class WindowsReviewRoundFiveTests : IAsyncDisposable
+public sealed class WindowsFileSystemIdentityTests : IAsyncDisposable
 {
     private readonly LayerCacheTestContext cache = new();
     private CancellationToken Token => TestContext.Current.CancellationToken;
