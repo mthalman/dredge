@@ -1145,48 +1145,71 @@ internal sealed class ExplorerWindow : Window
         {
             rejected?.Invoke();
         }
+        catch
+        {
+            rejected?.Invoke();
+            throw;
+        }
     }
 
     internal Task RunAsync<T>(Func<CancellationToken, Task<T>> work, Action<T> done, Action<Exception>? failed = null,
-        CancellationToken token = default, Action<T>? abandoned = null)
+        CancellationToken token = default, Action<T>? abandoned = null, IDisposable? retention = null)
     {
         IApplication? app = App;
         CancellationToken ct = token == default ? lifetime : token;
         return Task.Run(() => work(ct), ct).ContinueWith(task =>
         {
             Exception? error = task.Exception?.GetBaseException();
-            CancellationTokenRegistration registration = task.IsCompletedSuccessfully && abandoned is not null
-                ? ct.Register(() => abandoned(task.Result)) : default;
+            void Release()
+            {
+                try
+                {
+                    if (task.IsCompletedSuccessfully)
+                    {
+                        abandoned?.Invoke(task.Result);
+                    }
+                }
+                finally
+                {
+                    Interlocked.Exchange(ref retention, null)?.Dispose();
+                }
+            }
+            CancellationTokenRegistration registration = retention is not null ||
+                task.IsCompletedSuccessfully && abandoned is not null ? ct.Register(Release) : default;
             void Abandon()
             {
                 registration.Dispose();
-                if (task.IsCompletedSuccessfully)
-                {
-                    abandoned?.Invoke(task.Result);
-                }
+                Release();
             }
             Post(app, () =>
             {
                 registration.Dispose();
-                if (task.IsCompletedSuccessfully)
+                try
                 {
-                    done(task.Result);
-                }
-                else
-                {
-                    error ??= new OperationCanceledException();
-                    if (failed is not null)
+                    if (task.IsCompletedSuccessfully)
                     {
-                        failed(error);
+                        done(task.Result);
                     }
                     else
                     {
-                        Notice(error.Message, error: true);
+                        error ??= new OperationCanceledException();
+                        if (failed is not null)
+                        {
+                            failed(error);
+                        }
+                        else
+                        {
+                            Notice(error.Message, error: true);
+                        }
+                    }
+                    if (!windowDisposed && !windowStopped)
+                    {
+                        Refresh();
                     }
                 }
-                if (!windowDisposed && !windowStopped)
+                finally
                 {
-                    Refresh();
+                    Interlocked.Exchange(ref retention, null)?.Dispose();
                 }
             }, ct, Abandon);
         }, TaskScheduler.Default);
@@ -1595,7 +1618,7 @@ internal sealed class ExplorerWindow : Window
         s.Compare?.Busy = true;
         int generation = ++compareGeneration;
         IApplication? app = App;
-        RunAsync(ct => host.CompareAsync(tag, () => Post(app, () =>
+        RunAsync(ct => CompareRetainedAsync(tag, () => Post(app, () =>
         {
             if (compareGeneration == generation)
             {
@@ -1603,18 +1626,23 @@ internal sealed class ExplorerWindow : Window
                 Notice(s.ComparisonStatus);
                 Refresh();
             }
-        }, ct), ct), comparison =>
+        }, ct), ct), retained =>
         {
-            if (compareGeneration != generation)
+            using (retained)
             {
-                return;
+                if (compareGeneration != generation)
+                {
+                    return;
+                }
+                compareGeneration++;
+                CompleteComparison();
+                ExplorerComparison comparison = retained.Comparison;
+                (host as ExplorerHost)?.DisplayComparison(comparison);
+                s.Compare = new CompareState(comparison, ExplorerTags.Label(img.Reference), tag) { Overview = true };
+                s.View = RightView.Files;
+                s.Notice = null;
+                right.SetFocus();
             }
-            compareGeneration++;
-            CompleteComparison();
-            s.Compare = new CompareState(comparison, ExplorerTags.Label(img.Reference), tag) { Overview = true };
-            s.View = RightView.Files;
-            s.Notice = null;
-            right.SetFocus();
         }, error =>
         {
             if (compareGeneration != generation)
@@ -1625,8 +1653,14 @@ internal sealed class ExplorerWindow : Window
             CompleteComparison();
             s.Compare?.Busy = false;
             Notice($"Could not compare with {tag}: {error.Message}", error: true);
-        }, compareLoad.Token);
+        }, compareLoad.Token, abandoned: retained => retained.Dispose());
     }
+
+    private async Task<RetainedExplorerComparison> CompareRetainedAsync(
+        string tag, Action readingPackages, CancellationToken token) =>
+        host is ExplorerHost concrete
+            ? await concrete.CompareRetainedAsync(tag, readingPackages, token)
+            : new(await host.CompareAsync(tag, readingPackages, token));
 
     private void CompleteComparison()
     {
@@ -1746,6 +1780,7 @@ internal sealed class ExplorerWindow : Window
                 return true;
             case Back:
                 s.Compare = null;
+                (host as ExplorerHost)?.DisplayComparison(null);
                 right.SetFocus();
                 return true;
             case SelectLayer when c.LayerCount == 0:
@@ -1862,7 +1897,7 @@ internal sealed class ExplorerWindow : Window
                         CompleteDiff();
                         Notice(error.Message, error: true);
                     }
-                }, diffLoad.Token);
+                }, diffLoad.Token, retention: (host as ExplorerHost)?.RetainComparison(comparison));
                 return true;
             case Activate when row.Kind == CompareRowKind.Package && row.Package is ExplorerPackageDifference package:
                 PackageFilesContent pending = new(package, null, "Reading package files…", 0);
@@ -1883,16 +1918,23 @@ internal sealed class ExplorerWindow : Window
                     {
                         s.Compare.PackageFiles = pending with { Message = "Could not read package files: " + error.Message };
                     }
-                });
+                }, retention: (host as ExplorerHost)?.RetainComparison(current));
                 return true;
             case Activate:
                 return true;
             case CopyCommand:
-                string platform = img.PlatformArguments.Length > 0 ? " " + img.PlatformArguments : "";
                 ExplorerSession baseline = c.Comparison.Baseline, target = c.Comparison.Target;
-                string before = ExplorerImage.DigestReference(baseline.Image, baseline.Resolved.ManifestInfo.DockerContentDigest);
-                string after = ExplorerImage.DigestReference(target.Image, target.Resolved.ManifestInfo.DockerContentDigest);
-                Copy($"dredge image compare files {ShellCommand.Quote(before)} {ShellCommand.Quote(after)}{platform}");
+                string connection = ExplorerImage.ConnectionArgumentsFor(
+                    baseline.Source?.Connection ?? target.Source?.Connection);
+                string arguments = ExplorerImage.PlatformArgumentsFor(baseline.ComparisonPlatform);
+                connection = connection.Length > 0 ? connection : img.ConnectionArguments;
+                if (connection.Length > 0)
+                {
+                    arguments += " " + connection;
+                }
+                string before = baseline.SnapshotReference;
+                string after = target.SnapshotReference;
+                Copy($"dredge image compare files {ShellCommand.Quote(before)} {ShellCommand.Quote(after)} {arguments}");
                 return true;
             case FocusOn f:
                 (f.Pane == FocusPane.Layers ? layers : right).SetFocus();

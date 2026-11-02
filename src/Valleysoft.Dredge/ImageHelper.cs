@@ -17,7 +17,8 @@ internal static class ImageHelper
         string layerIndexOptionName, bool noSquash, PlatformOptionsBase options,
         CancellationToken cancellationToken = default,
         IDredgePathProvider? pathProvider = null,
-        bool overwriteExisting = false)
+        bool overwriteExisting = false,
+        ResolvedImage? resolvedImage = null)
     {
         // Spec for OCI image layer filesystem changeset: https://github.com/opencontainers/image-spec/blob/main/layer.md
 
@@ -25,10 +26,29 @@ internal static class ImageHelper
 
         Console.Error.WriteLine($"Getting layers for {image}");
 
-        ImageName imageName = ImageName.Parse(image);
-        IDockerRegistryClient client = await dockerRegistryClientFactory.GetClientAsync(imageName.Registry, cancellationToken);
-        IImageManifest manifest =
-            (await ManifestHelper.GetResolvedManifestAsync(client, imageName, options, cancellationToken)).Manifest;
+        ImageSourceReference reference = ImageSourceReference.Parse(image);
+        await using ResolvedImage? ownedImage = resolvedImage is null && reference.IsDaemon
+            ? await new ImageSourceFactory(dockerRegistryClientFactory).OpenAsync(image, options, cancellationToken)
+            : null;
+        ResolvedImage? source = resolvedImage ?? ownedImage;
+        if (ownedImage is not null)
+        {
+            ownedImage.Report(Console.Error);
+        }
+        ImageName imageName = source?.Name ?? ImageName.Parse(reference.Value);
+        using IDockerRegistryClient? registryClient = source is null
+            ? await dockerRegistryClientFactory.GetClientAsync(imageName.Registry, cancellationToken)
+            : null;
+        IImageContentSource content = source?.Content ??
+            new RegistryImageContentSource(registryClient!, imageName);
+        IImageManifest manifest = source?.Resolved.Manifest ??
+            (await ManifestHelper.GetResolvedManifestAsync(registryClient!, imageName, options, cancellationToken)).Manifest;
+        if (source?.IsDaemon == true &&
+            string.Equals(source.Configuration.Os, "windows", StringComparison.OrdinalIgnoreCase))
+        {
+            throw new NotSupportedException(
+                "Saving extracted Docker daemon layers supports Linux images only; Windows filesystem extraction is not supported.");
+        }
 
         pathProvider ??= new DredgePathProvider();
         await using LayerStore store = LayerStore.Create(pathProvider);
@@ -52,6 +72,9 @@ internal static class ImageHelper
             }
         }
 
+        cancellationToken.ThrowIfCancellationRequested();
+        Directory.CreateDirectory(destPath);
+
         for (int i = startIndex; i < layerCount; i++)
         {
             cancellationToken.ThrowIfCancellationRequested();
@@ -70,7 +93,7 @@ internal static class ImageHelper
             try
             {
                 using Stream layerStream =
-                    await store.OpenBlobAsync(client, imageName, layer.Digest, layer.Size, cancellationToken);
+                    await store.OpenExtractionBlobAsync(content, layer.Digest, layer.Size, cancellationToken);
                 await ExtractLayerAsync(layerStream, layerDir, cancellationToken);
 
                 if (noSquash)

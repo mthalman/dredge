@@ -16,6 +16,286 @@ All image commands support [platform resolution](../platform-resolution.md) via 
 | [`save-layers`](#save-layers) | Save image layers to disk |
 | [`dockerfile`](#dockerfile) | Generate a Dockerfile from an image |
 
+## Image sources
+
+Image commands accept an explicit source prefix:
+
+| Reference | Source |
+|---|---|
+| `alpine:latest` | Registry, preserving existing behavior |
+| `registry://alpine:latest` | Registry, explicitly selected |
+| `docker://myimage:dev` | Image already stored in Docker Engine |
+| `docker://sha256:<full-image-id>` | Immutable Docker Engine image ID |
+
+`docker://` does not pull missing images. A registry and a daemon can contain
+different images with the same tag; Dredge never switches between them
+automatically. Prefixes use `://` to avoid changing valid references such as
+`docker:latest` or `registry:2`.
+
+Only `sha256:` followed by exactly 64 lowercase hexadecimal characters is
+treated as an image ID. Other valid references use normal image-name parsing,
+including tags in a repository named `sha256`, such as `docker://sha256:dev`
+or `docker://sha256:abc`.
+
+Each comparison operand selects its source independently:
+
+```console
+dredge image compare layers docker://myimage:before docker://myimage:after
+dredge image compare metadata registry://example.com/team/myimage:release docker://myimage:dev
+dredge image explore docker://myimage:dev --compare registry://example.com/team/myimage:release
+```
+
+The reverse mixed-source order also works. In the explorer, a comparison given
+as a tag alone refers to the current repository and source. Registry tag
+browsing is not available for daemon images. If either comparison operand fails
+to load, Dredge cancels the other acquisition and cleans up acquired snapshots.
+
+### Docker connections
+
+Docker Engine acquisition uses the .NET client directly; it does not require
+an installed Docker CLI. Select a connection with `--docker-context <name>` or
+`--docker-host <endpoint>`. These options are mutually exclusive and apply to
+all daemon operands in one command.
+
+Connection selection follows this order:
+
+1. An explicit `--docker-context` or `--docker-host`.
+2. `DOCKER_CONTEXT`.
+3. `DOCKER_HOST`.
+4. The active context in Docker's configuration.
+5. The platform default socket or named pipe.
+
+`DOCKER_CONFIG` selects Docker's configuration directory. Dredge resolves and
+holds the selected connection for the operation. Invalid contexts, unsupported
+transports, and unsupported TLS configurations produce errors rather than
+falling back to another daemon. SSH contexts are not supported; use a supported
+endpoint or a separately configured tunnel instead.
+
+Copied explorer commands use `--docker-host` with the resolved endpoint, including
+when the original selection came from a context or environment variable.
+Changing Docker's active context does not redirect the copied command to another
+daemon.
+
+Unix sockets, Windows named pipes, and explicit non-TLS HTTP/TCP endpoints are
+supported. Unix endpoints must name an absolute socket path, such as
+`unix:///var/run/docker.sock`; relative paths such as `unix:docker.sock` are
+rejected. HTTPS endpoints and Docker TLS configuration are rejected rather than
+ignoring certificates or downgrading the connection. Prefer a local socket or
+named pipe; a non-TLS endpoint must only be used over a trusted, protected
+transport.
+
+For Docker Desktop's Linux engine on Windows:
+
+```console
+dredge image explore docker://myimage:dev --docker-context desktop-linux
+```
+
+WSL does not have a separate image-source prefix. A Docker Engine inside WSL,
+Docker Desktop, or a rootless engine is selected by its connection, not by
+changing `docker://`. Dredge must have permission to access that endpoint.
+
+### Identity and metadata
+
+Dredge resolves daemon tags to full image IDs before acquiring content.
+Retagging cannot redirect an in-progress operation. If the resolved content
+becomes unavailable, Dredge fails instead of resolving the tag again.
+
+Daemon source, selected platform, and immutable image ID are reported on
+standard error, leaving JSON, Dockerfile, and file-content output on standard
+output unchanged. Docker Engine's image ID is the daemon's immutable acquisition
+identity. Depending on the engine's image store, it can identify a configuration
+or a manifest. Dredge validates the exported configuration separately and does
+not present daemon IDs as original registry manifest digests.
+
+Daemon exports do not establish original registry manifest digests, annotations,
+platform inventories, or compressed transfer sizes. Metadata comparisons
+involving a daemon compare configuration metadata and report that distribution
+metadata is unavailable. Layer comparisons involving a daemon use uncompressed
+content digests (rootfs diff IDs). They do not compare a registry compressed
+blob digest with a daemon raw-tar digest as though they identified the same
+representation. Mixed-source layer comparisons verify registry layer content
+against its declared diff IDs before reporting equality. Registry-only layer
+comparisons retain their distribution-metadata behavior. Unavailable compressed
+sizes are not reported as zero.
+For content-based comparisons, Dredge uses SHA-256 identities after verifying
+each declared diff ID. Identical decoded layers therefore compare equal even
+when one image declares SHA-256 diff IDs and the other declares SHA-512.
+The original configuration bytes and declared diff IDs remain unchanged.
+When daemon acquisition has already verified decoded content, comparisons reuse
+its canonical SHA-256 hashes without copying those layers into the content store
+or hashing them again. Metadata-only acquisition does not provide this proof.
+For registry layers declaring SHA-512 diff IDs, mixed-source verification
+computes the declared SHA-512 hash and canonical SHA-256 hash in one decoded
+pass. Both results are reused while the verified blob remains pinned.
+
+Acquisition streams an export once to temporary storage and reads its members
+through bounded ranges, without creating a second extracted copy of the export.
+Within one source factory, acquisitions that resolve to the same daemon,
+immutable image ID, platform, and content requirements share an export while
+it remains in use. Layer-content and Linux-filesystem acquisitions share the
+same verified export; metadata-only acquisitions remain separate. This includes
+an explorer target that matches its baseline
+and both operands of a comparison. Each acquisition still resolves and validates
+its own reference and keeps an independent lease. Releasing the last lease
+removes the shared entry and deletes the export; opening the image afterward
+acquires a new export.
+Snapshot directories and export files are accessible only to the current user.
+Default snapshots use the user's local application-data directory even when
+that directory does not exist yet; they do not fall back to the working directory.
+The verified spool is retained through one shared read handle, so replacing its
+pathname cannot redirect subsequent reads. Windows sharing denies writes while
+that handle is open; Unix spools are made read-only after writing. Snapshots are
+Dredge-owned working files, not a security boundary against a process that can
+override the current user's filesystem protections.
+Allow disk space for the export in addition to Dredge's normal cache.
+Cold daemon filesystem and explorer indexes scan the verified archive members
+directly instead of copying each member into the blob cache. Raw tar scans use
+sequential buffering rather than one filesystem read per tar header. Raw layer
+extraction uses the same sequential buffering. Metadata-only acquisitions hash
+stored layer bytes with bounded sequential reads without decompressing them.
+When a filesystem acquisition
+starts a new verified export and no valid persisted index exists,
+acquisition computes needed indexes and decoded-content proofs in one pass
+over each raw layer or one inflation of each gzip layer.
+A layer-limited filesystem operation prepares only its requested prefix;
+all layers still undergo content-integrity verification. A warm index still
+requires content verification, but its validated metadata is retained for
+reuse rather than loaded a second time.
+Daemon full-filesystem views use the verified configuration digest as their cache
+key. `image ls` without `--layer` and root `image extract` can reuse a validated
+complete view even when individual layer indexes have been evicted, without
+preparing unused indexes or per-file proofs. During acquisition, root extraction
+indexes only layers that supply surviving file content, including older content
+retained by hard links. Missing indexes are built in the same pass that verifies
+these layers, rather than rescanning them afterward. Acquisition still verifies
+every layer's content, and restoration checks
+the view against the verified layer identities. View prevalidation checks entries
+without constructing a discarded filesystem. The loaded view is retained through
+acquisition so the consumer does not read its metadata again.
+Content-only
+acquisitions do not eagerly scan tar entries; a filesystem caller sharing an
+earlier content-only export builds any missing index afterward. Persisted indexes
+and content-hash-validated reads remain available; operations that need a
+complete cached blob can still publish one on demand.
+For `image cat` without `--layer` and `image extract` of a non-root path,
+acquisition verifies layer content without preparing indexes. Path resolution
+then indexes layers from newest to oldest until it can resolve the requested
+file. Directory extraction indexes all layers needed to include older children.
+These operations do not parse unrelated earlier layers merely to acquire the
+image. Raw decoded-content verification uses bounded sequential reads and
+computes SHA-256 and any required SHA-512 hash together in one pass.
+Daemon layer saving and file comparisons extract directly from the export,
+without first publishing another complete layer copy to the blob cache or
+preparing unused filesystem indexes. Daemon explorer-baseline verification
+also avoids preparing indexes that it does not consume.
+When acquisition has verified the requested layer size and decoded diff ID,
+indexing reuses that proof rather than hashing the complete layer again;
+individual file hashes are still computed. Selected files in raw daemon layers
+are hash-validated and read directly from bounded export handles, without
+staging their contents to scratch files. Reads remain restricted to the
+validated file extents, and open handles survive release of the export snapshot.
+Fresh index scans retain their immutable index as the file-validation proof in
+the live export, without copying every entry into a second proof table. Selecting
+a freshly scanned file checks its exact coordinates against that index instead
+of hashing its contents again.
+Successful raw and gzip file validation is reused for repeated selections in the same
+live export, keyed by layer digest, encoding, offset, size, and file hash. Persisted
+indexes alone provide no such proof. Changed index coordinates, failed validation,
+and a new export require validation again.
+Gzip proofs additionally require the same validated compressed-prefix length;
+reading the preview still performs the decompression needed to reach its bytes.
+Batch selections reuse per-file proofs only when their shared prefix is a proven
+extent that covers every selected file. Fully proven selections skip the
+validation buffer and content-wrapper allocation.
+Raw and gzip daemon selections use the export even when a complete cached blob exists,
+avoiding a whole-cache digest pass for a small selection. Gzip daemon reads also
+validate and rewind bounded export prefixes directly instead of copying the
+compressed prefix to scratch. Healthy archive-only selections do not hold the
+cache-publication lock, so independent selections can validate concurrently;
+invalid-index fallback still locks and rechecks the complete cache. Registry
+range staging is unchanged.
+Mixed daemon/registry comparisons verify an unpinned persisted registry blob's
+encoded digest and decoded diff ID in one pass. A corrupt encoded cache entry
+is still discarded and downloaded again; valid encoded content with an invalid
+diff ID or gzip payload still fails rather than being downloaded unnecessarily.
+Repeated content-proof lookups also reuse the current cache scope's existing
+blob pin without reopening the cache-publication lock; another scope still
+acquires its own pin.
+The explorer retains the displayed comparison target and at most one
+inactive target, in addition to the baseline, for both registry and daemon
+sources. In-flight readers and queued updates keep their snapshots alive until
+they finish. Eviction releases the filesystem, any daemon export or target-owned
+registry client, and target-owned cache pins. Layers still used by the baseline
+or another target remain pinned. Unused cached blobs become eligible for normal
+cache trimming.
+Registry manifest and platform snapshots and daemon image IDs remain fixed for
+the explorer session. Revisiting an evicted target rebuilds its filesystem from
+the retained snapshot or immutable daemon ID, without resolving a mutable tag
+again. If that daemon ID is no longer available or the daemon has changed, the
+comparison fails instead of refreshing the tag. Reopen the explorer to refresh a tag.
+Configuration and stored blob identities are validated before analysis;
+content-based operations additionally validate decoded layer diff IDs.
+Linux daemon `os` verifies only the base layer's configured diff ID directly
+against its export member, then parses that member without publishing a cached
+blob. Raw SHA-256 layers can reuse the acquisition's encoded-digest proof;
+gzip layers and SHA-512 diff IDs retain the required decoded-content hashing.
+Decoded-content verification supports SHA-256 and SHA-512 diff IDs in both
+registry images and raw or gzip Docker exports.
+Repeated layers and overlapping images reuse successful content verification
+while their validated blobs remain pinned in the same content store.
+When indexing a cold registry layer for a filesystem or explorer, Dredge hashes
+the complete decoded layer, including headers, padding, and bytes after the
+last tar entry. Subsequent diff-ID verification can reuse that scan while the
+blob remains pinned. A persisted index alone is not proof of the decoded
+content and does not skip verification.
+Mixed-source explorer acquisition, base verification, and comparisons share
+that store. Mixed-base verification indexes the required registry prefix first
+so content verification can reuse the cold scan; it does not index the remaining
+target layers before they are needed. Independent registry layers verify with
+bounded concurrency.
+Daemon acquisition verifies up to four distinct archive members concurrently;
+repeated members share verification, while each layer descriptor is checked.
+For raw layers declaring SHA-512 diff IDs, acquisition computes SHA-256 and
+SHA-512 in one read of each member.
+The existing filesystem, package inventory, and provenance
+analyses apply to daemon images.
+
+Daemon `inspect`, `dockerfile`, and `compare metadata` do not require decoding
+layers, so an OCI zstd-layer export can still be inspected and its configuration
+compared. Filesystem operations and verified content-layer comparisons support
+raw and gzip tar layers, not zstd. Linux `os` identification also needs readable
+layer content and verifies the decoded base layer against its declared diff ID
+before reporting OS information. Missing or empty optional history does not
+prevent acquisition.
+Windows `os` identification and Dockerfile base-image tags use the selected
+platform's OS version when the exported configuration omits `os.version`.
+The configuration JSON remains unchanged.
+
+### Command and platform support
+
+| Commands | Registry | Linux daemon | Windows daemon |
+|---|---|---|---|
+| `inspect`, `dockerfile` | Existing support | Supported | Supported |
+| `os` | Linux and Windows | Supported | Metadata identification; errors if the OS cannot be identified |
+| `compare metadata`, `compare layers` | Existing support | Supported, including mixed sources | Supported without filesystem analysis |
+| `explore`, `ls`, `cat`, `extract`, `compare files` | Existing platform limits | Supported | Not supported |
+| `save-layers` | Existing support | Supported | No Windows filesystem extraction support |
+
+Windows OS identification and Dockerfile base reconstruction can require
+registry metadata from Microsoft's registry, just as registry-backed Windows
+images do. This is metadata lookup, not a fallback pull of the selected image.
+Unsupported Windows filesystem operations fail after pinned image inspection,
+before exporting the image's layers.
+
+Daemon platform filters are checked against the actual image configuration.
+Dredge does not pull another platform or silently substitute the daemon's
+default platform. Engine/client limitations can require a concrete
+platform-specific image ID rather than a multi-platform tag.
+
+Manifest, repository, tag, referrer, and deletion commands retain their registry
+semantics; they do not acquire daemon images. Native Podman/containerd providers
+are not included.
+
 ## Inspect
 
 Returns the image configuration of the specified image.
@@ -414,6 +694,9 @@ The command returns the following exit codes:
 ## Compare layers
 
 Compares the layers of two images.
+Images without optional configuration history still compare every manifest
+layer. `--history` adds instructions when available; missing history does not
+make different layers equal.
 
 ```console
 dredge image compare layers <base> <target> [--output <format>] [--history] [--compressed-size] [--no-color] [--os <os>] [--arch <arch>] [--os-version <version>]

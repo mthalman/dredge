@@ -21,15 +21,16 @@ public class SaveLayersCommand : RegistryCommandBase<SaveLayersOptions>
 
     protected override Task ExecuteAsync(CancellationToken cancellationToken)
     {
-        ImageName imageName = ImageName.Parse(Options.Image);
-        return ExecuteCommandAsync(imageName.Registry, cancellationToken, async ct =>
+        ImageSourceReference reference = ImageSourceReference.Parse(Options.Image);
+        return ExecuteCommandAsync(reference.Registry, cancellationToken, async ct =>
         {
             ValidateOutputPath();
 
-            using IDockerRegistryClient client = await DockerRegistryClientFactory.GetClientAsync(imageName.Registry, ct);
-            IImageManifest manifest =
-                (await ManifestHelper.GetResolvedManifestAsync(client, imageName, Options, ct)).Manifest;
-            string? digest = (manifest.Config?.Digest) ?? throw new NotSupportedException($"Could not resolve the image config digest of '{Options.Image}'.");
+            await using ResolvedImage? source = reference.IsDaemon
+                ? await OpenImageAsync(Options.Image, Options, ct,
+                    requirements: ImageSourceRequirements.LinuxLayerContent)
+                : null;
+            source?.Report(Error);
             await ImageHelper.SaveImageLayersToDiskAsync(
                 DockerRegistryClientFactory,
                 Options.Image,
@@ -40,7 +41,8 @@ public class SaveLayersCommand : RegistryCommandBase<SaveLayersOptions>
                 Options,
                 ct,
                 pathProvider,
-                overwriteExisting: Options.Force);
+                overwriteExisting: Options.Force,
+                resolvedImage: source);
         });
     }
 

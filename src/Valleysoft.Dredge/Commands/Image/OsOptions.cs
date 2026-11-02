@@ -2,7 +2,7 @@
 
 namespace Valleysoft.Dredge.Commands.Image;
 
-public class OsOptions : PlatformOptionsBase
+public class OsOptions : ImageOptionsBase
 {
     private readonly Argument<string> imageArg;
 
@@ -10,7 +10,7 @@ public class OsOptions : PlatformOptionsBase
 
     public OsOptions()
     {
-        imageArg = Add(ImageReferenceArgument.Create("image"));
+        imageArg = Add(ImageReferenceArgument.CreateImageSource("image"));
     }
 
     protected override void GetValues()

@@ -57,16 +57,13 @@ internal sealed class CompareState : FileDiffState
 
     public int LayerCount => Math.Max(Comparison.Baseline.Resolved.Manifest.Layers.Length, Comparison.Target.Resolved.Manifest.Layers.Length);
 
-    public string? BaselineDigest(int layer) => Digest(Comparison.Baseline, layer);
-    public string? TargetDigest(int layer) => Digest(Comparison.Target, layer);
+    public string? BaselineDigest(int layer) => Comparison.Baseline.LayerIdentity(layer, Comparison.UsesContentIdentity);
+    public string? TargetDigest(int layer) => Comparison.Target.LayerIdentity(layer, Comparison.UsesContentIdentity);
     public long? BaselineSize(int layer) => Size(Comparison.Baseline, layer);
     public long? TargetSize(int layer) => Size(Comparison.Target, layer);
     public bool Shared(int layer) => BaselineDigest(layer) is string digest && digest == TargetDigest(layer);
 
     public IEnumerable<int> Differences() => Enumerable.Range(0, LayerCount).Where(layer => !Shared(layer));
-
-    private static string? Digest(ExplorerSession session, int layer) =>
-        layer < session.Resolved.Manifest.Layers.Length ? session.Resolved.Manifest.Layers[layer].Digest : null;
 
     private static long? Size(ExplorerSession session, int layer) =>
         layer < session.Resolved.Manifest.Layers.Length ? session.Resolved.Manifest.Layers[layer].Size : null;
@@ -133,17 +130,11 @@ internal sealed class CompareView
     {
         ExplorerSession before = c.Comparison.Baseline, after = c.Comparison.Target;
         return $"Baseline ({c.BaselineLabel})\n" +
-            ExplorerImage.DigestReference(before.Image, before.Resolved.ManifestInfo.DockerContentDigest) +
-            PlatformDetails(before) +
+            before.SnapshotDetails +
             $"\n\nTarget ({c.TargetLabel})\n" +
-            ExplorerImage.DigestReference(after.Image, after.Resolved.ManifestInfo.DockerContentDigest) +
-            PlatformDetails(after) +
+            after.SnapshotDetails +
             "\n\nThis comparison uses session snapshots. Reopen explorer to refresh tags.";
     }
-
-    private static string PlatformDetails(ExplorerSession session) => session.Semantics.IsWindows
-        ? $"\nPlatform: {session.Config.Os}/{session.Config.Architecture} {session.Config.OsVersion}"
-        : "";
 
     public List<Line> Header()
     {
@@ -161,8 +152,15 @@ internal sealed class CompareView
         }
         Line right = new Line()
             .Add($"{shared} of {c.LayerCount}", Theme.Foam).Add(" layers shared", Theme.Silt).Add("   ")
-            .Add(Signed(delta), delta > 0 ? Theme.Ochre : delta < 0 ? Theme.Kelp : Theme.Silt).Add(" file payload", Theme.Silt).Add("   ")
-            .Add(Fmt.SizeShort(c.Comparison.AdditionalDownloadBytes), Theme.Foam).Add(" to download ", Theme.Silt);
+            .Add(Signed(delta), delta > 0 ? Theme.Ochre : delta < 0 ? Theme.Kelp : Theme.Silt).Add(" file payload", Theme.Silt).Add("   ");
+        if (c.Comparison.DownloadSizeAvailable)
+        {
+            right.Add(Fmt.SizeShort(c.Comparison.AdditionalDownloadBytes), Theme.Foam).Add(" to download ", Theme.Silt);
+        }
+        else
+        {
+            right.Add("download size unavailable ", Theme.Silt);
+        }
         title.PadRight(width, right);
         int labelWidth = Math.Min(16, Math.Max(c.BaselineLabel.Length, c.TargetLabel.Length)) + 3;
         int barWidth = width - labelWidth - 2;
@@ -294,6 +292,10 @@ internal sealed class CompareView
             else
             {
                 line.Add(ExplorerPresenter.ShortDigest(digest), Theme.Silt).Add("  " + Fmt.Size(size ?? 0), Theme.Foam);
+                if (!c.Comparison.DownloadSizeAvailable)
+                {
+                    line.Add(" stored", Theme.Silt);
+                }
             }
             lines.Add(line.Truncate(w));
         }
@@ -302,12 +304,17 @@ internal sealed class CompareView
         lines.Add(Line.Blank);
         if (c.Shared(layer))
         {
-            lines.Add(Line.Of("Same digest in both images, so this layer is shared.", Theme.Silt));
+            lines.Add(Line.Of(c.Comparison.UsesContentIdentity
+                ? "Same verified diff ID in both images; layer content is shared."
+                : "Same digest in both images, so this layer is shared.", Theme.Silt));
         }
         else if (c.TargetDigest(layer) is string digest)
         {
-            bool elsewhere = c.Comparison.Baseline.Resolved.Manifest.Layers.Any(l => l.Digest == digest);
-            lines.Add(elsewhere
+            bool elsewhere = Enumerable.Range(0, c.Comparison.Baseline.Resolved.Manifest.Layers.Length)
+                .Any(index => c.BaselineDigest(index) == digest);
+            lines.Add(!c.Comparison.DownloadSizeAvailable
+                ? Line.Of("Original compressed layer size and download cost are unavailable.", Theme.Silt)
+                : elsewhere
                 ? Line.Of("This layer exists elsewhere in the baseline, so it is not downloaded again.", Theme.Silt)
                 : new Line().Add("Additional download  ", Theme.Silt).Add(Fmt.Size(c.TargetSize(layer) ?? 0), Theme.Foam).Add(" for this layer", Theme.Silt));
         }
@@ -320,8 +327,15 @@ internal sealed class CompareView
         lines.Add(Line.Of(firstDiff == 0 ? "No layers are shared from the start."
             : firstDiff >= c.LayerCount ? "Every layer is shared."
             : $"Layers 0 to {firstDiff - 1} are shared.", Theme.Silt));
-        lines.Add(Line.Of($"Pulling {c.TargetLabel} where {c.BaselineLabel} exists downloads", Theme.Silt).Truncate(w));
-        lines.Add(new Line().Add(Fmt.Size(c.Comparison.AdditionalDownloadBytes), Theme.Foam).Add(" of unshared layers.", Theme.Silt));
+        if (c.Comparison.DownloadSizeAvailable)
+        {
+            lines.Add(Line.Of($"Pulling {c.TargetLabel} where {c.BaselineLabel} exists downloads", Theme.Silt).Truncate(w));
+            lines.Add(new Line().Add(Fmt.Size(c.Comparison.AdditionalDownloadBytes), Theme.Foam).Add(" of unshared layers.", Theme.Silt));
+        }
+        else
+        {
+            lines.Add(Line.Of("Download size unavailable for daemon snapshots.", Theme.Silt));
+        }
         return ExplorerPresenter.Pane(lines, $"Layer {layer}", false);
     }
 
@@ -581,7 +595,9 @@ internal sealed class CompareView
             Line.Blank,
             Line.Of($"File payload change  {Signed(comparison.Target.Analysis.FileBytes - comparison.Baseline.Analysis.FileBytes)}", Theme.Foam),
             Line.Of($"Hidden payload change  {Signed(comparison.Target.Analysis.HiddenBytes - comparison.Baseline.Analysis.HiddenBytes)}", Theme.Foam),
-            Line.Of($"Additional download  {Fmt.Size(comparison.AdditionalDownloadBytes)} with baseline present", Theme.Silt),
+            Line.Of(comparison.DownloadSizeAvailable
+                ? $"Additional download  {Fmt.Size(comparison.AdditionalDownloadBytes)} with baseline present"
+                : "Additional download unavailable: original compressed sizes are unknown for daemon snapshots.", Theme.Silt),
             Line.Blank,
         ];
         PaneContent pane = ExplorerPresenter.Pane(lines, "Comparison overview", true,

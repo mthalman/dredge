@@ -33,33 +33,39 @@ public partial class OsCommand : RegistryCommandBase<OsOptions>
 
     protected override Task ExecuteAsync(CancellationToken cancellationToken)
     {
-        ImageName imageName = ImageName.Parse(Options.Image);
-        return ExecuteCommandAsync(imageName.Registry, cancellationToken, async ct =>
+        ImageSourceReference reference = ImageSourceReference.Parse(Options.Image);
+        return ExecuteCommandAsync(reference.Registry, cancellationToken, async ct =>
         {
-            using IDockerRegistryClient client = await DockerRegistryClientFactory.GetClientAsync(imageName.Registry, ct);
-            IImageManifest manifest =
-                (await ManifestHelper.GetResolvedManifestAsync(client, imageName, Options, ct)).Manifest;
-
-            string? configDigest = (manifest.Config?.Digest) ?? throw new NotSupportedException($"Could not resolve the image config digest of '{Options.Image}'.");
-            ImageConfig imageConfig = await client.Blobs.GetImageAsync(imageName.Repo, configDigest, ct);
+            await using ResolvedImage source = await OpenImageAsync(Options.Image, Options, ct,
+                requirements: ImageSourceRequirements.Metadata);
+            source.Report(Error);
+            IImageManifest manifest = source.Resolved.Manifest;
+            ImageConfig imageConfig = source.Configuration;
 
             object? osInfo;
             if (imageConfig.Os.Equals("windows", StringComparison.OrdinalIgnoreCase))
             {
                 var windowsOsInfo =
-                    await GetWindowsOsInfoAsync(imageConfig, manifest, DockerRegistryClientFactory, ct);
+                    await GetWindowsOsInfoAsync(imageConfig, manifest, DockerRegistryClientFactory, ct,
+                        useDistributionDigest: !source.IsDaemon, selectedPlatform: source.SelectedPlatform);
                 osInfo = windowsOsInfo?.Info;
             }
             else
             {
-                IDescriptor baseLayer = manifest.Layers.First();
+                IDescriptor baseLayer = manifest.Layers.FirstOrDefault() ??
+                    throw new InvalidOperationException("The image has no layers from which to derive OS information.");
                 if (baseLayer.Digest is null)
                 {
                     throw new Exception($"No digest was found for the base layer of '{Options.Image}'.");
                 }
 
                 await using LayerStore store = LayerStore.Create(paths);
-                osInfo = await GetLinuxOsInfoAsync(client, imageName, baseLayer.Digest, baseLayer.Size, store, ct);
+                if (source.IsDaemon)
+                {
+                    await ExplorerContentIdentity.VerifyAsync(source.Content, imageConfig, source.Resolved,
+                        store, ct, layerCount: 1);
+                }
+                osInfo = await GetLinuxOsInfoAsync(source.Content, baseLayer.Digest, baseLayer.Size, store, ct);
             }
 
             if (osInfo is null)
@@ -73,15 +79,14 @@ public partial class OsCommand : RegistryCommandBase<OsOptions>
     }
 
     private static async Task<LinuxOsInfo?> GetLinuxOsInfoAsync(
-        IDockerRegistryClient client,
-        ImageName imageName,
+        IImageContentSource source,
         string baseLayerDigest,
         long? size,
         LayerStore store,
         CancellationToken cancellationToken)
     {
         using Stream blobStream =
-            await store.OpenBlobAsync(client, imageName, baseLayerDigest, size, cancellationToken);
+            await store.OpenExtractionBlobAsync(source, baseLayerDigest, size, cancellationToken);
         using ImageTarReader.LayerArchive archive = ImageTarReader.Open(blobStream);
         TarReader tarReader = archive.Reader;
         TarEntry? entry = null;
@@ -117,10 +122,12 @@ public partial class OsCommand : RegistryCommandBase<OsOptions>
     internal static async Task<WindowsImageInfo?> GetWindowsOsInfoAsync(
         ImageConfig imageConfig,
         IImageManifest manifest,
-        IDockerRegistryClientFactory dockerRegistryClientFactory, CancellationToken cancellationToken)
+        IDockerRegistryClientFactory dockerRegistryClientFactory, CancellationToken cancellationToken,
+        bool useDistributionDigest = true, ExplorerPlatform? selectedPlatform = null)
     {
+        ExplorerPlatform platform = ExplorerPlatform.FromConfig(imageConfig, selectedPlatform);
         string? baseLayerDigest = manifest.Layers.FirstOrDefault()?.Digest;
-        if (string.IsNullOrEmpty(baseLayerDigest))
+        if (useDistributionDigest && string.IsNullOrEmpty(baseLayerDigest))
         {
             throw new Exception("No digest was found for the base layer of the Windows image.");
         }
@@ -131,22 +138,23 @@ public partial class OsCommand : RegistryCommandBase<OsOptions>
         foreach (WindowsImageDefinition definition in windowsImageDefinitions)
         {
             cancellationToken.ThrowIfCancellationRequested();
-            if (await mcrClient.Blobs.ExistsAsync(definition.Repo, baseLayerDigest, cancellationToken))
+            if (useDistributionDigest &&
+                await mcrClient.Blobs.ExistsAsync(definition.Repo, baseLayerDigest!, cancellationToken))
             {
                 int baseHistoryCount = await GetLegacyBaseHistoryCountAsync(
                     mcrClient, definition.Repo, manifest, cancellationToken);
-                return new(new(definition.Type, imageConfig.OsVersion), definition.Repo, baseHistoryCount);
+                return new(new(definition.Type, platform.OsVersion), definition.Repo, baseHistoryCount);
             }
         }
 
-        if (string.IsNullOrEmpty(imageConfig.OsVersion) ||
-            string.IsNullOrEmpty(imageConfig.Architecture) ||
+        if (string.IsNullOrEmpty(platform.OsVersion) ||
+            string.IsNullOrEmpty(platform.Architecture) ||
             imageConfig.RootFilesystem?.DiffIds is not { Length: > 0 } targetDiffIds)
         {
             return null;
         }
 
-        string baseImageTag = $"{imageConfig.OsVersion}-{imageConfig.Architecture}";
+        string baseImageTag = $"{platform.OsVersion}-{platform.Architecture}";
         WindowsImageInfo? bestMatch = null;
         int bestMatchLayerCount = 0;
 
@@ -180,7 +188,7 @@ public partial class OsCommand : RegistryCommandBase<OsOptions>
 
             bestMatchLayerCount = baseDiffIds.Length;
             bestMatch = new(
-                new(definition.Type, imageConfig.OsVersion),
+                new(definition.Type, platform.OsVersion),
                 definition.Repo,
                 baseImageConfig.History.Length);
         }

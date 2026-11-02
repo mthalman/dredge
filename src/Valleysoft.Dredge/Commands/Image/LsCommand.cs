@@ -30,19 +30,18 @@ public class LsCommand : RegistryCommandBase<LsOptions>
 
     protected override Task ExecuteAsync(CancellationToken cancellationToken)
     {
-        ImageName imageName = ImageName.Parse(Options.Image);
-        return ExecuteCommandAsync(imageName.Registry, cancellationToken, async ct =>
+        ImageSourceReference reference = ImageSourceReference.Parse(Options.Image);
+        return ExecuteCommandAsync(reference.Registry, cancellationToken, async ct =>
         {
-            using IDockerRegistryClient client =
-                await DockerRegistryClientFactory.GetClientAsync(imageName.Registry, ct);
-            var resolvedManifest =
-                await ManifestHelper.GetResolvedManifestAsync(client, imageName, Options, ct);
+            await using ResolvedImage source = await OpenImageAsync(Options.Image, Options, ct,
+                requirements: ImageSourceRequirements.LinuxFileSystem);
+            source.Report(Error);
             LayerIndexOption.ValidateLayer(
-                Options.Layer, resolvedManifest.Manifest.Layers.Length);
+                Options.Layer, source.Resolved.Manifest.Layers.Length);
             await using LayerStore store = LayerStore.Create(paths);
             await using ImageFileSystem fileSystem =
                 await ImageFileSystem.CreateAsync(
-                    client, imageName, Options, ct, store, resolvedManifest: resolvedManifest,
+                    source, ct, store,
                     maxLayerIndex: Options.Layer);
             WriteOutput(fileSystem, Options);
         });
@@ -65,7 +64,7 @@ public class LsCommand : RegistryCommandBase<LsOptions>
         }
         if (options.OutputFormat == LsOutput.Json)
         {
-            ansiConsole.Profile.Out.Writer.WriteLine(JsonHelper.Serialize(entries));
+            ansiConsole.Profile.Out.Writer.WriteLine(JsonHelper.Serialize(entries.ToArray()));
         }
         else
         {

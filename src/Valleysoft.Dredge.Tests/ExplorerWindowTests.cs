@@ -1,8 +1,11 @@
+using System.CommandLine;
 using Terminal.Gui.Input;
+using Valleysoft.DockerRegistryClient;
 using Valleysoft.DockerRegistryClient.Models.Images;
 using Valleysoft.DockerRegistryClient.Models.Manifests;
 using Valleysoft.DockerRegistryClient.Models.Manifests.Oci;
 using Valleysoft.Dredge.Commands;
+using Valleysoft.Dredge.Commands.Image;
 using Valleysoft.Dredge.Explorer;
 using Valleysoft.Dredge.Explorer.Tui;
 
@@ -704,7 +707,7 @@ public sealed class ExplorerWindowTests
         Assert.Equal(("2.0", "1.0"), (s.Compare!.BaselineLabel, s.Compare.TargetLabel));
         ui.Press(Key.C.WithCtrl);
         ExplorerSession baseline = s.Compare.Comparison.Baseline, target = s.Compare.Comparison.Target;
-        Assert.Equal($"$ dredge image compare files {ExplorerImage.DigestReference(baseline.Image, baseline.Resolved.ManifestInfo.DockerContentDigest)} {ExplorerImage.DigestReference(target.Image, target.Resolved.ManifestInfo.DockerContentDigest)}", s.Notice);
+        Assert.Equal($"$ dredge image compare files {ExplorerImage.DigestReference(baseline.Image, baseline.Resolved.ManifestInfo.DockerContentDigest)} {ExplorerImage.DigestReference(target.Image, target.Resolved.ManifestInfo.DockerContentDigest)} --os linux --arch amd64 --os-version=\"\"", s.Notice);
         ui.Press(new Key('w'));
         Assert.False(s.FindingsOnly);
         Assert.StartsWith("$ dredge image compare files", s.Notice);
@@ -716,6 +719,105 @@ public sealed class ExplorerWindowTests
         ui.Press(Key.Esc);
         Assert.Null(s.Compare);
         Assert.False(ui.Window.StopRequested);
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task CopiedMixedComparisonRetainsPlatformAndDaemonEndpoint(bool daemonFirst)
+    {
+        await using LayerCacheTestContext cache = new();
+        DockerArchiveFixture fixture = DockerArchiveFixture.Create();
+        string layerDigest = LayerCacheTestContext.Digest(fixture.StoredLayer);
+        OciImageManifest manifest = new()
+        {
+            Config = new OciDescriptor { Digest = fixture.Id, Size = fixture.Config.Length },
+            Layers = [new OciDescriptor { Digest = layerDigest, Size = fixture.StoredLayer.Length }]
+        };
+        ManifestInfo info = new("application/vnd.oci.image.manifest.v1+json",
+            LayerCacheTestContext.Digest("registry-manifest"u8.ToArray()), manifest);
+        Mock<IDockerRegistryClient> client = new() { DefaultValue = DefaultValue.Mock };
+        client.Setup(value => value.Manifests.GetAsync("app", It.IsAny<string>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(info);
+        client.Setup(value => value.Blobs.GetAsync("app", fixture.Id, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(() => new MemoryStream(fixture.Config));
+        client.Setup(value => value.Blobs.GetRangeAsync("app", layerDigest, It.IsAny<long>(),
+                It.IsAny<long?>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(() => new BlobDownloadResult(
+                new MemoryStream(fixture.StoredLayer), false, null, null, fixture.StoredLayer.Length));
+        Mock<IDockerRegistryClientFactory> registries = new();
+        registries.Setup(value => value.GetClientAsync(It.IsAny<string?>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(client.Object);
+        AppSettings settings = new()
+        {
+            Platform = new() { Os = "linux", Architecture = "arm64", OsVersion = "10.0.20348.1" },
+            FileCompareTool = new() { ExePath = "test-diff", Args = "\"{0}\" \"{1}\"" }
+        };
+        TestAppSettingsStore settingsStore = new(settings);
+        string ambientHost = "http://localhost:2375";
+        ImageSourceFactory CreateFactory() => new(registries.Object, settingsStore, connection =>
+        {
+            Assert.Equal("http://localhost:2375/", connection.Endpoint.AbsoluteUri);
+            return new ImageSourceFactoryTests.FakeEngine(fixture);
+        }, Path.Combine(cache.Root, "snapshots"),
+            options => DockerConnection.Resolve(options.DockerContext, options.DockerHost,
+                name => name == "DOCKER_HOST" ? ambientHost : null));
+        ImageSourceFactory sources = CreateFactory();
+        PlatformOptionsBase options = ExplorerSource.ForPlatform(new("linux", "amd64", null, null));
+        await using ExplorerSource remote = await ExplorerSource.OpenAsync(
+            sources, registries.Object, "registry://registry.test/app:dev", options, null,
+            TestContext.Current.CancellationToken, store: cache.Store);
+        await using ExplorerSource local = await ExplorerSource.OpenAsync(
+            sources, registries.Object, "docker://local:dev", options, null,
+            TestContext.Current.CancellationToken, store: cache.Store);
+        Assert.Empty(remote.Platforms);
+        Assert.Equal("--os linux --arch amd64 --os-version=\"\"", ExplorerImage.FromSource(remote).PlatformArguments);
+        ExplorerSource first = daemonFirst ? local : remote, second = daemonFirst ? remote : local;
+        ExplorerSession baseline = await ExplorerSession.CreateAsync(
+            first.RegistryClient, first, cache.Store, null, TestContext.Current.CancellationToken);
+        await using ImageFileSystem baselineFiles = baseline.Files;
+        ExplorerSession target = await ExplorerSession.CreateAsync(
+            second.RegistryClient, second, cache.Store, null, TestContext.Current.CancellationToken);
+        await using ImageFileSystem targetFiles = target.Files;
+        await baseline.EnsureContentIdentitiesAsync(TestContext.Current.CancellationToken);
+        await target.EnsureContentIdentitiesAsync(TestContext.Current.CancellationToken);
+        await baseline.EnsurePackagesAsync(TestContext.Current.CancellationToken);
+        await target.EnsurePackagesAsync(TestContext.Current.CancellationToken);
+        ExplorerComparison comparison = ExplorerSession.Compare(baseline, target);
+        ExplorerImage model = ExplorerImage.FromSource(first);
+        model.SetSession(baseline, ExplorerInsights.Build(baseline.Analysis, model.Instructions, 0));
+        FakeExplorerHost host = new() { ClipboardEnabled = true, Baseline = baseline };
+        string copied;
+        using (ExplorerUiHarness ui = new(160, 45, _ => new ExplorerWindow(model,
+            new() { Compare = new(comparison, "before", "after") }, host,
+            TestContext.Current.CancellationToken)))
+        {
+            ui.Window.Apply(new CopyCommand());
+            copied = Assert.Single(host.Clipboard);
+        }
+        Assert.Contains("--arch amd64", copied);
+        Assert.Contains("--os linux", copied);
+        Assert.Contains("--os-version=\"\"", copied);
+        Assert.Contains("--docker-host http://localhost:2375/", copied);
+        ambientHost = "http://localhost:9999";
+        TestProcessLauncher launcher = new();
+        CompareFilesCommand command = new(registries.Object, settingsStore, cache.Paths, launcher)
+            { ImageSourceFactory = CreateFactory() };
+        ((IProcessTerminationAware)command).ProcessTerminator = new TestProcessTerminator();
+
+        var parsed = command.Parse(copied["dredge image compare files ".Length..]);
+        Assert.Empty(parsed.Errors);
+        int exitCode = await parsed.InvokeAsync(new InvocationConfiguration(), TestContext.Current.CancellationToken);
+
+        Assert.Equal(0, exitCode);
+        Assert.Equal("", command.Options.OsVersion);
+        Assert.NotNull(launcher.StartInfo);
+        foreach (string side in new[] { "base", "target" })
+        {
+            Assert.Equal("fixture"u8.ToArray(),
+                await File.ReadAllBytesAsync(Path.Combine(cache.Paths.TempPath, "compare", side, "etc", "example"),
+                    TestContext.Current.CancellationToken));
+        }
     }
 
     [Fact]

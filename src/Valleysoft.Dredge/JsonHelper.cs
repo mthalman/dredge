@@ -588,6 +588,18 @@ internal static class JsonHelper
             JsonSerializerOptions options) =>
             writer.WriteStringValue(value);
 
+        public override string ReadAsPropertyName(
+            ref Utf8JsonReader reader,
+            Type typeToConvert,
+            JsonSerializerOptions options) =>
+            reader.GetString()!;
+
+        public override void WriteAsPropertyName(
+            Utf8JsonWriter writer,
+            string value,
+            JsonSerializerOptions options) =>
+            writer.WritePropertyName(options.DictionaryKeyPolicy?.ConvertName(value) ?? value);
+
     }
 
     private sealed unsafe class NewtonsoftCompatibleJavaScriptEncoder : JavaScriptEncoder

@@ -8,7 +8,7 @@ namespace Valleysoft.Dredge;
 
 internal sealed class ImageFileSystem : IAsyncDisposable
 {
-    private readonly IDockerRegistryClient client;
+    private readonly IImageContentSource content;
     private readonly ImageName imageName;
     private readonly IImageManifest manifest;
     private readonly LayerStore store;
@@ -22,14 +22,14 @@ internal sealed class ImageFileSystem : IAsyncDisposable
     private IReadOnlyList<LayerDiagnostic> restoredDiagnostics = [];
 
     private ImageFileSystem(
-        IDockerRegistryClient client,
+        IImageContentSource content,
         ImageName imageName,
         IImageManifest manifest,
         LayerStore store,
         bool ownsStore,
         ImageFileSystemSemantics? semantics = null)
     {
-        this.client = client;
+        this.content = content;
         this.imageName = imageName;
         this.manifest = manifest;
         this.store = store;
@@ -37,7 +37,7 @@ internal sealed class ImageFileSystem : IAsyncDisposable
         Semantics = semantics ?? ImageFileSystemSemantics.Linux;
         entries = new(Semantics.Comparer);
         deletedEntries = new(Semantics.Comparer);
-        this.builder = new(client, imageName, manifest, store, indexes, entries, deletedEntries, Semantics);
+        this.builder = new(content, imageName, manifest, store, indexes, entries, deletedEntries, Semantics);
         this.pathResolver = new(entries, Semantics);
         this.extractionPlanner = new(pathResolver, entries, Semantics);
     }
@@ -91,19 +91,53 @@ internal sealed class ImageFileSystem : IAsyncDisposable
             imageName.Repo,
             configDigest,
             cancellationToken);
+        return await CreateAsync(new RegistryImageContentSource(client, imageName), imageName, resolved, config,
+            cancellationToken, store, contentPath, extractionPath, progress, requireLayerIndexes, layerIndexes, maxLayerIndex);
+    }
+
+    public static Task<ImageFileSystem> CreateAsync(
+        ResolvedImage source,
+        CancellationToken cancellationToken,
+        LayerStore? store = null,
+        string? contentPath = null,
+        string? extractionPath = null,
+        IProgress<ImageIndexProgress>? progress = null,
+        bool requireLayerIndexes = false,
+        IReadOnlyDictionary<int, StoredLayerIndex>? layerIndexes = null,
+        int? maxLayerIndex = null) =>
+        CreateAsync(source.Content, source.Name, source.Resolved, source.Configuration,
+            cancellationToken, store, contentPath, extractionPath, progress, requireLayerIndexes, layerIndexes, maxLayerIndex);
+
+    internal static async Task<ImageFileSystem> CreateAsync(
+        IImageContentSource content,
+        ImageName imageName,
+        ResolvedManifest resolved,
+        Image config,
+        CancellationToken cancellationToken,
+        LayerStore? store = null,
+        string? contentPath = null,
+        string? extractionPath = null,
+        IProgress<ImageIndexProgress>? progress = null,
+        bool requireLayerIndexes = false,
+        IReadOnlyDictionary<int, StoredLayerIndex>? layerIndexes = null,
+        int? maxLayerIndex = null)
+    {
+        IImageManifest manifest = resolved.Manifest;
+        if (maxLayerIndex is int selectedLayer &&
+            (selectedLayer < 0 || selectedLayer >= manifest.Layers.Length))
+        {
+            throw new ArgumentOutOfRangeException(nameof(maxLayerIndex));
+        }
         ImageFileSystemSemantics semantics = ImageFileSystemSemantics.ForOs(config.Os);
         if (contentPath is not null) _ = semantics.NormalizeRequested(contentPath);
         if (extractionPath is not null) _ = semantics.NormalizeRequested(extractionPath);
-        if (semantics.IsWindows)
+        foreach (IDescriptor layer in manifest.Layers.Take(
+            maxLayerIndex is int lastLayer ? lastLayer + 1 : manifest.Layers.Length))
         {
-            foreach (IDescriptor layer in manifest.Layers.Take(
-                maxLayerIndex is int lastLayer ? lastLayer + 1 : manifest.Layers.Length))
-            {
-                semantics.ValidateLayerMediaType(layer.MediaType);
-            }
+            semantics.ValidateLayerMediaType(layer.MediaType);
         }
-
-        ImageFileSystem fileSystem = new(client, imageName, manifest, store ?? LayerStore.Create(), store is null, semantics);
+        ImageFileSystem fileSystem = new(content, imageName, manifest, store ?? LayerStore.Create(), store is null, semantics);
+        fileSystem.builder.ExpectedDiffIds = config.RootFilesystem?.DiffIds;
         try
         {
             if (layerIndexes is not null)
@@ -118,11 +152,15 @@ internal sealed class ImageFileSystem : IAsyncDisposable
                     fileSystem.indexes[layer] = index;
                 }
             }
-            string digest = resolved.ManifestInfo.DockerContentDigest;
+            string digest = content is DockerImageArchive
+                ? manifest.Config!.Digest!
+                : resolved.ManifestInfo.DockerContentDigest;
             StoredFileSystem? cached = maxLayerIndex is null
-                ? await fileSystem.store.ReadMetadataAsync<StoredFileSystem>(
-                    digest, semantics.ViewKind, cancellationToken)
+                ? (content as DockerImageArchive)?.CachedFileSystem ??
+                    await fileSystem.store.ReadMetadataAsync<StoredFileSystem>(
+                        digest, semantics.ViewKind, cancellationToken)
                 : null;
+            cancellationToken.ThrowIfCancellationRequested();
             if (maxLayerIndex is null && !requireLayerIndexes && progress is null &&
                 cached is not null && fileSystem.TryRestore(cached))
             {
@@ -226,7 +264,7 @@ internal sealed class ImageFileSystem : IAsyncDisposable
     internal ImageFileSystem CreateLayerSnapshot(int layer, CancellationToken cancellationToken)
     {
         ValidateLayerSnapshot(layer, cancellationToken);
-        ImageFileSystem snapshot = new(client, imageName, manifest, store, ownsStore: false, Semantics);
+        ImageFileSystem snapshot = new(content, imageName, manifest, store, ownsStore: false, Semantics);
         for (int i = 0; i <= layer; i++)
         {
             cancellationToken.ThrowIfCancellationRequested();
@@ -246,8 +284,7 @@ internal sealed class ImageFileSystem : IAsyncDisposable
         await ImageFileSystemExtractor.CopyContentEntriesAsync(
             [(entry, destination)],
             store,
-            client,
-            imageName,
+            content,
             GetIndexAsync,
             cancellationToken);
     }
@@ -288,7 +325,7 @@ internal sealed class ImageFileSystem : IAsyncDisposable
             try
             {
                 index = await GetIndexAsync(layer.Key, cancellationToken);
-                blob = await store.OpenIndexedBlobAsync(client, imageName, index,
+                blob = await store.OpenIndexedBlobAsync(content, index,
                     layer.Select(static item => item.Entry.ContentEntryIndex), cancellationToken);
             }
             catch (Exception exception) when (exception is IOException or InvalidDataException or UnauthorizedAccessException or RegistryException or HttpRequestException)
@@ -296,7 +333,7 @@ internal sealed class ImageFileSystem : IAsyncDisposable
                 layerError = exception;
             }
             using (blob)
-            using (LayerContentReader? reader = blob is null ? null : new(blob))
+            using (LayerContentReader? reader = blob is null ? null : new(blob, index!.Encoding))
             {
                 Dictionary<int, ScannedEntry>? entriesByIndex = index?.Changes.Entries.ToDictionary(static entry => entry.EntryIndex);
                 foreach (var content in layer.GroupBy(static item => item.Entry.ContentEntryIndex).OrderBy(static group => group.Key))
@@ -345,8 +382,7 @@ internal sealed class ImageFileSystem : IAsyncDisposable
             await ImageFileSystemExtractor.ExtractContentEntriesAsync(
                 content,
                 store,
-                client,
-                imageName,
+                this.content,
                 GetIndexAsync,
                 cancellationToken);
             ImageFileSystemExtractor.CreatePreservedHardLinks(plan, state, cancellationToken);
@@ -398,18 +434,59 @@ internal sealed class ImageFileSystem : IAsyncDisposable
         [.. entries.Values.Select(StoredEntry.FromEntry)],
         [.. deletedEntries.Values.Select(StoredEntry.FromEntry)]) { Diagnostics = Diagnostics };
 
-    private bool TryRestore(StoredFileSystem cached)
+    internal static async Task<StoredFileSystem?> ReadCachedViewAsync(
+        LayerStore store, string configurationDigest, int layerCount, CancellationToken cancellationToken,
+        ImageFileSystemSemantics? semantics = null)
     {
+        semantics ??= ImageFileSystemSemantics.Linux;
+        StoredFileSystem? cached = await store.ReadMetadataAsync<StoredFileSystem>(
+            configurationDigest, semantics.ViewKind, cancellationToken);
+        if (cached is null)
+        {
+            return null;
+        }
+        if (cached.Layers is null || cached.Layers.Length != layerCount ||
+            cached.Layers.Any(digest => digest is null || !DockerImageArchive.IsSha256(digest)))
+        {
+            Console.Error.WriteLine("Rebuilding invalid filesystem view: The cached view has different layer identities.");
+            return null;
+        }
         try
         {
-            if (cached.Layers is null || cached.Entries is null || cached.DeletedEntries is null ||
-                !cached.Layers.SequenceEqual(manifest.Layers.Select(static layer => layer.Digest)))
+            if (cached.Entries is null || cached.DeletedEntries is null)
             {
                 throw new InvalidDataException("The cached view has different layer identities.");
             }
-            RestoreEntries(cached.Entries, entries);
-            RestoreEntries(cached.DeletedEntries, deletedEntries);
-            restoredDiagnostics = cached.Diagnostics;
+            ValidateEntries(cached.Entries, cached.Layers, semantics);
+            ValidateEntries(cached.DeletedEntries, cached.Layers, semantics);
+            return cached;
+        }
+        catch (InvalidDataException exception)
+        {
+            Console.Error.WriteLine($"Rebuilding invalid filesystem view: {exception.Message}");
+            return null;
+        }
+    }
+
+    private bool TryRestore(StoredFileSystem cached) =>
+        TryRestore(cached, [.. manifest.Layers.Select(static layer => layer.Digest)],
+            entries, deletedEntries, Semantics, out restoredDiagnostics);
+
+    private static bool TryRestore(StoredFileSystem cached, IReadOnlyList<string?> layers,
+        Dictionary<string, ImageFileSystemEntry> entries, Dictionary<string, ImageFileSystemEntry> deletedEntries,
+        ImageFileSystemSemantics semantics, out IReadOnlyList<LayerDiagnostic> diagnostics)
+    {
+        diagnostics = [];
+        try
+        {
+            if (cached.Layers is null || cached.Entries is null || cached.DeletedEntries is null ||
+                !cached.Layers.SequenceEqual(layers))
+            {
+                throw new InvalidDataException("The cached view has different layer identities.");
+            }
+            RestoreEntries(cached.Entries, entries, layers, semantics);
+            RestoreEntries(cached.DeletedEntries, deletedEntries, layers, semantics);
+            diagnostics = cached.Diagnostics;
             return true;
         }
         catch (InvalidDataException exception)
@@ -421,23 +498,13 @@ internal sealed class ImageFileSystem : IAsyncDisposable
         }
     }
 
-    private void RestoreEntries(StoredEntry[] cached, Dictionary<string, ImageFileSystemEntry> destination)
+    private static void RestoreEntries(StoredEntry[] cached, Dictionary<string, ImageFileSystemEntry> destination,
+        IReadOnlyList<string?> layers, ImageFileSystemSemantics semantics)
     {
         foreach (StoredEntry stored in cached)
         {
-            ImageFileSystemEntry? value = stored?.Value;
-            if (value is null || string.IsNullOrEmpty(value.Path) ||
-                ImagePath.NormalizeArchive(value.Path) != value.Path ||
-                !Enum.IsDefined(value.Type) || value.Size < 0 ||
-                stored!.ContentLayerIndex < 0 || stored.ContentLayerIndex >= manifest.Layers.Length ||
-                stored.ContentEntryIndex < 0 ||
-                value.IntroducedLayer is null || !ValidReference(value.IntroducedLayer) ||
-                (value.ModifiedLayer is not null && !ValidReference(value.ModifiedLayer)) ||
-                (value.DeletedLayer is not null && !ValidReference(value.DeletedLayer)) ||
-                (stored.ContentPath is not null && ImagePath.NormalizeArchive(stored.ContentPath) != stored.ContentPath))
-            {
-                throw new InvalidDataException("The cached view contains invalid entry coordinates.");
-            }
+            ValidateEntry(stored, layers, semantics);
+            ImageFileSystemEntry value = stored.Value;
             if (!destination.TryAdd(value.Path, value with
             {
                 ContentLayerIndex = stored.ContentLayerIndex,
@@ -451,9 +518,42 @@ internal sealed class ImageFileSystem : IAsyncDisposable
         }
     }
 
-    private bool ValidReference(ImageLayerReference layer) =>
-        layer.Index >= 0 && layer.Index < manifest.Layers.Length &&
-        layer.Digest == manifest.Layers[layer.Index].Digest;
+    private static void ValidateEntries(
+        StoredEntry[] cached, IReadOnlyList<string?> layers, ImageFileSystemSemantics semantics)
+    {
+        HashSet<string> paths = new(semantics.Comparer);
+        foreach (StoredEntry stored in cached)
+        {
+            ValidateEntry(stored, layers, semantics);
+            if (!paths.Add(stored.Value.Path))
+            {
+                throw new InvalidDataException("The cached view contains duplicate paths.");
+            }
+        }
+    }
+
+    private static void ValidateEntry(
+        StoredEntry? stored, IReadOnlyList<string?> layers, ImageFileSystemSemantics semantics)
+    {
+        ImageFileSystemEntry? value = stored?.Value;
+        if (value is null || string.IsNullOrEmpty(value.Path) ||
+            semantics.NormalizeArchivePath(value.Path) != value.Path ||
+            !Enum.IsDefined(value.Type) || value.Size < 0 ||
+            stored!.ContentLayerIndex < 0 || stored.ContentLayerIndex >= layers.Count ||
+            stored.ContentEntryIndex < 0 ||
+            value.IntroducedLayer is null || !ValidReference(value.IntroducedLayer, layers) ||
+            (value.ModifiedLayer is not null && !ValidReference(value.ModifiedLayer, layers)) ||
+            (value.DeletedLayer is not null && !ValidReference(value.DeletedLayer, layers)) ||
+            (stored.ContentPath is not null &&
+                semantics.NormalizeArchivePath(stored.ContentPath) != stored.ContentPath))
+        {
+            throw new InvalidDataException("The cached view contains invalid entry coordinates.");
+        }
+    }
+
+    private static bool ValidReference(ImageLayerReference layer, IReadOnlyList<string?> layers) =>
+        layer.Index >= 0 && layer.Index < layers.Count &&
+        layer.Digest == layers[layer.Index];
 
     internal sealed record StoredFileSystem(string[] Layers, StoredEntry[] Entries, StoredEntry[] DeletedEntries)
     {

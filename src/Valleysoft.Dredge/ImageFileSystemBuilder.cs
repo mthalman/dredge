@@ -6,7 +6,7 @@ using Valleysoft.DockerRegistryClient.Models.Manifests;
 
 internal sealed class ImageFileSystemBuilder
 {
-    private readonly IDockerRegistryClient client;
+    private readonly IImageContentSource content;
     private readonly ImageName imageName;
     private readonly IImageManifest manifest;
     private readonly LayerStore store;
@@ -20,8 +20,10 @@ internal sealed class ImageFileSystemBuilder
     private readonly Dictionary<ImageContentId, ImageContentPaths>? contentPaths;
     private readonly HashSet<ImageContentId>? unreferencedContents;
 
+    public IReadOnlyList<string>? ExpectedDiffIds { get; set; }
+
     public ImageFileSystemBuilder(
-        IDockerRegistryClient client,
+        IImageContentSource content,
         ImageName imageName,
         IImageManifest manifest,
         LayerStore store,
@@ -30,7 +32,7 @@ internal sealed class ImageFileSystemBuilder
         Dictionary<string, ImageFileSystemEntry> deletedEntries,
         ImageFileSystemSemantics? semantics = null)
     {
-        this.client = client;
+        this.content = content;
         this.imageName = imageName;
         this.manifest = manifest;
         this.store = store;
@@ -47,6 +49,20 @@ internal sealed class ImageFileSystemBuilder
             foreach (ImageFileSystemEntry entry in entries.Values) TrackContentPath(entry);
         }
         this.pathResolver = new(entries, this.semantics);
+    }
+
+    public ImageFileSystemBuilder(
+        IDockerRegistryClient client,
+        ImageName imageName,
+        IImageManifest manifest,
+        LayerStore store,
+        Dictionary<int, StoredLayerIndex> indexes,
+        Dictionary<string, ImageFileSystemEntry> entries,
+        Dictionary<string, ImageFileSystemEntry> deletedEntries,
+        ImageFileSystemSemantics? semantics = null)
+        : this(new RegistryImageContentSource(client, imageName), imageName, manifest, store,
+            indexes, entries, deletedEntries, semantics)
+    {
     }
 
     public async Task<bool> BuildAsync(
@@ -70,9 +86,9 @@ internal sealed class ImageFileSystemBuilder
                     {
                         ApplyLayer(indexes[i].Changes, new(i, indexes[i].Digest), cancellationToken);
                     }
-                    if (!extracting || pathResolver.GetExtractionSource(contentPath!, entries).Type == ImageFileType.File)
+                    if (!extracting || pathResolver.GetExtractionSource(normalizedPath, entries).Type == ImageFileType.File)
                     {
-                        _ = pathResolver.ResolveContentEntry(contentPath!, entries);
+                        _ = pathResolver.ResolveContentEntry(normalizedPath, entries);
                         return firstLayer == 0;
                     }
                 }
@@ -107,8 +123,11 @@ internal sealed class ImageFileSystemBuilder
             IDescriptor descriptor = manifest.Layers[layerIndex];
             string digest = descriptor.Digest ??
                 throw new InvalidDataException($"Layer digest not set for image '{imageName}'.");
-            index = await store.GetIndexAsync(client, imageName, new(layerIndex, digest),
-                descriptor.Size, cancellationToken, progress, semantics);
+            string? expectedDiffId = ExpectedDiffIds is { } diffIds && diffIds.Count == manifest.Layers.Length
+                ? diffIds[layerIndex]
+                : null;
+            index = await store.GetIndexAsync(content, new(layerIndex, digest),
+                descriptor.Size, cancellationToken, progress, expectedDiffId, semantics);
             indexes.Add(layerIndex, index);
         }
 

@@ -20,14 +20,16 @@ public class ExtractCommand : RegistryCommandBase<ExtractOptions>
 
     protected override Task ExecuteAsync(CancellationToken cancellationToken)
     {
-        ImageName imageName = ImageName.Parse(Options.Image);
-        return ExecuteCommandAsync(imageName.Registry, cancellationToken, async ct =>
+        ImageSourceReference reference = ImageSourceReference.Parse(Options.Image);
+        return ExecuteCommandAsync(reference.Registry, cancellationToken, async ct =>
         {
-            using IDockerRegistryClient client =
-                await DockerRegistryClientFactory.GetClientAsync(imageName.Registry, ct);
+            await using ResolvedImage source = await OpenImageAsync(Options.Image, Options, ct,
+                requirements: ImagePath.NormalizeRequested(Options.Path).Length > 0 ?
+                    ImageSourceRequirements.LinuxLayerContent : ImageSourceRequirements.LinuxFileSystem);
+            source.Report(Error);
             await using LayerStore store = LayerStore.Create(paths);
             await using ImageFileSystem fileSystem =
-                await ImageFileSystem.CreateAsync(client, imageName, Options, ct, store, extractionPath: Options.Path);
+                await ImageFileSystem.CreateAsync(source, ct, store, extractionPath: Options.Path);
             await fileSystem.ExtractAsync(Options.Path, Options.OutputPath, ct);
         });
     }

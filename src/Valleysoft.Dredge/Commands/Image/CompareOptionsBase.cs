@@ -2,7 +2,7 @@
 
 namespace Valleysoft.Dredge.Commands.Image;
 
-public class CompareOptionsBase : PlatformOptionsBase
+public class CompareOptionsBase : ImageOptionsBase
 {
     public const string BaseArg = "base";
     public const string TargetArg = "target";
@@ -15,8 +15,8 @@ public class CompareOptionsBase : PlatformOptionsBase
 
     public CompareOptionsBase()
     {
-        baseImageArg = Add(ImageReferenceArgument.Create(BaseArg, "Base container image"));
-        targetImageArg = Add(ImageReferenceArgument.Create(TargetArg, "Target container image"));
+        baseImageArg = Add(ImageReferenceArgument.CreateImageSource(BaseArg, "Base container image"));
+        targetImageArg = Add(ImageReferenceArgument.CreateImageSource(TargetArg, "Target container image"));
     }
 
     protected override void GetValues()

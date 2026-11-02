@@ -53,18 +53,7 @@ internal static class ManifestHelper
     {
         if (manifestInfo.Manifest is IManifestList manifestList)
         {
-            string? os = options.Os;
-            string? osVersion = options.OsVersion;
-            string? architecture = options.Architecture;
-            if (string.IsNullOrEmpty(os) ||
-                string.IsNullOrEmpty(osVersion) ||
-                string.IsNullOrEmpty(architecture))
-            {
-                PlatformSettings settings = settingsStore.Load().Platform;
-                os = GetPlatformValue(os, settings.Os);
-                osVersion = GetPlatformValue(osVersion, settings.OsVersion);
-                architecture = GetPlatformValue(architecture, settings.Architecture);
-            }
+            (string? os, string? architecture, string? osVersion) = options.ResolvePlatform(settingsStore);
 
             IEnumerable<IManifestReference> manifestRefs = manifestList.Manifests
                 .Where(manifest =>
@@ -98,19 +87,5 @@ internal static class ManifestHelper
         }
 
         return new ResolvedManifest(manifestInfo, manifest);
-    }
-
-    private static string? GetPlatformValue(string? options, string settings)
-    {
-        if (!string.IsNullOrEmpty(options))
-        {
-            return options;
-        }
-        else if (!string.IsNullOrEmpty(settings))
-        {
-            return settings;
-        }
-
-        return null;
     }
 }

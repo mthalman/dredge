@@ -8,6 +8,31 @@ internal static class ImageTarReader
 {
     public static LayerArchive Open(Stream blob) => new(blob);
 
+    internal static string DetectEncoding(Stream blob)
+    {
+        if (!blob.CanSeek)
+        {
+            throw new NotSupportedException("Layer encoding detection requires a seekable stream.");
+        }
+        long position = blob.Position;
+        try
+        {
+            return blob.ReadByte() == 0x1f && blob.ReadByte() == 0x8b ? "gzip" : "tar";
+        }
+        finally
+        {
+            blob.Position = position;
+        }
+    }
+
+    internal static Stream OpenContent(Stream blob, string? encoding = null) =>
+        (encoding ?? DetectEncoding(blob)) switch
+        {
+            "gzip" => new GZipStream(blob, CompressionMode.Decompress, leaveOpen: true),
+            "tar" => new CountingReadStream(blob),
+            _ => throw new NotSupportedException($"Unsupported layer encoding '{encoding}'.")
+        };
+
     public static async Task<string> HashEntryAsync(
         TarEntry entry, ImageLayerReference layer, CancellationToken cancellationToken)
     {
@@ -87,24 +112,24 @@ internal static class ImageTarReader
         ImageLayerReference layer,
         Exception innerException) =>
         new(
-            $"Layer {layer.Index} ('{layer.Digest}') is not a supported gzip-compressed Linux tar layer.",
+            $"Layer {layer.Index} ('{layer.Digest}') is not a supported gzip-compressed Linux tar layer or uncompressed Linux tar layer.",
             innerException);
 
     internal sealed class LayerArchive : IDisposable
     {
-        private readonly GZipStream gzip;
+        private readonly Stream content;
         public TarReader Reader { get; }
 
         public LayerArchive(Stream blob)
         {
-            gzip = new(blob, CompressionMode.Decompress, leaveOpen: true);
-            Reader = new(gzip, leaveOpen: true);
+            content = OpenContent(blob);
+            Reader = new(content, leaveOpen: true);
         }
 
         public void Dispose()
         {
             Reader.Dispose();
-            gzip.Dispose();
+            content.Dispose();
         }
     }
 }

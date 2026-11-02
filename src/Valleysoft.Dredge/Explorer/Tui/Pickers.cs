@@ -115,6 +115,12 @@ internal static class TagPicker
             this.enqueue = enqueue;
             work = Task.Run(async () =>
             {
+                if (img.IsDaemon)
+                {
+                    Post(() => fill(null,
+                        "Registry tag browsing is unavailable for Docker daemon images. Enter a docker:// or registry:// reference."));
+                    return;
+                }
                 IReadOnlyList<string> tags;
                 try
                 {
@@ -270,7 +276,8 @@ internal static class TagPicker
         {
             if (choices is null)
             {
-                summary = "Could not list tags: " + error + " Type a tag and press Enter.";
+                summary = img.IsDaemon ? "Daemon image: registry tag browsing is unavailable." :
+                    "Could not list tags: " + error + " Type a tag and press Enter.";
             }
             else
             {
@@ -280,6 +287,10 @@ internal static class TagPicker
                     : $"{Fmt.N(choices.Count)} tags.";
             }
             Filter();
+            if (img.IsDaemon)
+            {
+                annotationFirst.Text = "Type a docker:// or registry:// reference above and press Enter.";
+            }
             dialog.SetNeedsDraw();
         }
         return (dialog, () =>

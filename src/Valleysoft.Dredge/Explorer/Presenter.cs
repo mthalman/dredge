@@ -195,13 +195,13 @@ internal sealed partial class ExplorerPresenter
             .Add("  " + img.Platform, Theme.Silt);
         if (!Narrow)
         {
-            title.Add("  " + img.Digest, Theme.Silt);
+            title.Add("  " + (img.IsDaemon ? "image ID " : "") + img.Digest, Theme.Silt);
         }
         Line right = new();
         if (!img.Complete)
         {
             // Uncompressed sizes aren't known until a layer is indexed; only claim what the manifest says.
-            right.Add(Fmt.SizeShort(img.TotalDownload), Theme.Foam).Add(" download", Theme.Silt).Add("   ");
+            right.Add(Fmt.SizeShort(img.TotalDownload), Theme.Foam).Add(" " + img.TransferLabel, Theme.Silt).Add("   ");
             if (img.ReadyCount < img.LayerCount)
             {
                 right.Add(SpinnerGlyph(s) + " ", Theme.Channel)
@@ -221,7 +221,7 @@ internal sealed partial class ExplorerPresenter
             right.Add(Fmt.SizeShort(img.TotalSize), Theme.Foam).Add(" file payload", Theme.Silt).Add("   ");
             if (!Narrow)
             {
-                right.Add(Fmt.SizeShort(img.TotalDownload), Theme.Foam).Add(" download", Theme.Silt).Add("   ");
+                right.Add(Fmt.SizeShort(img.TotalDownload), Theme.Foam).Add(" " + img.TransferLabel, Theme.Silt).Add("   ");
             }
             int eff = (int)Math.Floor(img.Efficiency * 100);
             Rgb color = eff >= 90 ? Theme.Kelp : eff >= 75 ? Theme.Ochre : Theme.Garnet;
@@ -506,7 +506,7 @@ internal sealed partial class ExplorerPresenter
         int failed = img.States.Count(state => state == ExplorerLayerState.Failed);
         return failed > 0
             ? $"{failed} {(failed == 1 ? "layer" : "layers")} failed · {Fmt.Size(left)} left"
-            : $"{Fmt.Size(left)} left to download";
+            : $"{Fmt.Size(left)} left to {(img.IsDaemon ? "index" : "download")}";
     }
 
     // Keeps as many hints as fit; help and quit stay so they are always discoverable.
@@ -736,7 +736,7 @@ internal sealed partial class ExplorerPresenter
         switch (img.States[s.Layer])
         {
             case ExplorerLayerState.Waiting:
-                lines.Add(new Line().Add(Fmt.Size(row.Download), Theme.Foam).Add(" download · waiting to index", Theme.Silt));
+                lines.Add(new Line().Add(Fmt.Size(row.Download), Theme.Foam).Add(" " + img.TransferLabel + " · waiting to index", Theme.Silt));
                 lines.Add(Line.Of(ShortDigest(img.LayerDigests[s.Layer]), Theme.Silt));
                 return Pane(lines, $"Layer {s.Layer}", false);
             case ExplorerLayerState.Indexing:
@@ -755,7 +755,11 @@ internal sealed partial class ExplorerPresenter
 
         Line sizes = new Line()
             .Add(Fmt.Size(img.LayerSize(s.Layer)), Theme.Foam).Add(" file payload", Theme.Silt).Add("   ")
-            .Add(Fmt.Size(row.Download), Theme.Foam).Add(" download", Theme.Silt);
+            .Add(Fmt.Size(row.Download), Theme.Foam).Add(" " + img.TransferLabel, Theme.Silt);
+        if (img.IsDaemon)
+        {
+            lines.Add(Line.Of("Registry manifest digest and download size unavailable.", Theme.Silt));
+        }
         if (row.Created.Length > 0)
         {
             sizes.Add("   ").Add(row.Created, Theme.Silt);

@@ -7,8 +7,7 @@ internal static class ImageFileSystemExtractor
     public static async Task CopyContentEntriesAsync(
         IEnumerable<(ImageFileSystemEntry Entry, Stream Destination)> requests,
         LayerStore store,
-        IDockerRegistryClient client,
-        ImageName imageName,
+        IImageContentSource content,
         Func<int, CancellationToken, Task<StoredLayerIndex>> getIndexAsync,
         CancellationToken cancellationToken)
     {
@@ -27,8 +26,8 @@ internal static class ImageFileSystemExtractor
 
             StoredLayerIndex index = await getIndexAsync(group.Key, cancellationToken);
             using Stream blob = await store.OpenIndexedBlobAsync(
-                client, imageName, index, destinations.Keys.Select(static key => key.EntryIndex), cancellationToken);
-            using LayerContentReader reader = new(blob);
+                content, index, destinations.Keys.Select(static key => key.EntryIndex), cancellationToken);
+            using LayerContentReader reader = new(blob, index.Encoding);
             foreach (ScannedEntry entry in index.Changes.Entries)
             {
                 cancellationToken.ThrowIfCancellationRequested();
@@ -63,8 +62,7 @@ internal static class ImageFileSystemExtractor
     public static async Task ExtractContentEntriesAsync(
         IEnumerable<(ImageFileSystemEntry Entry, string Destination)> requests,
         LayerStore store,
-        IDockerRegistryClient client,
-        ImageName imageName,
+        IImageContentSource content,
         Func<int, CancellationToken, Task<StoredLayerIndex>> getIndexAsync,
         CancellationToken cancellationToken)
     {
@@ -82,8 +80,8 @@ internal static class ImageFileSystemExtractor
 
             StoredLayerIndex index = await getIndexAsync(group.Key, cancellationToken);
             using Stream blob = await store.OpenIndexedBlobAsync(
-                client, imageName, index, destinations.Keys.Select(static key => key.EntryIndex), cancellationToken);
-            using LayerContentReader reader = new(blob);
+                content, index, destinations.Keys.Select(static key => key.EntryIndex), cancellationToken);
+            using LayerContentReader reader = new(blob, index.Encoding);
             foreach (ScannedEntry entry in index.Changes.Entries)
             {
                 cancellationToken.ThrowIfCancellationRequested();

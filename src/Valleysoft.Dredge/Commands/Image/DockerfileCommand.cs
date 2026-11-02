@@ -37,8 +37,8 @@ public partial class DockerfileCommand : RegistryCommandBase<DockerfileOptions>
 
     protected override async Task ExecuteAsync(CancellationToken cancellationToken)
     {
-        ImageName imageName = ImageName.Parse(Options.Image);
-        await ExecuteCommandAsync(imageName.Registry, cancellationToken, async ct =>
+        ImageSourceReference reference = ImageSourceReference.Parse(Options.Image);
+        await ExecuteCommandAsync(reference.Registry, cancellationToken, async ct =>
         {
             Markup markupOutput = new(await GetMarkupStringAsync(ct));
             ansiConsole.Write(markupOutput);
@@ -47,14 +47,11 @@ public partial class DockerfileCommand : RegistryCommandBase<DockerfileOptions>
 
     public async Task<string> GetMarkupStringAsync(CancellationToken cancellationToken = default)
     {
-        ImageName imageName = ImageName.Parse(Options.Image);
-        using IDockerRegistryClient client = await dockerRegistryClientFactory.GetClientAsync(imageName.Registry, cancellationToken);
-        IImageManifest manifest =
-            (await ManifestHelper.GetResolvedManifestAsync(client, imageName, Options, cancellationToken)).Manifest;
-
-        string? digest = (manifest.Config?.Digest) ?? throw new NotSupportedException($"Could not resolve the image config digest of '{Options.Image}'.");
-        ImageConfig imageConfig =
-            await client.Blobs.GetImageAsync(imageName.Repo, digest, cancellationToken);
+        await using ResolvedImage source = await OpenImageAsync(Options.Image, Options, cancellationToken,
+            requirements: ImageSourceRequirements.Metadata);
+        source.Report(Error);
+        IImageManifest manifest = source.Resolved.Manifest;
+        ImageConfig imageConfig = source.Configuration;
         bool isWindows = imageConfig.Os.Equals("windows", StringComparison.OrdinalIgnoreCase);
 
         List<string> dockerfileLines = [];
@@ -63,7 +60,8 @@ public partial class DockerfileCommand : RegistryCommandBase<DockerfileOptions>
         if (isWindows)
         {
             WindowsImageInfo windowsImageInfo =
-                await GetWindowsInfoAsync(manifest, imageConfig, cancellationToken);
+                await GetWindowsInfoAsync(manifest, imageConfig, cancellationToken, !source.IsDaemon,
+                    source.SelectedPlatform);
             layers = imageConfig.History.Skip(windowsImageInfo.BaseHistoryCount);
             dockerfileLines.Add(
                 $"FROM {RegistryHelper.McrRegistry}/{windowsImageInfo.Repo}:{windowsImageInfo.Info.Version}-{imageConfig.Architecture}");
@@ -148,10 +146,12 @@ public partial class DockerfileCommand : RegistryCommandBase<DockerfileOptions>
     private async Task<WindowsImageInfo> GetWindowsInfoAsync(
         IImageManifest manifest,
         ImageConfig imageConfig,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        bool useDistributionDigest, ExplorerPlatform? selectedPlatform)
     {
         WindowsImageInfo windowsOsInfo = await OsCommand.GetWindowsOsInfoAsync(
-            imageConfig, manifest, dockerRegistryClientFactory, cancellationToken) ??
+            imageConfig, manifest, dockerRegistryClientFactory, cancellationToken, useDistributionDigest,
+            selectedPlatform) ??
             throw new Exception("Could not determine info about the Windows image.");
         if (string.IsNullOrEmpty(windowsOsInfo.Info.Version))
         {

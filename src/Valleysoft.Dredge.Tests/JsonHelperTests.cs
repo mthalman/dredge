@@ -1,5 +1,6 @@
 using System.Text.Json;
 using System.Text.Json.Serialization;
+using Valleysoft.DockerRegistryClient.Models.Images;
 
 namespace Valleysoft.Dredge.Tests;
 
@@ -107,6 +108,70 @@ public class JsonHelperTests
 
         Assert.Equal("5", value.OsVersion);
         Assert.Equal("true", value.Values["enabled"]);
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void Deserialize_ImageConfigurationReadsDictionaryKeys(bool generatedMetadataOnly)
+    {
+        JsonSerializerOptions options = new(JsonHelper.Settings);
+        if (generatedMetadataOnly)
+        {
+            options.TypeInfoResolver = DredgeJsonContext.Default;
+        }
+
+        Image image = JsonHelper.Deserialize<Image>(
+            """
+            {
+              "architecture": "amd64",
+              "os": "linux",
+              "config": {
+                "ExposedPorts": {"8080/tcp": {}, "8081/udp": {}},
+                "Volumes": {"/Data/WithCase": {}},
+                "Labels": {"Mixed.Case.Key": "value"}
+              }
+            }
+            """,
+            options)!;
+
+        Assert.NotNull(image.Config);
+        Assert.True(image.Config.ExposedPorts!.ContainsKey("8080/tcp"));
+        Assert.True(image.Config.ExposedPorts.ContainsKey("8081/udp"));
+        Assert.True(image.Config.Volumes!.ContainsKey("/Data/WithCase"));
+        Assert.Equal("value", image.Config.Labels!["Mixed.Case.Key"]);
+    }
+
+    [Theory]
+    [InlineData(false, false)]
+    [InlineData(false, true)]
+    [InlineData(true, false)]
+    [InlineData(true, true)]
+    public void StringDictionaryKeys_RoundTripWithConfiguredNaming(
+        bool generatedMetadataOnly, bool preserveKeyCase)
+    {
+        const string Key = "Mixed.Case.Key\"\\path";
+        string expectedKey = preserveKeyCase ? Key : "mixed.Case.Key\"\\path";
+        JsonSerializerOptions options = new(JsonHelper.Settings);
+        if (generatedMetadataOnly)
+        {
+            options.TypeInfoResolver = DredgeJsonContext.Default;
+        }
+        if (preserveKeyCase)
+        {
+            options.DictionaryKeyPolicy = null;
+        }
+        Dictionary<string, object> values = new()
+        {
+            [Key] = "value"
+        };
+
+        string json = JsonHelper.Serialize(values, options);
+        using JsonDocument document = JsonDocument.Parse(json);
+        Assert.Equal(expectedKey, document.RootElement.EnumerateObject().Single().Name);
+        Dictionary<string, object> deserialized =
+            JsonHelper.Deserialize<Dictionary<string, object>>(json, options)!;
+        Assert.Equal("value", Assert.IsType<JsonElement>(deserialized[expectedKey]).GetString());
     }
 
     [Fact]

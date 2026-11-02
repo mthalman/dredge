@@ -2,7 +2,7 @@
 
 namespace Valleysoft.Dredge.Commands.Image;
 
-public class SaveLayersOptions : PlatformOptionsBase
+public class SaveLayersOptions : ImageOptionsBase
 {
     public const string LayerIndexOptionName = "--layer-index";
 
@@ -20,7 +20,7 @@ public class SaveLayersOptions : PlatformOptionsBase
 
     public SaveLayersOptions()
     {
-        imageArg = Add(ImageReferenceArgument.Create("image"));
+        imageArg = Add(ImageReferenceArgument.CreateImageSource("image"));
         outputPathArg = Add(new Argument<string>("output-path") { Description = "Path to the output location" });
         noSquashOption = Add(new Option<bool>("--no-squash") { Description = "Do not squash the image layers" });
         layerIndexOption = Add(LayerIndexOption.Create(

@@ -11,11 +11,24 @@ internal static class ImageLayerScanner
     private const string WhiteoutPrefix = ".wh.";
     private const string OpaqueWhiteout = ".wh..wh..opq";
 
+    public static Task<LayerChanges> ScanAsync(
+        Stream blob,
+        ImageLayerReference layer,
+        CancellationToken cancellationToken,
+        HashAlgorithm? decodedHash,
+        HashAlgorithm? additionalDecodedHash = null,
+        string? encoding = null) =>
+        ScanAsync(blob, layer, cancellationToken, semantics: null, decodedHash: decodedHash,
+            additionalDecodedHash: additionalDecodedHash, encoding: encoding);
+
     public static async Task<LayerChanges> ScanAsync(
         Stream blob,
         ImageLayerReference layer,
         CancellationToken cancellationToken,
-        ImageFileSystemSemantics? semantics = null)
+        ImageFileSystemSemantics? semantics = null,
+        HashAlgorithm? decodedHash = null,
+        HashAlgorithm? additionalDecodedHash = null,
+        string? encoding = null)
     {
         semantics ??= ImageFileSystemSemantics.Linux;
         List<ScannedEntry> entries = [];
@@ -37,9 +50,16 @@ internal static class ImageLayerScanner
             }
         }
 
+        encoding ??= ImageTarReader.DetectEncoding(blob);
         using CountingReadStream compressed = new(blob);
-        using GZipStream gzip = new(compressed, CompressionMode.Decompress, leaveOpen: true);
-        using CountingReadStream uncompressed = new(gzip);
+        using Stream content = ImageTarReader.OpenContent(compressed, encoding);
+        using CryptoStream? additionalHashing = additionalDecodedHash is null
+            ? null
+            : new(content, additionalDecodedHash, CryptoStreamMode.Read, leaveOpen: true);
+        using CryptoStream? hashing = decodedHash is null
+            ? null
+            : new(additionalHashing ?? content, decodedHash, CryptoStreamMode.Read, leaveOpen: true);
+        using CountingReadStream uncompressed = new(hashing ?? additionalHashing ?? content);
         using TarReader tar = new(uncompressed, leaveOpen: true);
         int entryIndex = 0;
         while (true)
@@ -184,12 +204,17 @@ internal static class ImageLayerScanner
                 linkTarget,
                 currentEntryIndex,
                 offset,
-                compressed.BytesRead,
+                encoding == "tar" ? uncompressed.BytesRead : compressed.BytesRead,
                 contentHash) { Windows = windows });
         }
         if (semantics.IsWindows)
         {
             Report("metadata", new("", "Windows content-only analysis: ACLs, ownership, extended attributes and NTFS allocation semantics are not interpreted."));
+        }
+        if (hashing is not null || additionalHashing is not null)
+        {
+            await uncompressed.CopyToAsync(Stream.Null, cancellationToken);
+            cancellationToken.ThrowIfCancellationRequested();
         }
         return new(entries, whiteouts, opaqueDirectories) { Diagnostics = [.. diagnostics.Values] };
     }

@@ -2,7 +2,7 @@ using System.CommandLine;
 
 namespace Valleysoft.Dredge.Commands.Image;
 
-public class CatOptions : PlatformOptionsBase
+public class CatOptions : ImageOptionsBase
 {
     private readonly Argument<string> imageArgument;
     private readonly Argument<string> pathArgument;
@@ -14,7 +14,7 @@ public class CatOptions : PlatformOptionsBase
 
     public CatOptions()
     {
-        imageArgument = Add(ImageReferenceArgument.Create("image"));
+        imageArgument = Add(ImageReferenceArgument.CreateImageSource("image"));
         pathArgument = Add(new Argument<string>("path")
         {
             Description = "Image file path to write to standard output"

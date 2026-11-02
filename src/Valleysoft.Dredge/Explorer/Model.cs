@@ -121,13 +121,15 @@ internal sealed class ExplorerImage
         Progress = new double[LayerCount];
         Errors = new string?[LayerCount];
         (history, Instructions) = BuildHistory(configHistory, layerSizes, BaseLayerCount, now ?? DateTime.UtcNow);
-        RepoName = ImageName.Parse(reference).Repo.Split('/')[^1];
+        ImageSourceReference source = ImageSourceReference.Parse(reference);
+        RepoName = source.GetImageName().Repo.Split('/')[^1];
+        IsDaemon = source.IsDaemon;
     }
 
     public static ExplorerImage FromSource(ExplorerSource source) => new(
-        source.Image.ToString(),
-        source.Platform?.ToString() ?? $"{source.Config.Os}/{source.Config.Architecture}",
-        source.Resolved.ManifestInfo.DockerContentDigest,
+        source.Reference,
+        source.Source?.Platform ?? source.Platform?.ToString() ?? $"{source.Config.Os}/{source.Config.Architecture}",
+        source.Source?.Identity ?? source.Resolved.ManifestInfo.DockerContentDigest,
         [.. source.Resolved.Manifest.Layers.Select(static layer => layer.Digest ?? "")],
         [.. source.Resolved.Manifest.Layers.Select(static layer => layer.Size)],
         source.Config.History, source.BaseImages, source.BaseWarning)
@@ -135,23 +137,39 @@ internal sealed class ExplorerImage
         PlatformArguments = (source.Platforms.Count > 1 || string.Equals(source.Config.Os, "windows", StringComparison.OrdinalIgnoreCase)) &&
             source.Platform is ExplorerPlatform platform
             ? PlatformArgumentsFor(platform) : "",
+        ConnectionArguments = ConnectionArgumentsFor(source.Source?.Connection, source.SourceOptions),
     };
 
     // The flags that select this platform on other dredge commands.
     internal static string PlatformArgumentsFor(ExplorerPlatform platform)
     {
         string text = $"--os {ShellCommand.Quote(platform.Os)} --arch {ShellCommand.Quote(platform.Architecture)}";
-        if (!string.IsNullOrEmpty(platform.OsVersion))
-        {
-            text += $" --os-version {ShellCommand.Quote(platform.OsVersion)}";
-        }
+        text += string.IsNullOrEmpty(platform.OsVersion)
+            ? " --os-version=\"\""
+            : $" --os-version {ShellCommand.Quote(platform.OsVersion)}";
         return text;
     }
 
     public string PlatformArguments { get; init; } = "";
+    public string ConnectionArguments { get; init; } = "";
+    public string CommandArguments => string.Join(" ",
+        new[] { PlatformArguments, ConnectionArguments }.Where(static argument => argument.Length > 0));
+
+    internal static string ConnectionArgumentsFor(
+        DockerConnection? connection, Commands.PlatformOptionsBase? options = null) =>
+        connection is not null
+            ? "--docker-host " + ShellCommand.Quote(connection.Endpoint.AbsoluteUri)
+            : options?.DockerHost is { Length: > 0 } host
+                ? "--docker-host " + ShellCommand.Quote(host)
+                : options?.DockerContext is { Length: > 0 } context
+                    ? "--docker-context " + ShellCommand.Quote(context) : "";
 
     public string Reference { get; }
-    public string ResolvedReference => DigestReference(ImageName.Parse(Reference), Digest);
+    public bool IsDaemon { get; }
+    public bool DownloadSizeAvailable => !IsDaemon;
+    public string TransferLabel => IsDaemon ? "stored" : "download";
+    public string ResolvedReference => IsDaemon ? $"docker://{Digest}" :
+        DigestReference(ImageName.Parse(ImageSourceReference.Parse(Reference).Value), Digest);
 
     internal static string DigestReference(ImageName image, string digest) =>
         new ImageName(image.Registry, image.Repo, tag: null, digest).ToString();
@@ -216,9 +234,9 @@ internal sealed class ExplorerImage
         BaseImages.FirstOrDefault(baseImage => layer < baseImage.LayerCount)?.Name;
     public string BaseLabel(string reference)
     {
-        string name = ImageName.Parse(reference).Repo.Split('/')[^1];
+        string name = ImageSourceReference.Parse(reference).GetImageName().Repo.Split('/')[^1];
         return name == RepoName || BaseImages.Any(baseImage =>
-            baseImage.Name != reference && ImageName.Parse(baseImage.Name).Repo.Split('/')[^1] == name)
+            baseImage.Name != reference && ImageSourceReference.Parse(baseImage.Name).GetImageName().Repo.Split('/')[^1] == name)
             ? reference : name;
     }
     public string GroupAt(int layer) => BaseImageAt(layer) ?? Reference;
