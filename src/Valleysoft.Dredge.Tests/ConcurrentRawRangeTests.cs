@@ -8,8 +8,10 @@ public sealed class ConcurrentRawRangeTests : IAsyncDisposable
     private readonly string root = Path.Combine(Environment.CurrentDirectory, $".concurrent-ranges-{Guid.NewGuid():N}");
     private static CancellationToken Token => TestContext.Current.CancellationToken;
 
-    [Fact]
-    public async Task SparseRangesUseFourWorkersAndPreserveSelectedBytesAndOrder()
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task SparseRangesUseFourWorkersAndPreserveSelectedBytesAndOrder(bool failBeforeRelease)
     {
         ConcurrentSource source = new(1000, 1024 * 1024);
         await using LayerStore store = new(root);
@@ -17,13 +19,36 @@ public sealed class ConcurrentRawRangeTests : IAsyncDisposable
         timeout.CancelAfter(TimeSpan.FromSeconds(30));
         Task<Stream> opening = store.OpenIndexedBlobAsync(
             source, source.Index, Enumerable.Range(0, 1000).Reverse(), timeout.Token);
-        await source.BodiesStarted.Task.WaitAsync(timeout.Token);
-        Assert.False(opening.IsCompleted);
-        Assert.Equal(4, source.Active);
-        source.Release.SetResult();
-
-        using (Stream blob = await opening)
+        async Task CheckPendingAsync()
         {
+            try
+            {
+                await source.BodiesStarted.Task.WaitAsync(timeout.Token);
+                Assert.False(opening.IsCompleted);
+                Assert.Equal(4, source.Active);
+                if (failBeforeRelease)
+                {
+                    Assert.Fail("Simulated assertion failure before releasing range bodies.");
+                }
+            }
+            finally
+            {
+                source.Release.TrySetResult();
+                await ((Task)opening).ConfigureAwait(
+                    ConfigureAwaitOptions.ContinueOnCapturedContext | ConfigureAwaitOptions.SuppressThrowing);
+            }
+        }
+        try
+        {
+            if (failBeforeRelease)
+            {
+                await Assert.ThrowsAsync<Xunit.Sdk.FailException>(CheckPendingAsync);
+            }
+            else
+            {
+                await CheckPendingAsync();
+            }
+            using Stream blob = await opening;
             Assert.Equal(1000, source.Requests);
             Assert.Equal(4, source.MaximumActive);
             Assert.Equal(1000 * 4096L, source.BytesRead);
@@ -40,6 +65,13 @@ public sealed class ConcurrentRawRangeTests : IAsyncDisposable
                 using MemoryStream output = new();
                 await reader.CopyToAsync(source.Index.Changes.Entries[ordinal], output, Token);
                 Assert.Equal(ConcurrentSource.FileBytes(ordinal), output.ToArray());
+            }
+        }
+        finally
+        {
+            if (opening.IsCompletedSuccessfully)
+            {
+                (await opening).Dispose();
             }
         }
         Assert.Empty(Directory.GetFiles(Path.Combine(root, "layer-store", "data"), "*.tmp"));
@@ -69,16 +101,25 @@ public sealed class ConcurrentRawRangeTests : IAsyncDisposable
     }
 
     [Theory]
-    [InlineData("wrong-range")]
-    [InlineData("wrong-total")]
-    [InlineData("corrupt")]
-    [InlineData("truncated")]
-    [InlineData("excess")]
-    [InlineData("unsatisfiable")]
-    [InlineData("ignored")]
-    [InlineData("corrupt-full")]
-    [InlineData("io")]
-    public async Task FallbackDrainsSiblingBodiesAndReusesAnIgnoredRangeResponse(string response)
+    [InlineData("wrong-range", false)]
+    [InlineData("wrong-range", true)]
+    [InlineData("wrong-total", false)]
+    [InlineData("wrong-total", true)]
+    [InlineData("corrupt", false)]
+    [InlineData("corrupt", true)]
+    [InlineData("truncated", false)]
+    [InlineData("truncated", true)]
+    [InlineData("excess", false)]
+    [InlineData("excess", true)]
+    [InlineData("unsatisfiable", false)]
+    [InlineData("unsatisfiable", true)]
+    [InlineData("ignored", false)]
+    [InlineData("ignored", true)]
+    [InlineData("corrupt-full", false)]
+    [InlineData("corrupt-full", true)]
+    [InlineData("io", false)]
+    [InlineData("io", true)]
+    public async Task FallbackDrainsSiblingBodiesAndReusesAnIgnoredRangeResponse(string response, bool failBeforeRelease)
     {
         ConcurrentSource source = new(8, 16384, response);
         source.BodyDisposed = () => Assert.NotEmpty(
@@ -89,29 +130,61 @@ public sealed class ConcurrentRawRangeTests : IAsyncDisposable
         timeout.CancelAfter(TimeSpan.FromSeconds(30));
         Task<Stream> opening = store.OpenIndexedBlobAsync(
             source, source.Index, Enumerable.Range(0, 8), timeout.Token);
-        await source.BodiesStarted.Task.WaitAsync(timeout.Token);
-        Assert.Equal(4, source.Active);
-        source.Release.SetResult();
-
-        if (response is "corrupt-full" or "io")
+        async Task CheckPendingAsync()
         {
-            if (response == "io")
+            try
             {
-                await Assert.ThrowsAsync<IOException>(() => opening);
+                await source.BodiesStarted.Task.WaitAsync(timeout.Token);
+                Assert.Equal(4, source.Active);
+                if (failBeforeRelease)
+                {
+                    Assert.Fail("Simulated assertion failure before releasing range bodies.");
+                }
+            }
+            finally
+            {
+                source.Release.TrySetResult();
+                await ((Task)opening).ConfigureAwait(
+                    ConfigureAwaitOptions.ContinueOnCapturedContext | ConfigureAwaitOptions.SuppressThrowing);
+            }
+        }
+        try
+        {
+            if (failBeforeRelease)
+            {
+                await Assert.ThrowsAsync<Xunit.Sdk.FailException>(CheckPendingAsync);
             }
             else
             {
-                await Assert.ThrowsAsync<InvalidDataException>(() => opening);
+                await CheckPendingAsync();
             }
-            Assert.False(File.Exists(store.GetBlobPath(source.Index.Digest)));
+            if (response is "corrupt-full" or "io")
+            {
+                if (response == "io")
+                {
+                    await Assert.ThrowsAsync<IOException>(() => opening);
+                }
+                else
+                {
+                    await Assert.ThrowsAsync<InvalidDataException>(() => opening);
+                }
+                Assert.False(File.Exists(store.GetBlobPath(source.Index.Digest)));
+            }
+            else
+            {
+                using Stream blob = await opening;
+                using MemoryStream output = new();
+                await blob.CopyToAsync(output, Token);
+                Assert.Equal(source.Raw, output.ToArray());
+                Assert.Equal(source.Raw, await File.ReadAllBytesAsync(store.GetBlobPath(source.Index.Digest), Token));
+            }
         }
-        else
+        finally
         {
-            using Stream blob = await opening;
-            using MemoryStream output = new();
-            await blob.CopyToAsync(output, Token);
-            Assert.Equal(source.Raw, output.ToArray());
-            Assert.Equal(source.Raw, await File.ReadAllBytesAsync(store.GetBlobPath(source.Index.Digest), Token));
+            if (opening.IsCompletedSuccessfully)
+            {
+                (await opening).Dispose();
+            }
         }
         Assert.Equal(4, source.Requests);
         Assert.Equal(response is "ignored" or "io" ? 0 : 1, source.FullRequests);

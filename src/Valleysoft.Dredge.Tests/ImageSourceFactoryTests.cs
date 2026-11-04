@@ -102,29 +102,36 @@ public class ImageSourceFactoryTests : IDisposable
     [Theory]
     [InlineData(false)]
     [InlineData(true)]
-    public async Task WindowsFilesystemAcquisition_FailsBeforeExport(bool contentOnly)
+    public async Task WindowsFilesystemAcquisition_ExportsPinnedImage(bool contentOnly)
     {
-        FakeEngine engine = new(DockerArchiveFixture.Create()) { Os = "windows" };
+        FakeEngine engine = new(DockerArchiveFixture.Create(oci: true, gzip: true, windows: true))
+        {
+            Os = "windows",
+            OsVersion = "10.0.20348.1"
+        };
 
-        NotSupportedException error = await Assert.ThrowsAsync<NotSupportedException>(() =>
-            CreateFactory(engine).OpenAsync("docker://local", HostOptions(),
-                TestContext.Current.CancellationToken, contentOnly
-                    ? ImageSourceRequirements.LinuxLayerContent : ImageSourceRequirements.LinuxFileSystem));
+        await using ResolvedImage source = await CreateFactory(engine).OpenAsync(
+            "docker://local", HostOptions(), TestContext.Current.CancellationToken,
+            contentOnly ? ImageSourceRequirements.LinuxLayerContent : ImageSourceRequirements.LinuxFileSystem);
 
-        Assert.Contains("Linux", error.Message);
-        Assert.Empty(engine.Exports);
+        Assert.Equal("windows", source.Configuration.Os);
+        Assert.Single(engine.Exports);
         Assert.True(engine.Disposed);
     }
 
     [Theory]
-    [InlineData("cat")]
-    [InlineData("ls")]
-    [InlineData("extract")]
-    [InlineData("save-layers")]
-    [InlineData("compare-files")]
-    public async Task WindowsFilesystemCommands_RequestEarlyRejection(string operation)
+    [InlineData("cat", true)]
+    [InlineData("ls", true)]
+    [InlineData("extract", true)]
+    [InlineData("save-layers", false)]
+    [InlineData("compare-files", false)]
+    public async Task WindowsFilesystemCommands_RespectSupportedOperations(string operation, bool supported)
     {
-        FakeEngine engine = new(DockerArchiveFixture.Create()) { Os = "windows" };
+        FakeEngine engine = new(DockerArchiveFixture.Create(oci: true, gzip: true, windows: true))
+        {
+            Os = "windows",
+            OsVersion = "10.0.20348.1"
+        };
         ImageSourceFactory factory = CreateFactory(engine);
         IDockerRegistryClientFactory registry = Mock.Of<IDockerRegistryClientFactory>();
         await using LayerCacheTestContext cache = new();
@@ -136,9 +143,9 @@ public class ImageSourceFactoryTests : IDisposable
         string destination = Path.Combine(cache.Root, "output");
         (Command Command, string[] Arguments) invocation = operation switch
         {
-            "cat" => (Configure(new CatCommand(registry, output, cache.Paths)), ["docker://local", "/hello"]),
+            "cat" => (Configure(new CatCommand(registry, output, cache.Paths)), ["docker://local", "/etc/example"]),
             "ls" => (Configure(new LsCommand(registry, null, cache.Paths)), ["docker://local"]),
-            "extract" => (Configure(new ExtractCommand(registry, cache.Paths)), ["docker://local", "/hello", destination]),
+            "extract" => (Configure(new ExtractCommand(registry, cache.Paths)), ["docker://local", "/etc/example", destination]),
             "save-layers" => (Configure(new SaveLayersCommand(registry, cache.Paths)), ["docker://local", destination]),
             "compare-files" => (Configure(new CompareFilesCommand(registry, Settings(settings), cache.Paths, launcher)),
                 ["docker://local", "docker://local"]),
@@ -148,9 +155,9 @@ public class ImageSourceFactoryTests : IDisposable
         int result = await invocation.Command.Parse([.. invocation.Arguments, "--docker-host", "http://localhost:2375"])
             .InvokeAsync(new InvocationConfiguration(), TestContext.Current.CancellationToken);
 
-        Assert.Equal(1, result);
+        Assert.Equal(supported ? 0 : 1, result);
         Assert.NotEmpty(engine.Inspections);
-        Assert.Empty(engine.Exports);
+        Assert.Equal(supported, engine.Exports.Count > 0);
         Assert.True(engine.Disposed);
         Assert.Null(launcher.StartInfo);
 
@@ -163,16 +170,21 @@ public class ImageSourceFactoryTests : IDisposable
     }
 
     [Fact]
-    public async Task WindowsExplorerAcquisition_FailsBeforeExport()
+    public async Task WindowsExplorerAcquisition_ExportsPinnedImage()
     {
-        FakeEngine engine = new(DockerArchiveFixture.Create()) { Os = "windows" };
+        FakeEngine engine = new(DockerArchiveFixture.Create(oci: true, gzip: true, windows: true))
+        {
+            Os = "windows",
+            OsVersion = "10.0.20348.1"
+        };
 
-        await Assert.ThrowsAsync<NotSupportedException>(() =>
-            ExplorerSource.OpenAsync(CreateFactory(engine), Mock.Of<IDockerRegistryClientFactory>(),
-                "docker://local", HostOptions(), [], TestContext.Current.CancellationToken));
+        await using ExplorerSource source = await ExplorerSource.OpenAsync(
+            CreateFactory(engine), Mock.Of<IDockerRegistryClientFactory>(),
+            "docker://local", HostOptions(), [], TestContext.Current.CancellationToken);
 
         Assert.NotEmpty(engine.Inspections);
-        Assert.Empty(engine.Exports);
+        Assert.Single(engine.Exports);
+        Assert.Equal("windows", source.Config.Os);
         Assert.True(engine.Disposed);
     }
 

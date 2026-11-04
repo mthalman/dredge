@@ -28,7 +28,7 @@ internal sealed class DockerImageArchive : IImageContentSource, IAsyncDisposable
     public Image Configuration { get; private set; } = null!;
     public ResolvedManifest Resolved { get; private set; } = null!;
     public ExplorerPlatform Platform { get; private set; } = null!;
-    internal ImageFileSystem.StoredFileSystem? CachedFileSystem { get; private set; }
+    internal ImageFileSystem.ValidatedFileSystem? CachedFileSystem { get; private set; }
 
     internal static async Task<DockerImageArchive> OpenAsync(
         Stream export,
@@ -43,7 +43,7 @@ internal sealed class DockerImageArchive : IImageContentSource, IAsyncDisposable
         bool prepareFileSystem = false,
         Func<string, long, CancellationToken, Task<StoredLayerIndex?>>? hasLayerIndex = null,
         int? maxLayerIndex = null,
-        Func<string, int, CancellationToken, Task<ImageFileSystem.StoredFileSystem?>>? getFileSystemView = null,
+        Func<string, int, CancellationToken, Task<ImageFileSystem.ValidatedFileSystem?>>? getFileSystemView = null,
         bool prepareCachedContent = false)
     {
         if (!IsSha256(imageId))
@@ -138,7 +138,7 @@ internal sealed class DockerImageArchive : IImageContentSource, IAsyncDisposable
         string? architecture, string? osVersion, string? variant, bool verifyLayerContent, bool prepareFileSystem,
         Func<string, long, CancellationToken, Task<StoredLayerIndex?>>? hasLayerIndex,
         int? maxLayerIndex,
-        Func<string, int, CancellationToken, Task<ImageFileSystem.StoredFileSystem?>>? getFileSystemView,
+        Func<string, int, CancellationToken, Task<ImageFileSystem.ValidatedFileSystem?>>? getFileSystemView,
         bool prepareCachedContent,
         CancellationToken ct)
     {
@@ -361,8 +361,9 @@ internal sealed class DockerImageArchive : IImageContentSource, IAsyncDisposable
                 (entry.Value.Type == ImageFileType.HardLink && entry.ContentLinkTarget is null))
                 .Select(entry => entry.ContentLayerIndex).ToHashSet()
             : [];
-        ILookup<ArchiveMember, (ArchiveMember Path, string? MediaType, string? Digest, string DiffId)> memberLayers =
-            layers.Select((layer, index) => (layer.Path, layer.MediaType, layer.Digest, DiffId: diffIds[index]))
+        ILookup<ArchiveMember, (ArchiveMember Path, string? MediaType, string? Digest, string DiffId, string? CachedDigest)> memberLayers =
+            layers.Select((layer, index) => (layer.Path, layer.MediaType, layer.Digest, DiffId: diffIds[index],
+                CachedDigest: CachedFileSystem?.Layers[index]))
                 .ToLookup(layer => layer.Path);
         HashSet<ArchiveMember> sha512Members = layers.Where((_, index) =>
             diffIds[index].StartsWith("sha512:", StringComparison.Ordinal)).Select(layer => layer.Path).ToHashSet();
@@ -402,6 +403,7 @@ internal sealed class DockerImageArchive : IImageContentSource, IAsyncDisposable
                     {
                         knownDigest ??= memberLayers[path].Select(layer => layer.DiffId).FirstOrDefault(IsSha256);
                     }
+                    knownDigest ??= memberLayers[path].First().CachedDigest;
                     bool prepare = fileSystemMembers.Contains(path);
                     StoredLayerIndex? retained = prepare && knownDigest is not null && hasLayerIndex is not null
                         ? await hasLayerIndex(knownDigest, path.Length, token) : null;
@@ -439,7 +441,8 @@ internal sealed class DockerImageArchive : IImageContentSource, IAsyncDisposable
                             await HashContentAsync(input, sha512Members.Contains(path), token);
                         path.Digest = path.DiffId;
                     }
-                    path.RetainedIndex = retained;
+                    path.RetainedIndex = retained is not null && retained.Digest == path.Digest &&
+                        retained.Encoding == (path.IsGzip ? "gzip" : "tar") ? retained : null;
                 }
             }
             await HashFileAsync(path, token);

@@ -265,7 +265,7 @@ public class DaemonAcquisitionDemandTests : IDisposable
                 ImageSourceRequirements.LinuxFileSystem);
             DockerImageArchive archive = Assert.IsType<DockerImageArchive>(source.Content);
             string digest = source.Resolved.Manifest.Layers[0].Digest!;
-            ImageFileSystem.StoredFileSystem? cached = archive.CachedFileSystem;
+            ImageFileSystem.ValidatedFileSystem? cached = archive.CachedFileSystem;
 
             Assert.NotNull(cached);
             Assert.Null(archive.GetPreparedIndex(digest, fixture.StoredLayer.Length));
@@ -288,7 +288,8 @@ public class DaemonAcquisitionDemandTests : IDisposable
             Assert.Equal(expected, files.List(null, recursive: true, showDeleted: false).Select(entry => entry.Path));
             Assert.Empty(Directory.GetFiles(Path.Combine(directory, "cache"), "*.index", SearchOption.AllDirectories));
             Assert.False(File.Exists(viewPath));
-            await store.WriteMetadataAsync(configurationDigest, "view", cached, Token);
+            await store.WriteMetadataAsync(configurationDigest, "view",
+                new ImageFileSystem.StoredFileSystem([.. cached.Layers], [.. cached.Entries], [.. cached.DeletedEntries]), Token);
             await source.DisposeAsync();
             Assert.Null(archive.CachedFileSystem);
         }
@@ -386,6 +387,94 @@ public class DaemonAcquisitionDemandTests : IDisposable
         }
         Assert.Equal(hardLink ? 2 : 1,
             Directory.GetFiles(Path.Combine(directory, "cache"), "*.index", SearchOption.AllDirectories).Length);
+    }
+
+    [Theory]
+    [InlineData(false, true, false)]
+    [InlineData(true, false, false)]
+    [InlineData(true, true, false)]
+    [InlineData(true, false, true)]
+    public async Task CachedClassicRootReusesMatchingIndexesWithoutTrustingStaleEncodedDigests(
+        bool gzip, bool sha512, bool repacked)
+    {
+        DockerArchiveFixture fixture = CreateFixture(gzip,
+            [DockerArchiveFixture.BuildTar(("selected", "expected"u8.ToArray()))], sha512: sha512);
+        await using LayerStore store = new(Path.Combine(directory, "cache"));
+        ImageSourceFactory factory = Factory(fixture, Mock.Of<IDockerRegistryClientFactory>(), store.CreateScope);
+        await using (ResolvedImage seed = await factory.OpenAsync("docker://local",
+            new PlatformOptionsBase { DockerHost = "http://localhost:2375" }, Token))
+        {
+            await using ImageFileSystem files = await ImageFileSystem.CreateAsync(seed, Token, store);
+        }
+        if (repacked)
+        {
+            byte[] modified = [.. fixture.StoredLayer];
+            modified[4] ^= 1;
+            fixture = fixture with
+            {
+                StoredLayer = modified,
+                Export = DockerArchiveFixture.BuildTar(
+                    ("config.json", fixture.Config), ("layer-0.tar", modified),
+                    ("manifest.json", """[{"Config":"config.json","Layers":["layer-0.tar"]}]"""u8.ToArray()))
+            };
+            factory = Factory(fixture, Mock.Of<IDockerRegistryClientFactory>(), store.CreateScope);
+        }
+
+        await using ResolvedImage source = await factory.OpenAsync("docker://local",
+            new ExtractOptions { Path = "/", DockerHost = "http://localhost:2375" }, Token,
+            ImageSourceRequirements.LinuxFileSystem);
+
+        DockerImageArchive archive = Assert.IsType<DockerImageArchive>(source.Content);
+        string digest = source.Resolved.Manifest.Layers[0].Digest!;
+        Assert.NotNull(archive.CachedFileSystem);
+        if (!repacked)
+        {
+            Assert.NotNull(archive.GetRetainedIndex(digest, fixture.StoredLayer.Length));
+            Assert.Null(archive.GetPreparedIndex(digest, fixture.StoredLayer.Length));
+        }
+        else
+        {
+            Assert.Null(archive.GetRetainedIndex(digest, fixture.StoredLayer.Length));
+        }
+        await using ImageFileSystem restored = await ImageFileSystem.CreateAsync(source, Token, store, extractionPath: "/");
+        string destination = Path.Combine(directory, "warm-root");
+        await restored.ExtractAsync("/", destination, Token);
+        Assert.Equal("expected", await File.ReadAllTextAsync(Path.Combine(destination, "selected"), Token));
+        Assert.Equal(digest, Assert.Single(restored.List(null, true, false)).IntroducedLayer.Digest);
+    }
+
+    [Fact]
+    public async Task RestoringPrevalidatedDaemonViewDoesNotRepeatPathNormalization()
+    {
+        const int count = 10_000;
+        DockerArchiveFixture fixture = DockerArchiveFixture.Create();
+        string digest = DockerImageArchive.Hash(fixture.StoredLayer);
+        ImageFileSystem.StoredEntry[] entries = [.. Enumerable.Range(0, count).Select(i =>
+            new ImageFileSystem.StoredEntry(new()
+            {
+                Path = $"a/b/c/d/e/f/g/h/i/j/file{i}",
+                Type = ImageFileType.File,
+                IntroducedLayer = new(0, digest)
+            }, 0, i, null, null))];
+        await using LayerStore store = new(Path.Combine(directory, "cache"));
+        await store.WriteMetadataAsync(fixture.Id, "view",
+            new ImageFileSystem.StoredFileSystem([digest], entries[..(count / 2)], entries[(count / 2)..]), Token);
+        ImageSourceFactory factory = Factory(fixture, Mock.Of<IDockerRegistryClientFactory>(), store.CreateScope);
+        await using ResolvedImage source = await factory.OpenAsync("docker://local",
+            new LsOptions { DockerHost = "http://localhost:2375" }, Token,
+            ImageSourceRequirements.LinuxFileSystem);
+        await using (ImageFileSystem warmup = await ImageFileSystem.CreateAsync(source, Token, store)) { }
+        long start = GC.GetAllocatedBytesForCurrentThread();
+
+        Task<ImageFileSystem> restoring = ImageFileSystem.CreateAsync(source, Token, store);
+        bool completedSynchronously = restoring.IsCompletedSuccessfully;
+        long allocated = GC.GetAllocatedBytesForCurrentThread() - start;
+        await using ImageFileSystem restored = await restoring;
+
+        Assert.True(completedSynchronously);
+        Assert.Equal(count, restored.List(null, true, true).Count);
+        Assert.True(allocated < count * 700L,
+            $"Restoring {count:N0} prevalidated entries allocated {allocated:N0} bytes.");
     }
 
     [Theory]

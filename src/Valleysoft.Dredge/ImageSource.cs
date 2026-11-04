@@ -148,7 +148,7 @@ internal sealed class ImageSourceFactory : IImageSourceFactory
                 await config.CopyToAsync(buffer, cancellationToken);
                 byte[] json = buffer.ToArray();
                 Image image = ParseConfiguration(json);
-                ValidateCapabilities(image.Os, requirements);
+                ValidateCapabilities(image.Os, requirements, options);
                 return new ResolvedImage(source, name, resolved, initial, image, json,
                     new RegistryImageContentSource(client, name), resolved.ManifestInfo.DockerContentDigest,
                     GetPlatform(image), new RegistryOwner(client));
@@ -166,78 +166,99 @@ internal sealed class ImageSourceFactory : IImageSourceFactory
             connection ??= resolveConnection(options);
             selected = connection;
         }
-        using IDockerImageEngine engine = engineFactory(selected);
-        string identity = await engine.GetDaemonIdentityAsync(cancellationToken);
-        lock (connectionLock)
+        IDockerImageEngine engine = engineFactory(selected);
+        bool exportOwnsEngine = false;
+        try
         {
-            daemonIdentity ??= identity;
-            if (identity != daemonIdentity)
+            string identity = await engine.GetDaemonIdentityAsync(cancellationToken);
+            lock (connectionLock)
             {
-                throw new InvalidOperationException("The selected Docker daemon changed during this operation. Retry with a stable --docker-host endpoint.");
-            }
-        }
-        ImageInspectResponse inspect = await engine.InspectAsync(source.Value, cancellationToken);
-        string id = inspect.ID;
-        if (!DockerImageArchive.IsSha256(id))
-        {
-            throw new NotSupportedException("Docker did not resolve this reference to a full immutable image ID. Select a concrete local image ID.");
-        }
-        if (source.Value != id)
-        {
-            inspect = await engine.InspectAsync(id, cancellationToken);
-        }
-        if (inspect.ID != id)
-        {
-            throw new InvalidDataException("Docker immutable image inspection returned a different image ID.");
-        }
-        ValidatePlatform(inspect.Os, inspect.Architecture, inspect.OsVersion, options);
-        ValidateCapabilities(inspect.Os, requirements);
-        ArchiveKey key = new(identity, id, inspect.Os, inspect.Architecture, inspect.OsVersion, inspect.Variant,
-            requirements != ImageSourceRequirements.Metadata);
-        LiveArchiveLease owner = comparison is not null
-            ? await comparison.GetArchiveAsync(key, ExportAsync, cancellationToken)
-            : await GetArchiveAsync(key, ExportAsync, cancellationToken);
-        DockerImageArchive acquired = owner.Archive;
-        return new ResolvedImage(source, name, acquired.Resolved, null, acquired.Configuration, acquired.ConfigurationJson,
-            acquired, id, GetPlatform(acquired.Platform), owner, selected, acquired.Platform);
-
-        async Task<DockerImageArchive> ExportAsync(CancellationToken exportCancellationToken)
-        {
-            await using LayerStore? indexes = requirements == ImageSourceRequirements.LinuxFileSystem
-                ? indexStoreFactory() : null;
-            await using Stream export = await engine.SaveAsync(id, exportCancellationToken);
-            DockerImageArchive archive = await DockerImageArchive.OpenAsync(export, id, exportCancellationToken, scratchRoot,
-                inspect.Os, inspect.Architecture, inspect.OsVersion, inspect.Variant,
-                verifyLayerContent: requirements != ImageSourceRequirements.Metadata,
-                prepareFileSystem: requirements == ImageSourceRequirements.LinuxFileSystem,
-                hasLayerIndex: indexes is null ? null : (digest, size, token) =>
-                    indexes.GetValidIndexAsync(digest, size, token, ImageFileSystemSemantics.ForOs(inspect.Os)),
-                maxLayerIndex: options switch
+                daemonIdentity ??= identity;
+                if (identity != daemonIdentity)
                 {
-                    Commands.Image.CatOptions cat => cat.Layer,
-                    Commands.Image.LsOptions ls => ls.Layer,
-                    _ => null
-                },
-                getFileSystemView: indexes is not null && (options is Commands.Image.LsOptions { Layer: null } ||
-                    options is Commands.Image.ExtractOptions extract && ImagePath.NormalizeRequested(extract.Path).Length == 0)
-                    ? (digest, count, token) => ImageFileSystem.ReadCachedViewAsync(
-                        indexes, digest, count, token, ImageFileSystemSemantics.ForOs(inspect.Os))
-                    : null,
-                prepareCachedContent: options is Commands.Image.ExtractOptions);
-            try
-            {
-                ExplorerPlatform platform = archive.Platform;
-                if (platform.Os != inspect.Os || platform.Architecture != inspect.Architecture ||
-                    (!string.IsNullOrEmpty(inspect.OsVersion) && platform.OsVersion != inspect.OsVersion))
-                {
-                    throw new InvalidDataException("Docker exported configuration platform does not match the pinned image inspection.");
+                    throw new InvalidOperationException("The selected Docker daemon changed during this operation. Retry with a stable --docker-host endpoint.");
                 }
-                return archive;
             }
-            catch
+            ImageInspectResponse inspect = await engine.InspectAsync(source.Value, cancellationToken);
+            string id = inspect.ID;
+            if (!DockerImageArchive.IsSha256(id))
             {
-                await archive.DisposeAsync();
-                throw;
+                throw new NotSupportedException("Docker did not resolve this reference to a full immutable image ID. Select a concrete local image ID.");
+            }
+            if (source.Value != id)
+            {
+                inspect = await engine.InspectAsync(id, cancellationToken);
+            }
+            if (inspect.ID != id)
+            {
+                throw new InvalidDataException("Docker immutable image inspection returned a different image ID.");
+            }
+            ValidatePlatform(inspect.Os, inspect.Architecture, inspect.OsVersion, options);
+            ValidateCapabilities(inspect.Os, requirements, options);
+            ArchiveKey key = new(identity, id, inspect.Os, inspect.Architecture, inspect.OsVersion, inspect.Variant,
+                requirements != ImageSourceRequirements.Metadata);
+            LiveArchiveLease owner = comparison is not null
+                ? await comparison.GetArchiveAsync(key, ExportAsync, cancellationToken)
+                : await GetArchiveAsync(key, ExportAsync, cancellationToken);
+            DockerImageArchive acquired = owner.Archive;
+            return new ResolvedImage(source, name, acquired.Resolved, null, acquired.Configuration, acquired.ConfigurationJson,
+                acquired, id, GetPlatform(acquired.Platform), owner, selected, acquired.Platform);
+
+            async Task<DockerImageArchive> ExportAsync(CancellationToken exportCancellationToken)
+            {
+                exportOwnsEngine = true;
+                try
+                {
+                    await using LayerStore? indexes = requirements == ImageSourceRequirements.LinuxFileSystem
+                        ? indexStoreFactory() : null;
+                    await using Stream export = await engine.SaveAsync(id, exportCancellationToken);
+                    DockerImageArchive archive = await DockerImageArchive.OpenAsync(export, id, exportCancellationToken, scratchRoot,
+                        inspect.Os, inspect.Architecture, inspect.OsVersion, inspect.Variant,
+                        verifyLayerContent: requirements != ImageSourceRequirements.Metadata,
+                        prepareFileSystem: requirements == ImageSourceRequirements.LinuxFileSystem,
+                        hasLayerIndex: indexes is null ? null : (digest, size, token) =>
+                            indexes.GetValidIndexAsync(digest, size, token, ImageFileSystemSemantics.ForOs(inspect.Os)),
+                        maxLayerIndex: options switch
+                        {
+                            Commands.Image.CatOptions cat => cat.Layer,
+                            Commands.Image.LsOptions ls => ls.Layer,
+                            _ => null
+                        },
+                        getFileSystemView: indexes is not null && (options is Commands.Image.LsOptions { Layer: null } ||
+                            options is Commands.Image.ExtractOptions extract &&
+                                ImageFileSystemSemantics.ForOs(inspect.Os).NormalizeRequested(extract.Path).Length == 0)
+                            ? (digest, count, token) => ImageFileSystem.ReadCachedViewAsync(
+                                indexes, digest, count, token, ImageFileSystemSemantics.ForOs(inspect.Os))
+                            : null,
+                        prepareCachedContent: options is Commands.Image.ExtractOptions);
+                    try
+                    {
+                        ExplorerPlatform platform = archive.Platform;
+                        if (platform.Os != inspect.Os || platform.Architecture != inspect.Architecture ||
+                            (!string.IsNullOrEmpty(inspect.OsVersion) && platform.OsVersion != inspect.OsVersion))
+                        {
+                            throw new InvalidDataException("Docker exported configuration platform does not match the pinned image inspection.");
+                        }
+                        return archive;
+                    }
+                    catch
+                    {
+                        await archive.DisposeAsync();
+                        throw;
+                    }
+                }
+                finally
+                {
+                    engine.Dispose();
+                }
+            }
+
+        }
+        finally
+        {
+            if (!exportOwnsEngine)
+            {
+                engine.Dispose();
             }
         }
     }
@@ -268,32 +289,15 @@ internal sealed class ImageSourceFactory : IImageSourceFactory
         {
             if (create)
             {
-                try
-                {
-                    entry.Completion.SetResult(await export(entry.Cancellation.Token));
-                }
-                catch (Exception exception)
-                {
-                    lock (archiveLock)
-                    {
-                        Evict(entry);
-                    }
-                    entry.Completion.SetException(exception);
-                }
+                _ = CompleteArchiveAsync(entry, export);
             }
-            if (create)
-            {
-                await entry.Completion.Task;
-            }
-            else
-            {
-                await entry.Completion.Task.WaitAsync(cancellationToken);
-            }
+            await entry.Completion.Task.WaitAsync(cancellationToken);
             cancellationToken.ThrowIfCancellationRequested();
             return lease;
         }
         catch (Exception exception)
         {
+            lease.Cancel();
             registration.Dispose();
             try
             {
@@ -304,6 +308,27 @@ internal sealed class ImageSourceFactory : IImageSourceFactory
                 exception.Data["DaemonArchiveCleanupFailure"] = cleanupException;
             }
             throw;
+        }
+    }
+
+    private async Task CompleteArchiveAsync(
+        LiveArchive entry, Func<CancellationToken, Task<DockerImageArchive>> export)
+    {
+        try
+        {
+            DockerImageArchive archive = await export(entry.Cancellation.Token);
+            entry.Completion.TrySetResult(archive);
+        }
+        catch (Exception exception)
+        {
+            lock (archiveLock)
+            {
+                Evict(entry);
+            }
+            if (entry.Completion.TrySetException(exception))
+            {
+                _ = entry.Completion.Task.Exception;
+            }
         }
     }
 
@@ -396,6 +421,11 @@ internal sealed class ImageSourceFactory : IImageSourceFactory
                     if (entry.Completion.Task.IsCompletedSuccessfully)
                     {
                         await Archive.DisposeAsync();
+                    }
+                    else if (!entry.Completion.Task.IsCompleted)
+                    {
+                        DockerImageArchive archive = await entry.Completion.Task;
+                        await archive.DisposeAsync();
                     }
                 }
                 finally
@@ -541,12 +571,20 @@ internal sealed class ImageSourceFactory : IImageSourceFactory
         }
     }
 
-    private static void ValidateCapabilities(string os, ImageSourceRequirements requirements)
+    private static void ValidateCapabilities(
+        string os, ImageSourceRequirements requirements, PlatformOptionsBase options)
     {
-        if ((requirements is ImageSourceRequirements.LinuxFileSystem or ImageSourceRequirements.LinuxLayerContent) &&
-            !string.Equals(os, "linux", StringComparison.OrdinalIgnoreCase))
+        if ((options is Commands.Image.SaveLayersOptions or Commands.Image.CompareFilesOptions) &&
+            string.Equals(os, "windows", StringComparison.OrdinalIgnoreCase))
         {
-            throw new NotSupportedException($"Filesystem operations support Linux images only (found '{os}').");
+            throw new NotSupportedException(
+                "Saving or comparing extracted Docker daemon layers supports Linux images only.");
+        }
+        if ((requirements is ImageSourceRequirements.LinuxFileSystem or ImageSourceRequirements.LinuxLayerContent) &&
+            !string.Equals(os, "linux", StringComparison.OrdinalIgnoreCase) &&
+            !string.Equals(os, "windows", StringComparison.OrdinalIgnoreCase))
+        {
+            throw new NotSupportedException($"Filesystem operations support Linux and Windows images (found '{os}').");
         }
     }
 

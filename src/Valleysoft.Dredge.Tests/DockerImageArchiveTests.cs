@@ -2218,7 +2218,7 @@ internal sealed record DockerArchiveFixture(byte[] Export, byte[] Config, string
         bool windows = false, bool corruptLayer = false, string? layerMediaType = null,
         string architecture = "amd64")
     {
-        byte[] layer = BuildTar(("etc/example", "fixture"u8.ToArray()));
+        byte[] layer = BuildTar(((windows ? "Files/" : "") + "etc/example", "fixture"u8.ToArray()));
         byte[] storedLayer = layer;
         if (gzip)
         {

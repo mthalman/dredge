@@ -429,7 +429,7 @@ public sealed class RawLayerPipelineTests : IAsyncDisposable
     }
 
     [Fact]
-    public async Task SourceFileSystemRetainsLinuxOnlyGuard()
+    public async Task WindowsRawLayersRequireGzipMediaType()
     {
         byte[] bytes = CreateTar();
         TestSource source = new(bytes);
@@ -444,7 +444,7 @@ public sealed class RawLayerPipelineTests : IAsyncDisposable
         NotSupportedException exception = await Assert.ThrowsAsync<NotSupportedException>(() =>
             ImageFileSystem.CreateAsync(image, Token, store));
 
-        Assert.Contains("Linux image layers only", exception.Message);
+        Assert.Contains("Unsupported Windows layer media type", exception.Message);
         Assert.Equal(0, source.FullRequests);
     }
 

@@ -72,23 +72,37 @@ internal sealed class LayerStore : IAsyncDisposable
         cancellationToken.ThrowIfCancellationRequested();
         _ = GetKey(expectedDiffId);
         string path = GetBlobPath(digest);
-        TaskCompletionSource<string> verification;
-        bool start;
-        lock (verificationLock)
+        string identity;
+        while (true)
         {
-            start = !contentVerifications.TryGetValue((digest, expectedDiffId), out verification!);
+            cancellationToken.ThrowIfCancellationRequested();
+            TaskCompletionSource<string> verification;
+            bool start;
+            lock (verificationLock)
+            {
+                start = !contentVerifications.TryGetValue((digest, expectedDiffId), out verification!);
+                if (start)
+                {
+                    verification = new(TaskCreationOptions.RunContinuationsAsynchronously);
+                    contentVerifications.Add((digest, expectedDiffId), verification);
+                }
+            }
             if (start)
             {
-                verification = new(TaskCreationOptions.RunContinuationsAsynchronously);
-                contentVerifications.Add((digest, expectedDiffId), verification);
+                await CompleteContentVerificationAsync(
+                    source, digest, expectedSize, expectedDiffId, verification, cancellationToken);
+            }
+            try
+            {
+                identity = await verification.Task.WaitAsync(cancellationToken);
+                break;
+            }
+            catch (OperationCanceledException) when (
+                !start && !cancellationToken.IsCancellationRequested && verification.Task.IsCanceled)
+            {
+                continue;
             }
         }
-        if (start)
-        {
-            await CompleteContentVerificationAsync(
-                source, digest, expectedSize, expectedDiffId, verification, cancellationToken);
-        }
-        string identity = await verification.Task.WaitAsync(cancellationToken);
         cancellationToken.ThrowIfCancellationRequested();
         if (!pins.ContainsKey(path))
         {
@@ -1387,7 +1401,8 @@ internal sealed class LayerStore : IAsyncDisposable
                 if (released.Count != 0)
                 {
                     foreach (var key in contentVerifications.Keys
-                        .Where(key => released.Contains(GetBlobPath(key.Digest))).ToArray())
+                        .Where(key => contentVerifications[key].Task.IsCompleted &&
+                            released.Contains(GetBlobPath(key.Digest))).ToArray())
                     {
                         contentVerifications.Remove(key);
                     }

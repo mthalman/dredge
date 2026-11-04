@@ -74,7 +74,7 @@ internal sealed class ExplorerSession
     {
         ExplorerSource source = await ExplorerSource.OpenAsync(
             client, factory, image, options, baseImages, cancellationToken, exactPlatform: exactPlatform,
-            resolvedManifest: resolvedManifest);
+            resolvedManifest: resolvedManifest, comparing: exactPlatform is not null);
         return await CreateAsync(client, source, store, null, cancellationToken, progress);
     }
 
@@ -184,7 +184,7 @@ internal sealed class ExplorerSession
         if (!samePlatform)
         {
             throw new InvalidOperationException(
-                $"Images must use compatible platforms: {baseline.Config.Os}/{baseline.Config.Architecture} {baseline.Config.OsVersion} " +
+                $"Images must use the same platform: {baseline.Config.Os}/{baseline.Config.Architecture} {baseline.Config.OsVersion} " +
                 $"and {target.Config.Os}/{target.Config.Architecture} {target.Config.OsVersion}.");
         }
 

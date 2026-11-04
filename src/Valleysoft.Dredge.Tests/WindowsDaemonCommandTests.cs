@@ -1,4 +1,5 @@
 using System.CommandLine;
+using System.IO.Compression;
 using System.Text;
 using System.Text.Json.Nodes;
 using Spectre.Console;
@@ -15,7 +16,10 @@ public class WindowsDaemonCommandTests
     private const string Reference = "docker://windows-local:dev";
     private const string OsVersion = "10.0.20348.1";
     private const string BaseTag = OsVersion + "-amd64";
-    private static readonly string DiffId = "sha256:" + new string('a', 64);
+    private static readonly byte[] LayerBytes =
+        WindowsImageTestData.Layer(WindowsImageTestData.File("Files/hello.txt", "hello"));
+    private static readonly string LayerDigest = LayerCacheTestContext.Digest(LayerBytes);
+    private static readonly string DiffId = GetDiffId(LayerBytes);
     private static readonly string ImageId = "sha256:" + new string('b', 64);
 
     [Theory]
@@ -46,7 +50,8 @@ public class WindowsDaemonCommandTests
         Assert.Equal(omitConfigurationVersion, JsonNode.Parse(inspect.ToString())!["os.version"] is null);
 
         using StringWriter os = new();
-        Assert.Equal(0, await InvokeAsync(new OsCommand(registry.Object, os), sources, Reference));
+        await using LayerCacheTestContext cache = new();
+        Assert.Equal(0, await InvokeAsync(new OsCommand(registry.Object, os, cache.Paths), sources, Reference));
         Assert.Equal(OsVersion, JsonNode.Parse(os.ToString())!["Version"]!.GetValue<string>());
 
         using StringWriter dockerfile = new();
@@ -70,18 +75,27 @@ public class WindowsDaemonCommandTests
     }
 
     [Fact]
-    public async Task FilesystemCommands_RejectWindowsBeforeReadingLayers()
+    public async Task FilesystemCommands_UseWindowsFilesystemSupport()
     {
         WindowsSources sources = new();
         Mock<IDockerRegistryClientFactory> registry = new(MockBehavior.Strict);
         await using LayerCacheTestContext cache = new();
         using MemoryStream cat = new();
-        Assert.Equal(1, await InvokeAsync(new CatCommand(registry.Object, cat, cache.Paths),
-            sources, Reference, "/hello"));
-        Assert.Equal(1, await InvokeAsync(new LsCommand(registry.Object, null, cache.Paths),
-            sources, Reference));
-        Assert.Equal(1, await InvokeAsync(new ExtractCommand(registry.Object, cache.Paths),
-            sources, Reference, "/hello", Path.Combine(cache.Root, "extracted")));
+        Assert.Equal(0, await InvokeAsync(new CatCommand(registry.Object, cat, cache.Paths),
+            sources, Reference, "/hello.txt"));
+        Assert.Equal("hello", Encoding.UTF8.GetString(cat.ToArray()));
+
+        using StringWriter listing = new();
+        Assert.Equal(0, await InvokeAsync(new LsCommand(registry.Object, ConsoleFor(listing), cache.Paths),
+            sources, Reference, "--recursive", "--output", "json"));
+        Assert.Contains(JsonNode.Parse(listing.ToString())!.AsArray(),
+            static entry => entry!["path"]!.GetValue<string>() == "hello.txt");
+
+        string extracted = Path.Combine(cache.Root, "extracted");
+        Assert.Equal(0, await InvokeAsync(new ExtractCommand(registry.Object, cache.Paths),
+            sources, Reference, "/hello.txt", extracted));
+        Assert.Equal("hello", await File.ReadAllTextAsync(extracted));
+
         Assert.Equal(1, await InvokeAsync(new SaveLayersCommand(registry.Object, cache.Paths),
             sources, Reference, Path.Combine(cache.Root, "saved")));
         AppSettings settings = new();
@@ -92,9 +106,25 @@ public class WindowsDaemonCommandTests
                 new TestAppSettingsStore(settings), cache.Paths, launcher),
             sources, Reference, Reference));
         Assert.Null(launcher.StartInfo);
-        Assert.Equal(6, sources.OpenedImages);
-        Assert.Equal(0, sources.LayerReadAttempts);
+        Assert.True(sources.OpenedImages > 0);
+        Assert.True(sources.LayerReadAttempts > 0);
         registry.VerifyNoOtherCalls();
+    }
+
+    [Fact]
+    public async Task OsCommand_RejectsWindowsDaemonLayersThatDoNotMatchConfiguredDiffIds()
+    {
+        WindowsSources sources = new(corruptDiffId: true);
+        Mock<IDockerRegistryClient> mcr = new() { DefaultValue = DefaultValue.Mock };
+        Mock<IDockerRegistryClientFactory> registry = new(MockBehavior.Strict);
+        registry.Setup(factory => factory.GetClientAsync(RegistryHelper.McrRegistry, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(mcr.Object);
+        await using LayerCacheTestContext cache = new();
+        using StringWriter output = new();
+
+        Assert.Equal(1, await InvokeAsync(new OsCommand(registry.Object, output, cache.Paths), sources, Reference));
+        registry.Verify(factory => factory.GetClientAsync(
+            It.IsAny<string>(), It.IsAny<CancellationToken>()), Times.Never);
     }
 
     private static Task<int> InvokeAsync<TOptions>(
@@ -114,10 +144,15 @@ public class WindowsDaemonCommandTests
         new DockerManifest
         {
             Config = new ManifestConfig { Digest = ImageId },
-            Layers = [new ManifestLayer { Digest = DiffId }]
+            Layers = [new ManifestLayer
+            {
+                Digest = LayerDigest, Size = LayerBytes.Length,
+                MediaType = "application/vnd.docker.image.rootfs.diff.tar.gzip"
+            }]
         });
 
-    private sealed class WindowsSources(bool omitConfigurationVersion = false, bool differentFallbackVersion = false) :
+    private sealed class WindowsSources(bool omitConfigurationVersion = false, bool differentFallbackVersion = false,
+        bool corruptDiffId = false) :
         IImageSourceFactory, IImageContentSource
     {
         private readonly Image configuration = new()
@@ -125,7 +160,11 @@ public class WindowsDaemonCommandTests
             Os = "windows",
             OsVersion = omitConfigurationVersion ? null : OsVersion,
             Architecture = "amd64",
-            RootFilesystem = new RootFilesystem { Type = "layers", DiffIds = [DiffId] },
+            RootFilesystem = new RootFilesystem
+            {
+                Type = "layers",
+                DiffIds = [corruptDiffId ? "sha256:" + new string('0', 64) : DiffId]
+            },
             History = [new LayerHistory { CreatedBy = "base image" }]
         };
 
@@ -151,7 +190,18 @@ public class WindowsDaemonCommandTests
             string digest, long start, long? length, CancellationToken cancellationToken)
         {
             LayerReadAttempts++;
-            throw new InvalidOperationException("Windows metadata commands must not read filesystem layers.");
+            Assert.Equal(LayerDigest, digest);
+            return Task.FromResult(new Valleysoft.DockerRegistryClient.BlobDownloadResult(
+                new MemoryStream(LayerBytes), false, null, null, LayerBytes.Length));
         }
+    }
+
+    private static string GetDiffId(byte[] layer)
+    {
+        using MemoryStream compressed = new(layer);
+        using GZipStream gzip = new(compressed, CompressionMode.Decompress);
+        using MemoryStream decoded = new();
+        gzip.CopyTo(decoded);
+        return LayerCacheTestContext.Digest(decoded.ToArray());
     }
 }

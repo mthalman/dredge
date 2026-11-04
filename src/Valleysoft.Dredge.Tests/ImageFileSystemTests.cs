@@ -31,9 +31,10 @@ public class ImageFileSystemTests : IAsyncDisposable
         const System.Reflection.BindingFlags flags =
             System.Reflection.BindingFlags.Static | System.Reflection.BindingFlags.NonPublic;
         var validate = typeof(ImageFileSystem).GetMethod("ValidateEntries", flags)!
-            .CreateDelegate<Action<ImageFileSystem.StoredEntry[], IReadOnlyList<string?>>>();
+            .CreateDelegate<Action<ImageFileSystem.StoredEntry[], IReadOnlyList<string?>, ImageFileSystemSemantics>>();
         var restore = typeof(ImageFileSystem).GetMethod("RestoreEntries", flags)!
-            .CreateDelegate<Action<ImageFileSystem.StoredEntry[], Dictionary<string, ImageFileSystemEntry>, IReadOnlyList<string?>>>();
+            .CreateDelegate<Action<IReadOnlyList<ImageFileSystem.StoredEntry>, Dictionary<string, ImageFileSystemEntry>,
+                IReadOnlyList<string?>, bool, ImageFileSystemSemantics>>();
         string[] layers = ["sha256:" + new string('a', 64)];
         ImageFileSystem.StoredEntry[] stored = [.. Enumerable.Range(0, count).Select(i =>
             new ImageFileSystem.StoredEntry(new()
@@ -42,23 +43,52 @@ public class ImageFileSystemTests : IAsyncDisposable
                 Type = ImageFileType.File,
                 IntroducedLayer = new(0, layers[0])
             }, 0, i, null, null))];
-        validate([stored[0]], layers);
-        restore([stored[0]], new(StringComparer.Ordinal), layers);
+        validate([stored[0]], layers, ImageFileSystemSemantics.Linux);
+        restore([stored[0]], new(StringComparer.Ordinal), layers, false, ImageFileSystemSemantics.Linux);
 
         long start = GC.GetAllocatedBytesForCurrentThread();
-        validate(stored, layers);
+        validate(stored, layers, ImageFileSystemSemantics.Linux);
         long validationBytes = GC.GetAllocatedBytesForCurrentThread() - start;
         start = GC.GetAllocatedBytesForCurrentThread();
         Dictionary<string, ImageFileSystemEntry> restored = new(StringComparer.Ordinal);
-        restore(stored, restored, layers);
+        restore(stored, restored, layers, false, ImageFileSystemSemantics.Linux);
         long materializationBytes = GC.GetAllocatedBytesForCurrentThread() - start;
 
         Assert.Equal(count, restored.Count);
         Assert.True(validationBytes < materializationBytes - count * 100L,
             $"Validation allocated {validationBytes:N0} bytes; materialization allocated {materializationBytes:N0} bytes.");
-        Assert.Throws<InvalidDataException>(() => validate([stored[0], stored[0]], layers));
-        Assert.Throws<InvalidDataException>(() => validate([null!], layers));
-        Assert.Throws<InvalidDataException>(() => validate([stored[0] with { ContentLayerIndex = 1 }], layers));
+        Assert.Throws<InvalidDataException>(() =>
+            validate([stored[0], stored[0]], layers, ImageFileSystemSemantics.Linux));
+        Assert.Throws<InvalidDataException>(() =>
+            validate([null!], layers, ImageFileSystemSemantics.Linux));
+        Assert.Throws<InvalidDataException>(() =>
+            validate([stored[0] with { ContentLayerIndex = 1 }], layers, ImageFileSystemSemantics.Linux));
+    }
+
+    [Fact]
+    public void ValidatedViewRetainsAnImmutableSnapshotOfUntrustedArrays()
+    {
+        string digest = "sha256:" + new string('a', 64);
+        ImageFileSystem.StoredEntry entry = new(new()
+        {
+            Path = "file",
+            Type = ImageFileType.File,
+            IntroducedLayer = new(0, digest)
+        }, 0, 0, null, null);
+        ImageFileSystem.StoredFileSystem stored = new([digest], [entry], [entry]);
+        ImageFileSystem.ValidatedFileSystem validated = new(stored);
+
+        stored.Layers[0] = "changed";
+        stored.Entries[0] = null!;
+        stored.DeletedEntries[0] = null!;
+        Assert.Equal(digest, Assert.Single(validated.Layers));
+        Assert.Same(entry, Assert.Single(validated.Entries));
+        Assert.Same(entry, Assert.Single(validated.DeletedEntries));
+        Assert.Throws<NotSupportedException>(() => ((IList<string>)validated.Layers)[0] = "changed");
+        Assert.Throws<NotSupportedException>(() => ((IList<ImageFileSystem.StoredEntry>)validated.Entries)[0] = null!);
+        Assert.Throws<NotSupportedException>(() => ((IList<ImageFileSystem.StoredEntry>)validated.DeletedEntries)[0] = null!);
+        Assert.Throws<InvalidDataException>(() => new ImageFileSystem.ValidatedFileSystem(
+            new([digest], [entry with { ContentLayerIndex = 1 }], [])));
     }
 
     [Theory]

@@ -115,7 +115,7 @@ internal sealed class ExplorerSource : IAsyncDisposable
         Func<IReadOnlyList<ExplorerPlatform>, ExplorerPlatform?>? choosePlatform = null,
         ExplorerPlatform? exactPlatform = null, LayerStore? store = null,
         ResolvedManifest? resolvedManifest = null, IDockerRegistryClient? registryClient = null,
-        string? daemonSnapshotReference = null)
+        string? daemonSnapshotReference = null, bool comparing = false)
     {
         cancellationToken.ThrowIfCancellationRequested();
         if (exactPlatform is not null)
@@ -134,7 +134,7 @@ internal sealed class ExplorerSource : IAsyncDisposable
                 ExplorerSource result = await OpenAsync(client, registryFactory, ImageName.Parse(parsed.Value),
                     options, mixedBases ? null : baseImages?.Select(value => ImageSourceReference.Parse(value).Value).ToArray(),
                     cancellationToken, choosePlatform, exactPlatform: exactPlatform,
-                    skipBaseVerification: mixedBases, resolvedManifest: resolvedManifest);
+                    skipBaseVerification: mixedBases, resolvedManifest: resolvedManifest, comparing: comparing);
                 (IReadOnlyList<ExplorerBaseImage> bases, string? warning) = mixedBases
                     ? await VerifySourceBasesAsync(sourceFactory, result.Config, result.Resolved, false,
                         options, baseImages, cancellationToken, new RegistryImageContentSource(client, result.Image),
@@ -164,10 +164,11 @@ internal sealed class ExplorerSource : IAsyncDisposable
         try
         {
             cancellationToken.ThrowIfCancellationRequested();
-            if (!string.Equals(source.Configuration.Os, "linux", StringComparison.OrdinalIgnoreCase))
+            if (!string.Equals(source.Configuration.Os, "linux", StringComparison.OrdinalIgnoreCase) &&
+                !string.Equals(source.Configuration.Os, "windows", StringComparison.OrdinalIgnoreCase))
             {
                 throw new NotSupportedException(
-                    $"The image explorer supports Linux images only (found '{source.Configuration.Os}').");
+                    $"The image explorer supports Linux and Windows images (found '{source.Configuration.Os}').");
             }
             ExplorerPlatform actualPlatform = ExplorerPlatform.FromConfig(source.Configuration, source.SelectedPlatform);
             if (exactPlatform is not null && !actualPlatform.IsCompatibleWith(exactPlatform))
@@ -368,11 +369,12 @@ internal sealed class ExplorerSource : IAsyncDisposable
         CancellationToken cancellationToken,
         Func<IReadOnlyList<ExplorerPlatform>, ExplorerPlatform?>? choosePlatform = null,
         IAppSettingsStore? settingsStore = null, ExplorerPlatform? exactPlatform = null,
-        ResolvedManifest? resolvedManifest = null, bool skipBaseVerification = false)
+        ResolvedManifest? resolvedManifest = null, bool skipBaseVerification = false, bool comparing = false)
     {
         (ResolvedManifest resolved, IReadOnlyList<ExplorerPlatform> platforms, ExplorerPlatform? platform) =
             resolvedManifest is null
-                ? await ResolveAsync(client, image, options, exactPlatform, cancellationToken, choosePlatform, settingsStore)
+                ? await ResolveAsync(client, image, options, exactPlatform, cancellationToken, choosePlatform,
+                    settingsStore, comparing)
                 : (resolvedManifest, [], exactPlatform);
         IImageManifest manifest = resolved.Manifest;
         string configDigest = manifest.Config?.Digest ??
@@ -414,7 +416,8 @@ internal sealed class ExplorerSource : IAsyncDisposable
             Platforms = platforms,
             Platform = platform,
             BaseImages = verifiedBases,
-            BaseWarning = warning
+            BaseWarning = warning,
+            SourceOptions = options
         };
     }
 
@@ -459,6 +462,36 @@ internal sealed class ExplorerSource : IAsyncDisposable
                 platform = compatible.Length == 1 ? compatible[0].Platform :
                     compatible.Length > 1 && chooseComparisonPlatform is not null
                         ? await chooseComparisonPlatform([.. compatible.Select(candidate => candidate.Platform)], cancellationToken) ??
+                            throw new OperationCanceledException("No comparison platform was chosen.", cancellationToken)
+                        : null;
+                if (platform is not null)
+                {
+                    var selected = compatible.FirstOrDefault(candidate => candidate.Platform == platform);
+                    if (selected.Platform is null)
+                    {
+                        throw new InvalidOperationException("The selected comparison platform is not compatible.");
+                    }
+                    reference = selected.Reference;
+                    platform = selected.Platform;
+                }
+            }
+            else if (platform is null)
+            {
+                (IManifestReference Reference, ExplorerPlatform Platform)[] compatible =
+                [
+                    .. candidates.Where(candidate => candidate.Platform.IsCompatibleWith(exactPlatform))
+                        .DistinctBy(candidate => candidate.Platform)
+                ];
+                if (compatible.Length > 1 && chooseComparisonPlatform is null)
+                {
+                    throw new InvalidOperationException(
+                        $"'{image}' has multiple platforms compatible with {exactPlatform}. Available platforms: " +
+                        string.Join(", ", compatible.Select(item => item.Platform)));
+                }
+                platform = compatible.Length == 1 ? compatible[0].Platform :
+                    compatible.Length > 1 && chooseComparisonPlatform is not null
+                        ? await chooseComparisonPlatform(
+                            [.. compatible.Select(candidate => candidate.Platform)], cancellationToken) ??
                             throw new OperationCanceledException("No comparison platform was chosen.", cancellationToken)
                         : null;
                 if (platform is not null)

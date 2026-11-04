@@ -205,7 +205,8 @@ public sealed class ExplorerMixedSourceRegressionTests
         await using ExplorerSource baseline = await ExplorerSource.OpenAsync(
             sources, registries.Object, first, options, null, Token);
         await using ExplorerSource target = await ExplorerSource.OpenAsync(
-            sources, registries.Object, second, options, null, Token, exactPlatform: baseline.Platform);
+            sources, registries.Object, second, options, null, Token, exactPlatform: baseline.Platform,
+            comparing: true);
 
         Assert.True(baseline.Platform!.IsEquivalentTo(target.Platform!));
         Assert.Equal(daemonFirst ? "v8" : null, target.Platform!.Variant);

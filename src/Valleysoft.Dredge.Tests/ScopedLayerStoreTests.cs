@@ -151,6 +151,144 @@ public sealed class ScopedLayerStoreTests : IAsyncDisposable
         Assert.False(File.Exists(store.GetBlobPath(content.Digest)));
     }
 
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public async Task CancelingVerificationInitiatorDoesNotCancelASurvivingSibling(bool cancelInitiatingToken)
+    {
+        await using LayerStore store = new(root, maxBytes: 0);
+        await using LayerStore first = store.CreateScope();
+        await using LayerStore second = store.CreateScope();
+        Content initiating = new(DockerArchiveFixture.BuildTar(("file", new byte[] { 4 })))
+        {
+            Release = new(TaskCreationOptions.RunContinuationsAsynchronously),
+            CancelAfterRelease = !cancelInitiatingToken
+        };
+        Content surviving = new(initiating.Bytes);
+        using CancellationTokenSource cancellation = CancellationTokenSource.CreateLinkedTokenSource(Token);
+        using CancellationTokenSource survivingCancellation = CancellationTokenSource.CreateLinkedTokenSource(Token);
+        Task<string> canceled = first.VerifyContentAsync(
+            initiating, initiating.Digest, initiating.Bytes.Length, initiating.Digest, cancellation.Token);
+        Task<string>? pending = null;
+        try
+        {
+            await initiating.Entered.Task.WaitAsync(Token);
+            pending = second.VerifyContentAsync(
+                surviving, surviving.Digest, surviving.Bytes.Length, surviving.Digest, survivingCancellation.Token);
+            Assert.False(pending.IsCompleted);
+            if (cancelInitiatingToken)
+            {
+                cancellation.Cancel();
+            }
+            else
+            {
+                initiating.Release.TrySetResult();
+            }
+            await Assert.ThrowsAnyAsync<OperationCanceledException>(() => canceled);
+
+            Assert.Equal(surviving.Digest, await pending.WaitAsync(TimeSpan.FromSeconds(10), Token));
+        }
+        finally
+        {
+            cancellation.Cancel();
+            survivingCancellation.Cancel();
+            initiating.Release.TrySetResult();
+            await ((Task)canceled).ConfigureAwait(
+                ConfigureAwaitOptions.ContinueOnCapturedContext | ConfigureAwaitOptions.SuppressThrowing);
+            if (pending is not null)
+            {
+                await ((Task)pending)
+                    .ConfigureAwait(ConfigureAwaitOptions.ContinueOnCapturedContext | ConfigureAwaitOptions.SuppressThrowing);
+            }
+        }
+        await first.DisposeAsync();
+        Assert.Equal(1, initiating.Downloads);
+        Assert.Equal(1, surviving.Downloads);
+        Assert.Equal(0, await store.ClearAsync(Token));
+        await VerifyAsync(second, surviving);
+        await second.DisposeAsync();
+        Assert.False(File.Exists(store.GetBlobPath(surviving.Digest)));
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task ReleasingLastPinPreservesPendingSiblingVerification(bool cancelInitiator)
+    {
+        await using LayerStore store = new(root, maxBytes: 0);
+        await using LayerStore owner = store.CreateScope();
+        await using LayerStore initiating = store.CreateScope();
+        await using LayerStore surviving = store.CreateScope();
+        Content content = new(DockerArchiveFixture.BuildTar(("file", new byte[] { 5 })));
+        await VerifyAsync(owner, content);
+        string diffId = $"sha512:{Convert.ToHexStringLower(SHA512.HashData(content.Bytes))}";
+        string stripe = Convert.ToHexStringLower(SHA256.HashData(Encoding.UTF8.GetBytes(LayerStore.GetKey(content.Digest))))[..2];
+        using FileStream cacheLock = new(Path.Combine(root, "layer-store", "locks", $"{stripe}.lock"),
+            FileMode.Open, FileAccess.ReadWrite, FileShare.None);
+        using CancellationTokenSource cancellation = CancellationTokenSource.CreateLinkedTokenSource(Token);
+        using CancellationTokenSource survivingCancellation = CancellationTokenSource.CreateLinkedTokenSource(Token);
+        Task<string>? pending = null;
+        Task<string>? joined = null;
+        try
+        {
+            pending = initiating.VerifyContentAsync(
+                content, content.Digest, content.Bytes.Length, diffId, cancellation.Token);
+            Assert.Equal(2, Verifications(store).Count);
+            TaskCompletionSource<string> verification = Verifications(store)[(content.Digest, diffId)];
+            Assert.False(verification.Task.IsCompleted);
+
+            await owner.DisposeAsync();
+
+            Assert.Same(verification, Assert.Single(Verifications(store)).Value);
+            joined = surviving.VerifyContentAsync(
+                content, content.Digest, content.Bytes.Length, diffId, survivingCancellation.Token);
+            Assert.Same(verification, Assert.Single(Verifications(store)).Value);
+            Assert.False(joined.IsCompleted);
+            if (cancelInitiator)
+            {
+                cancellation.Cancel();
+                await Assert.ThrowsAnyAsync<OperationCanceledException>(() => pending);
+            }
+            cacheLock.Dispose();
+            if (!cancelInitiator)
+            {
+                Assert.Equal(content.Digest, await pending.WaitAsync(TimeSpan.FromSeconds(10), Token));
+            }
+            Assert.Equal(content.Digest, await joined.WaitAsync(TimeSpan.FromSeconds(10), Token));
+            if (cancelInitiator)
+            {
+                Assert.NotSame(verification, Assert.Single(Verifications(store)).Value);
+            }
+            else
+            {
+                Assert.Same(verification, Assert.Single(Verifications(store)).Value);
+            }
+        }
+        finally
+        {
+            cacheLock.Dispose();
+            cancellation.Cancel();
+            survivingCancellation.Cancel();
+            if (pending is not null)
+            {
+                await ((Task)pending).ConfigureAwait(
+                    ConfigureAwaitOptions.ContinueOnCapturedContext | ConfigureAwaitOptions.SuppressThrowing);
+            }
+            if (joined is not null)
+            {
+                await ((Task)joined).ConfigureAwait(
+                    ConfigureAwaitOptions.ContinueOnCapturedContext | ConfigureAwaitOptions.SuppressThrowing);
+            }
+        }
+        Assert.Equal(2, content.Downloads);
+        await initiating.DisposeAsync();
+        Assert.Equal(0, await store.ClearAsync(Token));
+        Assert.True(File.Exists(store.GetBlobPath(content.Digest)));
+        await surviving.DisposeAsync();
+        Assert.False(File.Exists(store.GetBlobPath(content.Digest)));
+        Assert.Empty(Verifications(store));
+    }
+
     [Fact]
     public async Task ReleasingManyPinsAllocatesLinearlyAndRemovesEveryProof()
     {
@@ -288,6 +426,7 @@ public sealed class ScopedLayerStoreTests : IAsyncDisposable
         public int Downloads { get; private set; }
         public TaskCompletionSource Entered { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
         public TaskCompletionSource? Release { get; init; }
+        public bool CancelAfterRelease { get; init; }
 
         public async Task<BlobDownloadResult> GetRangeAsync(
             string digest, long start, long? length, CancellationToken cancellationToken)
@@ -300,6 +439,10 @@ public sealed class ScopedLayerStoreTests : IAsyncDisposable
             if (Release is not null)
             {
                 await Release.Task.WaitAsync(cancellationToken);
+            }
+            if (CancelAfterRelease)
+            {
+                throw new OperationCanceledException("The source canceled the verification independently.");
             }
             return new(new MemoryStream(bytes), false, null, null, bytes.Length);
         }

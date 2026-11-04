@@ -90,7 +90,7 @@ Debug symbol files are not published with the release executables.
 
 ## Access Docker Engine images
 
-The executable and .NET tool access Docker Engine directly; the Docker CLI is
+Dredge accesses Docker Engine directly; the Docker CLI is
 not required. Configure a supported daemon endpoint or Docker context and grant
 the Dredge process permission to connect. See
 [Docker connections](commands/images.md#docker-connections).
@@ -104,12 +104,3 @@ docker run --rm -it \
   --group-add "$(stat -c '%g' /var/run/docker.sock)" \
   ghcr.io/mthalman/dredge image explore docker://myimage:dev
 ```
-
-Access to a Docker socket grants powerful access to the host. Mount it only into
-trusted containers. Use the actual socket path for a rootless engine; a Docker
-context name on the host is not automatically available inside the container.
-The example adds the socket's group to the container's non-root user; adjust
-permissions for your host as necessary. For remote endpoints, configure the
-selected Docker host or context inside the container explicitly. SSH and TLS
-connections are currently unsupported and fail rather than selecting a different
-daemon or downgrading the transport.

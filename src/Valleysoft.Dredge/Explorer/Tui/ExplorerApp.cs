@@ -778,7 +778,7 @@ internal sealed class ExplorerHost : IExplorerHost, IAsyncDisposable
                         reference, PlatformOptions, null, cancellationToken, exactPlatform: platform,
                         store: targetStore, resolvedManifest: resolved,
                         registryClient: name?.Registry == source.Image.Registry ? client : null,
-                        daemonSnapshotReference: daemonSnapshotReference);
+                        daemonSnapshotReference: daemonSnapshotReference, comparing: true);
                     targetSnapshots.TryAdd(snapshotKey, (targetSource.Resolved, targetSource.Platform,
                         targetSource.IsDaemon ? $"docker://{targetSource.Source!.Identity}" : null));
                     target = await ExplorerSession.CreateAsync(targetSource.RegistryClient, targetSource,

@@ -48,19 +48,6 @@ views between commands and processes. Complete blobs are digest-verified before
 publication. Corrupt or incompatible cached data is rebuilt, with a diagnostic
 on standard error.
 
-When a raw-tar layer's index survives blob eviction, file reads request selected
-file extents and validate their indexed content hashes. Nearby extents share
-bounded requests to avoid one request per file during bulk extraction. Up to
-four independent raw-tar ranges are read concurrently, with each file's hash
-checked before its content is used. Sparse selections avoid downloading large
-unselected gaps. For highly fragmented selections, Dredge instead downloads a
-complete, digest-verified blob when the
-extra bytes cost at most 64 KiB per avoided request and more than 128 ranges
-would be needed. Ignored, truncated, or invalid ranges also fall back to a
-complete, digest-verified blob. Index metadata is snapshotted and validated once
-per in-memory index, not rescanned on every file preview. Gzip layers continue
-to use validated compressed prefixes.
-
 The default cache root depends on the operating system:
 
 | Operating system | Default cache root |

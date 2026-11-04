@@ -365,7 +365,7 @@ public sealed class LiveDaemonArchiveTests : IDisposable
             "docker://alias", options, Token, mismatch == "capability"
                 ? ImageSourceRequirements.LinuxFileSystem : ImageSourceRequirements.LayerContent));
 
-        Assert.Equal(0, invalid.Saves);
+        Assert.Equal(mismatch == "capability" ? 1 : 0, invalid.Saves);
         Assert.Single(Spools());
         await AssertReadableAsync(live, fixture);
     }

@@ -134,7 +134,11 @@ internal sealed class ExplorerImage
         [.. source.Resolved.Manifest.Layers.Select(static layer => layer.Size)],
         source.Config.History, source.BaseImages, source.BaseWarning)
     {
-        PlatformArguments = (source.Platforms.Count > 1 || string.Equals(source.Config.Os, "windows", StringComparison.OrdinalIgnoreCase)) &&
+        PlatformArguments = (source.Platforms.Count > 1 ||
+            string.Equals(source.Config.Os, "windows", StringComparison.OrdinalIgnoreCase) ||
+            source.SourceOptions is { } sourceOptions &&
+                (!sourceOptions.UsePlatformDefaults || sourceOptions.Os is not null ||
+                    sourceOptions.Architecture is not null || sourceOptions.OsVersion is not null)) &&
             source.Platform is ExplorerPlatform platform
             ? PlatformArgumentsFor(platform) : "",
         ConnectionArguments = ConnectionArgumentsFor(source.Source?.Connection, source.SourceOptions),

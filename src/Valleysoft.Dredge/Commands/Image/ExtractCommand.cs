@@ -24,7 +24,7 @@ public class ExtractCommand : RegistryCommandBase<ExtractOptions>
         return ExecuteCommandAsync(reference.Registry, cancellationToken, async ct =>
         {
             await using ResolvedImage source = await OpenImageAsync(Options.Image, Options, ct,
-                requirements: ImagePath.NormalizeRequested(Options.Path).Length > 0 ?
+                requirements: Options.Path.Trim('/', '\\').Length > 0 ?
                     ImageSourceRequirements.LinuxLayerContent : ImageSourceRequirements.LinuxFileSystem);
             source.Report(Error);
             await using LayerStore store = LayerStore.Create(paths);

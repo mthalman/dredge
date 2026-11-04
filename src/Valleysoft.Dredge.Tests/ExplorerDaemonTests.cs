@@ -211,13 +211,17 @@ public sealed class ExplorerDaemonTests
     }
 
     [Fact]
-    public async Task RejectsWindowsDaemonAndReleasesSnapshot()
+    public async Task OpensWindowsDaemonAndReleasesSnapshot()
     {
         Owner owner = new();
         ResolvedImage image = Source(true, Layer(), owner, os: "windows");
         Factory sources = new((_, _) => image);
-        await Assert.ThrowsAsync<NotSupportedException>(() => ExplorerSource.OpenAsync(
-            sources, Mock.Of<IDockerRegistryClientFactory>(), "docker://app:current", new(), null, Token));
+        await using (ExplorerSource explorer = await ExplorerSource.OpenAsync(
+            sources, Mock.Of<IDockerRegistryClientFactory>(), "docker://app:current", new(), null, Token))
+        {
+            Assert.Equal("windows/amd64", explorer.Platform!.ToString());
+            Assert.False(owner.Disposed);
+        }
         Assert.True(owner.Disposed);
     }
 

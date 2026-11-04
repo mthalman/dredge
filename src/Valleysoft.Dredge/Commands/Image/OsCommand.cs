@@ -45,6 +45,12 @@ public partial class OsCommand : RegistryCommandBase<OsOptions>
             object? osInfo;
             if (imageConfig.Os.Equals("windows", StringComparison.OrdinalIgnoreCase))
             {
+                if (source.IsDaemon)
+                {
+                    await using LayerStore store = LayerStore.Create(paths);
+                    await ExplorerContentIdentity.VerifyAsync(
+                        source.Content, imageConfig, source.Resolved, store, ct);
+                }
                 var windowsOsInfo =
                     await GetWindowsOsInfoAsync(imageConfig, manifest, DockerRegistryClientFactory, ct,
                         useDistributionDigest: !source.IsDaemon, selectedPlatform: source.SelectedPlatform);

@@ -92,6 +92,44 @@ public sealed class SharedDaemonAcquisitionTests : IDisposable
     }
 
     [Fact]
+    public async Task CanceledExportInitiatorStopsWaitingWhileSiblingKeepsSharedArchiveAlive()
+    {
+        DockerArchiveFixture fixture = DockerArchiveFixture.Create();
+        TaskCompletionSource copying = Signal();
+        TaskCompletionSource canceled = Signal();
+        TaskCompletionSource drain = Signal();
+        TaskCompletionSource release = Signal();
+        BlockingExport export = new(fixture.Export, copying, canceled, release, drain);
+        ControlledEngine firstEngine = new(fixture, _ => Task.FromResult<Stream>(export));
+        ControlledEngine secondEngine = new(fixture, _ => throw new InvalidOperationException("The shared export must not run twice."));
+        int calls = 0;
+        ImageSourceFactory factory = Factory(() => Interlocked.Increment(ref calls) == 1 ? firstEngine : secondEngine);
+        using CancellationTokenSource caller = CancellationTokenSource.CreateLinkedTokenSource(Token);
+
+        Task<ResolvedImage> initiating = factory.OpenAsync("docker://base:tag", Options(), caller.Token);
+        await copying.Task.WaitAsync(TimeSpan.FromSeconds(10), Token);
+        Task<ResolvedImage> sibling = factory.OpenAsync("docker://base:tag", Options(), Token);
+        try
+        {
+            await caller.CancelAsync();
+            await Assert.ThrowsAnyAsync<OperationCanceledException>(() =>
+                initiating.WaitAsync(TimeSpan.FromSeconds(2), Token));
+            Assert.False(sibling.IsCompleted);
+            Assert.False(canceled.Task.IsCompleted);
+        }
+        finally
+        {
+            release.TrySetResult();
+            drain.TrySetResult();
+        }
+
+        await using ResolvedImage image = await sibling.WaitAsync(TimeSpan.FromSeconds(10), Token);
+        await AssertReadableAsync(image, fixture);
+        await image.DisposeAsync();
+        Assert.Empty(Spools());
+    }
+
+    [Fact]
     public async Task SeparateComparisons_InspectMutableReferencesAgainAndDoNotRetainArchives()
     {
         DockerArchiveFixture original = DockerArchiveFixture.Create();
@@ -271,9 +309,9 @@ public sealed class SharedDaemonAcquisitionTests : IDisposable
     }
 
     [Fact]
-    public async Task EachOperand_ValidatesCapabilitiesBeforeSharing()
+    public async Task EachOperand_UsesItsRequiredWindowsArchive()
     {
-        DockerArchiveFixture fixture = DockerArchiveFixture.Create(windows: true);
+        DockerArchiveFixture fixture = DockerArchiveFixture.Create(oci: true, gzip: true, windows: true);
         List<FakeEngine> engines = [];
         ImageSourceFactory factory = Factory(() =>
         {
@@ -284,14 +322,15 @@ public sealed class SharedDaemonAcquisitionTests : IDisposable
         await using ImageSourceFactory.ComparisonScope scope = factory.CreateComparisonScope();
         await using ResolvedImage metadata = await scope.OpenAsync(
             "docker://base:tag", Options(), Token, ImageSourceRequirements.Metadata);
-
-        await Assert.ThrowsAsync<NotSupportedException>(() => scope.OpenAsync(
-            "docker://alias", Options(), Token, ImageSourceRequirements.LinuxFileSystem));
+        await using ResolvedImage filesystem = await scope.OpenAsync(
+            "docker://alias", Options(), Token, ImageSourceRequirements.LinuxFileSystem);
 
         Assert.Equal(2, engines.Count);
         Assert.Equal(2, engines[1].Inspections.Count);
-        Assert.Empty(engines[1].Exports);
-        Assert.Single(Spools());
+        Assert.Single(engines[0].Exports);
+        Assert.Single(engines[1].Exports);
+        Assert.Equal(2, Spools().Length);
+        await AssertReadableAsync(filesystem, fixture);
     }
 
     [Fact]
@@ -472,12 +511,14 @@ public sealed class SharedDaemonAcquisitionTests : IDisposable
 
         if (cancel)
         {
-            await Assert.ThrowsAnyAsync<OperationCanceledException>(() => pending.WaitAsync(TimeSpan.FromSeconds(10), Token));
+            await Assert.ThrowsAnyAsync<OperationCanceledException>(() =>
+                pending.WaitAsync(TimeSpan.FromSeconds(10), Token));
         }
         else
         {
             await Assert.ThrowsAsync<InvalidDataException>(() => pending.WaitAsync(TimeSpan.FromSeconds(10), Token));
         }
+        await Task.WhenAll(engines.Select(engine => engine.DisposedTask)).WaitAsync(TimeSpan.FromSeconds(10), Token);
         Assert.True(export.Disposed);
         Assert.All(engines, engine => Assert.True(engine.Inner.Disposed));
         Assert.Empty(Spools());
@@ -556,6 +597,8 @@ public sealed class SharedDaemonAcquisitionTests : IDisposable
     {
         internal FakeEngine Inner { get; } = new(fixture);
         internal int Saves { get; private set; }
+        private readonly TaskCompletionSource disposed = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        internal Task DisposedTask => disposed.Task;
         public Task<string> GetDaemonIdentityAsync(CancellationToken cancellationToken) => Inner.GetDaemonIdentityAsync(cancellationToken);
         public async Task<ImageInspectResponse> InspectAsync(string reference, CancellationToken cancellationToken)
         {
@@ -575,6 +618,7 @@ public sealed class SharedDaemonAcquisitionTests : IDisposable
         {
             Inner.Dispose();
             onDispose?.Invoke();
+            disposed.TrySetResult();
         }
     }
 

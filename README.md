@@ -25,7 +25,7 @@ dredge image explore docker://myimage:dev
 ```
 
 Use `docker://` for Docker Engine images and `registry://` or no prefix for
-registry images. The Docker CLI is not required. See
+registry images. See
 [image sources and connections](docs/commands/images.md#image-sources).
 
 - **Follow changes through layers.** Browse each layer or the cumulative
