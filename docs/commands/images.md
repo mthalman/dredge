@@ -16,6 +16,38 @@ All image commands support [platform resolution](../platform-resolution.md) via 
 | [`save-layers`](#save-layers) | Save image layers to disk |
 | [`dockerfile`](#dockerfile) | Generate a Dockerfile from an image |
 
+## Image sources
+
+Image commands accept an explicit source prefix:
+
+| Reference | Source |
+|---|---|
+| `alpine:latest` | Container registry, implicitly selected |
+| `registry://alpine:latest` | Container registry, explicitly selected |
+| `docker://myimage:dev` | Image contained in Docker Engine |
+
+`docker://` does not pull missing images. A registry and a daemon can contain
+different images with the same tag; Dredge never switches between them
+automatically.
+
+### Docker connections
+
+Docker Engine acquisition uses the .NET client directly; it does not require
+an installed Docker CLI. Select a connection with `--docker-context <name>` or
+`--docker-host <endpoint>`. These options are mutually exclusive and apply to
+all daemon operands in one command.
+
+### Command and platform support
+
+| Commands | Registry | Linux daemon | Windows daemon |
+|---|---|---|---|
+| `inspect`, `dockerfile` | Supported | Supported | Supported |
+| `os` | Linux and Windows | Supported | Metadata identification; errors if the OS cannot be identified |
+| `compare metadata`, `compare layers` | Supported | Supported, including mixed sources | Supported without filesystem analysis |
+| `explore`, `ls`, `cat`, `extract` | Supported for Linux and Windows | Supported for Linux images | Supported with Windows filesystem limitations below |
+| `compare files` | Supported | Supported | Not supported |
+| `save-layers` | Supported | Supported | Not supported |
+
 ## Inspect
 
 Returns the image configuration of the specified image.
@@ -128,7 +160,8 @@ those inherited from earlier layers. Dredge recognizes npm, dpkg, apk, pip,
 and NuGet packages. Type `/` to filter the list, or press `Enter` to see a
 package's details.
 
-Package inventory and package comparison are unavailable for Windows images.
+Package inventory and package comparison are unavailable for Windows images,
+whether the image comes from a registry or Docker Engine.
 
 ### Comparing images
 
@@ -334,7 +367,8 @@ content. Archive entries and extraction destinations cannot escape their
 respective roots.
 
 The `explore`, `ls`, `cat`, and `extract` commands support gzip-compressed tar
-layers for Linux and the Windows representations described below.
+layers for Linux and the Windows representations described below. This applies
+to both registry and Docker Engine images.
 
 ### Windows filesystem support
 
@@ -414,6 +448,9 @@ The command returns the following exit codes:
 ## Compare layers
 
 Compares the layers of two images.
+Images without optional configuration history still compare every manifest
+layer. `--history` adds instructions when available; missing history does not
+make different layers equal.
 
 ```console
 dredge image compare layers <base> <target> [--output <format>] [--history] [--compressed-size] [--no-color] [--os <os>] [--arch <arch>] [--os-version <version>]

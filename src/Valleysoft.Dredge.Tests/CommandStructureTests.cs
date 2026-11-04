@@ -670,31 +670,33 @@ public class CommandStructureTests
     {
         const string ImageSyntax = "(<image>, <image>:<tag>, or <image>@<digest>)";
         const string ImageDescription = "Container image reference " + ImageSyntax;
+        const string SourceSuffix = "; docker:// for Docker Engine, registry:// or no prefix for a registry";
+        const string ImageSourceDescription = ImageDescription + SourceSuffix;
 
-        AssertArguments(new ImageInspectOptions(), ("image", ImageDescription));
-        AssertArguments(new OsOptions(), ("image", ImageDescription));
+        AssertArguments(new ImageInspectOptions(), ("image", ImageSourceDescription));
+        AssertArguments(new OsOptions(), ("image", ImageSourceDescription));
         AssertArguments(
             new LsOptions(),
-            ("image", ImageDescription),
+            ("image", ImageSourceDescription),
             ("path", "Image path to list"));
         AssertArguments(
             new CatOptions(),
-            ("image", ImageDescription),
+            ("image", ImageSourceDescription),
             ("path", "Image file path to write to standard output"));
         AssertArguments(
             new ExtractOptions(),
-            ("image", ImageDescription),
+            ("image", ImageSourceDescription),
             ("path", "Image file or directory path to extract"),
             ("output-path", "New destination path"));
         AssertArguments(
             new CompareFilesOptions(),
-            ("base", "Base container image reference " + ImageSyntax),
-            ("target", "Target container image reference " + ImageSyntax));
+            ("base", "Base container image reference " + ImageSyntax + SourceSuffix),
+            ("target", "Target container image reference " + ImageSyntax + SourceSuffix));
         AssertArguments(
             new SaveLayersOptions(),
-            ("image", ImageDescription),
+            ("image", ImageSourceDescription),
             ("output-path", "Path to the output location"));
-        AssertArguments(new DockerfileOptions(), ("image", ImageDescription));
+        AssertArguments(new DockerfileOptions(), ("image", ImageSourceDescription));
 
         AssertArguments(new ManifestGetOptions(), ("image", ImageDescription));
         AssertArguments(new ManifestDigestOptions(), ("image", ImageDescription));

@@ -24,6 +24,73 @@ public class ImageFileSystemTests : IAsyncDisposable
     private const string ConfigDigest = "sha256:config";
     private static readonly ImageName ImageName = ImageName.Parse("registry.test/repo:tag");
 
+    [Fact]
+    public void CachedViewPrevalidationDoesNotMaterializeFilesystemEntries()
+    {
+        const int count = 10_000;
+        const System.Reflection.BindingFlags flags =
+            System.Reflection.BindingFlags.Static | System.Reflection.BindingFlags.NonPublic;
+        var validate = typeof(ImageFileSystem).GetMethod("ValidateEntries", flags)!
+            .CreateDelegate<Action<ImageFileSystem.StoredEntry[], IReadOnlyList<string?>, ImageFileSystemSemantics>>();
+        var restore = typeof(ImageFileSystem).GetMethod("RestoreEntries", flags)!
+            .CreateDelegate<Action<IReadOnlyList<ImageFileSystem.StoredEntry>, Dictionary<string, ImageFileSystemEntry>,
+                IReadOnlyList<string?>, bool, ImageFileSystemSemantics>>();
+        string[] layers = ["sha256:" + new string('a', 64)];
+        ImageFileSystem.StoredEntry[] stored = [.. Enumerable.Range(0, count).Select(i =>
+            new ImageFileSystem.StoredEntry(new()
+            {
+                Path = $"file{i}",
+                Type = ImageFileType.File,
+                IntroducedLayer = new(0, layers[0])
+            }, 0, i, null, null))];
+        validate([stored[0]], layers, ImageFileSystemSemantics.Linux);
+        restore([stored[0]], new(StringComparer.Ordinal), layers, false, ImageFileSystemSemantics.Linux);
+
+        long start = GC.GetAllocatedBytesForCurrentThread();
+        validate(stored, layers, ImageFileSystemSemantics.Linux);
+        long validationBytes = GC.GetAllocatedBytesForCurrentThread() - start;
+        start = GC.GetAllocatedBytesForCurrentThread();
+        Dictionary<string, ImageFileSystemEntry> restored = new(StringComparer.Ordinal);
+        restore(stored, restored, layers, false, ImageFileSystemSemantics.Linux);
+        long materializationBytes = GC.GetAllocatedBytesForCurrentThread() - start;
+
+        Assert.Equal(count, restored.Count);
+        Assert.True(validationBytes < materializationBytes - count * 100L,
+            $"Validation allocated {validationBytes:N0} bytes; materialization allocated {materializationBytes:N0} bytes.");
+        Assert.Throws<InvalidDataException>(() =>
+            validate([stored[0], stored[0]], layers, ImageFileSystemSemantics.Linux));
+        Assert.Throws<InvalidDataException>(() =>
+            validate([null!], layers, ImageFileSystemSemantics.Linux));
+        Assert.Throws<InvalidDataException>(() =>
+            validate([stored[0] with { ContentLayerIndex = 1 }], layers, ImageFileSystemSemantics.Linux));
+    }
+
+    [Fact]
+    public void ValidatedViewRetainsAnImmutableSnapshotOfUntrustedArrays()
+    {
+        string digest = "sha256:" + new string('a', 64);
+        ImageFileSystem.StoredEntry entry = new(new()
+        {
+            Path = "file",
+            Type = ImageFileType.File,
+            IntroducedLayer = new(0, digest)
+        }, 0, 0, null, null);
+        ImageFileSystem.StoredFileSystem stored = new([digest], [entry], [entry]);
+        ImageFileSystem.ValidatedFileSystem validated = new(stored);
+
+        stored.Layers[0] = "changed";
+        stored.Entries[0] = null!;
+        stored.DeletedEntries[0] = null!;
+        Assert.Equal(digest, Assert.Single(validated.Layers));
+        Assert.Same(entry, Assert.Single(validated.Entries));
+        Assert.Same(entry, Assert.Single(validated.DeletedEntries));
+        Assert.Throws<NotSupportedException>(() => ((IList<string>)validated.Layers)[0] = "changed");
+        Assert.Throws<NotSupportedException>(() => ((IList<ImageFileSystem.StoredEntry>)validated.Entries)[0] = null!);
+        Assert.Throws<NotSupportedException>(() => ((IList<ImageFileSystem.StoredEntry>)validated.DeletedEntries)[0] = null!);
+        Assert.Throws<InvalidDataException>(() => new ImageFileSystem.ValidatedFileSystem(
+            new([digest], [entry with { ContentLayerIndex = 1 }], [])));
+    }
+
     [Theory]
     [Trait("Upstream", "wagoodman/dive#511")]
     [Trait("Upstream", "wagoodman/dive#526")]
@@ -181,14 +248,12 @@ public class ImageFileSystemTests : IAsyncDisposable
         }
     }
 
-    [Theory]
+    [Fact]
     [Trait("Upstream", "wagoodman/dive#562")]
     [Trait("Upstream", "wagoodman/dive#583")]
-    [InlineData(false)]
-    [InlineData(true)]
-    public async Task UnsupportedLayerCompressionFailsWithContext(bool zstd)
+    public async Task UnsupportedLayerCompressionFailsWithContext()
     {
-        byte[] layer = zstd ? [0x28, 0xB5, 0x2F, 0xFD, 0x20, 0x00, 0x01, 0x00, 0x00] : new byte[1024];
+        byte[] layer = [0x28, 0xB5, 0x2F, 0xFD, 0x20, 0x00, 0x01, 0x00, 0x00];
         using IDockerRegistryClient client = CreateClient([layer]).Object;
 
         InvalidDataException exception = await Assert.ThrowsAsync<InvalidDataException>(() =>
@@ -197,6 +262,19 @@ public class ImageFileSystemTests : IAsyncDisposable
 
         Assert.Contains("supported gzip-compressed Linux tar layer", exception.Message);
         Assert.Contains(LayerCacheTestContext.Digest(layer), exception.Message);
+    }
+
+    [Fact]
+    public async Task UncompressedEmptyTarIsSupported()
+    {
+        byte[] layer = new byte[1024];
+        using IDockerRegistryClient client = CreateClient([layer]).Object;
+        await using ImageFileSystem files = await ImageFileSystem.CreateAsync(
+            client, ImageName, new PlatformOptionsBase(), TestContext.Current.CancellationToken,
+            cache.Store, requireLayerIndexes: true);
+
+        Assert.Empty(files.List(null, true, true));
+        Assert.Equal(0, files.Analyze().FileBytes);
     }
 
     [Fact]

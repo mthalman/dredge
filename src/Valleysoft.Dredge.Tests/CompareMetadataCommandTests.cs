@@ -23,6 +23,19 @@ public class CompareMetadataCommandTests
     private static readonly ImageName targetImageName = ImageName.Parse($"{Registry}/target:latest");
 
     [Fact]
+    public async Task ConfigurationUtf8BomDoesNotAffectMetadataComparison()
+    {
+        string configuration = JsonSerializer.Serialize(CreateImageConfig());
+        CompareMetadataCommand command = CreateCommand(
+            CreateSingleManifestSetup("\uFEFF" + configuration),
+            CreateSingleManifestSetup(configuration));
+
+        CompareMetadataResult result = await command.GetResultAsync(TestContext.Current.CancellationToken);
+
+        Assert.True(result.Summary.AreEqual);
+    }
+
+    [Fact]
     public async Task EqualMetadataIgnoresMapAndSetOrdering()
     {
         ImageData baseConfig = CreateImageConfig(

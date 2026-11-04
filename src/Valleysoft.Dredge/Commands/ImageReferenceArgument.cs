@@ -6,6 +6,28 @@ internal static class ImageReferenceArgument
 {
     public const string Syntax = "(<image>, <image>:<tag>, or <image>@<digest>)";
 
+    public static Argument<string> CreateImageSource(string name, string subject = "Container image")
+    {
+        Argument<string> argument = new(name)
+        {
+            Description = $"{subject} reference {Syntax}; docker:// for Docker Engine, registry:// or no prefix for a registry"
+        };
+        argument.Validators.Add(result =>
+        {
+            try
+            {
+                _ = ImageSourceReference.Parse(result.GetValueOrDefault<string>()!);
+            }
+            catch (ArgumentException exception)
+            {
+                result.AddError(
+                    $"{exception.Message} Expected <{name}>, <{name}>:<tag>, or <{name}>@<digest>. " +
+                    "Use docker:// for Docker Engine or registry:// for a registry.");
+            }
+        });
+        return argument;
+    }
+
     public static Argument<string> Create(string name, string subject = "Container image")
     {
         Argument<string> argument = new(name)

@@ -572,7 +572,7 @@ public class ExplorerComparisonTests
 
         InvalidOperationException error = Assert.Throws<InvalidOperationException>(() => ExplorerSession.Compare(baseline, target));
 
-        Assert.Contains("compatible platforms", error.Message);
+        Assert.Contains("same platform", error.Message);
     }
 
     [Fact]

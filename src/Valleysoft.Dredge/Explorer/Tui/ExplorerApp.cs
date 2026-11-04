@@ -24,7 +24,7 @@ internal sealed class ExplorerApp : IAsyncDisposable
     internal const int PreviewLimit = 256_000;
 
     private readonly Lock sync = new();
-    private readonly IDockerRegistryClient client;
+    private readonly IDockerRegistryClient? client;
     private readonly ExplorerSource source;
     private readonly LayerStore store;
     private readonly ExplorerOptions options;
@@ -46,7 +46,7 @@ internal sealed class ExplorerApp : IAsyncDisposable
     private string? pendingCompare;
 
     public ExplorerApp(
-        IDockerRegistryClient client, IDockerRegistryClientFactory factory, ExplorerSource source,
+        IDockerRegistryClient? client, IDockerRegistryClientFactory factory, ExplorerSource source,
         LayerStore store, ExplorerOptions options, CancellationToken cancellationToken)
     {
         this.client = client;
@@ -119,7 +119,6 @@ internal sealed class ExplorerApp : IAsyncDisposable
         }
     }
 
-    // Wires the indexer to the model and starts downloading layers.
     internal ExplorerState Start()
     {
         indexer.Progress += (layer, bytes) =>
@@ -404,10 +403,18 @@ internal sealed class ExplorerApp : IAsyncDisposable
             {
                 if (stopping || token.IsCancellationRequested)
                 {
-                    return;
+                    insights = ExplorerInsightsResult.Empty;
                 }
-                host.Session = session;
-                Volatile.Write(ref completedInsights, insights);
+                else
+                {
+                    host.Session = session;
+                    Volatile.Write(ref completedInsights, insights);
+                }
+            }
+            if (!ReferenceEquals(host.Session, session))
+            {
+                await session.Files.DisposeAsync();
+                return;
             }
             Post(() =>
             {
@@ -505,7 +512,6 @@ internal sealed class ExplorerApp : IAsyncDisposable
     {
         Task indexDrain = indexer.StopAsync();
         Task backgroundDrain = lifetime.DisposeAsync().AsTask();
-        Task hostDrain = host.DisposeAsync().AsTask();
         try
         {
             await cts.CancelAsync();
@@ -514,11 +520,18 @@ internal sealed class ExplorerApp : IAsyncDisposable
         {
             try
             {
-                await Task.WhenAll(indexDrain, backgroundDrain, hostDrain);
+                await Task.WhenAll(indexDrain, backgroundDrain);
             }
             finally
             {
-                cts.Dispose();
+                try
+                {
+                    await host.DisposeAsync();
+                }
+                finally
+                {
+                    cts.Dispose();
+                }
             }
         }
     }
@@ -540,11 +553,12 @@ internal sealed class StagedViewerFile(string path, Action<string>? cleanup = nu
     }
 }
 
-// The real host: the registry, the layer store, and the loaded session.
+// Snapshot ownership outlives every callback: an immutable ID alone does not
+// keep the daemon's exported content available.
 internal sealed class ExplorerHost : IExplorerHost, IAsyncDisposable
 {
     internal const long MaxPackageOwnershipBytes = 64 * 1024 * 1024;
-    private readonly IDockerRegistryClient client;
+    private readonly IDockerRegistryClient? client;
     private readonly IDockerRegistryClientFactory factory;
     private readonly ExplorerSource source;
     private readonly LayerStore store;
@@ -556,14 +570,13 @@ internal sealed class ExplorerHost : IExplorerHost, IAsyncDisposable
     private readonly Lock disposalSync = new();
     private Task? disposal;
     private readonly string viewerRoot;
-    private readonly Dictionary<string, ExplorerSession> targets = new(StringComparer.Ordinal);
-    private readonly Dictionary<string, (ResolvedManifest Resolved, ExplorerPlatform? Platform, IDockerRegistryClient Client)>
+    private readonly Dictionary<string, (ResolvedManifest Resolved, ExplorerPlatform? Platform, string? DaemonReference)>
         targetSnapshots = new(StringComparer.Ordinal);
-    private readonly List<IDockerRegistryClient> ownedClients = [];
+    private readonly ExplorerTargetRetention<ExplorerSession> comparisonTargets = new();
     private IReadOnlyList<string>? tags;
 
     public ExplorerHost(
-        IDockerRegistryClient client, IDockerRegistryClientFactory factory, ExplorerSource source,
+        IDockerRegistryClient? client, IDockerRegistryClientFactory factory, ExplorerSource source,
         LayerStore store, ExplorerImage img, ExplorerLayerIndexer indexer, ExplorerOptions options,
         string? viewerRoot = null)
     {
@@ -584,9 +597,8 @@ internal sealed class ExplorerHost : IExplorerHost, IAsyncDisposable
     private ExplorerSession Loaded => Session ??
         throw new InvalidOperationException("Every layer must be indexed first.");
 
-    private PlatformOptionsBase PlatformOptions => source.Platform is ExplorerPlatform platform
-        ? ExplorerSource.ForPlatform(platform)
-        : new() { Os = source.Config.Os, Architecture = source.Config.Architecture, OsVersion = source.Config.OsVersion };
+    private PlatformOptionsBase PlatformOptions => ExplorerSource.ForPlatform(
+        ExplorerPlatform.FromConfig(source.Config, source.Platform), source.SourceOptions);
 
     public void Prioritize(int layer)
     {
@@ -604,16 +616,22 @@ internal sealed class ExplorerHost : IExplorerHost, IAsyncDisposable
     {
         using var operation = lifetime.Enter(cancellationToken);
         cancellationToken = operation.Token;
+        if (source.IsDaemon)
+        {
+            throw new NotSupportedException(
+                "Registry tag browsing is unavailable for Docker daemon images. Enter a docker:// or registry:// comparison reference instead.");
+        }
         if (tags is not null)
         {
             return tags;
         }
         List<string> result = [];
-        Page<RepositoryTags> page = await client.Tags.GetAsync(source.Image.Repo, null, cancellationToken);
+        IDockerRegistryClient registry = client ?? throw new InvalidOperationException("Registry client is unavailable.");
+        Page<RepositoryTags> page = await registry.Tags.GetAsync(source.Image.Repo, null, cancellationToken);
         result.AddRange(page.Value.Tags);
         while (page.NextPageLink is not null)
         {
-            page = await client.Tags.GetNextAsync(page.NextPageLink, cancellationToken);
+            page = await registry.Tags.GetNextAsync(page.NextPageLink, cancellationToken);
             result.AddRange(page.Value.Tags);
         }
         cancellationToken.ThrowIfCancellationRequested();
@@ -623,6 +641,10 @@ internal sealed class ExplorerHost : IExplorerHost, IAsyncDisposable
     public async Task DescribeTagAsync(TagChoice choice, CancellationToken cancellationToken)
     {
         using var operation = lifetime.Enter(cancellationToken);
+        if (source.IsDaemon)
+        {
+            throw new NotSupportedException("Registry tag descriptions are unavailable for Docker daemon images.");
+        }
         cancellationToken = operation.Token;
         ImageName name = ExploreCommand.ResolveCompareImage(source.Image, choice.Tag);
         await compareGate.WaitAsync(cancellationToken);
@@ -646,26 +668,35 @@ internal sealed class ExplorerHost : IExplorerHost, IAsyncDisposable
         }
     }
 
-    private async Task<(ResolvedManifest Resolved, ExplorerPlatform? Platform, IDockerRegistryClient Client)>
+    private async Task<(ResolvedManifest Resolved, ExplorerPlatform? Platform)>
         GetTargetSnapshotAsync(ImageName name, CancellationToken cancellationToken, bool choosePlatform = false)
     {
         string key = name.ToString();
         if (!targetSnapshots.TryGetValue(key, out var snapshot))
         {
-            IDockerRegistryClient targetClient = client;
-            if (name.Registry != source.Image.Registry)
+            IDockerRegistryClient? targetClient = client;
+            if (targetClient is null || name.Registry != source.Image.Registry)
             {
                 targetClient = await factory.GetClientAsync(name.Registry, cancellationToken);
-                ownedClients.Add(targetClient);
             }
-            (ResolvedManifest resolved, _, ExplorerPlatform? platform) = await ExplorerSource.ResolveAsync(
-                targetClient, name, PlatformOptions, source.Platform, cancellationToken,
-                comparing: true, chooseComparisonPlatform: choosePlatform ? ChoosePlatformAsync : null);
-            cancellationToken.ThrowIfCancellationRequested();
-            snapshot = (resolved, platform, targetClient);
-            targetSnapshots.Add(key, snapshot);
+            try
+            {
+                (ResolvedManifest resolved, _, ExplorerPlatform? platform) = await ExplorerSource.ResolveAsync(
+                    targetClient, name, PlatformOptions, source.Platform, cancellationToken,
+                    comparing: true, chooseComparisonPlatform: choosePlatform ? ChoosePlatformAsync : null);
+                cancellationToken.ThrowIfCancellationRequested();
+                snapshot = (resolved, platform, null);
+                targetSnapshots.Add(key, snapshot);
+            }
+            finally
+            {
+                if (!ReferenceEquals(targetClient, client))
+                {
+                    targetClient.Dispose();
+                }
+            }
         }
-        return snapshot;
+        return (snapshot.Resolved, snapshot.Platform);
     }
 
     // Flags tags that are this image, or that can't share its verified base.
@@ -699,33 +730,113 @@ internal sealed class ExplorerHost : IExplorerHost, IAsyncDisposable
 
     public async Task<ExplorerComparison> CompareAsync(string tag, Action readingPackages, CancellationToken cancellationToken)
     {
+        using RetainedExplorerComparison result = await CompareRetainedAsync(tag, readingPackages, cancellationToken);
+        DisplayComparison(result.Comparison);
+        return result.Comparison;
+    }
+
+    internal void DisplayComparison(ExplorerComparison? comparison) =>
+        comparisonTargets.Display(comparison is null ? [] : [comparison.Baseline, comparison.Target]);
+
+    internal IDisposable RetainComparison(ExplorerComparison comparison) =>
+        comparisonTargets.Retain([comparison.Baseline, comparison.Target]);
+
+    internal async Task<RetainedExplorerComparison> CompareRetainedAsync(
+        string tag, Action readingPackages, CancellationToken cancellationToken)
+    {
         using var operation = lifetime.Enter(cancellationToken);
         cancellationToken = operation.Token;
         ExplorerSession baseline = Loaded;
-        ImageName name = ExploreCommand.ResolveCompareImage(source.Image, tag);
-        string key = name.ToString();
+        string reference = ExploreCommand.ResolveCompareReference(source.Reference, tag);
+        ImageSourceReference parsed = ImageSourceReference.Parse(reference);
+        ImageName? name = parsed.IsDaemon ? null : ImageName.Parse(parsed.Value);
+        string key = reference;
         await compareGate.WaitAsync(cancellationToken);
+        IDisposable? retention = null;
         try
         {
+            await comparisonTargets.CheckCleanupAsync();
             cancellationToken.ThrowIfCancellationRequested();
-            if (!targets.TryGetValue(key, out ExplorerSession? target))
+            if (!comparisonTargets.TryGet(key, out ExplorerSession? target))
             {
-                var (resolved, platform, targetClient) = await GetTargetSnapshotAsync(name, cancellationToken, choosePlatform: true);
-                target = await ExplorerSession.LoadAsync(targetClient, factory, name, PlatformOptions,
-                    store, baseImages: null, cancellationToken, exactPlatform: platform,
-                    resolvedManifest: resolved);
-                cancellationToken.ThrowIfCancellationRequested();
-                targets[key] = target;
+                LayerStore targetStore = store.CreateScope();
+                ExplorerSource? targetSource = null;
+                try
+                {
+                    ResolvedManifest? resolved = null;
+                    ExplorerPlatform? platform = source.Platform;
+                    string snapshotKey = name?.ToString() ?? reference;
+                    string? daemonSnapshotReference = null;
+                    if (targetSnapshots.TryGetValue(snapshotKey, out var snapshot))
+                    {
+                        resolved = snapshot.Resolved;
+                        platform = snapshot.Platform ?? platform;
+                        daemonSnapshotReference = snapshot.DaemonReference;
+                    }
+                    targetSource = await ExplorerSource.OpenAsync(
+                        source.SourceFactory ?? new ImageSourceFactory(factory), factory,
+                        reference, PlatformOptions, null, cancellationToken, exactPlatform: platform,
+                        store: targetStore, resolvedManifest: resolved,
+                        registryClient: name?.Registry == source.Image.Registry ? client : null,
+                        daemonSnapshotReference: daemonSnapshotReference, comparing: true);
+                    targetSnapshots.TryAdd(snapshotKey, (targetSource.Resolved, targetSource.Platform,
+                        targetSource.IsDaemon ? $"docker://{targetSource.Source!.Identity}" : null));
+                    target = await ExplorerSession.CreateAsync(targetSource.RegistryClient, targetSource,
+                        targetStore, null, cancellationToken);
+                }
+                catch
+                {
+                    try
+                    {
+                        if (targetSource is not null)
+                        {
+                            await targetSource.DisposeAsync();
+                        }
+                    }
+                    finally
+                    {
+                        await targetStore.DisposeAsync();
+                    }
+                    throw;
+                }
+                ExplorerSession ownedTarget = target;
+                retention = comparisonTargets.Add(key, target, async () =>
+                {
+                    try
+                    {
+                        await ownedTarget.Files.DisposeAsync();
+                    }
+                    finally
+                    {
+                        try
+                        {
+                            await targetSource.DisposeAsync();
+                        }
+                        finally
+                        {
+                            await targetStore.DisposeAsync();
+                        }
+                    }
+                });
             }
+            retention ??= comparisonTargets.Retain([baseline, target]);
             cancellationToken.ThrowIfCancellationRequested();
+            if (baseline.IsDaemon || target.IsDaemon)
+            {
+                await baseline.EnsureContentIdentitiesAsync(cancellationToken);
+                await target.EnsureContentIdentitiesAsync(cancellationToken);
+            }
             readingPackages();
             await baseline.EnsurePackagesAsync(cancellationToken);
             await target.EnsurePackagesAsync(cancellationToken);
             cancellationToken.ThrowIfCancellationRequested();
-            return ExplorerSession.Compare(baseline, target);
+            RetainedExplorerComparison result = new(ExplorerSession.Compare(baseline, target), retention);
+            retention = null;
+            return result;
         }
         finally
         {
+            retention?.Dispose();
             compareGate.Release();
         }
     }
@@ -938,6 +1049,7 @@ internal sealed class ExplorerHost : IExplorerHost, IAsyncDisposable
         ExplorerComparison comparison, string path, CancellationToken cancellationToken)
     {
         using var operation = lifetime.Enter(cancellationToken);
+        using IDisposable retention = RetainComparison(comparison);
         cancellationToken = operation.Token;
         ExplorerFileDifference? difference = comparison.Files.FirstOrDefault(file =>
             comparison.Baseline.Semantics.Comparer.Equals(file.Path, path));
@@ -995,6 +1107,7 @@ internal sealed class ExplorerHost : IExplorerHost, IAsyncDisposable
         ExplorerComparison comparison, ExplorerPackageDifference package, CancellationToken cancellationToken)
     {
         using var operation = lifetime.Enter(cancellationToken);
+        using IDisposable retention = RetainComparison(comparison);
         cancellationToken = operation.Token;
         HashSet<string> owned = new(StringComparer.Ordinal);
         List<string> warnings = [];
@@ -1133,22 +1246,233 @@ internal sealed class ExplorerHost : IExplorerHost, IAsyncDisposable
         }
         finally
         {
-            foreach (ExplorerSession target in targets.Values)
+            List<Exception> errors = [];
+            try
             {
-                await target.Files.DisposeAsync();
+                await comparisonTargets.DisposeAsync();
             }
-            targets.Clear();
-            targetSnapshots.Clear();
-            foreach (IDockerRegistryClient owned in ownedClients)
+            catch (Exception exception)
             {
-                owned.Dispose();
+                errors.Add(exception);
             }
             if (Session is not null)
             {
-                await Session.Files.DisposeAsync();
+                try
+                {
+                    await Session.Files.DisposeAsync();
+                }
+                catch (Exception exception)
+                {
+                    errors.Add(exception);
+                }
             }
+            targetSnapshots.Clear();
             compareGate.Dispose();
+            if (errors.Count > 0)
+            {
+                throw new AggregateException("Could not release all explorer snapshots.", errors);
+            }
         }
+    }
+}
+
+internal sealed class RetainedExplorerComparison(ExplorerComparison comparison, IDisposable? retention = null) : IDisposable
+{
+    private IDisposable? retention = retention;
+    public ExplorerComparison Comparison { get; } = comparison;
+    public void Dispose() => Interlocked.Exchange(ref retention, null)?.Dispose();
+}
+
+// A displayed snapshot and readers are pins, not cache entries to sacrifice for
+// a newer export. Only one unpinned inactive export survives between requests.
+internal sealed class ExplorerTargetRetention<T> : IAsyncDisposable where T : class
+{
+    private readonly Lock sync = new();
+    private readonly Dictionary<string, Entry> cached = new(StringComparer.Ordinal);
+    private readonly Dictionary<T, Entry> owned = new(ReferenceEqualityComparer.Instance);
+    private readonly HashSet<T> displayed = new(ReferenceEqualityComparer.Instance);
+    private readonly List<Task> cleanups = [];
+    private long clock;
+    private bool stopping;
+    private Task? disposal;
+
+    public bool TryGet(string key, [System.Diagnostics.CodeAnalysis.NotNullWhen(true)] out T? value)
+    {
+        lock (sync)
+        {
+            ObjectDisposedException.ThrowIf(stopping, this);
+            if (cached.TryGetValue(key, out Entry? entry))
+            {
+                entry.LastUse = ++clock;
+                value = entry.Value;
+                return true;
+            }
+            value = null;
+            return false;
+        }
+    }
+
+    public IDisposable Add(string key, T value, Func<ValueTask> cleanup)
+    {
+        lock (sync)
+        {
+            ObjectDisposedException.ThrowIf(stopping, this);
+            Entry entry = new(key, value, cleanup) { LastUse = ++clock, Readers = 1 };
+            cached.Add(key, entry);
+            owned.Add(value, entry);
+            Trim();
+            return new Lease(this, [entry]);
+        }
+    }
+
+    public IDisposable Retain(IEnumerable<T> values)
+    {
+        lock (sync)
+        {
+            ObjectDisposedException.ThrowIf(stopping, this);
+            Entry[] entries = [.. values.Distinct<T>(ReferenceEqualityComparer.Instance)
+                .Select(value => owned.GetValueOrDefault(value)).OfType<Entry>()];
+            foreach (Entry entry in entries)
+            {
+                entry.Readers++;
+            }
+            return new Lease(this, entries);
+        }
+    }
+
+    public void Display(IEnumerable<T> values)
+    {
+        lock (sync)
+        {
+            ObjectDisposedException.ThrowIf(stopping, this);
+            displayed.Clear();
+            displayed.UnionWith(values);
+            Trim();
+        }
+    }
+
+    public Task CheckCleanupAsync()
+    {
+        lock (sync)
+        {
+            PruneCleanups();
+            return Task.WhenAll(cleanups);
+        }
+    }
+
+    internal int PendingCleanupCount
+    {
+        get
+        {
+            lock (sync)
+            {
+                PruneCleanups();
+                return cleanups.Count;
+            }
+        }
+    }
+
+    private void PruneCleanups() => cleanups.RemoveAll(static task => task.IsCompletedSuccessfully);
+
+    private void Release(Entry[] entries)
+    {
+        lock (sync)
+        {
+            foreach (Entry entry in entries)
+            {
+                entry.Readers--;
+                if (stopping && entry.Readers == 0)
+                {
+                    StartCleanup(entry);
+                }
+            }
+            if (!stopping)
+            {
+                Trim();
+            }
+        }
+    }
+
+    private void Trim()
+    {
+        Entry[] inactive = [.. cached.Values
+            .Where(entry => entry.Readers == 0 && !displayed.Contains(entry.Value))
+            .OrderByDescending(entry => entry.LastUse)];
+        foreach (Entry entry in inactive.Skip(1))
+        {
+            cached.Remove(entry.Key);
+            StartCleanup(entry);
+        }
+    }
+
+    private void StartCleanup(Entry entry)
+    {
+        if (entry.CleanupStarted)
+        {
+            return;
+        }
+        entry.CleanupStarted = true;
+        PruneCleanups();
+        cleanups.Add(entry.Drained.Task);
+        _ = CleanupAsync(entry);
+    }
+
+    private async Task CleanupAsync(Entry entry)
+    {
+        try
+        {
+            await entry.Cleanup();
+            entry.Drained.TrySetResult();
+        }
+        catch (Exception exception)
+        {
+            entry.Drained.TrySetException(exception);
+        }
+        finally
+        {
+            lock (sync)
+            {
+                owned.Remove(entry.Value);
+                PruneCleanups();
+            }
+        }
+    }
+
+    public ValueTask DisposeAsync()
+    {
+        lock (sync)
+        {
+            if (disposal is not null)
+            {
+                return new(disposal);
+            }
+            stopping = true;
+            displayed.Clear();
+            cached.Clear();
+            Entry[] entries = [.. owned.Values];
+            foreach (Entry entry in entries.Where(entry => entry.Readers == 0))
+            {
+                StartCleanup(entry);
+            }
+            return new(disposal = Task.WhenAll(entries.Select(entry => entry.Drained.Task).Concat(cleanups)));
+        }
+    }
+
+    private sealed class Entry(string key, T value, Func<ValueTask> cleanup)
+    {
+        public string Key { get; } = key;
+        public T Value { get; } = value;
+        public Func<ValueTask> Cleanup { get; } = cleanup;
+        public TaskCompletionSource Drained { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        public long LastUse { get; set; }
+        public int Readers { get; set; }
+        public bool CleanupStarted { get; set; }
+    }
+
+    private sealed class Lease(ExplorerTargetRetention<T> owner, Entry[] entries) : IDisposable
+    {
+        private ExplorerTargetRetention<T>? owner = owner;
+        public void Dispose() => Interlocked.Exchange(ref owner, null)?.Release(entries);
     }
 }
 

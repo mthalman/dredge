@@ -14,7 +14,7 @@ public sealed class ExploreCommand : RegistryCommandBase<ExploreOptions>
 
     protected override Task ExecuteAsync(CancellationToken cancellationToken)
     {
-        ImageName image = ImageName.Parse(Options.Image);
+        ImageSourceReference image = ImageSourceReference.Parse(Options.Image);
         return ExecuteCommandAsync(image.Registry, cancellationToken, async ct =>
         {
             if (Console.IsInputRedirected || Console.IsOutputRedirected)
@@ -29,16 +29,18 @@ public sealed class ExploreCommand : RegistryCommandBase<ExploreOptions>
                 !string.IsNullOrEmpty(Environment.GetEnvironmentVariable("NO_COLOR")));
             ExplorerOptions explorerOptions = CreateExplorerOptions(Options, settings);
 
-            using IDockerRegistryClient client =
-                await DockerRegistryClientFactory.GetClientAsync(image.Registry, ct);
             await using LayerStore store = LayerStore.Create();
             Theme.Apply(theme);
-            ExplorerSource source = await ExplorerSource.OpenAsync(
-                client, DockerRegistryClientFactory, image, Options, Options.BaseImages, ct,
-                choosePlatform: platforms => PlatformPicker.ShowInitial(platforms, explorerOptions.Mouse, ct));
+            IImageSourceFactory sourceFactory = ImageSourceFactory ??
+                new ImageSourceFactory(DockerRegistryClientFactory);
+            await using ExplorerSource source = await ExplorerSource.OpenAsync(
+                sourceFactory, DockerRegistryClientFactory, Options.Image, Options, Options.BaseImages, ct,
+                choosePlatform: platforms => PlatformPicker.ShowInitial(platforms, explorerOptions.Mouse, ct),
+                store: store);
+            source.Source?.Report(Error);
             LayerIndexOption.ValidateLayer(Options.Layer, source.LayerCount);
 
-            await using ExplorerApp app = new(client, DockerRegistryClientFactory, source, store, explorerOptions, ct);
+            await using ExplorerApp app = new(source.RegistryClient, DockerRegistryClientFactory, source, store, explorerOptions, ct);
             app.Run();
         }, operationTimeout: Timeout.InfiniteTimeSpan);
     }
@@ -71,5 +73,29 @@ public sealed class ExploreCommand : RegistryCommandBase<ExploreOptions>
             return ImageName.Parse($"{registry}{baseline.Repo}:{input}");
         }
         return ImageName.Parse(input);
+    }
+
+    internal static string ResolveCompareReference(string baseline, string input)
+    {
+        if (string.IsNullOrWhiteSpace(input))
+        {
+            throw new ArgumentException("Compare image or tag cannot be empty.", nameof(input));
+        }
+        ImageSourceReference source = ImageSourceReference.Parse(baseline);
+        if (!input.Contains('/') && !input.Contains(':') && !input.Contains('@'))
+        {
+            if (source.IsDaemon)
+            {
+                if (source.IsImageId)
+                {
+                    throw new ArgumentException("An image ID has no repository for tag shorthand. Enter a full docker:// reference.", nameof(input));
+                }
+                return $"docker://{source.GetImageName().Repo}:{input}";
+            }
+            return (baseline.StartsWith("registry://", StringComparison.Ordinal)
+                ? "registry://" : "") + ResolveCompareImage(source.GetImageName(), input);
+        }
+        ImageSourceReference.Parse(input);
+        return input;
     }
 }

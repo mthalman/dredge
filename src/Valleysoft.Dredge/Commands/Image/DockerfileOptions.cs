@@ -2,7 +2,7 @@
 
 namespace Valleysoft.Dredge.Commands.Image;
 
-public class DockerfileOptions : PlatformOptionsBase
+public class DockerfileOptions : ImageOptionsBase
 {
     private readonly Argument<string> imageArg;
     private readonly Option<bool> noColorOption;
@@ -14,7 +14,7 @@ public class DockerfileOptions : PlatformOptionsBase
 
     public DockerfileOptions()
     {
-        imageArg = Add(ImageReferenceArgument.Create("image"));
+        imageArg = Add(ImageReferenceArgument.CreateImageSource("image"));
         noColorOption = Add(new Option<bool>("--no-color") { Description = "Disables use of syntax color in the output" });
         noFormatOption = Add(new Option<bool>("--no-format") { Description = "Disables use of heuristics to format the layer history for better readability" });
     }

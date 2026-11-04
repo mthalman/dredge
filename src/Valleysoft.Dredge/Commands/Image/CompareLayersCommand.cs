@@ -13,16 +13,26 @@ public class CompareLayersCommand : RegistryCommandBase<CompareLayersOptions>
     private static readonly string[] SizeSuffixes =
         ["bytes", "KB", "MB", "GB", "TB", "PB", "EB", "ZB", "YB"];
     private readonly IAnsiConsole ansiConsole;
+    private readonly IDredgePathProvider? pathProvider;
 
     public CompareLayersCommand(
         IDockerRegistryClientFactory dockerRegistryClientFactory,
         IAnsiConsole? ansiConsole = null)
+        : this(dockerRegistryClientFactory, ansiConsole, null)
+    {
+    }
+
+    internal CompareLayersCommand(
+        IDockerRegistryClientFactory dockerRegistryClientFactory,
+        IAnsiConsole? ansiConsole,
+        IDredgePathProvider? pathProvider)
         : base(
             "layers",
             "Compares two images by layers. Exit code 2 means layer differences were found, not a command failure.",
             dockerRegistryClientFactory)
     {
         this.ansiConsole = ansiConsole ?? AnsiConsole.Console;
+        this.pathProvider = pathProvider;
     }
 
     protected override async Task ExecuteAsync(CancellationToken cancellationToken)
@@ -67,8 +77,29 @@ public class CompareLayersCommand : RegistryCommandBase<CompareLayersOptions>
 
     private async Task<CompareLayersResult> GetCompareLayersResult(CancellationToken cancellationToken)
     {
-        IList<LayerInfo> baseLayers = await GetLayersAsync(Options.BaseImage, cancellationToken);
-        IList<LayerInfo> targetLayers = await GetLayersAsync(Options.TargetImage, cancellationToken);
+        var sources = await OpenComparisonAsync(
+            Options.BaseImage, Options.TargetImage, Options, cancellationToken);
+        await using ResolvedImage baseSource = sources.Base;
+        await using ResolvedImage targetSource = sources.Target;
+        ReportComparison(baseSource, targetSource);
+        bool contentIdentities = baseSource.IsDaemon || targetSource.IsDaemon;
+        string[]? baseDigests = null;
+        string[]? targetDigests = null;
+        if (contentIdentities)
+        {
+            baseDigests = ExplorerSession.ContentDigests(baseSource.Configuration, baseSource.Resolved.Manifest.Layers.Length);
+            targetDigests = ExplorerSession.ContentDigests(targetSource.Configuration, targetSource.Resolved.Manifest.Layers.Length);
+            if (!baseSource.IsDaemon || !targetSource.IsDaemon ||
+                !baseDigests.All(DockerImageArchive.IsSha256) || !targetDigests.All(DockerImageArchive.IsSha256))
+            {
+                await using LayerStore store = LayerStore.Create(pathProvider);
+                baseDigests = await ExplorerContentIdentity.GetVerifiedDigestsAsync(baseSource, store, cancellationToken);
+                targetDigests = await ExplorerContentIdentity.GetVerifiedDigestsAsync(targetSource, store, cancellationToken);
+            }
+            Error.WriteLine("Layer identities: uncompressed content digests (diff IDs). Original compressed sizes are unavailable for Docker daemon layers.");
+        }
+        IList<LayerInfo> baseLayers = GetLayers(baseSource, baseDigests, cancellationToken);
+        IList<LayerInfo> targetLayers = GetLayers(targetSource, targetDigests, cancellationToken);
         List<LayerComparison> layerComparisons = GetLayerComparisons(baseLayers, targetLayers);
         CompareLayersSummary summary = GetSummary(layerComparisons);
 
@@ -213,24 +244,40 @@ public class CompareLayersCommand : RegistryCommandBase<CompareLayersOptions>
             _ => throw new ArgumentOutOfRangeException(nameof(diff), diff, "Unsupported layer diff state.")
         };
 
-    private async Task<IList<LayerInfo>> GetLayersAsync(string image, CancellationToken cancellationToken)
+    private IList<LayerInfo> GetLayers(
+        ResolvedImage source, string[]? contentDigests, CancellationToken cancellationToken)
     {
-        ImageName imageName = ImageName.Parse(image);
-        using IDockerRegistryClient client = await DockerRegistryClientFactory.GetClientAsync(imageName.Registry, cancellationToken);
-        IImageManifest manifest =
-            (await ManifestHelper.GetResolvedManifestAsync(client, imageName, Options, cancellationToken)).Manifest;
+        IImageManifest manifest = source.Resolved.Manifest;
+        ImageConfig imageConfig = source.Configuration;
+        bool contentIdentities = contentDigests is not null;
+        string[]? diffIds = contentDigests;
+        if (contentIdentities && (diffIds?.Length ?? 0) != manifest.Layers.Length)
+        {
+            throw new InvalidDataException(
+                $"Image '{source.Reference}' does not contain a complete rootfs diff-ID list for content-based layer comparison.");
+        }
 
-        string? digest = (manifest.Config?.Digest) ?? throw new NotSupportedException($"Could not resolve the image config digest of '{image}'.");
-        ImageConfig imageConfig = await client.Blobs.GetImageAsync(imageName.Repo, digest, cancellationToken);
+        IEnumerable<LayerHistory> histories = imageConfig.History;
+        if (imageConfig.History.Length == 0)
+        {
+            histories = Enumerable.Range(0, manifest.Layers.Length).Select(static _ => new LayerHistory());
+        }
+        else if (contentIdentities &&
+            imageConfig.History.Count(static history => !history.IsEmptyLayer) != manifest.Layers.Length)
+        {
+            throw new InvalidDataException(
+                $"Image '{source.Reference}' has a history that does not match its layer count.");
+        }
 
         List<LayerInfo> layerInfos = [];
         int layerIndex = 0;
-        foreach (LayerHistory history in imageConfig.History)
+        foreach (LayerHistory history in histories)
         {
             cancellationToken.ThrowIfCancellationRequested();
             if (Options.IncludeHistory || !history.IsEmptyLayer)
             {
-                string? layerDigest = !history.IsEmptyLayer ? manifest.Layers[layerIndex].Digest : null;
+                string? layerDigest = history.IsEmptyLayer ? null :
+                    contentIdentities ? diffIds![layerIndex] : manifest.Layers[layerIndex].Digest;
                 long? compressedSize = null;
                 if (Options.IncludeCompressedSize)
                 {
@@ -240,7 +287,7 @@ public class CompareLayersCommand : RegistryCommandBase<CompareLayersOptions>
                     }
                     else
                     {
-                        compressedSize = manifest.Layers[layerIndex].Size;
+                        compressedSize = source.IsDaemon ? null : manifest.Layers[layerIndex].Size;
                     }
                 }
 

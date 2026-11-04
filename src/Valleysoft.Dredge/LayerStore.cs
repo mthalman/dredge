@@ -1,6 +1,7 @@
 using System.Collections.Concurrent;
-using System.IO.Compression;
+using System.Collections.Immutable;
 using System.Net;
+using System.Runtime.ExceptionServices;
 using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
@@ -17,6 +18,13 @@ internal sealed class LayerStore : IAsyncDisposable
     private readonly long maxBytes;
     private readonly TextWriter diagnostics;
     private readonly ConcurrentDictionary<string, FileStream> pins = new(StringComparer.Ordinal);
+    private readonly VerificationState verifications = new();
+    private object verificationLock => verifications.Sync;
+    private Dictionary<(string Digest, string DiffId), TaskCompletionSource<string>> contentVerifications => verifications.Tasks;
+    private readonly TaskCompletionSource operationsDrained = new(TaskCreationOptions.RunContinuationsAsynchronously);
+    private int operations;
+    private Task? disposal;
+    private bool verificationDisposed;
 
     public LayerStore(string root, long maxBytes = CacheSettings.DefaultMaxBytes, TextWriter? diagnostics = null)
     {
@@ -36,32 +44,304 @@ internal sealed class LayerStore : IAsyncDisposable
     public static LayerStore Create(IDredgePathProvider? paths = null) =>
         new((paths ?? new DredgePathProvider()).CachePath, AppSettings.Load().Cache.GetMaxBytes());
 
+    private LayerStore(LayerStore parent)
+    {
+        dataPath = parent.dataPath;
+        locksPath = parent.locksPath;
+        maxBytes = parent.maxBytes;
+        diagnostics = parent.diagnostics;
+        verifications = parent.verifications;
+    }
+
+    internal LayerStore CreateScope()
+    {
+        lock (verificationLock)
+        {
+            ObjectDisposedException.ThrowIf(verificationDisposed, this);
+            return new(this);
+        }
+    }
+
+    private string LockPath(string key)
+    {
+        string name = key.StartsWith("staging:", StringComparison.Ordinal)
+            ? $"{key["staging:".Length..]}.lock"
+            : key == "maintenance" ? "maintenance.lock" : $"{Hash(Encoding.UTF8.GetBytes(key))[..2]}.lock";
+        return Path.Combine(locksPath, name);
+    }
+
+    private void ReleaseStagingLock(string path, FileStream stagingLock)
+    {
+        using FileStream gate = Lock("maintenance");
+        stagingLock.Dispose();
+        File.Delete(GetStagingLockPath(path));
+    }
+
+    private async Task ReleaseStagingLockAsync(string path, FileStream stagingLock)
+    {
+        using FileStream gate = await LockAsync("maintenance", CancellationToken.None);
+        stagingLock.Dispose();
+        File.Delete(GetStagingLockPath(path));
+    }
+
+    private FileStream Lock(string key)
+    {
+        string path = LockPath(key);
+        while (true)
+        {
+            if (File.Exists(path))
+            {
+                CacheFileSystem.ValidateNotLink(path);
+            }
+            try
+            {
+                FileStreamOptions options = new()
+                {
+                    Mode = FileMode.OpenOrCreate,
+                    Access = FileAccess.ReadWrite,
+                    Share = FileShare.None
+                };
+                if (!OperatingSystem.IsWindows())
+                {
+                    options.UnixCreateMode = UnixFileMode.UserRead | UnixFileMode.UserWrite;
+                }
+                return new FileStream(path, options);
+            }
+            catch (IOException exception) when (IsSharingViolation(exception))
+            {
+                Thread.Sleep(25);
+            }
+        }
+    }
+
     internal string GetBlobPath(string digest) => Path.Combine(dataPath, $"{GetKey(digest)}.blob");
 
-    public async Task<Stream> OpenBlobAsync(
+    internal async Task<string> VerifyContentAsync(
+        IImageContentSource source, string digest, long? expectedSize, string expectedDiffId,
+        CancellationToken cancellationToken)
+    {
+        using IDisposable operation = EnterOperation();
+        cancellationToken.ThrowIfCancellationRequested();
+        _ = GetKey(expectedDiffId);
+        string path = GetBlobPath(digest);
+        string identity;
+        while (true)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            TaskCompletionSource<string> verification;
+            bool start;
+            lock (verificationLock)
+            {
+                start = !contentVerifications.TryGetValue((digest, expectedDiffId), out verification!);
+                if (start)
+                {
+                    verification = new(TaskCreationOptions.RunContinuationsAsynchronously);
+                    contentVerifications.Add((digest, expectedDiffId), verification);
+                }
+            }
+            if (start)
+            {
+                await CompleteContentVerificationAsync(
+                    source, digest, expectedSize, expectedDiffId, verification, cancellationToken);
+            }
+            try
+            {
+                identity = await verification.Task.WaitAsync(cancellationToken);
+                break;
+            }
+            catch (OperationCanceledException) when (
+                !start && !cancellationToken.IsCancellationRequested && verification.Task.IsCanceled)
+            {
+                continue;
+            }
+        }
+        cancellationToken.ThrowIfCancellationRequested();
+        if (!pins.ContainsKey(path))
+        {
+            using (await OpenBlobCoreAsync(source, digest, expectedSize, cancellationToken)) { }
+        }
+        lock (verificationLock)
+        {
+            ObjectDisposedException.ThrowIf(verificationDisposed, this);
+            if (expectedSize.HasValue && pins[path].Length != expectedSize)
+            {
+                throw new InvalidDataException($"Layer '{digest}' does not match its advertised length.");
+            }
+        }
+        return identity;
+    }
+
+    private async Task CompleteContentVerificationAsync(
+        IImageContentSource source, string digest, long? expectedSize, string expectedDiffId,
+        TaskCompletionSource<string> verification,
+        CancellationToken cancellationToken)
+    {
+        try
+        {
+            string? identity = null;
+            ExceptionDispatchInfo? contentFailure = null;
+            await using (Stream blob = await OpenBlobCoreAsync(source, digest, expectedSize, cancellationToken,
+                verifyCached: async (cached, token) =>
+                {
+                    var result = await VerifyCachedContentAsync(cached, digest, expectedDiffId, token);
+                    if (result.Valid)
+                    {
+                        identity = result.Identity;
+                        contentFailure = result.Failure;
+                    }
+                    return result.Valid;
+                }))
+            {
+                contentFailure?.Throw();
+                identity ??= await VerifyPinnedContentAsync(blob, digest, expectedDiffId, cancellationToken);
+            }
+            verification.SetResult(identity);
+        }
+        catch (Exception exception)
+        {
+            lock (verificationLock)
+            {
+                contentVerifications.Remove((digest, expectedDiffId));
+            }
+            if (exception is OperationCanceledException)
+            {
+                verification.SetCanceled(cancellationToken);
+            }
+            else
+            {
+                verification.SetException(exception);
+            }
+        }
+    }
+
+    internal static async Task<string> VerifyPinnedContentAsync(
+        Stream blob, string digest, string expectedDiffId, CancellationToken cancellationToken)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        _ = GetKey(expectedDiffId);
+        string encoding = ImageTarReader.DetectEncoding(blob);
+        // A pinned raw blob's verified digest already covers every byte, including tar padding.
+        if (encoding == "tar" && DockerImageArchive.IsSha256(digest) &&
+            string.Equals(digest, expectedDiffId, StringComparison.Ordinal))
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            return digest;
+        }
+        using Stream content = ImageTarReader.OpenContent(blob, encoding);
+        bool sha512 = expectedDiffId.StartsWith("sha512:", StringComparison.Ordinal);
+        (string identity, string? sha512DiffId) =
+            await DockerImageArchive.HashContentAsync(content, sha512, cancellationToken);
+        cancellationToken.ThrowIfCancellationRequested();
+        if ((sha512 ? sha512DiffId : identity) != expectedDiffId)
+        {
+            throw new InvalidDataException(
+                $"Layer '{digest}' content does not match the configuration rootfs diff ID '{expectedDiffId}'.");
+        }
+        return identity;
+    }
+
+    internal static async Task<(bool Valid, string? Identity, ExceptionDispatchInfo? Failure)> VerifyCachedContentAsync(
+        Stream blob, string digest, string expectedDiffId, CancellationToken cancellationToken)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        _ = GetKey(digest);
+        _ = GetKey(expectedDiffId);
+        string encoding = ImageTarReader.DetectEncoding(blob);
+        string? identity = null;
+        string? sha512DiffId = null;
+        ExceptionDispatchInfo? failure = null;
+        bool sha512 = expectedDiffId.StartsWith("sha512:", StringComparison.Ordinal);
+        bool sha512Blob = digest.StartsWith("sha512:", StringComparison.Ordinal);
+        string? actualDigest;
+        if (encoding == "tar")
+        {
+            (identity, sha512DiffId) = await DockerImageArchive.HashContentAsync(blob, sha512 || sha512Blob, cancellationToken);
+            actualDigest = sha512Blob ? sha512DiffId : identity;
+        }
+        else
+        {
+            using HashAlgorithm encodedHash = sha512Blob ? SHA512.Create() : SHA256.Create();
+            using CryptoStream encoded = new(blob, encodedHash, CryptoStreamMode.Read, leaveOpen: true);
+            try
+            {
+                using Stream content = ImageTarReader.OpenContent(encoded, encoding);
+                (identity, sha512DiffId) = await DockerImageArchive.HashContentAsync(content, sha512, cancellationToken);
+            }
+            catch (InvalidDataException exception)
+            {
+                failure = ExceptionDispatchInfo.Capture(exception);
+            }
+            await encoded.CopyToAsync(Stream.Null, cancellationToken);
+            actualDigest = $"{digest[..digest.IndexOf(':')]}:{Convert.ToHexStringLower(encodedHash.Hash!)}";
+        }
+        cancellationToken.ThrowIfCancellationRequested();
+        if (actualDigest != digest)
+        {
+            return (false, null, null);
+        }
+        if (failure is null && (sha512 ? sha512DiffId : identity) != expectedDiffId)
+        {
+            failure = ExceptionDispatchInfo.Capture(new InvalidDataException(
+                $"Layer '{digest}' content does not match the configuration rootfs diff ID '{expectedDiffId}'."));
+        }
+        return (true, identity, failure);
+    }
+
+    public Task<Stream> OpenBlobAsync(
         IDockerRegistryClient client, ImageName image, string digest, long? expectedSize,
+        CancellationToken cancellationToken, IProgress<long>? progress = null) =>
+        OpenBlobAsync(new RegistryImageContentSource(client, image), digest, expectedSize, cancellationToken, progress);
+
+    public async Task<Stream> OpenBlobAsync(
+        IImageContentSource source, string digest, long? expectedSize,
         CancellationToken cancellationToken, IProgress<long>? progress = null)
+    {
+        using IDisposable operation = EnterOperation();
+        return await OpenBlobCoreAsync(source, digest, expectedSize, cancellationToken, progress);
+    }
+
+    private async Task<Stream> OpenBlobCoreAsync(
+        IImageContentSource source, string digest, long? expectedSize,
+        CancellationToken cancellationToken, IProgress<long>? progress = null,
+        Func<Stream, CancellationToken, Task<bool>>? verifyCached = null)
     {
         string key = GetKey(digest);
         using FileStream layerLock = await LockAsync(key, cancellationToken);
-        Stream? cached = await OpenCachedBlobAsync(digest, expectedSize, cancellationToken);
+        Stream? cached = await OpenCachedBlobAsync(digest, expectedSize, cancellationToken, verifyCached);
         if (cached is not null)
         {
             progress?.Report(cached.Length);
             return cached;
         }
 
-        BlobDownloadResult download = await DownloadFullBlobAsync(client, image, digest, cancellationToken);
-        using Stream source = download.Content;
-        return await PublishBlobAsync(source, digest, expectedSize, cancellationToken, progress);
+        BlobDownloadResult download = await DownloadFullBlobAsync(source, digest, cancellationToken);
+        using Stream content = download.Content;
+        return await PublishBlobAsync(content, digest, expectedSize, cancellationToken, progress);
     }
 
-    public async Task<StoredLayerIndex> GetIndexAsync(
+    public Task<StoredLayerIndex> GetIndexAsync(
         IDockerRegistryClient client, ImageName image, ImageLayerReference layer, long? expectedSize,
         CancellationToken cancellationToken, IProgress<long>? progress = null,
+        ImageFileSystemSemantics? semantics = null) =>
+        GetIndexAsync(new RegistryImageContentSource(client, image), layer, expectedSize,
+            cancellationToken, progress, semantics: semantics);
+
+    public async Task<StoredLayerIndex> GetIndexAsync(
+        IImageContentSource source, ImageLayerReference layer, long? expectedSize,
+        CancellationToken cancellationToken, IProgress<long>? progress = null,
+        string? expectedDiffId = null,
         ImageFileSystemSemantics? semantics = null)
     {
         semantics ??= ImageFileSystemSemantics.Linux;
+        using IDisposable operation = EnterOperation();
+        if (source is DockerImageArchive retained &&
+            retained.GetRetainedIndex(layer.Digest, expectedSize) is StoredLayerIndex warm &&
+            IsValid(warm, layer.Digest, expectedSize))
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            progress?.Report(warm.BlobLength);
+            return warm;
+        }
         StoredLayerIndex? index = await ReadMetadataAsync<StoredLayerIndex>(
             layer.Digest, semantics.IndexKind, cancellationToken);
         if (IsValid(index, layer.Digest, expectedSize))
@@ -74,8 +354,8 @@ internal sealed class LayerStore : IAsyncDisposable
             diagnostics.WriteLine($"Rebuilding invalid layer index for '{layer.Digest}'.");
         }
 
-        using Stream blob = await OpenBlobAsync(
-            client, image, layer.Digest, expectedSize, cancellationToken, progress);
+        using Stream blob = await OpenIndexBlobAsync(
+            source, layer.Digest, expectedSize, cancellationToken, progress);
         using FileStream indexLock = await LockAsync($"{semantics.IndexKind}:{layer.Digest}", cancellationToken);
         index = await ReadMetadataAsync<StoredLayerIndex>(layer.Digest, semantics.IndexKind, cancellationToken);
         if (IsValid(index, layer.Digest, expectedSize))
@@ -83,18 +363,133 @@ internal sealed class LayerStore : IAsyncDisposable
             return index!;
         }
 
-        LayerChanges changes = await ImageLayerScanner.ScanAsync(blob, layer, cancellationToken, semantics);
-        index = new(layer.Digest, blob.Length, changes);
+        if (source is DockerImageArchive prepared &&
+            prepared.GetPreparedIndex(layer.Digest, expectedSize) is StoredLayerIndex ready)
+        {
+            await WriteMetadataAsync(layer.Digest, semantics.IndexKind, ready, cancellationToken);
+            cancellationToken.ThrowIfCancellationRequested();
+            return ready;
+        }
+        string encoding = ImageTarReader.DetectEncoding(blob);
+        string algorithm = "sha256";
+        if (expectedDiffId is not null)
+        {
+            try
+            {
+                _ = GetKey(expectedDiffId);
+                algorithm = expectedDiffId[..expectedDiffId.IndexOf(':')];
+            }
+            catch (InvalidDataException)
+            {
+                // Registry-only indexing does not require valid configuration diff IDs.
+            }
+        }
+        bool hasArchiveProof = source is DockerImageArchive archive && expectedDiffId is not null &&
+            archive.TryGetVerifiedContentDigest(layer.Digest, expectedSize, expectedDiffId, out _);
+        using SHA256? contentHash = hasArchiveProof ? null : SHA256.Create();
+        using SHA512? sha512 = !hasArchiveProof && algorithm == "sha512" ? SHA512.Create() : null;
+        using BufferedStream? sequential = source is DockerImageArchive && encoding == "tar"
+            ? new(blob, 81920) : null;
+        LayerChanges changes = await ImageLayerScanner.ScanAsync(
+            sequential ?? blob, layer, cancellationToken, semantics, contentHash, sha512, encoding);
+        index = new(layer.Digest, blob.Length, changes, encoding);
         await WriteMetadataAsync(layer.Digest, semantics.IndexKind, index, cancellationToken);
+        cancellationToken.ThrowIfCancellationRequested();
+        // Archive members have no cache pin; their proofs must not outlive the archive lease.
+        if (source is DockerImageArchive scanned)
+        {
+            scanned.RetainScannedIndex(index);
+        }
+        else if (contentHash is not null)
+        {
+            string identity = $"sha256:{Convert.ToHexStringLower(contentHash.Hash!)}";
+            string actualDiffId = sha512 is null ? identity : $"sha512:{Convert.ToHexStringLower(sha512.Hash!)}";
+            lock (verificationLock)
+            {
+                if (!contentVerifications.ContainsKey((layer.Digest, actualDiffId)))
+                {
+                    TaskCompletionSource<string> verification = new(TaskCreationOptions.RunContinuationsAsynchronously);
+                    verification.SetResult(identity);
+                    contentVerifications.Add((layer.Digest, actualDiffId), verification);
+                }
+            }
+        }
         return index;
     }
 
-    public async Task<Stream> OpenIndexedBlobAsync(
+    internal async Task<StoredLayerIndex?> GetValidIndexAsync(
+        string digest, long expectedSize, CancellationToken cancellationToken,
+        ImageFileSystemSemantics? semantics = null)
+    {
+        semantics ??= ImageFileSystemSemantics.Linux;
+        using IDisposable operation = EnterOperation();
+        StoredLayerIndex? index = await ReadMetadataAsync<StoredLayerIndex>(
+            digest, semantics.IndexKind, cancellationToken);
+        bool valid = IsValid(index, digest, expectedSize);
+        cancellationToken.ThrowIfCancellationRequested();
+        return valid ? index : null;
+    }
+
+    internal async Task<Stream> OpenExtractionBlobAsync(
+        IImageContentSource source, string digest, long? expectedSize, CancellationToken cancellationToken)
+    {
+        using IDisposable operation = EnterOperation();
+        Stream blob = await OpenIndexBlobAsync(source, digest, expectedSize, cancellationToken, null);
+        try
+        {
+            return source is DockerImageArchive && ImageTarReader.DetectEncoding(blob) == "tar"
+                ? new BufferedStream(blob, 81920) : blob;
+        }
+        catch
+        {
+            blob.Dispose();
+            throw;
+        }
+    }
+
+    private async Task<Stream> OpenIndexBlobAsync(
+        IImageContentSource source, string digest, long? expectedSize,
+        CancellationToken cancellationToken, IProgress<long>? progress)
+    {
+        if (source is not DockerImageArchive archive)
+        {
+            return await OpenBlobCoreAsync(source, digest, expectedSize, cancellationToken, progress);
+        }
+        BlobDownloadResult member = await archive.GetRangeAsync(digest, 0, null, cancellationToken);
+        try
+        {
+            if (expectedSize.HasValue && member.Content.Length != expectedSize)
+            {
+                throw new InvalidDataException($"Layer '{digest}' does not match its advertised length.");
+            }
+            progress?.Report(member.Content.Length);
+            return member.Content;
+        }
+        catch
+        {
+            member.Content.Dispose();
+            throw;
+        }
+    }
+
+    public Task<Stream> OpenIndexedBlobAsync(
         IDockerRegistryClient client, ImageName image, StoredLayerIndex index,
+        IEnumerable<int> entryOrdinals, CancellationToken cancellationToken) =>
+        OpenIndexedBlobAsync(new RegistryImageContentSource(client, image), index, entryOrdinals, cancellationToken);
+
+    public async Task<Stream> OpenIndexedBlobAsync(
+        IImageContentSource source, StoredLayerIndex index,
         IEnumerable<int> entryOrdinals, CancellationToken cancellationToken)
     {
-        using FileStream layerLock = await LockAsync(GetKey(index.Digest), cancellationToken);
-        Stream? cached = await OpenCachedBlobAsync(index.Digest, index.BlobLength, cancellationToken);
+        using IDisposable operation = EnterOperation();
+        if (!IsValid(index, index.Digest, index.BlobLength))
+        {
+            throw new InvalidDataException("The layer index contains invalid content metadata.");
+        }
+        using FileStream? layerLock = source is DockerImageArchive ? null :
+            await LockAsync(GetKey(index.Digest), cancellationToken);
+        Stream? cached = source is DockerImageArchive ? null :
+            await OpenCachedBlobAsync(index.Digest, index.BlobLength, cancellationToken);
         if (cached is not null)
         {
             return cached;
@@ -102,71 +497,382 @@ internal sealed class LayerStore : IAsyncDisposable
 
         HashSet<int> ordinals = [.. entryOrdinals];
         ScannedEntry[] entries = [.. index.Changes.Entries.Where(entry => ordinals.Contains(entry.EntryIndex))];
-        if (entries.Length != ordinals.Count || entries.Any(entry => entry.Type != ImageFileType.File))
+        if (entries.Length == 0 || entries.Length != ordinals.Count ||
+            entries.Any(entry => entry.Type != ImageFileType.File))
         {
             throw new InvalidDataException("The layer index does not contain the requested content.");
         }
-        long prefixLength = entries.Max(entry => entry.CompressedHighWaterMark);
-        BlobDownloadResult? download = null;
-        try
+        if (index.Encoding == "tar")
         {
-            download = await client.Blobs.GetRangeAsync(
-                image.Repo, index.Digest, 0, prefixLength, cancellationToken);
-        }
-        catch (RegistryException exception) when (exception.StatusCode == HttpStatusCode.RequestedRangeNotSatisfiable)
-        {
-            diagnostics.WriteLine($"Range unavailable for '{index.Digest}'; downloading the complete layer.");
-        }
-
-        if (download is not null)
-        {
-            using Stream source = download.Content;
-            if (!download.IsRangeHonored)
+            Stream? raw = source is DockerImageArchive archive
+                ? await OpenRawArchiveIndexedBlobAsync(archive, index, entries, cancellationToken)
+                : await OpenRawIndexedBlobAsync(source, index, entries, cancellationToken);
+            if (raw is not null)
             {
-                return await PublishBlobAsync(source, index.Digest, index.BlobLength, cancellationToken);
+                return raw;
+            }
+        }
+        else
+        {
+            long prefixLength = entries.Max(entry => entry.CompressedHighWaterMark);
+            BlobDownloadResult? download = null;
+            try
+            {
+                download = await source.GetRangeAsync(
+                    index.Digest, 0, prefixLength, cancellationToken);
+            }
+            catch (RegistryException exception) when (exception.StatusCode == HttpStatusCode.RequestedRangeNotSatisfiable)
+            {
+                diagnostics.WriteLine($"Range unavailable for '{index.Digest}'; downloading the complete layer.");
             }
 
-            if (download.RangeStart == 0 &&
-                download.RangeEnd == prefixLength - 1 &&
-                (download.TotalLength is null || download.TotalLength == index.BlobLength))
+            if (download is not null)
             {
-                FileStream prefix = CreateScratchFile();
+                Stream content = download.Content;
+                bool transferred = false;
                 try
                 {
-                    await CopyBoundedAsync(source, prefix, prefixLength, cancellationToken);
-                    prefix.Position = 0;
-                    await ValidatePrefixAsync(prefix, entries, cancellationToken);
-                    prefix.Position = 0;
-                    return prefix;
+                    if (!download.IsRangeHonored)
+                    {
+                        return await PublishBlobAsync(content, index.Digest, index.BlobLength, cancellationToken);
+                    }
+
+                    if (download.RangeStart == 0 &&
+                        download.RangeEnd == prefixLength - 1 &&
+                        (download.TotalLength is null || download.TotalLength == index.BlobLength))
+                    {
+                        FileStream? staged = null;
+                        try
+                        {
+                            Stream prefix = content;
+                            DockerImageArchive? archive = source as DockerImageArchive;
+                            if (archive is not null)
+                            {
+                                if (content.Length != prefixLength || ImageTarReader.DetectEncoding(content) != index.Encoding)
+                                {
+                                    throw new InvalidDataException("The layer prefix does not match the cached index.");
+                                }
+                            }
+                            else
+                            {
+                                staged = await CreateScratchFileAsync(cancellationToken);
+                                await CopyBoundedAsync(content, staged, prefixLength, cancellationToken);
+                                staged.Position = 0;
+                                prefix = staged;
+                            }
+                            ScannedEntry[] unverified = archive is null ? entries :
+                                archive.GetUnverifiedEntries(index.Digest, index.Encoding, entries, prefixLength);
+                            await ValidatePrefixAsync(prefix, index.Encoding, unverified, cancellationToken);
+                            cancellationToken.ThrowIfCancellationRequested();
+                            prefix.Position = 0;
+                            archive?.RecordVerifiedEntries(index.Digest, index.Encoding, unverified, prefixLength);
+                            transferred = ReferenceEquals(prefix, content);
+                            staged = null;
+                            return prefix;
+                        }
+                        catch (InvalidDataException exception)
+                        {
+                            diagnostics.WriteLine($"Invalid cached-index range for '{index.Digest}': {exception.Message} Downloading the complete layer.");
+                        }
+                        finally
+                        {
+                            if (staged is not null)
+                            {
+                                await staged.DisposeAsync();
+                            }
+                        }
+                    }
+                    else
+                    {
+                        diagnostics.WriteLine($"Unexpected range for '{index.Digest}'; downloading the complete layer.");
+                    }
                 }
-                catch (InvalidDataException exception)
+                finally
                 {
-                    diagnostics.WriteLine($"Invalid cached-index range for '{index.Digest}': {exception.Message} Downloading the complete layer.");
-                    await prefix.DisposeAsync();
+                    if (!transferred)
+                    {
+                        content.Dispose();
+                    }
                 }
-                catch
-                {
-                    await prefix.DisposeAsync();
-                    throw;
-                }
-            }
-            else
-            {
-                diagnostics.WriteLine($"Unexpected range for '{index.Digest}'; downloading the complete layer.");
             }
         }
 
-        BlobDownloadResult fullDownload = await DownloadFullBlobAsync(client, image, index.Digest, cancellationToken);
+        using FileStream? fallbackLock = source is DockerImageArchive
+            ? await LockAsync(GetKey(index.Digest), cancellationToken) : null;
+        if (source is DockerImageArchive)
+        {
+            Stream? fallback = await OpenCachedBlobAsync(index.Digest, index.BlobLength, cancellationToken);
+            if (fallback is not null)
+            {
+                return fallback;
+            }
+        }
+        BlobDownloadResult fullDownload = await DownloadFullBlobAsync(source, index.Digest, cancellationToken);
         using Stream full = fullDownload.Content;
         return await PublishBlobAsync(full, index.Digest, index.BlobLength, cancellationToken);
     }
 
+    private async Task<Stream?> OpenRawArchiveIndexedBlobAsync(
+        DockerImageArchive archive, StoredLayerIndex index, IReadOnlyList<ScannedEntry> entries,
+        CancellationToken cancellationToken)
+    {
+        Stream member = await OpenIndexBlobAsync(archive, index.Digest, index.BlobLength, cancellationToken, null);
+        try
+        {
+            if (ImageTarReader.DetectEncoding(member) != "tar")
+            {
+                throw new InvalidDataException("The layer encoding does not match the cached raw index.");
+            }
+            ScannedEntry[] unverified = archive.GetUnverifiedEntries(index.Digest, "tar", entries);
+            await ValidatePrefixAsync(member, "tar", unverified, cancellationToken);
+            cancellationToken.ThrowIfCancellationRequested();
+            archive.RecordVerifiedEntries(index.Digest, "tar", unverified);
+            return new IndexedReadStream(member, [.. entries.OrderBy(static entry => entry.UncompressedOffset)
+                .Select(static entry => new RawExtent(entry.UncompressedOffset, entry.Size, entry.UncompressedOffset))]);
+        }
+        catch (InvalidDataException exception)
+        {
+            member.Dispose();
+            diagnostics.WriteLine($"Invalid cached-index range for '{index.Digest}': {exception.Message} Downloading the complete layer.");
+            return null;
+        }
+        catch
+        {
+            member.Dispose();
+            throw;
+        }
+    }
+
+    private async Task<Stream?> OpenRawIndexedBlobAsync(
+        IImageContentSource source, StoredLayerIndex index, IReadOnlyList<ScannedEntry> entries,
+        CancellationToken cancellationToken)
+    {
+        FileStream selected = await CreateScratchFileAsync(cancellationToken);
+        bool transferred = false;
+        try
+        {
+            List<RawExtent> extents = [];
+            string emptyHash = Convert.ToHexStringLower(SHA256.HashData(Array.Empty<byte>()));
+            foreach (ScannedEntry entry in entries.Where(static entry => entry.Size == 0))
+            {
+                if (entry.ContentHash != emptyHash)
+                {
+                    diagnostics.WriteLine($"Invalid cached-index range for '{index.Digest}': The empty file did not match the indexed content hash. Downloading the complete layer.");
+                    return null;
+                }
+                extents.Add(new(entry.UncompressedOffset, 0, 0));
+            }
+            ScannedEntry[] ordered = [.. entries.Where(static entry => entry.Size > 0)
+                .OrderBy(static entry => entry.UncompressedOffset)];
+            List<(int First, int Last)> ranges = [];
+            long unrequestedBytes = index.BlobLength;
+            for (int first = 0; first < ordered.Length;)
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+                const long maxRangeBytes = 1024 * 1024;
+                const long maxGapBytes = 4096;
+                long start = ordered[first].UncompressedOffset;
+                long end = start + ordered[first].Size;
+                int last = first + 1;
+                while (last < ordered.Length &&
+                    ordered[last].UncompressedOffset >= end &&
+                    ordered[last].UncompressedOffset - end <= maxGapBytes &&
+                    ordered[last].UncompressedOffset + ordered[last].Size - start <= maxRangeBytes)
+                {
+                    end = ordered[last].UncompressedOffset + ordered[last].Size;
+                    last++;
+                }
+                ranges.Add((first, last));
+                unrequestedBytes = Math.Max(0, unrequestedBytes - (end - start));
+                first = last;
+            }
+            const int maxSparseRequests = 128;
+            const long requestCostBytes = 64 * 1024;
+            if (ranges.Count > maxSparseRequests &&
+                unrequestedBytes <= (long)(ranges.Count - 1) * requestCostBytes)
+            {
+                diagnostics.WriteLine($"Fragmented selection for '{index.Digest}'; downloading the complete layer to avoid {ranges.Count} range requests.");
+                return null;
+            }
+            long[] storedOffsets = new long[ordered.Length];
+            long selectedLength = 0;
+            for (int i = 0; i < ordered.Length; i++)
+            {
+                storedOffsets[i] = selectedLength;
+                extents.Add(new(ordered[i].UncompressedOffset, ordered[i].Size, selectedLength));
+                selectedLength = checked(selectedLength + ordered[i].Size);
+            }
+            selected.SetLength(selectedLength);
+            var selectedHandle = selected.SafeFileHandle;
+            const int maxConcurrentRanges = 4;
+            CancellationTokenSource[] workers = [.. Enumerable.Range(0, Math.Min(maxConcurrentRanges, ranges.Count))
+                .Select(_ => CancellationTokenSource.CreateLinkedTokenSource(cancellationToken))];
+            int nextRange = -1;
+            object fallbackLock = new();
+            bool fallback = false;
+            BlobDownloadResult? ignoredRange = null;
+            try
+            {
+                await Task.WhenAll(workers.Select((worker, workerIndex) => ReadRangesAsync(workerIndex)));
+                cancellationToken.ThrowIfCancellationRequested();
+                if (ignoredRange is not null)
+                {
+                    return await PublishBlobAsync(
+                        ignoredRange.Content, index.Digest, index.BlobLength, cancellationToken);
+                }
+                if (fallback)
+                {
+                    return null;
+                }
+            }
+            finally
+            {
+                ignoredRange?.Content.Dispose();
+                foreach (CancellationTokenSource worker in workers)
+                {
+                    worker.Dispose();
+                }
+            }
+
+            void StopRanges(int workerIndex, BlobDownloadResult? full = null)
+            {
+                lock (fallbackLock)
+                {
+                    if (fallback)
+                    {
+                        full?.Content.Dispose();
+                        return;
+                    }
+                    fallback = true;
+                    ignoredRange = full;
+                    // Keep the winning full response alive; cancel and drain its siblings before publishing it.
+                    for (int i = 0; i < workers.Length; i++)
+                    {
+                        if (full is null || i != workerIndex)
+                        {
+                            workers[i].Cancel();
+                        }
+                    }
+                }
+            }
+
+            async Task ReadRangesAsync(int workerIndex)
+            {
+                CancellationToken token = workers[workerIndex].Token;
+                byte[] buffer = new byte[81920];
+                byte[] outputBuffer = new byte[81920];
+                try
+                {
+                    while (true)
+                    {
+                        token.ThrowIfCancellationRequested();
+                        int rangeIndex = Interlocked.Increment(ref nextRange);
+                        if (rangeIndex >= ranges.Count)
+                        {
+                            return;
+                        }
+                        (int first, int last) = ranges[rangeIndex];
+                        long start = ordered[first].UncompressedOffset;
+                        long end = ordered[last - 1].UncompressedOffset + ordered[last - 1].Size;
+                        BlobDownloadResult download = await source.GetRangeAsync(index.Digest, start, end - start, token);
+                        if (!download.IsRangeHonored)
+                        {
+                            StopRanges(workerIndex, download);
+                            return;
+                        }
+                        using Stream content = download.Content;
+                        if (download.RangeStart != start || download.RangeEnd != end - 1 ||
+                            (download.TotalLength.HasValue && download.TotalLength != index.BlobLength))
+                        {
+                            diagnostics.WriteLine($"Unexpected range for '{index.Digest}'; downloading the complete layer.");
+                            StopRanges(workerIndex);
+                            return;
+                        }
+                        long position = start;
+                        long storedOffset = storedOffsets[first];
+                        int buffered = 0;
+                        for (int i = first; i < last; i++)
+                        {
+                            ScannedEntry entry = ordered[i];
+                            await CopyBytesAsync(content, Stream.Null, entry.UncompressedOffset - position, buffer, token);
+                            using IncrementalHash hash = IncrementalHash.CreateHash(HashAlgorithmName.SHA256);
+                            long remaining = entry.Size;
+                            while (remaining > 0)
+                            {
+                                int read = await content.ReadAsync(
+                                    outputBuffer.AsMemory(buffered, (int)Math.Min(outputBuffer.Length - buffered, remaining)), token);
+                                if (read == 0)
+                                {
+                                    throw new InvalidDataException("The layer range ended before the selected file.");
+                                }
+                                hash.AppendData(outputBuffer, buffered, read);
+                                buffered += read;
+                                if (buffered == outputBuffer.Length)
+                                {
+                                    await RandomAccess.WriteAsync(selectedHandle, outputBuffer, storedOffset, token);
+                                    storedOffset += buffered;
+                                    buffered = 0;
+                                }
+                                remaining -= read;
+                            }
+                            if (Convert.ToHexStringLower(hash.GetHashAndReset()) != entry.ContentHash)
+                            {
+                                throw new InvalidDataException("The layer range did not match the indexed content hash or length.");
+                            }
+                            position = entry.UncompressedOffset + entry.Size;
+                        }
+                        if (await content.ReadAsync(buffer.AsMemory(0, 1), token) != 0)
+                        {
+                            throw new InvalidDataException("The layer range did not match the indexed content hash or length.");
+                        }
+                        if (buffered > 0)
+                        {
+                            await RandomAccess.WriteAsync(
+                                selectedHandle, outputBuffer.AsMemory(0, buffered), storedOffset, token);
+                        }
+                    }
+                }
+                catch (OperationCanceledException) when (token.IsCancellationRequested && !cancellationToken.IsCancellationRequested)
+                {
+                }
+                catch (RegistryException exception) when (exception.StatusCode == HttpStatusCode.RequestedRangeNotSatisfiable)
+                {
+                    diagnostics.WriteLine($"Range unavailable for '{index.Digest}'; downloading the complete layer.");
+                    StopRanges(workerIndex);
+                }
+                catch (InvalidDataException exception)
+                {
+                    diagnostics.WriteLine($"Invalid cached-index range for '{index.Digest}': {exception.Message} Downloading the complete layer.");
+                    StopRanges(workerIndex);
+                }
+                catch
+                {
+                    StopRanges(workerIndex);
+                    throw;
+                }
+            }
+            cancellationToken.ThrowIfCancellationRequested();
+            await selected.FlushAsync(cancellationToken);
+            selected.Position = 0;
+            Stream result = new IndexedReadStream(selected, [.. extents.OrderBy(static extent => extent.Offset)]);
+            transferred = true;
+            return result;
+        }
+        finally
+        {
+            if (!transferred)
+            {
+                await selected.DisposeAsync();
+            }
+        }
+    }
+
     private static async Task<BlobDownloadResult> DownloadFullBlobAsync(
-        IDockerRegistryClient client, ImageName image, string digest, CancellationToken cancellationToken)
+        IImageContentSource source, string digest, CancellationToken cancellationToken)
     {
         // The registry client's ordinary GetAsync buffers the entire response (at most 2 GB).
-        BlobDownloadResult download = await client.Blobs.GetRangeAsync(
-            image.Repo, digest, 0, null, cancellationToken);
+        BlobDownloadResult download = await source.GetRangeAsync(
+            digest, 0, null, cancellationToken);
         if (download.IsRangeHonored &&
             (download.RangeStart != 0 ||
                 (download.TotalLength is long total && download.RangeEnd != total - 1)))
@@ -178,33 +884,51 @@ internal sealed class LayerStore : IAsyncDisposable
     }
 
     private static async Task ValidatePrefixAsync(
-        Stream prefix, IReadOnlyList<ScannedEntry> entries, CancellationToken cancellationToken)
+        Stream prefix, string encoding, IReadOnlyList<ScannedEntry> entries, CancellationToken cancellationToken)
     {
-        using GZipStream gzip = new(
-            prefix, CompressionMode.Decompress, leaveOpen: true);
+        cancellationToken.ThrowIfCancellationRequested();
+        if (entries.Count == 0)
+        {
+            return;
+        }
+        using Stream content = ImageTarReader.OpenContent(prefix, encoding);
         long position = 0;
         byte[] buffer = new byte[81920];
         foreach (ScannedEntry entry in entries.OrderBy(static entry => entry.UncompressedOffset))
         {
-            await CopyBytesAsync(gzip, Stream.Null, entry.UncompressedOffset - position, buffer, cancellationToken);
-            using IncrementalHash hash = IncrementalHash.CreateHash(HashAlgorithmName.SHA256);
-            long remaining = entry.Size;
-            while (remaining > 0)
+            cancellationToken.ThrowIfCancellationRequested();
+            if (encoding == "tar" && prefix.CanSeek)
             {
-                int read = await gzip.ReadAsync(buffer.AsMemory(0, (int)Math.Min(buffer.Length, remaining)), cancellationToken);
-                if (read == 0)
-                {
-                    throw new InvalidDataException("The compressed prefix ended before the selected file.");
-                }
-                hash.AppendData(buffer, 0, read);
-                remaining -= read;
+                prefix.Seek(entry.UncompressedOffset, SeekOrigin.Begin);
             }
-            if (Convert.ToHexStringLower(hash.GetHashAndReset()) != entry.ContentHash)
+            else
             {
-                throw new InvalidDataException("The compressed prefix did not match the indexed content hash.");
+                await CopyBytesAsync(content, Stream.Null, entry.UncompressedOffset - position, buffer, cancellationToken);
             }
-            position = entry.UncompressedOffset + entry.Size;
+            if (await CopyAndHashAsync(content, Stream.Null, entry.Size, buffer, cancellationToken) != entry.ContentHash)
+            {
+                throw new InvalidDataException("The layer range did not match the indexed content hash.");
+            }
+            position = checked(entry.UncompressedOffset + entry.Size);
         }
+    }
+
+    private static async Task<string> CopyAndHashAsync(
+        Stream source, Stream destination, long count, byte[] buffer, CancellationToken cancellationToken)
+    {
+        using IncrementalHash hash = IncrementalHash.CreateHash(HashAlgorithmName.SHA256);
+        while (count > 0)
+        {
+            int read = await source.ReadAsync(buffer.AsMemory(0, (int)Math.Min(buffer.Length, count)), cancellationToken);
+            if (read == 0)
+            {
+                throw new InvalidDataException("The layer range ended before the selected file.");
+            }
+            hash.AppendData(buffer, 0, read);
+            await destination.WriteAsync(buffer.AsMemory(0, read), cancellationToken);
+            count -= read;
+        }
+        return Convert.ToHexStringLower(hash.GetHashAndReset());
     }
 
     internal static async Task CopyBytesAsync(
@@ -281,6 +1005,7 @@ internal sealed class LayerStore : IAsyncDisposable
         LayerCacheEnvelope envelope = new(
             FormatVersion, digest, Hash(Encoding.UTF8.GetBytes(payload)), payload);
         string staging = Path.Combine(dataPath, $"{Guid.NewGuid():N}.tmp");
+        using FileStream stagingLock = await LockAsync(GetStagingLockKey(staging), cancellationToken);
         try
         {
             await using (FileStream output = CacheFileSystem.CreateFile(staging))
@@ -298,17 +1023,29 @@ internal sealed class LayerStore : IAsyncDisposable
         }
         finally
         {
-            File.Delete(staging);
+            using (await LockAsync("maintenance", CancellationToken.None))
+            {
+                File.Delete(staging);
+                stagingLock.Dispose();
+                File.Delete(GetStagingLockPath(staging));
+            }
         }
     }
 
     private async Task<Stream?> OpenCachedBlobAsync(
-        string digest, long? expectedSize, CancellationToken cancellationToken)
+        string digest, long? expectedSize, CancellationToken cancellationToken,
+        Func<Stream, CancellationToken, Task<bool>>? verify = null)
     {
         string path = GetBlobPath(digest);
         if (pins.ContainsKey(path))
         {
-            return OpenRead(path);
+            FileStream pinned = OpenRead(path);
+            if (expectedSize.HasValue && pinned.Length != expectedSize)
+            {
+                pinned.Dispose();
+                throw new InvalidDataException($"Layer '{digest}' does not match its advertised length.");
+            }
+            return pinned;
         }
         FileStream blob;
         using (FileStream gate = await LockAsync("maintenance", cancellationToken))
@@ -319,12 +1056,29 @@ internal sealed class LayerStore : IAsyncDisposable
             }
             CacheFileSystem.ValidateNotLink(path);
             blob = OpenRead(path);
+            lock (verificationLock)
+            {
+                if (verifications.Owners.ContainsKey(path))
+                {
+                    if (expectedSize.HasValue && blob.Length != expectedSize)
+                    {
+                        blob.Dispose();
+                        throw new InvalidDataException($"Layer '{digest}' does not match its advertised length.");
+                    }
+                    if (!TryAddPin(path, blob))
+                    {
+                        blob.Dispose();
+                    }
+                    File.SetLastWriteTimeUtc(path, DateTime.UtcNow);
+                    return OpenRead(path);
+                }
+            }
         }
         bool valid;
         try
         {
             valid = (!expectedSize.HasValue || blob.Length == expectedSize) &&
-                await VerifyDigestAsync(blob, digest, cancellationToken);
+                await (verify is null ? VerifyDigestAsync(blob, digest, cancellationToken) : verify(blob, cancellationToken));
         }
         catch
         {
@@ -339,7 +1093,7 @@ internal sealed class LayerStore : IAsyncDisposable
             diagnostics.WriteLine($"Rebuilding corrupt layer blob '{digest}'.");
             return null;
         }
-        if (!pins.TryAdd(path, blob))
+        if (!TryAddPin(path, blob))
         {
             await blob.DisposeAsync();
         }
@@ -352,6 +1106,7 @@ internal sealed class LayerStore : IAsyncDisposable
         IProgress<long>? progress = null)
     {
         string staging = Path.Combine(dataPath, $"{Guid.NewGuid():N}.tmp");
+        using FileStream stagingLock = await LockAsync(GetStagingLockKey(staging), cancellationToken);
         try
         {
             await using FileStream output = CacheFileSystem.CreateFile(staging);
@@ -386,7 +1141,7 @@ internal sealed class LayerStore : IAsyncDisposable
                 output.Close();
                 File.Move(staging, path, overwrite: true);
                 FileStream pin = OpenRead(path);
-                if (!pins.TryAdd(path, pin))
+                if (!TryAddPin(path, pin))
                 {
                     pin.Dispose();
                 }
@@ -396,13 +1151,19 @@ internal sealed class LayerStore : IAsyncDisposable
         }
         finally
         {
-            File.Delete(staging);
+            using (await LockAsync("maintenance", CancellationToken.None))
+            {
+                File.Delete(staging);
+                stagingLock.Dispose();
+                File.Delete(GetStagingLockPath(staging));
+            }
         }
     }
 
-    internal FileStream CreateScratchFile()
+    internal async Task<FileStream> CreateScratchFileAsync(CancellationToken cancellationToken)
     {
         string path = Path.Combine(dataPath, $"{Guid.NewGuid():N}.tmp");
+        FileStream stagingLock = await LockAsync(GetStagingLockKey(path), cancellationToken);
         FileStreamOptions options = new()
         {
             Mode = FileMode.CreateNew,
@@ -414,11 +1175,20 @@ internal sealed class LayerStore : IAsyncDisposable
         {
             options.UnixCreateMode = UnixFileMode.UserRead | UnixFileMode.UserWrite;
         }
-        return new FileStream(path, options);
+        try
+        {
+            return new StagedFileStream(this, path, options, stagingLock);
+        }
+        catch
+        {
+            stagingLock.Dispose();
+            throw;
+        }
     }
 
     internal async Task<string> CreateScratchDirectoryAsync(CancellationToken cancellationToken)
     {
+        using IDisposable operation = EnterOperation();
         using FileStream gate = await LockAsync("maintenance", cancellationToken);
         string markerPath = Path.Combine(dataPath, $"{Guid.NewGuid():N}.scratch");
         string directoryPath = $"{markerPath}.dir";
@@ -427,7 +1197,7 @@ internal sealed class LayerStore : IAsyncDisposable
         {
             CacheFileSystem.CreateDirectory(directoryPath);
             // Keep the marker leased until operation disposal so trimming cannot remove active scratch.
-            pins[markerPath] = pin;
+            TryAddPin(markerPath, pin);
             return directoryPath;
         }
         catch
@@ -467,6 +1237,17 @@ internal sealed class LayerStore : IAsyncDisposable
             {
                 continue;
             }
+            using FileStream? stagingLock = file.Extension == ".tmp"
+                ? TryLock(GetStagingLockKey(file.FullName)) : null;
+            if (file.Extension == ".tmp" && stagingLock is null)
+            {
+                total -= file.Length;
+                if (clear)
+                {
+                    diagnostics.WriteLine($"Cache entry is in use and was not removed: '{file.FullName}'.");
+                }
+                continue;
+            }
             try
             {
                 using (new FileStream(file.FullName, FileMode.Open, FileAccess.Read, FileShare.None))
@@ -496,6 +1277,11 @@ internal sealed class LayerStore : IAsyncDisposable
                     }
                 }
                 File.Delete(file.FullName);
+                if (stagingLock is not null)
+                {
+                    stagingLock.Dispose();
+                    File.Delete(GetStagingLockPath(file.FullName));
+                }
                 total -= file.Length;
                 removed += file.Length;
             }
@@ -509,14 +1295,60 @@ internal sealed class LayerStore : IAsyncDisposable
                 }
             }
         }
+        foreach (FileInfo lockFile in new DirectoryInfo(locksPath).GetFiles("*.tmp.lock"))
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            string stagingName = lockFile.Name[..^".lock".Length];
+            if (File.Exists(Path.Combine(dataPath, stagingName)))
+            {
+                continue;
+            }
+            using FileStream? stagingLock = TryLock(GetStagingLockKey(stagingName));
+            if (stagingLock is not null)
+            {
+                stagingLock.Dispose();
+                File.Delete(lockFile.FullName);
+            }
+        }
         return removed;
+    }
+
+    private static string GetStagingLockKey(string path) => $"staging:{Path.GetFileName(path)}";
+
+    private string GetStagingLockPath(string path) =>
+        Path.Combine(locksPath, $"{Path.GetFileName(path)}.lock");
+
+    private FileStream? TryLock(string key)
+    {
+        string path = LockPath(key);
+        if (File.Exists(path))
+        {
+            CacheFileSystem.ValidateNotLink(path);
+        }
+        try
+        {
+            FileStreamOptions options = new()
+            {
+                Mode = FileMode.OpenOrCreate,
+                Access = FileAccess.ReadWrite,
+                Share = FileShare.None
+            };
+            if (!OperatingSystem.IsWindows())
+            {
+                options.UnixCreateMode = UnixFileMode.UserRead | UnixFileMode.UserWrite;
+            }
+            return new FileStream(path, options);
+        }
+        catch (IOException exception) when (IsSharingViolation(exception))
+        {
+            return null;
+        }
     }
 
     private async Task<FileStream> LockAsync(string key, CancellationToken cancellationToken)
     {
-        // A fixed stripe table bounds coordination files without unlinking live locks.
-        string name = key == "maintenance" ? "maintenance" : Hash(Encoding.UTF8.GetBytes(key))[..2];
-        string path = Path.Combine(locksPath, $"{name}.lock");
+        // Staging files use dedicated leases; other cache operations share a fixed stripe table.
+        string path = LockPath(key);
         while (true)
         {
             cancellationToken.ThrowIfCancellationRequested();
@@ -571,9 +1403,61 @@ internal sealed class LayerStore : IAsyncDisposable
     private static FileStream OpenRead(string path) =>
         new(path, FileMode.Open, FileAccess.Read, FileShare.Read, 81920, FileOptions.Asynchronous);
 
+    private sealed class StagedFileStream : FileStream
+    {
+        private readonly LayerStore store;
+        private readonly string stagingPath;
+        private FileStream? stagingLock;
+
+        public StagedFileStream(
+            LayerStore store, string path, FileStreamOptions options, FileStream stagingLock)
+            : base(path, options)
+        {
+            this.store = store;
+            stagingPath = path;
+            this.stagingLock = stagingLock;
+        }
+
+        protected override void Dispose(bool disposing)
+        {
+            try
+            {
+                base.Dispose(disposing);
+            }
+            finally
+            {
+                if (disposing)
+                {
+                    FileStream? lease = Interlocked.Exchange(ref stagingLock, null);
+                    if (lease is not null)
+                    {
+                        store.ReleaseStagingLock(stagingPath, lease);
+                    }
+                }
+            }
+        }
+
+        public override async ValueTask DisposeAsync()
+        {
+            try
+            {
+                await base.DisposeAsync();
+            }
+            finally
+            {
+                FileStream? lease = Interlocked.Exchange(ref stagingLock, null);
+                if (lease is not null)
+                {
+                    await store.ReleaseStagingLockAsync(stagingPath, lease);
+                }
+                GC.SuppressFinalize(this);
+            }
+        }
+    }
+
     private static string Hash(byte[] data) => Convert.ToHexStringLower(SHA256.HashData(data));
 
-    private static string GetKey(string digest)
+    internal static string GetKey(string digest)
     {
         string[] parts = digest.Split(':');
         if (parts.Length != 2 ||
@@ -596,9 +1480,12 @@ internal sealed class LayerStore : IAsyncDisposable
     }
 
     private static bool IsValid(StoredLayerIndex? index, string digest, long? expectedSize)
+        => index is not null && index.Digest == digest &&
+            (!expectedSize.HasValue || index.BlobLength == expectedSize) && index.HasValidMetadata;
+
+    internal static bool ValidateIndex(StoredLayerIndex index)
     {
-        if (index is null || index.Digest != digest || index.BlobLength <= 0 ||
-            (expectedSize.HasValue && index.BlobLength != expectedSize) ||
+        if (index.Encoding is not ("gzip" or "tar") || index.BlobLength <= 0 ||
             index.Changes?.Entries is null || index.Changes.Whiteouts is null ||
             index.Changes.OpaqueDirectories is null)
         {
@@ -608,7 +1495,9 @@ internal sealed class LayerStore : IAsyncDisposable
         foreach (ScannedEntry entry in index.Changes.Entries)
         {
             if (entry is null || entry.EntryIndex <= previousOrdinal || entry.Size < 0 ||
-                entry.UncompressedOffset < 0 || entry.CompressedHighWaterMark <= 0 ||
+                entry.UncompressedOffset < 0 || entry.Size > long.MaxValue - entry.UncompressedOffset ||
+                (index.Encoding == "tar" && entry.UncompressedOffset + entry.Size > index.BlobLength) ||
+                entry.CompressedHighWaterMark <= 0 ||
                 entry.CompressedHighWaterMark > index.BlobLength ||
                 (entry.Type == ImageFileType.File &&
                     (entry.ContentHash?.Length != 64 || entry.ContentHash.Any(static c => !char.IsAsciiHexDigitLower(c)))))
@@ -635,19 +1524,239 @@ internal sealed class LayerStore : IAsyncDisposable
         return true;
     }
 
-    public async ValueTask DisposeAsync()
+    private bool TryAddPin(string path, FileStream pin)
     {
-        foreach (FileStream pin in pins.Values)
+        lock (verificationLock)
         {
-            await pin.DisposeAsync();
+            if (!pins.TryAdd(path, pin))
+            {
+                return false;
+            }
+            verifications.Owners[path] = verifications.Owners.GetValueOrDefault(path) + 1;
+            return true;
         }
-        pins.Clear();
+    }
+
+    private IDisposable EnterOperation()
+    {
+        lock (verificationLock)
+        {
+            ObjectDisposedException.ThrowIf(verificationDisposed, this);
+            operations++;
+            return new StoreOperation(this);
+        }
+    }
+
+    public ValueTask DisposeAsync()
+    {
+        lock (verificationLock)
+        {
+            if (disposal is null)
+            {
+                verificationDisposed = true;
+                if (operations == 0)
+                {
+                    operationsDrained.TrySetResult();
+                }
+                disposal = DisposeCoreAsync();
+            }
+            return new(disposal);
+        }
+    }
+
+    private async Task DisposeCoreAsync()
+    {
+        await operationsDrained.Task;
+        lock (verificationLock)
+        {
+            HashSet<string> released = new(StringComparer.Ordinal);
+            try
+            {
+                foreach ((string path, FileStream pin) in pins)
+                {
+                    pin.Dispose();
+                    if (--verifications.Owners[path] == 0)
+                    {
+                        verifications.Owners.Remove(path);
+                        released.Add(path);
+                    }
+                }
+                pins.Clear();
+            }
+            finally
+            {
+                if (released.Count != 0)
+                {
+                    foreach (var key in contentVerifications.Keys
+                        .Where(key => contentVerifications[key].Task.IsCompleted &&
+                            released.Contains(GetBlobPath(key.Digest))).ToArray())
+                    {
+                        contentVerifications.Remove(key);
+                    }
+                }
+            }
+        }
         await TrimAsync(CancellationToken.None);
+    }
+
+    private sealed class VerificationState
+    {
+        public object Sync { get; } = new();
+        public Dictionary<(string Digest, string DiffId), TaskCompletionSource<string>> Tasks { get; } = [];
+        public Dictionary<string, int> Owners { get; } = new(StringComparer.Ordinal);
+    }
+
+    private sealed class StoreOperation(LayerStore store) : IDisposable
+    {
+        public void Dispose()
+        {
+            lock (store.verificationLock)
+            {
+                if (--store.operations == 0 && store.verificationDisposed)
+                {
+                    store.operationsDrained.TrySetResult();
+                }
+            }
+        }
+    }
+
+    private readonly record struct RawExtent(long Offset, long Size, long StoredOffset);
+
+    private sealed class IndexedReadStream(Stream content, IReadOnlyList<RawExtent> extents) : Stream
+    {
+        private long position = extents[0].Offset;
+        private readonly long length = extents.Max(static extent => extent.Offset + extent.Size);
+        public override bool CanRead => content.CanRead;
+        public override bool CanSeek => content.CanSeek;
+        public override bool CanWrite => false;
+        public override long Length => length;
+        public override long Position
+        {
+            get => position;
+            set => Seek(value, SeekOrigin.Begin);
+        }
+
+        public override long Seek(long value, SeekOrigin origin)
+        {
+            long position = origin switch
+            {
+                SeekOrigin.Begin => value,
+                SeekOrigin.Current => checked(Position + value),
+                SeekOrigin.End => checked(Length + value),
+                _ => throw new ArgumentOutOfRangeException(nameof(origin))
+            };
+            int index = FindExtent(position);
+            if (index < 0 || position > extents[index].Offset + extents[index].Size)
+            {
+                throw new InvalidDataException("The requested content is outside the verified layer range.");
+            }
+            this.position = position;
+            return position;
+        }
+
+        private int PrepareRead(int count)
+        {
+            int index = FindExtent(position);
+            if (index >= 0)
+            {
+                RawExtent extent = extents[index];
+                if (position < extent.Offset + extent.Size)
+                {
+                    content.Position = checked(extent.StoredOffset + position - extent.Offset);
+                    return (int)Math.Min(count, extent.Offset + extent.Size - position);
+                }
+            }
+            return 0;
+        }
+
+        private int FindExtent(long value)
+        {
+            int low = 0;
+            int high = extents.Count - 1;
+            while (low <= high)
+            {
+                int middle = low + (high - low) / 2;
+                if (extents[middle].Offset <= value)
+                {
+                    low = middle + 1;
+                }
+                else
+                {
+                    high = middle - 1;
+                }
+            }
+            return high;
+        }
+
+        public override int Read(byte[] buffer, int offset, int count) => Read(buffer.AsSpan(offset, count));
+        public override int Read(Span<byte> buffer)
+        {
+            int read = content.Read(buffer[..PrepareRead(buffer.Length)]);
+            position += read;
+            return read;
+        }
+        public override async ValueTask<int> ReadAsync(
+            Memory<byte> buffer, CancellationToken cancellationToken = default)
+        {
+            int read = await content.ReadAsync(buffer[..PrepareRead(buffer.Length)], cancellationToken);
+            position += read;
+            return read;
+        }
+        public override Task<int> ReadAsync(
+            byte[] buffer, int offset, int count, CancellationToken cancellationToken) =>
+            ReadAsync(buffer.AsMemory(offset, count), cancellationToken).AsTask();
+        public override void Flush() => throw new NotSupportedException();
+        public override void SetLength(long value) => throw new NotSupportedException();
+        public override void Write(byte[] buffer, int offset, int count) => throw new NotSupportedException();
+        protected override void Dispose(bool disposing)
+        {
+            if (disposing)
+            {
+                content.Dispose();
+            }
+            base.Dispose(disposing);
+        }
+        public override ValueTask DisposeAsync() => content.DisposeAsync();
     }
 
 }
 
-internal sealed record StoredLayerIndex(string Digest, long BlobLength, LayerChanges Changes);
+internal sealed record StoredLayerIndex
+{
+    private readonly Lazy<bool> validMetadata;
+
+    private StoredLayerIndex(StoredLayerIndex original)
+    {
+        Digest = original.Digest;
+        BlobLength = original.BlobLength;
+        Encoding = original.Encoding;
+        Changes = original.Changes;
+        validMetadata = new(() => LayerStore.ValidateIndex(this));
+    }
+
+    public StoredLayerIndex(string digest, long blobLength, LayerChanges changes, string encoding = "gzip")
+    {
+        Digest = digest;
+        BlobLength = blobLength;
+        Encoding = encoding;
+        Changes = changes;
+        if (changes is { Entries: not null, Whiteouts: not null, OpaqueDirectories: not null })
+        {
+            Changes = new(changes.Entries.ToImmutableArray(), changes.Whiteouts.ToImmutableArray(),
+                changes.OpaqueDirectories.ToImmutableArray())
+            {
+                Diagnostics = changes.Diagnostics.ToImmutableArray()
+            };
+        }
+        validMetadata = new(() => LayerStore.ValidateIndex(this));
+    }
+
+    public string Digest { get; init; }
+    public long BlobLength { get; init; }
+    public LayerChanges Changes { get; init; }
+    public string Encoding { get; init; }
+    internal bool HasValidMetadata => validMetadata.Value;
+}
 internal sealed record LayerCacheEnvelope(
     [property: JsonPropertyName("Version")] int Version,
     [property: JsonPropertyName("Digest")] string Digest,

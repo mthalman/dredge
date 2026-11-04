@@ -2,7 +2,7 @@ using System.CommandLine;
 
 namespace Valleysoft.Dredge.Commands.Image;
 
-public class LsOptions : PlatformOptionsBase
+public class LsOptions : ImageOptionsBase
 {
     private readonly Argument<string> imageArgument;
     private readonly Argument<string?> pathArgument;
@@ -24,7 +24,7 @@ public class LsOptions : PlatformOptionsBase
 
     public LsOptions()
     {
-        imageArgument = Add(ImageReferenceArgument.Create("image"));
+        imageArgument = Add(ImageReferenceArgument.CreateImageSource("image"));
         pathArgument = Add(new Argument<string?>("path")
         {
             Description = "Image path to list",

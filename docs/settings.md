@@ -43,7 +43,7 @@ timeout. Positive values are limited to about 24.8 days by the runtime.
 
 ## Configure the layer cache
 
-Dredge shares compressed layer blobs, filesystem indexes, and merged filesystem
+Dredge shares stored layer blobs, filesystem indexes, and merged filesystem
 views between commands and processes. Complete blobs are digest-verified before
 publication. Corrupt or incompatible cached data is rebuilt, with a diagnostic
 on standard error.

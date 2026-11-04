@@ -87,3 +87,20 @@ xattr -d com.apple.quarantine dredge
 ```
 
 Debug symbol files are not published with the release executables.
+
+## Access Docker Engine images
+
+Dredge accesses Docker Engine directly; the Docker CLI is
+not required. Configure a supported daemon endpoint or Docker context and grant
+the Dredge process permission to connect. See
+[Docker connections](commands/images.md#docker-connections).
+
+When running Dredge in a Linux container, the host Docker socket is not available
+automatically. For a local Unix-socket engine, explicitly mount its socket:
+
+```shell
+docker run --rm -it \
+  --mount type=bind,source=/var/run/docker.sock,target=/var/run/docker.sock \
+  --group-add "$(stat -c '%g' /var/run/docker.sock)" \
+  ghcr.io/mthalman/dredge image explore docker://myimage:dev
+```

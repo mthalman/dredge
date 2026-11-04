@@ -45,19 +45,31 @@ public class CompareFilesCommand : RegistryCommandBase<CompareFilesOptions>
                     $"This command requires additional configuration.{Environment.NewLine}In order to compare files, you must first set the '{AppSettings.FileCompareToolName}' setting in {settingsStore.SettingsPath}. This is an external tool of your choosing that will be executed to compare two directories containing files of the specified images. Use '{{0}}' and '{{1}}' placeholders in the args to indicate the base and target path locations that will be the inputs to the compare tool.");
             }
 
+            bool usesDaemon = ImageSourceReference.Parse(Options.BaseImage).IsDaemon ||
+                ImageSourceReference.Parse(Options.TargetImage).IsDaemon;
+            var sources = usesDaemon
+                ? await OpenComparisonAsync(Options.BaseImage, Options.TargetImage, Options, ct, settingsStore,
+                    ImageSourceRequirements.LinuxLayerContent)
+                : ((ResolvedImage Base, ResolvedImage Target)?)null;
+            await using ResolvedImage? baseSource = sources?.Base;
+            await using ResolvedImage? targetSource = sources?.Target;
+            if (sources is not null)
+            {
+                ReportComparison(baseSource!, targetSource!);
+            }
             await SaveImageLayersToDiskAsync(
                 Options.BaseImage,
                 BaseOutputDirName,
                 Options.BaseLayerIndex,
                 CompareFilesOptions.BaseLayerIndexOptionName,
-                ct);
+                ct, baseSource);
             Console.Error.WriteLine();
             await SaveImageLayersToDiskAsync(
                 Options.TargetImage,
                 TargetOutputDirName,
                 Options.TargetLayerIndex,
                 CompareFilesOptions.TargetLayerIndexOptionName,
-                ct);
+                ct, targetSource);
 
             string compareTempPath = Path.Combine(pathProvider.TempPath, "compare");
             string args = settings.FileCompareTool.Args
@@ -73,7 +85,8 @@ public class CompareFilesCommand : RegistryCommandBase<CompareFilesOptions>
         string outputDirName,
         int? layerIndex,
         string layerIndexOptionName,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        ResolvedImage? source)
     {
         string workingDir = Path.Combine(pathProvider.TempPath, "compare", outputDirName);
         if (Directory.Exists(workingDir))
@@ -90,6 +103,7 @@ public class CompareFilesCommand : RegistryCommandBase<CompareFilesOptions>
             noSquash: false,
             Options,
             cancellationToken,
-            pathProvider);
+            pathProvider,
+            resolvedImage: source);
     }
 }

@@ -41,7 +41,7 @@
   <PropertyGroup>
     <PackageId>Valleysoft.Dredge</PackageId>
     <Title>Container Registry Client CLI</Title>
-    <Description>CLI for executing commands on a container registry's HTTP API.</Description>
+    <Description>CLI for inspecting Docker Engine and registry images and executing commands on a container registry's HTTP API.</Description>
     <PackageTags>docker;container</PackageTags>
     <Authors>Matt Thalman and Contributors</Authors>
     <RepositoryUrl>https://github.com/mthalman/dredge</RepositoryUrl>
@@ -58,6 +58,7 @@
   </ItemGroup>
 
   <ItemGroup>
+    <PackageReference Include="Docker.DotNet.Enhanced" Version="4.3.3" />
     <PackageReference Include="MinVer" Version="8.0.0" PrivateAssets="all" />
     <PackageReference Include="Spectre.Console" Version="0.57.2" />
     <PackageReference Include="System.CommandLine" Version="2.0.13" />

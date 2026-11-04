@@ -2,7 +2,7 @@ using System.CommandLine;
 
 namespace Valleysoft.Dredge.Commands.Image;
 
-public sealed class ExploreOptions : PlatformOptionsBase
+public sealed class ExploreOptions : ImageOptionsBase
 {
     private readonly Argument<string> imageArgument;
     private readonly Option<int?> layerOption;
@@ -18,7 +18,7 @@ public sealed class ExploreOptions : PlatformOptionsBase
 
     public ExploreOptions()
     {
-        imageArgument = Add(ImageReferenceArgument.Create("image"));
+        imageArgument = Add(ImageReferenceArgument.CreateImageSource("image"));
         layerOption = Add(new Option<int?>("--layer") { Description = "Initially selected zero-based layer" });
         compareOption = Add(new Option<string?>("--compare") { Description = "Image or tag to compare against" });
         baseImageOption = Add(new Option<string[]>("--base-image")

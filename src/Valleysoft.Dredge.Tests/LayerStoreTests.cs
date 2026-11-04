@@ -264,6 +264,49 @@ public sealed class LayerStoreTests
     }
 
     [Fact]
+    public async Task Clear_PreservesAnActiveBlobStagingFile()
+    {
+        await using LayerCacheTestContext cache = new();
+        await using LayerStore other = new(cache.Paths.CachePath);
+        byte[] bytes = CreateLayer();
+        string digest = LayerCacheTestContext.Digest(bytes);
+        TaskCompletionSource reading = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        TaskCompletionSource release = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        Mock<IDockerRegistryClient> client = Client(bytes);
+        client.Setup(c => c.Blobs.GetRangeAsync(Image.Repo, digest, 0, null, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(() => new BlobDownloadResult(
+                new BlockingReadStream(bytes, reading, release), false, null, null, bytes.Length));
+
+        Task<Stream> pending = cache.Store.OpenBlobAsync(
+            client.Object, Image, digest, bytes.Length, Token);
+        try
+        {
+            await reading.Task.WaitAsync(Token);
+            string staging = Assert.Single(Directory.GetFiles(DataPath(cache), "*.tmp"));
+            string stagingLock = Path.Combine(
+                cache.Paths.CachePath, "layer-store", "locks", $"{Path.GetFileName(staging)}.lock");
+
+            Assert.Equal(0, await other.ClearAsync(Token));
+            Assert.True(File.Exists(staging));
+            Assert.True(File.Exists(stagingLock));
+
+            release.TrySetResult();
+            using Stream blob = await pending.WaitAsync(Token);
+            Assert.Equal(bytes, LayerCacheTestContext.ReadBytes(blob));
+            Assert.True(File.Exists(cache.Store.GetBlobPath(digest)));
+            Assert.False(File.Exists(stagingLock));
+        }
+        finally
+        {
+            release.TrySetResult();
+            if (!pending.IsCompleted)
+            {
+                await pending;
+            }
+        }
+    }
+
+    [Fact]
     public async Task Blob_RejectsWrongDigestAndCleansStaging()
     {
         await using LayerCacheTestContext cache = new();
@@ -709,6 +752,52 @@ public sealed class LayerStoreTests
             await destination.WriteAsync(new byte[] { 1, 2, 3 }, cancellationToken);
             await destination.FlushAsync(cancellationToken);
             Environment.Exit(0);
+        }
+    }
+
+    private sealed class BlockingReadStream(
+        byte[] bytes, TaskCompletionSource reading, TaskCompletionSource release) : Stream
+    {
+        private readonly MemoryStream content = new(bytes);
+
+        public override bool CanRead => true;
+        public override bool CanSeek => true;
+        public override bool CanWrite => false;
+        public override long Length => content.Length;
+
+        public override long Position
+        {
+            get => content.Position;
+            set => content.Position = value;
+        }
+
+        public override async ValueTask<int> ReadAsync(
+            Memory<byte> buffer, CancellationToken cancellationToken = default)
+        {
+            reading.TrySetResult();
+            await release.Task.WaitAsync(cancellationToken);
+            return await content.ReadAsync(buffer, cancellationToken);
+        }
+
+        public override int Read(byte[] buffer, int offset, int count) =>
+            content.Read(buffer, offset, count);
+
+        public override long Seek(long offset, SeekOrigin origin) => content.Seek(offset, origin);
+
+        public override void Flush() => content.Flush();
+
+        public override void SetLength(long value) => throw new NotSupportedException();
+
+        public override void Write(byte[] buffer, int offset, int count) =>
+            throw new NotSupportedException();
+
+        protected override void Dispose(bool disposing)
+        {
+            if (disposing)
+            {
+                content.Dispose();
+            }
+            base.Dispose(disposing);
         }
     }
 }

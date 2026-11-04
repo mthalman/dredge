@@ -80,7 +80,11 @@ public sealed class ExplorerReviewRegressionTests
     public async Task CopiedCommandRoundTripsThroughShellStringParsing()
     {
         const string path = "app/a 'file' \"$HOME\"; & `text`.txt";
-        ExplorerPresenter presenter = new(ExplorerSamples.Image(), 150, 42);
+        ExplorerImage image = new(ExplorerSamples.Reference, "linux/amd64", "sha256:manifest", [], [], null)
+        {
+            PlatformArguments = ExplorerImage.PlatformArgumentsFor(new("linux", "amd64", null, null))
+        };
+        ExplorerPresenter presenter = new(image, 150, 42);
         string command = presenter.CopyCommandText(path, false);
         bool windows = OperatingSystem.IsWindows();
         System.Diagnostics.ProcessStartInfo start = new(windows ? "powershell.exe" : "/bin/sh")
@@ -106,7 +110,8 @@ public sealed class ExplorerReviewRegressionTests
         await process.WaitForExitAsync(TestContext.Current.CancellationToken);
         Assert.Equal(0, process.ExitCode);
         Assert.Empty(await errors);
-        Assert.Equal(["image", "cat", presenter.Image.ResolvedReference, "/" + path, ""], (await output).Split('\0'));
+        Assert.Equal(["image", "cat", presenter.Image.ResolvedReference, "/" + path,
+            "--os", "linux", "--arch", "amd64", "--os-version=", ""], (await output).Split('\0'));
     }
 
     [Theory]
@@ -123,10 +128,10 @@ public sealed class ExplorerReviewRegressionTests
         string before = ExplorerImage.DigestReference(comparison.Baseline.Image, comparison.Baseline.Resolved.ManifestInfo.DockerContentDigest);
         string after = ExplorerImage.DigestReference(ImageName.Parse(target), comparison.Target.Resolved.ManifestInfo.DockerContentDigest);
         ui.Press(Key.C.WithCtrl);
-        Assert.Equal($"dredge image compare files {before} {after}", host.Clipboard[0]);
+        Assert.Equal($"dredge image compare files {before} {after} --os linux --arch amd64 --os-version=\"\"", host.Clipboard[0]);
         ui.Window.Apply(new SwapSides());
         ui.Press(Key.C.WithCtrl);
-        Assert.Equal($"dredge image compare files {after} {before}", host.Clipboard[1]);
+        Assert.Equal($"dredge image compare files {after} {before} --os linux --arch amd64 --os-version=\"\"", host.Clipboard[1]);
     }
 
     [Theory]

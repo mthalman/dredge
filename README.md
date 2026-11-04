@@ -18,6 +18,16 @@ together in one keyboard- and mouse-driven view.
 dredge image explore mcr.microsoft.com/dotnet/aspnet:10.0
 ```
 
+Explore a locally built image without pushing it to a registry:
+
+```console
+dredge image explore docker://myimage:dev
+```
+
+Use `docker://` for Docker Engine images and `registry://` or no prefix for
+registry images. See
+[image sources and connections](docs/commands/images.md#image-sources).
+
 - **Follow changes through layers.** Browse each layer or the cumulative
   filesystem, search paths, and inspect file history with text previews and diffs.
 - **Find wasted space.** Use efficiency insights to locate files replaced or

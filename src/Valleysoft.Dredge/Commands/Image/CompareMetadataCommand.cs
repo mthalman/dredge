@@ -50,11 +50,20 @@ public class CompareMetadataCommand : RegistryCommandBase<CompareMetadataOptions
 
     public async Task<CompareMetadataResult> GetResultAsync(CancellationToken cancellationToken = default)
     {
-        Task<MetadataDocument> baseTask = GetMetadataAsync(Options.BaseImage, cancellationToken);
-        Task<MetadataDocument> targetTask = GetMetadataAsync(Options.TargetImage, cancellationToken);
-        await Task.WhenAll(baseTask, targetTask);
-        MetadataDocument baseDocument = await baseTask;
-        MetadataDocument targetDocument = await targetTask;
+        var sources = await OpenComparisonAsync(
+            Options.BaseImage, Options.TargetImage, Options, cancellationToken, settingsStore,
+            ImageSourceRequirements.Metadata);
+        await using ResolvedImage baseSource = sources.Base;
+        await using ResolvedImage targetSource = sources.Target;
+        ReportComparison(baseSource, targetSource);
+        bool includeDistributionMetadata = !baseSource.IsDaemon && !targetSource.IsDaemon;
+        if (!includeDistributionMetadata)
+        {
+            Error.WriteLine(
+                "Original registry manifests, annotations, and platform inventories are unavailable for Docker daemon images; comparing configuration metadata only.");
+        }
+        MetadataDocument baseDocument = GetMetadata(baseSource, includeDistributionMetadata);
+        MetadataDocument targetDocument = GetMetadata(targetSource, includeDistributionMetadata);
         List<MetadataComparison> comparisons = Compare(baseDocument, targetDocument);
 
         CompareMetadataSummary summary = new(
@@ -206,28 +215,9 @@ public class CompareMetadataCommand : RegistryCommandBase<CompareMetadataOptions
             };
     }
 
-    private async Task<MetadataDocument> GetMetadataAsync(string image, CancellationToken cancellationToken)
+    private static MetadataDocument GetMetadata(ResolvedImage source, bool includeDistributionMetadata)
     {
-        ImageName imageName = ImageName.Parse(image);
-        using IDockerRegistryClient client = await DockerRegistryClientFactory.GetClientAsync(imageName.Registry, cancellationToken);
-        // Keep the original manifest because resolving an index discards the platform inventory that must also be compared.
-        ManifestInfo initialManifest = await client.Manifests.GetAsync(
-            imageName.Repo,
-            (imageName.Tag ?? imageName.Digest)!,
-            cancellationToken);
-        ResolvedManifest resolvedManifest = await ManifestHelper.GetResolvedManifestAsync(
-            client,
-            imageName,
-            Options,
-            initialManifest,
-            settingsStore,
-            cancellationToken);
-
-        string configDigest = resolvedManifest.Manifest.Config?.Digest ??
-            throw new NotSupportedException($"Could not resolve the image config digest of '{image}'.");
-        using Stream configBlob = await client.Blobs.GetAsync(imageName.Repo, configDigest, cancellationToken);
-        using StreamReader configReader = new(configBlob);
-        string configContent = await configReader.ReadToEndAsync(cancellationToken);
+        string configContent = Valleysoft.Dredge.ImageSourceFactory.DecodeConfiguration(source.ConfigurationJson);
         JsonObject imageConfig;
         try
         {
@@ -235,12 +225,16 @@ public class CompareMetadataCommand : RegistryCommandBase<CompareMetadataOptions
         }
         catch (JsonException)
         {
-            throw new JsonException($"Could not deserialize the image config of '{image}'.");
+            throw new JsonException($"Could not deserialize the image config of '{source.Reference}'.");
         }
 
         MetadataDocument document = new();
-        AddInitialManifest(document, initialManifest);
-        AddResolvedManifest(document, resolvedManifest);
+        if (includeDistributionMetadata)
+        {
+            AddInitialManifest(document, source.InitialManifest ??
+                throw new InvalidDataException("The registry image's original manifest is unavailable."));
+            AddResolvedManifest(document, source.Resolved);
+        }
         AddImageConfig(document, imageConfig);
         return document;
     }

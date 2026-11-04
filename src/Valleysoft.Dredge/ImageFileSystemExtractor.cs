@@ -7,8 +7,7 @@ internal static class ImageFileSystemExtractor
     public static async Task CopyContentEntriesAsync(
         IEnumerable<(ImageFileSystemEntry Entry, Stream Destination)> requests,
         LayerStore store,
-        IDockerRegistryClient client,
-        ImageName imageName,
+        IImageContentSource content,
         Func<int, CancellationToken, Task<StoredLayerIndex>> getIndexAsync,
         CancellationToken cancellationToken)
     {
@@ -27,8 +26,8 @@ internal static class ImageFileSystemExtractor
 
             StoredLayerIndex index = await getIndexAsync(group.Key, cancellationToken);
             using Stream blob = await store.OpenIndexedBlobAsync(
-                client, imageName, index, destinations.Keys.Select(static key => key.EntryIndex), cancellationToken);
-            using LayerContentReader reader = new(blob);
+                content, index, destinations.Keys.Select(static key => key.EntryIndex), cancellationToken);
+            using LayerContentReader reader = new(blob, index.Encoding);
             foreach (ScannedEntry entry in index.Changes.Entries)
             {
                 cancellationToken.ThrowIfCancellationRequested();
@@ -39,7 +38,8 @@ internal static class ImageFileSystemExtractor
                     continue;
                 }
 
-                using FileStream? buffer = outputs.Count > 1 ? store.CreateScratchFile() : null;
+                using FileStream? buffer = outputs.Count > 1
+                    ? await store.CreateScratchFileAsync(cancellationToken) : null;
                 Stream first = buffer ?? outputs.Dequeue();
                 await reader.CopyToAsync(entry, first, cancellationToken);
                 if (buffer is not null)
@@ -63,8 +63,7 @@ internal static class ImageFileSystemExtractor
     public static async Task ExtractContentEntriesAsync(
         IEnumerable<(ImageFileSystemEntry Entry, string Destination)> requests,
         LayerStore store,
-        IDockerRegistryClient client,
-        ImageName imageName,
+        IImageContentSource content,
         Func<int, CancellationToken, Task<StoredLayerIndex>> getIndexAsync,
         CancellationToken cancellationToken)
     {
@@ -82,8 +81,8 @@ internal static class ImageFileSystemExtractor
 
             StoredLayerIndex index = await getIndexAsync(group.Key, cancellationToken);
             using Stream blob = await store.OpenIndexedBlobAsync(
-                client, imageName, index, destinations.Keys.Select(static key => key.EntryIndex), cancellationToken);
-            using LayerContentReader reader = new(blob);
+                content, index, destinations.Keys.Select(static key => key.EntryIndex), cancellationToken);
+            using LayerContentReader reader = new(blob, index.Encoding);
             foreach (ScannedEntry entry in index.Changes.Entries)
             {
                 cancellationToken.ThrowIfCancellationRequested();

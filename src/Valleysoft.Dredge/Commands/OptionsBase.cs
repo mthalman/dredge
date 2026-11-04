@@ -34,6 +34,24 @@ public abstract class OptionsBase
         return parseResult!.GetValue(option);
     }
 
+    protected T? GetValue<T>(Option<T> option, Option<T> alternate)
+    {
+        ValidateParseResult();
+        Option<T> selected = option;
+        foreach (Token token in parseResult!.Tokens.Where(static token => token.Type == TokenType.Option))
+        {
+            if (token.Value == option.Name || option.Aliases.Contains(token.Value))
+            {
+                selected = option;
+            }
+            else if (token.Value == alternate.Name || alternate.Aliases.Contains(token.Value))
+            {
+                selected = alternate;
+            }
+        }
+        return parseResult.GetValue(selected);
+    }
+
     private void ValidateParseResult()
     {
         if (parseResult is null)
@@ -50,7 +68,7 @@ public abstract class OptionsBase
 
     protected abstract void GetValues();
 
-    public void SetCommandOptions(Command cmd)
+    public virtual void SetCommandOptions(Command cmd)
     {
         foreach (Argument arg in arguments)
         {

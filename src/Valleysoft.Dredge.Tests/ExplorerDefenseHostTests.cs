@@ -492,14 +492,12 @@ public sealed class ExplorerDefenseHostTests : IAsyncDisposable
             indexes =>
             {
                 StoredLayerIndex index = indexes[1];
-                indexes[1] = index with
-                {
-                    Changes = index.Changes with
+                indexes[1] = new(index.Digest, index.BlobLength,
+                    index.Changes with
                     {
                         Entries = [.. index.Changes.Entries.Select(entry =>
                             entry with { Size = ExplorerHost.MaxPackageOwnershipBytes + 1 })]
-                    }
-                };
+                    }, index.Encoding);
             });
         TestImage target = await CreateAsync();
         PackageFilesContent result = await Host(baseline).PackageFilesAsync(await CompareAsync(baseline, target),

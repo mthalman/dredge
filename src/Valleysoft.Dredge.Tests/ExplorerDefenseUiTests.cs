@@ -333,11 +333,11 @@ public sealed class ExplorerDefenseUiTests
             target.Resolved.ManifestInfo.DockerContentDigest).ToString();
 
         ui.Window.Apply(new CopyCommand());
-        Assert.Equal($"dredge image compare files {before} {after}", ui.Window.CommandText.Text);
+        Assert.Equal($"dredge image compare files {before} {after} --os linux --arch amd64 --os-version=\"\"", ui.Window.CommandText.Text);
         ui.Press(Key.Esc);
         ui.Window.Apply(new SwapSides());
         ui.Window.Apply(new CopyCommand());
-        Assert.Equal($"dredge image compare files {after} {before}", ui.Window.CommandText.Text);
+        Assert.Equal($"dredge image compare files {after} {before} --os linux --arch amd64 --os-version=\"\"", ui.Window.CommandText.Text);
     }
 
     [Fact]

@@ -20,17 +20,41 @@ internal sealed record ExplorerComparison(
     IReadOnlyList<ExplorerPackageDifference> Packages)
 {
     public IReadOnlyList<string> Limitations { get; init; } = [];
+    public bool DownloadSizeAvailable => !Baseline.IsDaemon && !Target.IsDaemon;
+    public bool UsesContentIdentity => Baseline.IsDaemon || Target.IsDaemon;
 }
 
 internal sealed class ExplorerSession
 {
+    public ResolvedImage? Source { get; init; }
+    public bool IsDaemon => Source?.IsDaemon == true;
+    public string SnapshotReference => IsDaemon ? $"docker://{Source!.Identity}" :
+        Explorer.ExplorerImage.DigestReference(Image, Resolved.ManifestInfo.DockerContentDigest);
+    public string SnapshotDetails => IsDaemon
+        ? $"Source: Docker daemon\nPlatform: {Source!.Platform}\nImage ID: {Source.Identity}\nRegistry manifest digest: unavailable"
+        : SnapshotReference;
     private readonly SemaphoreSlim packageGate = new(1, 1);
     private InstalledPackageMetadata? packages;
     private readonly Dictionary<int, InstalledPackageMetadata> layerPackages = [];
+    private IImageContentSource? content;
+    private LayerStore? store;
+    private string[]? verifiedContentDigests;
+    private Image config = null!;
+    private Lazy<string[]> contentDigests = null!;
 
     public required ImageName Image { get; init; }
     public required ResolvedManifest Resolved { get; init; }
-    public required Image Config { get; init; }
+    public ExplorerPlatform? SelectedPlatform { get; init; }
+    public required Image Config
+    {
+        get => config;
+        init
+        {
+            config = value;
+            string[] ids = value.RootFilesystem?.DiffIds?.ToArray() ?? [];
+            contentDigests = new(() => ValidateContentDigests(ids, Resolved.Manifest.Layers.Length));
+        }
+    }
     public required ImageFileSystem Files { get; init; }
     public required ImageAnalysisResult Analysis { get; init; }
     public required IReadOnlyList<ImageFileSystemEntry> Entries { get; init; }
@@ -50,26 +74,30 @@ internal sealed class ExplorerSession
     {
         ExplorerSource source = await ExplorerSource.OpenAsync(
             client, factory, image, options, baseImages, cancellationToken, exactPlatform: exactPlatform,
-            resolvedManifest: resolvedManifest);
+            resolvedManifest: resolvedManifest, comparing: exactPlatform is not null);
         return await CreateAsync(client, source, store, null, cancellationToken, progress);
     }
 
     public static async Task<ExplorerSession> CreateAsync(
-        IDockerRegistryClient client, ExplorerSource source, LayerStore store,
+        IDockerRegistryClient? client, ExplorerSource source, LayerStore store,
         IReadOnlyDictionary<int, StoredLayerIndex>? indexes, CancellationToken cancellationToken,
         IProgress<ImageIndexProgress>? progress = null)
     {
-        PlatformOptionsBase options = source.Platform is null ? new() : ExplorerSource.ForPlatform(source.Platform);
-        ImageFileSystem files = await ImageFileSystem.CreateAsync(client, source.Image, options,
-            cancellationToken, store, progress: progress, resolvedManifest: source.Resolved,
-            imageConfig: source.Config, requireLayerIndexes: true, layerIndexes: indexes);
+        IImageContentSource content = source.GetContent(client);
+        ImageFileSystem files = await ImageFileSystem.CreateAsync(
+            content, source.Image, source.Resolved, source.Config, cancellationToken, store,
+            progress: progress, requireLayerIndexes: true, layerIndexes: indexes);
         try
         {
             ImageAnalysisResult analysis = files.Analyze();
             return new ExplorerSession
             {
+                Source = source.Source,
+                content = content,
+                store = store,
                 Image = source.Image,
                 Resolved = source.Resolved,
+                SelectedPlatform = source.Platform,
                 Config = source.Config,
                 Files = files,
                 Analysis = analysis,
@@ -87,6 +115,18 @@ internal sealed class ExplorerSession
     public async Task EnsurePackagesAsync(CancellationToken cancellationToken)
     {
         await GetPackagesAsync(Resolved.Manifest.Layers.Length - 1, cancellationToken);
+    }
+
+    internal async Task EnsureContentIdentitiesAsync(CancellationToken cancellationToken)
+    {
+        if (verifiedContentDigests is not null || IsDaemon && contentDigests.Value.All(DockerImageArchive.IsSha256))
+        {
+            return;
+        }
+        verifiedContentDigests = await ExplorerContentIdentity.VerifyAsync(
+            content ?? throw new InvalidOperationException("Image content source is unavailable."),
+            Config, Resolved, store ?? throw new InvalidOperationException("Layer store is unavailable."),
+            cancellationToken, expectedDiffIds: contentDigests.Value);
     }
 
     public async Task<InstalledPackageMetadata> GetPackagesAsync(int layer, CancellationToken cancellationToken)
@@ -133,29 +173,35 @@ internal sealed class ExplorerSession
     internal static ExplorerComparison Compare(ExplorerSession baseline, ExplorerSession target)
     {
         ImageFileSystemSemantics semantics = baseline.Semantics;
-        if (!string.Equals(baseline.Config.Os, target.Config.Os, StringComparison.OrdinalIgnoreCase) ||
-            !string.Equals(baseline.Config.Architecture, target.Config.Architecture,
-                StringComparison.OrdinalIgnoreCase) ||
-            semantics.IsWindows && !CompatibleWindowsVariants(baseline, target) ||
-            !semantics.IsWindows && !string.Equals(baseline.Config.OsVersion, target.Config.OsVersion,
-                StringComparison.OrdinalIgnoreCase))
+        bool samePlatform = baseline.IsDaemon || target.IsDaemon
+            ? baseline.ComparisonPlatform.IsCompatibleWith(target.ComparisonPlatform)
+            : string.Equals(baseline.Config.Os, target.Config.Os, StringComparison.OrdinalIgnoreCase) &&
+                string.Equals(baseline.Config.Architecture, target.Config.Architecture,
+                    StringComparison.OrdinalIgnoreCase) &&
+                (baseline.Semantics.IsWindows
+                    ? CompatibleWindowsVariants(baseline, target)
+                    : string.Equals(baseline.Config.OsVersion, target.Config.OsVersion, StringComparison.OrdinalIgnoreCase));
+        if (!samePlatform)
         {
             throw new InvalidOperationException(
-                $"Images must use compatible platforms: {baseline.Config.Os}/{baseline.Config.Architecture} {baseline.Config.OsVersion} " +
+                $"Images must use the same platform: {baseline.Config.Os}/{baseline.Config.Architecture} {baseline.Config.OsVersion} " +
                 $"and {target.Config.Os}/{target.Config.Architecture} {target.Config.OsVersion}.");
         }
 
-        HashSet<string> baselineDigests = baseline.Resolved.Manifest.Layers
-            .Select(static layer => layer.Digest ?? throw new InvalidDataException("Layer digest is missing."))
-            .ToHashSet(StringComparer.Ordinal);
+        HashSet<string>? baselineDigests = !baseline.IsDaemon && !target.IsDaemon
+            ? new(StringComparer.Ordinal) : null;
+        foreach (IDescriptor layer in baseline.Resolved.Manifest.Layers)
+        {
+            string digest = layer.Digest ?? throw new InvalidDataException("Layer digest is missing.");
+            baselineDigests?.Add(digest);
+        }
         long additional = 0;
         foreach (IDescriptor layer in target.Resolved.Manifest.Layers)
         {
             string digest = layer.Digest ?? throw new InvalidDataException("Layer digest is missing.");
-            if (!baselineDigests.Contains(digest))
+            if (baselineDigests is not null && baselineDigests.Add(digest))
             {
                 additional = checked(additional + layer.Size);
-                baselineDigests.Add(digest);
             }
         }
 
@@ -219,6 +265,25 @@ internal sealed class ExplorerSession
             baseline.Resolved.ManifestInfo.DockerContentDigest,
             target.Resolved.ManifestInfo.DockerContentDigest);
     }
+
+    internal ExplorerPlatform ComparisonPlatform => ExplorerPlatform.FromConfig(Config, SelectedPlatform);
+
+    internal static string[] ContentDigests(Image config, int layerCount) =>
+        ValidateContentDigests(config.RootFilesystem?.DiffIds?.ToArray() ?? [], layerCount);
+
+    private static string[] ValidateContentDigests(string[] ids, int layerCount)
+    {
+        if (ids.Length != layerCount || ids.Any(string.IsNullOrEmpty))
+        {
+            throw new InvalidDataException("Verified root filesystem diff IDs are required for cross-source layer comparison.");
+        }
+        return ids;
+    }
+
+    internal string? LayerIdentity(int layer, bool content) =>
+        layer >= Resolved.Manifest.Layers.Length ? null :
+        content ? (verifiedContentDigests ?? contentDigests.Value)[layer] :
+        Resolved.Manifest.Layers[layer].Digest;
 
     private static bool SameFile(
         ImageFileSystemEntry left, ImageFileSystemEntry right,

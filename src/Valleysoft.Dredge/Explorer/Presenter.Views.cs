@@ -338,7 +338,7 @@ internal sealed partial class ExplorerPresenter
 
     public string CopyCommandText(string path, bool dir)
     {
-        string platform = img.PlatformArguments.Length > 0 ? " " + img.PlatformArguments : "";
+        string platform = img.CommandArguments.Length > 0 ? " " + img.CommandArguments : "";
         return dir
             ? $"dredge image ls {ShellCommand.Quote(img.ResolvedReference)} {ShellCommand.Quote("/" + path)} --recursive{platform}"
             : $"dredge image cat {ShellCommand.Quote(img.ResolvedReference)} {ShellCommand.Quote("/" + path)}{platform}";

@@ -12,7 +12,7 @@ Console.OutputEncoding = Encoding.UTF8;
 
 DockerRegistryClientFactory clientFactory = new();
 RootCommand rootCmd = new(
-    "CLI for executing commands on a container registry's HTTP API.")
+    "CLI for inspecting container images and executing commands on a container registry's HTTP API.")
 {
     new ImageCommand(clientFactory),
     new ManifestCommand(clientFactory),
