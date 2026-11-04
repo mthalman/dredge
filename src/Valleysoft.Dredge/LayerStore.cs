@@ -62,6 +62,58 @@ internal sealed class LayerStore : IAsyncDisposable
         }
     }
 
+    private string LockPath(string key)
+    {
+        string name = key.StartsWith("staging:", StringComparison.Ordinal)
+            ? $"{key["staging:".Length..]}.lock"
+            : key == "maintenance" ? "maintenance.lock" : $"{Hash(Encoding.UTF8.GetBytes(key))[..2]}.lock";
+        return Path.Combine(locksPath, name);
+    }
+
+    private void ReleaseStagingLock(string path, FileStream stagingLock)
+    {
+        using FileStream gate = Lock("maintenance");
+        stagingLock.Dispose();
+        File.Delete(GetStagingLockPath(path));
+    }
+
+    private async Task ReleaseStagingLockAsync(string path, FileStream stagingLock)
+    {
+        using FileStream gate = await LockAsync("maintenance", CancellationToken.None);
+        stagingLock.Dispose();
+        File.Delete(GetStagingLockPath(path));
+    }
+
+    private FileStream Lock(string key)
+    {
+        string path = LockPath(key);
+        while (true)
+        {
+            if (File.Exists(path))
+            {
+                CacheFileSystem.ValidateNotLink(path);
+            }
+            try
+            {
+                FileStreamOptions options = new()
+                {
+                    Mode = FileMode.OpenOrCreate,
+                    Access = FileAccess.ReadWrite,
+                    Share = FileShare.None
+                };
+                if (!OperatingSystem.IsWindows())
+                {
+                    options.UnixCreateMode = UnixFileMode.UserRead | UnixFileMode.UserWrite;
+                }
+                return new FileStream(path, options);
+            }
+            catch (IOException exception) when (IsSharingViolation(exception))
+            {
+                Thread.Sleep(25);
+            }
+        }
+    }
+
     internal string GetBlobPath(string digest) => Path.Combine(dataPath, $"{GetKey(digest)}.blob");
 
     internal async Task<string> VerifyContentAsync(
@@ -503,7 +555,7 @@ internal sealed class LayerStore : IAsyncDisposable
                             }
                             else
                             {
-                                staged = CreateScratchFile();
+                                staged = await CreateScratchFileAsync(cancellationToken);
                                 await CopyBoundedAsync(content, staged, prefixLength, cancellationToken);
                                 staged.Position = 0;
                                 prefix = staged;
@@ -595,7 +647,7 @@ internal sealed class LayerStore : IAsyncDisposable
         IImageContentSource source, StoredLayerIndex index, IReadOnlyList<ScannedEntry> entries,
         CancellationToken cancellationToken)
     {
-        FileStream selected = CreateScratchFile();
+        FileStream selected = await CreateScratchFileAsync(cancellationToken);
         bool transferred = false;
         try
         {
@@ -953,6 +1005,7 @@ internal sealed class LayerStore : IAsyncDisposable
         LayerCacheEnvelope envelope = new(
             FormatVersion, digest, Hash(Encoding.UTF8.GetBytes(payload)), payload);
         string staging = Path.Combine(dataPath, $"{Guid.NewGuid():N}.tmp");
+        using FileStream stagingLock = await LockAsync(GetStagingLockKey(staging), cancellationToken);
         try
         {
             await using (FileStream output = CacheFileSystem.CreateFile(staging))
@@ -970,7 +1023,12 @@ internal sealed class LayerStore : IAsyncDisposable
         }
         finally
         {
-            File.Delete(staging);
+            using (await LockAsync("maintenance", CancellationToken.None))
+            {
+                File.Delete(staging);
+                stagingLock.Dispose();
+                File.Delete(GetStagingLockPath(staging));
+            }
         }
     }
 
@@ -1048,6 +1106,7 @@ internal sealed class LayerStore : IAsyncDisposable
         IProgress<long>? progress = null)
     {
         string staging = Path.Combine(dataPath, $"{Guid.NewGuid():N}.tmp");
+        using FileStream stagingLock = await LockAsync(GetStagingLockKey(staging), cancellationToken);
         try
         {
             await using FileStream output = CacheFileSystem.CreateFile(staging);
@@ -1092,13 +1151,19 @@ internal sealed class LayerStore : IAsyncDisposable
         }
         finally
         {
-            File.Delete(staging);
+            using (await LockAsync("maintenance", CancellationToken.None))
+            {
+                File.Delete(staging);
+                stagingLock.Dispose();
+                File.Delete(GetStagingLockPath(staging));
+            }
         }
     }
 
-    internal FileStream CreateScratchFile()
+    internal async Task<FileStream> CreateScratchFileAsync(CancellationToken cancellationToken)
     {
         string path = Path.Combine(dataPath, $"{Guid.NewGuid():N}.tmp");
+        FileStream stagingLock = await LockAsync(GetStagingLockKey(path), cancellationToken);
         FileStreamOptions options = new()
         {
             Mode = FileMode.CreateNew,
@@ -1110,7 +1175,15 @@ internal sealed class LayerStore : IAsyncDisposable
         {
             options.UnixCreateMode = UnixFileMode.UserRead | UnixFileMode.UserWrite;
         }
-        return new FileStream(path, options);
+        try
+        {
+            return new StagedFileStream(this, path, options, stagingLock);
+        }
+        catch
+        {
+            stagingLock.Dispose();
+            throw;
+        }
     }
 
     internal async Task<string> CreateScratchDirectoryAsync(CancellationToken cancellationToken)
@@ -1164,6 +1237,17 @@ internal sealed class LayerStore : IAsyncDisposable
             {
                 continue;
             }
+            using FileStream? stagingLock = file.Extension == ".tmp"
+                ? TryLock(GetStagingLockKey(file.FullName)) : null;
+            if (file.Extension == ".tmp" && stagingLock is null)
+            {
+                total -= file.Length;
+                if (clear)
+                {
+                    diagnostics.WriteLine($"Cache entry is in use and was not removed: '{file.FullName}'.");
+                }
+                continue;
+            }
             try
             {
                 using (new FileStream(file.FullName, FileMode.Open, FileAccess.Read, FileShare.None))
@@ -1193,6 +1277,11 @@ internal sealed class LayerStore : IAsyncDisposable
                     }
                 }
                 File.Delete(file.FullName);
+                if (stagingLock is not null)
+                {
+                    stagingLock.Dispose();
+                    File.Delete(GetStagingLockPath(file.FullName));
+                }
                 total -= file.Length;
                 removed += file.Length;
             }
@@ -1206,14 +1295,60 @@ internal sealed class LayerStore : IAsyncDisposable
                 }
             }
         }
+        foreach (FileInfo lockFile in new DirectoryInfo(locksPath).GetFiles("*.tmp.lock"))
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            string stagingName = lockFile.Name[..^".lock".Length];
+            if (File.Exists(Path.Combine(dataPath, stagingName)))
+            {
+                continue;
+            }
+            using FileStream? stagingLock = TryLock(GetStagingLockKey(stagingName));
+            if (stagingLock is not null)
+            {
+                stagingLock.Dispose();
+                File.Delete(lockFile.FullName);
+            }
+        }
         return removed;
+    }
+
+    private static string GetStagingLockKey(string path) => $"staging:{Path.GetFileName(path)}";
+
+    private string GetStagingLockPath(string path) =>
+        Path.Combine(locksPath, $"{Path.GetFileName(path)}.lock");
+
+    private FileStream? TryLock(string key)
+    {
+        string path = LockPath(key);
+        if (File.Exists(path))
+        {
+            CacheFileSystem.ValidateNotLink(path);
+        }
+        try
+        {
+            FileStreamOptions options = new()
+            {
+                Mode = FileMode.OpenOrCreate,
+                Access = FileAccess.ReadWrite,
+                Share = FileShare.None
+            };
+            if (!OperatingSystem.IsWindows())
+            {
+                options.UnixCreateMode = UnixFileMode.UserRead | UnixFileMode.UserWrite;
+            }
+            return new FileStream(path, options);
+        }
+        catch (IOException exception) when (IsSharingViolation(exception))
+        {
+            return null;
+        }
     }
 
     private async Task<FileStream> LockAsync(string key, CancellationToken cancellationToken)
     {
-        // A fixed stripe table bounds coordination files without unlinking live locks.
-        string name = key == "maintenance" ? "maintenance" : Hash(Encoding.UTF8.GetBytes(key))[..2];
-        string path = Path.Combine(locksPath, $"{name}.lock");
+        // Staging files use dedicated leases; other cache operations share a fixed stripe table.
+        string path = LockPath(key);
         while (true)
         {
             cancellationToken.ThrowIfCancellationRequested();
@@ -1267,6 +1402,58 @@ internal sealed class LayerStore : IAsyncDisposable
 
     private static FileStream OpenRead(string path) =>
         new(path, FileMode.Open, FileAccess.Read, FileShare.Read, 81920, FileOptions.Asynchronous);
+
+    private sealed class StagedFileStream : FileStream
+    {
+        private readonly LayerStore store;
+        private readonly string stagingPath;
+        private FileStream? stagingLock;
+
+        public StagedFileStream(
+            LayerStore store, string path, FileStreamOptions options, FileStream stagingLock)
+            : base(path, options)
+        {
+            this.store = store;
+            stagingPath = path;
+            this.stagingLock = stagingLock;
+        }
+
+        protected override void Dispose(bool disposing)
+        {
+            try
+            {
+                base.Dispose(disposing);
+            }
+            finally
+            {
+                if (disposing)
+                {
+                    FileStream? lease = Interlocked.Exchange(ref stagingLock, null);
+                    if (lease is not null)
+                    {
+                        store.ReleaseStagingLock(stagingPath, lease);
+                    }
+                }
+            }
+        }
+
+        public override async ValueTask DisposeAsync()
+        {
+            try
+            {
+                await base.DisposeAsync();
+            }
+            finally
+            {
+                FileStream? lease = Interlocked.Exchange(ref stagingLock, null);
+                if (lease is not null)
+                {
+                    await store.ReleaseStagingLockAsync(stagingPath, lease);
+                }
+                GC.SuppressFinalize(this);
+            }
+        }
+    }
 
     private static string Hash(byte[] data) => Convert.ToHexStringLower(SHA256.HashData(data));
 

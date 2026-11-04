@@ -38,7 +38,8 @@ internal static class ImageFileSystemExtractor
                     continue;
                 }
 
-                using FileStream? buffer = outputs.Count > 1 ? store.CreateScratchFile() : null;
+                using FileStream? buffer = outputs.Count > 1
+                    ? await store.CreateScratchFileAsync(cancellationToken) : null;
                 Stream first = buffer ?? outputs.Dequeue();
                 await reader.CopyToAsync(entry, first, cancellationToken);
                 if (buffer is not null)
