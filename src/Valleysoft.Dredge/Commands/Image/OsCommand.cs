@@ -84,12 +84,12 @@ public class OsCommand : RegistryCommandBase<OsOptions>
         LayerStore store,
         CancellationToken cancellationToken)
     {
-        foreach (string path in new[] { "etc/os-release", "usr/lib/os-release" })
+        string[] releasePaths = ["etc/os-release", "usr/lib/os-release"];
+        await using ImageFileSystem fileSystem = await ImageFileSystem.CreateAsync(
+            source, cancellationToken, store, contentCandidates: releasePaths);
+        foreach (string path in releasePaths)
         {
             cancellationToken.ThrowIfCancellationRequested();
-            await using ImageFileSystem fileSystem = await ImageFileSystem.CreateAsync(
-                source.Content, source.Name, source.Resolved, source.Configuration,
-                cancellationToken, store, contentPath: path, allowMissingContent: true);
             ImageFileSystemEntry entry;
             try
             {

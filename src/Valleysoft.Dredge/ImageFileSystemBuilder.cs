@@ -71,14 +71,25 @@ internal sealed class ImageFileSystemBuilder
         CancellationToken cancellationToken,
         IProgress<ImageIndexProgress>? progress = null,
         int? maxLayerIndex = null,
-        bool allowMissingContent = false)
+        IReadOnlyList<string>? contentCandidates = null)
     {
         string normalizedPath = semantics.NormalizeRequested(contentPath);
-        if (!semantics.IsWindows && normalizedPath.Length > 0)
+        if (!semantics.IsWindows && (normalizedPath.Length > 0 || contentCandidates is { Count: > 0 }))
         {
+            int nextReplaySize = 1;
             for (int firstLayer = manifest.Layers.Length - 1; firstLayer >= 0; firstLayer--)
             {
+                cancellationToken.ThrowIfCancellationRequested();
                 await GetIndexAsync(firstLayer, cancellationToken);
+                if (contentCandidates is not null)
+                {
+                    int suffixLength = manifest.Layers.Length - firstLayer;
+                    if (suffixLength < nextReplaySize && firstLayer > 0)
+                    {
+                        continue;
+                    }
+                    nextReplaySize = (int)Math.Min((long)suffixLength * 2, manifest.Layers.Length);
+                }
                 entries.Clear();
                 deletedEntries.Clear();
                 try
@@ -87,17 +98,17 @@ internal sealed class ImageFileSystemBuilder
                     {
                         ApplyLayer(indexes[i].Changes, new(i, indexes[i].Digest), cancellationToken);
                     }
-                    try
+                    if (contentCandidates is not null)
                     {
-                        if (!extracting || pathResolver.GetExtractionSource(normalizedPath, entries).Type == ImageFileType.File)
+                        if (ContentCandidatesResolved(contentCandidates, firstLayer == 0, cancellationToken))
                         {
-                            _ = pathResolver.ResolveContentEntry(normalizedPath, entries);
                             return firstLayer == 0;
                         }
                     }
-                    catch (FileNotFoundException) when (firstLayer == 0 && allowMissingContent)
+                    else if (!extracting || pathResolver.GetExtractionSource(normalizedPath, entries).Type == ImageFileType.File)
                     {
-                        return true;
+                        _ = pathResolver.ResolveContentEntry(normalizedPath, entries);
+                        return firstLayer == 0;
                     }
                 }
                 catch (Exception exception) when (firstLayer > 0 &&
@@ -121,6 +132,31 @@ internal sealed class ImageFileSystemBuilder
             progress?.Report(new ImageIndexProgress(i, manifest.Layers.Length, index.BlobLength, true));
         }
         return maxLayerIndex is null;
+    }
+
+    private bool ContentCandidatesResolved(
+        IReadOnlyList<string> candidates, bool complete, CancellationToken cancellationToken)
+    {
+        foreach (string candidate in candidates)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            try
+            {
+                if (pathResolver.ResolveContentEntry(candidate, entries).Size > 0)
+                {
+                    return true;
+                }
+            }
+            catch (FileNotFoundException)
+            {
+                if (!complete)
+                {
+                    return false;
+                }
+                continue;
+            }
+        }
+        return true;
     }
 
     public async Task<StoredLayerIndex> GetIndexAsync(int layerIndex, CancellationToken cancellationToken,

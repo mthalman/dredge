@@ -104,9 +104,11 @@ internal sealed class ImageFileSystem : IAsyncDisposable
         IProgress<ImageIndexProgress>? progress = null,
         bool requireLayerIndexes = false,
         IReadOnlyDictionary<int, StoredLayerIndex>? layerIndexes = null,
-        int? maxLayerIndex = null) =>
+        int? maxLayerIndex = null,
+        IReadOnlyList<string>? contentCandidates = null) =>
         CreateAsync(source.Content, source.Name, source.Resolved, source.Configuration,
-            cancellationToken, store, contentPath, extractionPath, progress, requireLayerIndexes, layerIndexes, maxLayerIndex);
+            cancellationToken, store, contentPath, extractionPath, progress, requireLayerIndexes, layerIndexes, maxLayerIndex,
+            contentCandidates);
 
     internal static async Task<ImageFileSystem> CreateAsync(
         IImageContentSource content,
@@ -121,7 +123,7 @@ internal sealed class ImageFileSystem : IAsyncDisposable
         bool requireLayerIndexes = false,
         IReadOnlyDictionary<int, StoredLayerIndex>? layerIndexes = null,
         int? maxLayerIndex = null,
-        bool allowMissingContent = false)
+        IReadOnlyList<string>? contentCandidates = null)
     {
         IImageManifest manifest = resolved.Manifest;
         if (maxLayerIndex is int selectedLayer &&
@@ -132,6 +134,10 @@ internal sealed class ImageFileSystem : IAsyncDisposable
         ImageFileSystemSemantics semantics = ImageFileSystemSemantics.ForOs(config.Os);
         if (contentPath is not null) _ = semantics.NormalizeRequested(contentPath);
         if (extractionPath is not null) _ = semantics.NormalizeRequested(extractionPath);
+        if (contentCandidates is not null)
+        {
+            foreach (string candidate in contentCandidates) _ = semantics.NormalizeRequested(candidate);
+        }
         foreach (IDescriptor layer in manifest.Layers.Take(
             maxLayerIndex is int lastLayer ? lastLayer + 1 : manifest.Layers.Length))
         {
@@ -171,7 +177,7 @@ internal sealed class ImageFileSystem : IAsyncDisposable
             }
             bool complete = await fileSystem.BuildIndexAsync(
                 contentPath ?? extractionPath, extractionPath is not null, cancellationToken, progress,
-                maxLayerIndex, allowMissingContent);
+                maxLayerIndex, contentCandidates);
             if (complete && maxLayerIndex is null)
             {
                 await fileSystem.store.WriteMetadataAsync(digest, semantics.ViewKind, fileSystem.Snapshot(), cancellationToken);
@@ -418,8 +424,8 @@ internal sealed class ImageFileSystem : IAsyncDisposable
 
     private async Task<bool> BuildIndexAsync(string? contentPath, bool extracting,
         CancellationToken cancellationToken, IProgress<ImageIndexProgress>? progress,
-        int? maxLayerIndex, bool allowMissingContent) =>
-        await builder.BuildAsync(contentPath, extracting, cancellationToken, progress, maxLayerIndex, allowMissingContent);
+        int? maxLayerIndex, IReadOnlyList<string>? contentCandidates) =>
+        await builder.BuildAsync(contentPath, extracting, cancellationToken, progress, maxLayerIndex, contentCandidates);
 
     private async Task<StoredLayerIndex> GetIndexAsync(int layerIndex, CancellationToken cancellationToken) =>
         await builder.GetIndexAsync(layerIndex, cancellationToken);

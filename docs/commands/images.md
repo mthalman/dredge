@@ -92,8 +92,9 @@ invalid links and content-read failures are reported as errors. If neither path
 provides nonempty file content, the command fails rather than reporting metadata
 from a deleted file.
 
-For registry images, release-file lookup works from the newest layer backward,
-avoiding lower-layer downloads when the selected content is fully resolved.
+For registry images, both release paths share a newest-first lookup. Dredge
+reuses indexes and expands the inspected layer suffix in batches to keep layer
+replay bounded; a newest-layer replacement can avoid lower-layer downloads.
 For Docker daemon images, all pinned layer diff IDs are verified before OS
 information is reported, and filesystem indexing reuses that verification.
 

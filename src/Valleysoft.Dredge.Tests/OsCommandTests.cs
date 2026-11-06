@@ -14,6 +14,103 @@ using Valleysoft.Dredge.Commands;
 public class OsCommandTests
 {
     [Theory]
+    [InlineData(false, 32)]
+    [InlineData(true, 32)]
+    [InlineData(false, 33)]
+    [InlineData(true, 100)]
+    public async Task ReleaseCandidateLookupBoundsLayerReplay(bool fallback, int layerCount)
+    {
+        int applications = 0;
+        DockerManifest manifest = new()
+        {
+            Layers = [.. Enumerable.Range(0, layerCount).Select(index =>
+                new ManifestLayer { Digest = $"sha256:{index:D64}", Size = 1 })]
+        };
+        Dictionary<int, StoredLayerIndex> indexes = [];
+        for (int index = 0; index < layerCount; index++)
+        {
+            string path = index == 0
+                ? fallback ? "usr/lib/os-release" : "etc/os-release"
+                : fallback && index == layerCount - 1 ? "etc/os-release" : $"app/file{index}";
+            ScannedEntry entry = new(path, ImageFileType.File, 0, 0, 0,
+                fallback && index == layerCount - 1 ? 0 : 1, DateTime.UnixEpoch, null, 0, 0, 0, null);
+            indexes.Add(index, new(manifest.Layers[index].Digest!, 1, new([], [], []), "tar")
+            {
+                Changes = new(new CountingEntries([entry], () => applications++), [], [])
+            });
+        }
+        await using LayerCacheTestContext cache = new();
+        Dictionary<string, ImageFileSystemEntry> entries = new(StringComparer.Ordinal);
+        ImageFileSystemBuilder builder = new(
+            new RegistryImageContentSource(Mock.Of<IDockerRegistryClient>(), WindowsImageTestData.Name),
+            WindowsImageTestData.Name, manifest, cache.Store, indexes, entries, new(StringComparer.Ordinal));
+
+        await builder.BuildAsync(null, false, TestContext.Current.CancellationToken,
+            contentCandidates: ["etc/os-release", "usr/lib/os-release"]);
+
+        string selectedPath = fallback ? "usr/lib/os-release" : "etc/os-release";
+        Assert.Equal(1, new ImagePathResolver(entries).ResolveContentEntry(selectedPath, entries).Size);
+        Assert.InRange(applications, layerCount, layerCount * 3);
+        if (layerCount == 32)
+        {
+            Assert.Equal(63, applications);
+        }
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task LinuxOsPreservesReleasePreferenceAcrossSuffixes(bool emptyPreferred)
+    {
+        await using LayerCacheTestContext cache = new();
+        byte[] lower = WindowsImageTestData.Layer(
+            WindowsImageTestData.File("etc/os-release", "NAME=PreferredLinux\n"));
+        List<byte[]> layers = [lower];
+        for (int index = 0; index < 6; index++)
+        {
+            layers.Add(WindowsImageTestData.Layer(WindowsImageTestData.File($"app/file{index}", "unrelated")));
+        }
+        List<TarEntry> upperEntries = [WindowsImageTestData.File("usr/lib/os-release", "NAME=FallbackLinux\n")];
+        if (emptyPreferred)
+        {
+            upperEntries.Add(WindowsImageTestData.File("etc/os-release", ""));
+        }
+        layers.Add(WindowsImageTestData.Layer([.. upperEntries]));
+        Mock<IDockerRegistryClient> client = WindowsImageTestData.Client("linux", "", [.. layers]);
+        Mock<IDockerRegistryClientFactory> factory = new();
+        factory.Setup(item => item.GetClientAsync(WindowsImageTestData.Name.Registry, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(client.Object);
+        using StringWriter output = new();
+        using StringWriter errors = new();
+        CapturedOsCommand command = new(factory.Object, output, errors, cache.Paths);
+        ((IProcessTerminationAware)command).ProcessTerminator = new TestProcessTerminator();
+
+        Assert.Equal(0, await command.Parse([WindowsImageTestData.Name.ToString()])
+            .InvokeAsync(new InvocationConfiguration(), TestContext.Current.CancellationToken));
+
+        using JsonDocument document = JsonDocument.Parse(output.ToString());
+        Assert.Equal(emptyPreferred ? "FallbackLinux" : "PreferredLinux", document.RootElement.GetProperty("NAME").GetString());
+        if (emptyPreferred)
+        {
+            client.Verify(item => item.Blobs.GetRangeAsync(WindowsImageTestData.Name.Repo,
+                LayerCacheTestContext.Digest(lower), It.IsAny<long>(), It.IsAny<long?>(),
+                It.IsAny<CancellationToken>()), Times.Never);
+        }
+    }
+
+    private sealed class CountingEntries(IReadOnlyList<ScannedEntry> entries, Action enumerated) : IReadOnlyList<ScannedEntry>
+    {
+        public int Count => entries.Count;
+        public ScannedEntry this[int index] => entries[index];
+        public IEnumerator<ScannedEntry> GetEnumerator()
+        {
+            enumerated();
+            return entries.GetEnumerator();
+        }
+        System.Collections.IEnumerator System.Collections.IEnumerable.GetEnumerator() => GetEnumerator();
+    }
+
+    [Theory]
     [InlineData(false)]
     [InlineData(true)]
     public async Task LinuxOsDoesNotDownloadShadowedLowerLayers(bool linked)
