@@ -263,13 +263,19 @@ internal sealed class ImageFileSystemBuilder
             ImageFileSystemEntry current = scanned.ToEntry(introduced, modified, layer);
             if (current.Type == ImageFileType.HardLink)
             {
-                string? targetPath = deferUnresolvedHardLinks
-                    ? pathResolver.TryGetHardLinkTargetPath(current, entries)
-                    : pathResolver.GetHardLinkTargetPath(current, entries);
+                string? targetPath;
+                try
+                {
+                    targetPath = pathResolver.GetHardLinkTargetPath(current, entries);
+                }
+                catch (FileNotFoundException) when (deferUnresolvedHardLinks)
+                {
+                    targetPath = null;
+                }
                 ImageFileSystemEntry? foundTarget = targetPath is null ? null : entries.GetValueOrDefault(targetPath);
                 if (deferUnresolvedHardLinks && foundTarget is null)
                 {
-                    RemovePath(current.Path, includePath: true, layer);
+                    RemoveEntry(current.Path, layer);
                     continue;
                 }
                 string resolvedTargetPath = targetPath ??

@@ -14,6 +14,118 @@ using Valleysoft.Dredge.Commands;
 public class OsCommandTests
 {
     [Theory]
+    [InlineData("file-parent", "non-directory parent")]
+    [InlineData("invalid-target", "invalid target")]
+    [InlineData("parent-cycle", "exceeded")]
+    public async Task LinuxOsDoesNotIgnoreInvalidUnrelatedHardLinks(string invalidTarget, string error)
+    {
+        await using LayerCacheTestContext cache = new();
+        byte[] lower = WindowsImageTestData.Layer(WindowsImageTestData.File("base", "unrelated"));
+        List<TarEntry> upperEntries = [WindowsImageTestData.File("etc/os-release", "NAME=ReportedLinux\n")];
+        if (invalidTarget == "file-parent")
+        {
+            upperEntries.Add(WindowsImageTestData.File("payload", "not a directory"));
+        }
+        else if (invalidTarget == "parent-cycle")
+        {
+            upperEntries.Add(new PaxTarEntry(TarEntryType.SymbolicLink, "payload") { LinkName = "payload" });
+        }
+        upperEntries.Add(new PaxTarEntry(TarEntryType.HardLink, "app/alias")
+            { LinkName = invalidTarget == "invalid-target" ? "bad\\name" : "payload/file" });
+        byte[] upper = WindowsImageTestData.Layer([.. upperEntries]);
+        Mock<IDockerRegistryClient> client = WindowsImageTestData.Client("linux", "", lower, upper);
+        Mock<IDockerRegistryClientFactory> factory = new();
+        factory.Setup(item => item.GetClientAsync(WindowsImageTestData.Name.Registry, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(client.Object);
+        using StringWriter output = new();
+        using StringWriter errors = new();
+        CapturedOsCommand command = new(factory.Object, output, errors, cache.Paths);
+        ((IProcessTerminationAware)command).ProcessTerminator = new TestProcessTerminator();
+
+        int exitCode = await command.Parse([WindowsImageTestData.Name.ToString()])
+            .InvokeAsync(new InvocationConfiguration(), TestContext.Current.CancellationToken);
+
+        Assert.Equal(1, exitCode);
+        Assert.Equal("", output.ToString());
+        Assert.Contains(error, errors.ToString(), StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Theory]
+    [InlineData(ImageFileType.File)]
+    [InlineData(ImageFileType.Directory)]
+    public async Task DeferredHardLinkRemovesReplacedEntries(ImageFileType previousType)
+    {
+        await using LayerCacheTestContext cache = new();
+        Dictionary<string, ImageFileSystemEntry> entries = new(StringComparer.Ordinal)
+        {
+            ["release"] = new()
+            {
+                Path = "release",
+                Type = previousType,
+                Size = previousType == ImageFileType.File ? 1 : 0,
+                IntroducedLayer = new(0, "base")
+            }
+        };
+        if (previousType == ImageFileType.Directory)
+        {
+            entries.Add("release/obsolete", new()
+            {
+                Path = "release/obsolete",
+                Type = ImageFileType.File,
+                IntroducedLayer = new(0, "base")
+            });
+        }
+        Dictionary<string, ImageFileSystemEntry> deletedEntries = new(StringComparer.Ordinal);
+        ImageFileSystemBuilder builder = new(
+            new RegistryImageContentSource(Mock.Of<IDockerRegistryClient>(), WindowsImageTestData.Name),
+            WindowsImageTestData.Name, new DockerManifest(), cache.Store, [], entries, deletedEntries);
+
+        builder.ApplyLayer(new([new("release", ImageFileType.HardLink, 0, 0, 0, 0,
+            DateTime.UnixEpoch, "original", 0, 0, 0, null)], [], []), new(1, "layer"),
+            TestContext.Current.CancellationToken, deferUnresolvedHardLinks: true);
+
+        Assert.Empty(entries);
+        Assert.Equal(previousType, deletedEntries["release"].Type);
+        if (previousType == ImageFileType.Directory)
+        {
+            Assert.Contains("release/obsolete", deletedEntries.Keys);
+        }
+    }
+
+    [Fact]
+    public async Task DeferringMissingHardLinksDoesNotScanEveryExistingEntry()
+    {
+        const int count = 50_000;
+        await using LayerCacheTestContext cache = new();
+        Dictionary<string, ImageFileSystemEntry> entries = new(StringComparer.Ordinal);
+        for (int index = 0; index < count; index++)
+        {
+            string path = $"file{index}";
+            entries.Add(path, new ImageFileSystemEntry
+            {
+                Path = path,
+                Type = ImageFileType.File,
+                IntroducedLayer = new(0, "base")
+            });
+        }
+        LayerChanges changes = new([.. Enumerable.Range(0, count).Select(index =>
+            new ScannedEntry($"alias{index}", ImageFileType.HardLink, 0, 0, 0, 0,
+                DateTime.UnixEpoch, "original", 0, 0, 0, null))], [], []);
+        ImageFileSystemBuilder builder = new(
+            new RegistryImageContentSource(Mock.Of<IDockerRegistryClient>(), WindowsImageTestData.Name),
+            WindowsImageTestData.Name, new DockerManifest(), cache.Store, [], entries, new(StringComparer.Ordinal));
+
+        System.Diagnostics.Stopwatch elapsed = System.Diagnostics.Stopwatch.StartNew();
+        builder.ApplyLayer(changes, new(1, "layer"), TestContext.Current.CancellationToken,
+            deferUnresolvedHardLinks: true);
+        elapsed.Stop();
+
+        Assert.Equal(count, entries.Count);
+        Assert.True(elapsed.Elapsed < TimeSpan.FromSeconds(5),
+            $"Deferring {count} hardlinks among {count} existing files took {elapsed.Elapsed}.");
+    }
+
+    [Theory]
     [InlineData("available")]
     [InlineData("unavailable")]
     [InlineData("missing")]

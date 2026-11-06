@@ -99,7 +99,10 @@ If a lower-layer index cannot be acquired between batches, Dredge checks the
 already indexed suffix before failing. It reports OS information only when that
 suffix fully resolves the preferred nonempty release content; required-layer
 and selected-content read failures remain errors.
-Partial lookup defers hardlinks whose targets are supplied by older layers.
+Partial lookup defers hardlinks whose targets or target parents are missing from
+the indexed suffix, without scanning all existing entries for each deferred link.
+Invalid target paths, non-directory target parents, and target-parent link cycles
+remain errors.
 An unresolved replacement never exposes the previous file, and a hardlink needed
 to resolve release content still requires its target. Complete filesystem builds
 retain strict hardlink validation.
