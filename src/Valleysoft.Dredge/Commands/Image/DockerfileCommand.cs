@@ -341,6 +341,12 @@ public partial class DockerfileCommand : RegistryCommandBase<DockerfileOptions>
 
     private static string FormatRunInstruction(string line)
     {
+        Match powerShellCommand = QuotedPowerShellCommandRegex().Match(line);
+        if (powerShellCommand.Success)
+        {
+            return FormatPowerShellCommand(line, powerShellCommand);
+        }
+
         // These constructs need shell-specific interpretation beyond balanced delimiters.
         if (line.Contains("$'", StringComparison.Ordinal) ||
             line.Contains("$\"", StringComparison.Ordinal) ||
@@ -390,6 +396,67 @@ public partial class DockerfileCommand : RegistryCommandBase<DockerfileOptions>
         }
         formattedLine.Append(FormatUnquotedRunSegment(line[segmentStart..]));
         return formattedLine.ToString();
+    }
+
+    private static string FormatPowerShellCommand(string line, Match command)
+    {
+        if (line.IndexOfAny(['\u2018', '\u2019', '\u201c', '\u201d']) >= 0)
+        {
+            return line;
+        }
+
+        Group script = command.Groups["script"];
+        StringBuilder formatted = new(line[..script.Index]);
+        bool inString = false;
+        for (int i = script.Index; i < script.Index + script.Length; i++)
+        {
+            char character = line[i];
+            if (character == '\'')
+            {
+                if (inString && i + 1 < script.Index + script.Length && line[i + 1] == '\'')
+                {
+                    formatted.Append("''");
+                    i++;
+                    continue;
+                }
+                inString = !inString;
+            }
+            if (inString)
+            {
+                formatted.Append(character);
+                continue;
+            }
+            if (character is '`' or '#' ||
+                line.AsSpan(i).StartsWith("${", StringComparison.Ordinal) ||
+                line.AsSpan(i).StartsWith("@'", StringComparison.Ordinal) ||
+                line.AsSpan(i).StartsWith("--%", StringComparison.Ordinal))
+            {
+                return line;
+            }
+
+            if (character is ' ' or '\t')
+            {
+                int start = i;
+                while (i + 1 < script.Index + script.Length && line[i + 1] is ' ' or '\t')
+                {
+                    i++;
+                }
+                if (i > start && start > script.Index && line[start - 1] is ';' or '{')
+                {
+                    formatted.Append($" \\{Environment.NewLine}    ");
+                }
+                else
+                {
+                    formatted.Append(' ');
+                }
+            }
+            else
+            {
+                formatted.Append(character);
+            }
+        }
+
+        return inString ? line : formatted.Append(line[(script.Index + script.Length)..]).ToString();
     }
 
     private static bool TryFindProtectedRunTextEnd(string line, int start, out int end)
@@ -625,4 +692,7 @@ public partial class DockerfileCommand : RegistryCommandBase<DockerfileOptions>
 
     [GeneratedRegex(@"\A[ \t]*(?:ADD|ARG|CMD(?![ \t]+/[A-Za-z](?::[^ \t\r\n]+)?(?:[ \t]|$))|COPY|ENTRYPOINT|ENV|EXPOSE|FROM|HEALTHCHECK|LABEL|MAINTAINER|ONBUILD|RUN|SHELL|STOPSIGNAL|USER|VOLUME|WORKDIR)[ \t]", RegexOptions.IgnoreCase | RegexOptions.CultureInvariant)]
     private static partial Regex DockerfileInstructionPrefixRegex();
+
+    [GeneratedRegex("\\A(?:powershell|pwsh)(?:\\.exe)?[ \\t]+(?:(?:-NoLogo|-NoProfile|-NonInteractive)[ \\t]+)*-Command[ \\t]+\"(?<script>[^\"\\r\\n]*)\"[ \\t]*\\z", RegexOptions.IgnoreCase | RegexOptions.CultureInvariant)]
+    private static partial Regex QuotedPowerShellCommandRegex();
 }

@@ -50,7 +50,12 @@ public class DockerfileCommandTests
             "printf '%s' $'A\\' &&  B'",
             "printf '%s' ${VALUE:-'A &&  B'}",
             "echo done # literal &&  comment",
-            "echo A^ &&  echo B"
+            "echo A^ &&  echo B",
+            "powershell -Command \"Write-Output 'A &&  B';  # comment\"",
+            "powershell -Command \"Write-Output ${A;  B};  Write-Output done\"",
+            "powershell -Command \"Write-Output `A;  Write-Output done\"",
+            "powershell -Command \"cmd --% echo A;  B\"",
+            "powershell -Command \"Write-Output \u2018A;  B\u2019;  Write-Output done\""
         ];
         foreach (string command in commands)
         {
@@ -108,6 +113,30 @@ public class DockerfileCommandTests
             : $"echo A && \\{Environment.NewLine}    {secondCommand}";
         Assert.Equal(
             $"FROM scratch{Environment.NewLine}ENV X=1{Environment.NewLine}RUN {expectedRun}{Environment.NewLine}",
+            actual);
+    }
+
+    [Theory]
+    [InlineData(false, false, "powershell -Command")]
+    [InlineData(false, true, "powershell -Command")]
+    [InlineData(true, false, "powershell -Command")]
+    [InlineData(true, true, "powershell -Command")]
+    [InlineData(false, false, "pwsh -NoLogo -NoProfile -Command")]
+    [InlineData(true, true, "pwsh -NoLogo -NoProfile -Command")]
+    [InlineData(false, true, "PowerShell.exe -NonInteractive -command")]
+    [InlineData(true, false, "PowerShell.exe -NonInteractive -command")]
+    public async Task QuotedPowerShellScriptStillFormats(bool noFormat, bool noColor, string prefix)
+    {
+        const string script = "Write-Output 'A &&  B;  C {  D';  Write-Output 'it''s;  unchanged'";
+        string actual = await RenderHistoryAsync(
+            ["cmd /S /C #(nop) ENV X=1", $"cmd /S /C {prefix} \"{script}\""],
+            noFormat, noColor);
+
+        string expectedScript = noFormat
+            ? script
+            : $"Write-Output 'A &&  B;  C {{  D'; \\{Environment.NewLine}    Write-Output 'it''s;  unchanged'";
+        Assert.Equal(
+            $"FROM scratch{Environment.NewLine}ENV X=1{Environment.NewLine}RUN {prefix} \"{expectedScript}\"{Environment.NewLine}",
             actual);
     }
 

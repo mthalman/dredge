@@ -598,8 +598,12 @@ dredge image dockerfile <image> [--no-format] [--no-color] [--os <os>] [--arch <
 | `--no-format` | Disable heuristic line-break formatting |
 | `--no-color` | Disable syntax coloring |
 
-Formatting preserves quoted text, escaped characters, and shell comments.
+Formatting normally preserves quoted text, escaped characters, and shell comments.
 Balanced command substitutions and parameter expansions remain verbatim while
 the surrounding commands can be formatted across multiple lines. Histories with
 ambiguous syntax, such as here-documents, are left unformatted rather than risking
 a change to command semantics.
+
+Quoted PowerShell `-Command` scripts can also be formatted across multiple lines.
+Their single-quoted strings (including doubled apostrophes) remain verbatim.
+Scripts with nested double quotes, comments, or escape syntax are left unformatted.
