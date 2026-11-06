@@ -304,7 +304,7 @@ internal sealed class ImageFileSystemBuilder
         {
             RemoveOwnerStreams(path, layer);
         }
-        string prefix = $"{path}/";
+        string prefix = path.Length == 0 ? string.Empty : $"{path}/";
         string[] affected;
         if (paths is not null)
         {

@@ -2,6 +2,39 @@ namespace Valleysoft.Dredge.Tests;
 
 public class ImageAnalysisTests
 {
+    [Fact]
+    public void RootOpaqueWhiteoutChargesHiddenContentAndRetainsCurrentLayer()
+    {
+        ImageAnalysisResult result = ImageAnalysis.Analyze(
+        [
+            Layer([File("old", 3, "old"), File("nested/old", 4, "nested")]),
+            Layer([File("new", 5, "new")], opaque: [""])
+        ]);
+
+        Assert.Equal(12, result.FileBytes);
+        Assert.Equal(7, result.HiddenBytes);
+        Assert.Equal("new", Assert.Single(result.LiveContents).Key);
+    }
+
+    [Fact]
+    public void HardLinkParentSegmentsFollowIntermediateSymlinks()
+    {
+        ImageAnalysisResult result = ImageAnalysis.Analyze(
+        [
+            Layer(
+            [
+                File("a/target", 5, "lexical"),
+                File("b/target", 7, "resolved"),
+                File("b/c", 0, "") with { Type = ImageFileType.Directory },
+                File("a/jump", 0, "") with { Type = ImageFileType.SymbolicLink, LinkTarget = "../b/c" },
+                File("alias", 0, "") with { Type = ImageFileType.HardLink, LinkTarget = "a/jump/../target" }
+            ])
+        ]);
+
+        Assert.Equal("resolved", result.LiveContents["alias"].ContentHash);
+        Assert.Equal(7, result.LiveContents["alias"].Size);
+    }
+
     [Theory]
     [InlineData(false, false)]
     [InlineData(false, true)]

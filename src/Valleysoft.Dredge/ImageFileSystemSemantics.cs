@@ -42,6 +42,10 @@ internal sealed class ImageFileSystemSemantics
 
     public string[] Descendants(SortedSet<string> paths, string path)
     {
+        if (path.Length == 0)
+        {
+            return [.. paths];
+        }
         string prefix = path + "/";
         // Bounding the separator includes suffixes beginning with U+FFFF.
         return [.. paths.GetViewBetween(prefix, path + "0").Where(candidate => StartsWith(candidate, prefix))];

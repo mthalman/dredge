@@ -1509,9 +1509,16 @@ internal sealed class LayerStore : IAsyncDisposable
         try
         {
             foreach (string path in index.Changes.Entries.Select(static entry => entry.Path)
-                .Concat(index.Changes.Whiteouts).Concat(index.Changes.OpaqueDirectories))
+                .Concat(index.Changes.Whiteouts))
             {
                 if (string.IsNullOrEmpty(path) || ImagePath.NormalizeArchive(path) != path)
+                {
+                    return false;
+                }
+            }
+            foreach (string path in index.Changes.OpaqueDirectories)
+            {
+                if (path is null || (path.Length > 0 && ImagePath.NormalizeArchive(path) != path))
                 {
                     return false;
                 }

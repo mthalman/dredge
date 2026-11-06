@@ -369,11 +369,25 @@ internal static class ImageAnalysis
             throw new InvalidDataException($"Hard link '/{entry.Path}' has no target."), entry.Path);
         for (int hop = 0; hop < 40; hop++)
         {
-            string[] parts = path.Split('/');
+            string[] parts = path.Split('/', StringSplitOptions.RemoveEmptyEntries);
+            List<string> resolved = [];
             bool followed = false;
             for (int i = 0; i < parts.Length - 1; i++)
             {
-                string parent = string.Join('/', parts.Take(i + 1));
+                if (!semantics.IsWindows && parts[i] == ".")
+                {
+                    continue;
+                }
+                if (!semantics.IsWindows && parts[i] == "..")
+                {
+                    if (resolved.Count > 0)
+                    {
+                        resolved.RemoveAt(resolved.Count - 1);
+                    }
+                    continue;
+                }
+                resolved.Add(parts[i]);
+                string parent = string.Join('/', resolved);
                 if (live.TryGetValue(parent, out LiveEntry? link) && link.Entry.Type == ImageFileType.SymbolicLink)
                 {
                     string target = link.Entry.LinkTarget ??
@@ -387,6 +401,8 @@ internal static class ImageAnalysis
             }
             if (!followed)
             {
+                path = parts.Length == 0 ? string.Empty :
+                    ImagePath.Join(string.Join('/', resolved), parts[^1]);
                 live.TryGetValue(path, out LiveEntry? target);
                 ImageFileSystemSemantics.ValidateHardLinkTarget(entry.Path, path, target?.Entry.Type);
                 return target!;

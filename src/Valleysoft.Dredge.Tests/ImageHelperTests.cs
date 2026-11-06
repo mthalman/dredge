@@ -12,6 +12,428 @@ public class ImageHelperTests : IAsyncDisposable
     private readonly LayerCacheTestContext cache = new();
     public ValueTask DisposeAsync() => cache.DisposeAsync();
 
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task SaveLayers_PreservesDirectoryLinksAndCycles(bool noSquash)
+    {
+        byte[] layer = CreateArchive(
+            new(TarEntryType.SymbolicLink, "bin") { LinkName = "usr/bin" },
+            new(TarEntryType.SymbolicLink, "tool-link") { LinkName = "bin/tool" },
+            new(TarEntryType.SymbolicLink, "cycle-a") { LinkName = "cycle-b" },
+            new(TarEntryType.SymbolicLink, "cycle-b") { LinkName = "cycle-a" },
+            FileEntry("usr/bin/tool", "tool"));
+        string output = await SaveLayersAsync([layer], noSquash);
+        string extracted = noSquash ? LayerOutput(output, 0, layer) : output;
+
+        Assert.Equal("usr/bin", new DirectoryInfo(Path.Combine(extracted, "bin")).LinkTarget?.Replace('\\', '/'));
+        Assert.Equal("tool", File.ReadAllText(Path.Combine(extracted, "bin", "tool")));
+        Assert.Equal("tool", File.ReadAllText(Path.Combine(extracted, "tool-link")));
+        Assert.Equal("cycle-b", new FileInfo(Path.Combine(extracted, "cycle-a")).LinkTarget);
+        Assert.Equal("cycle-a", new FileInfo(Path.Combine(extracted, "cycle-b")).LinkTarget);
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task SaveLayers_PreservesParentSegmentsInSymbolicTargets(bool noSquash)
+    {
+        if (OperatingSystem.IsWindows())
+        {
+            return;
+        }
+        byte[] layer = CreateArchive(
+            FileEntry("a/target", "lexical"),
+            FileEntry("b/target", "resolved"),
+            new(TarEntryType.Directory, "b/c"),
+            new(TarEntryType.SymbolicLink, "a/jump") { LinkName = "../b/c" },
+            new(TarEntryType.SymbolicLink, "link") { LinkName = "a/jump/../target" });
+
+        string output = await SaveLayersAsync([layer], noSquash);
+        string extracted = noSquash ? LayerOutput(output, 0, layer) : output;
+
+        Assert.Equal("a/jump/../target", new FileInfo(Path.Combine(extracted, "link")).LinkTarget);
+        Assert.Equal("resolved", File.ReadAllText(Path.Combine(extracted, "link")));
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task SaveLayers_RootClampingThroughLinksCannotEscapeTheExport(bool noSquash)
+    {
+        byte[] layer = CreateArchive(
+            FileEntry("outside", "inside image"),
+            new(TarEntryType.SymbolicLink, "root") { LinkName = "." },
+            new(TarEntryType.SymbolicLink, "link") { LinkName = "root/../outside" });
+        string parent = noSquash ? Path.Combine(cache.Root, "export") : cache.Root;
+        Directory.CreateDirectory(parent);
+        string sentinel = Path.Combine(parent, "outside");
+        File.WriteAllText(sentinel, "outside image");
+
+        string output = await SaveLayersAsync([layer], noSquash);
+        string extracted = noSquash ? LayerOutput(output, 0, layer) : output;
+
+        Assert.Equal("inside image", File.ReadAllText(Path.Combine(extracted, "link")));
+        Assert.Equal("outside", new FileInfo(Path.Combine(extracted, "link")).LinkTarget);
+        Assert.Equal("outside image", File.ReadAllText(sentinel));
+    }
+
+    [Fact]
+    public async Task SaveLayers_RebasesLinksOnlyAfterTheirFinalTargetsAreMerged()
+    {
+        if (OperatingSystem.IsWindows())
+        {
+            return;
+        }
+        byte[] lower = CreateArchive(
+            FileEntry("outside", "lower"),
+            new(TarEntryType.SymbolicLink, "root") { LinkName = "." },
+            new(TarEntryType.SymbolicLink, "link") { LinkName = "root/../outside" });
+        byte[] upper = CreateArchive(
+            new(TarEntryType.Directory, "nested/a"),
+            FileEntry("nested/outside", "final"),
+            new(TarEntryType.SymbolicLink, "root") { LinkName = "nested/a" });
+
+        string output = await SaveLayersAsync([lower, upper]);
+
+        Assert.Equal("root/../outside", new FileInfo(Path.Combine(output, "link")).LinkTarget);
+        Assert.Equal("final", File.ReadAllText(Path.Combine(output, "link")));
+    }
+
+    [Fact]
+    public async Task SaveLayers_DoesNotFollowPreExistingAbsoluteHostLinks()
+    {
+        string output = Path.Combine(cache.Root, "export");
+        Directory.CreateDirectory(output);
+        string sentinel = Path.Combine(cache.Root, "outside");
+        File.WriteAllText(sentinel, "outside image");
+        File.CreateSymbolicLink(Path.Combine(output, "host"), sentinel);
+        byte[] layer = CreateArchive(new PaxTarEntry(TarEntryType.SymbolicLink, "alias") { LinkName = "host" });
+
+        await Assert.ThrowsAsync<InvalidDataException>(() => SaveLayersAsync([layer]));
+
+        Assert.Equal("outside image", File.ReadAllText(sentinel));
+        Assert.False(ImageFileSystemExtractor.PathExists(Path.Combine(output, "alias")));
+        Assert.Equal(sentinel, new FileInfo(Path.Combine(output, "host")).LinkTarget);
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task SaveLayers_DoesNotPartiallyRebaseRootClampedLongLinkChains(bool noSquash)
+    {
+        PaxTarEntry[] links = [.. Enumerable.Range(0, ImagePathResolver.MaximumLinkHops)
+            .Select(index => new PaxTarEntry(TarEntryType.SymbolicLink, $"hop{index}")
+            {
+                LinkName = index == ImagePathResolver.MaximumLinkHops - 1 ? "." : $"hop{index + 1}"
+            })];
+        byte[] layer = CreateArchive([
+            new(TarEntryType.SymbolicLink, "root") { LinkName = "." },
+            .. links,
+            new(TarEntryType.SymbolicLink, "link") { LinkName = "root/../hop0/../outside" }]);
+        string output = Path.Combine(cache.Root, "export");
+        string extracted = noSquash ? LayerOutput(output, 0, layer) : output;
+        string parent = noSquash ? output : cache.Root;
+        Directory.CreateDirectory(parent);
+        string sentinel = Path.Combine(parent, "outside");
+        File.WriteAllText(sentinel, "outside image");
+
+        await Assert.ThrowsAsync<InvalidDataException>(() => SaveLayersAsync([layer], noSquash));
+
+        Assert.False(ImageFileSystemExtractor.PathExists(Path.Combine(extracted, "link")));
+        Assert.Equal("outside image", File.ReadAllText(sentinel));
+    }
+
+    [Fact]
+    public async Task SaveLayers_HardLinkCapturesLowerContentBeforeALaterWhiteout()
+    {
+        byte[] lower = CreateArchive(FileEntry("original", "lower"));
+        byte[] middle = CreateArchive(new PaxTarEntry(TarEntryType.HardLink, "alias") { LinkName = "original" });
+        byte[] upper = CreateArchive(FileEntry(".wh.original", ""));
+
+        string output = await SaveLayersAsync([lower, middle, upper]);
+
+        Assert.Equal("lower", File.ReadAllText(Path.Combine(output, "alias")));
+        Assert.False(File.Exists(Path.Combine(output, "original")));
+    }
+
+    [Fact]
+    public async Task SaveLayers_UpperHardLinkChainsDoNotCaptureAnOverriddenLowerTarget()
+    {
+        byte[] lower = CreateArchive(FileEntry("target", "old"), FileEntry("replacement", "new"));
+        byte[] upper = CreateArchive(
+            new(TarEntryType.HardLink, "target") { LinkName = "replacement" },
+            new(TarEntryType.HardLink, "alias") { LinkName = "target" });
+
+        string output = await SaveLayersAsync([lower, upper]);
+
+        Assert.Equal("new", File.ReadAllText(Path.Combine(output, "alias")));
+    }
+
+    [Theory]
+    [InlineData(".wh.original")]
+    [InlineData(".wh..wh..opq")]
+    public async Task SaveLayers_HardLinksCannotReadHiddenLowerTargets(string marker)
+    {
+        byte[] lower = CreateArchive(FileEntry("original", "lower"));
+        byte[] upper = CreateArchive(
+            FileEntry(marker, ""), new(TarEntryType.HardLink, "alias") { LinkName = "original" });
+
+        await Assert.ThrowsAsync<InvalidDataException>(() => SaveLayersAsync([lower, upper]));
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task SaveLayers_RootOpaqueWhiteoutRetainsCurrentLayerSiblings(bool markerFirst)
+    {
+        byte[] lower = CreateArchive(FileEntry("old", "old"), FileEntry("nested/old", "old"));
+        PaxTarEntry marker = FileEntry(".wh..wh..opq", "");
+        PaxTarEntry sibling = FileEntry("new", "new");
+        byte[] upper = CreateArchive(markerFirst ? [marker, sibling] : [sibling, marker]);
+
+        string output = await SaveLayersAsync([lower, upper]);
+
+        Assert.Equal(["new"], Directory.EnumerateFileSystemEntries(output).Select(Path.GetFileName));
+        Assert.Equal("new", File.ReadAllText(Path.Combine(output, "new")));
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task SaveLayers_ReplacesInterLayerFileAndDirectoryWithoutForce(bool directoryFirst)
+    {
+        byte[] directory = CreateArchive(
+            new(TarEntryType.Directory, "thing/"), FileEntry("thing/child", "child"));
+        byte[] file = CreateArchive(FileEntry("thing", "file"));
+
+        string output = await SaveLayersAsync(directoryFirst ? [directory, file] : [file, directory]);
+
+        if (directoryFirst)
+        {
+            Assert.Equal("file", File.ReadAllText(Path.Combine(output, "thing")));
+            Assert.False(Directory.Exists(Path.Combine(output, "thing")));
+        }
+        else
+        {
+            Assert.Equal("child", File.ReadAllText(Path.Combine(output, "thing", "child")));
+        }
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task SaveLayers_PreservesEmptyAndOpaqueDirectories(bool noSquash)
+    {
+        byte[] lower = CreateArchive(FileEntry("opaque/old", "old"));
+        byte[] upper = CreateArchive(
+            new(TarEntryType.Directory, "state/"),
+            new(TarEntryType.Directory, "opaque/"),
+            FileEntry("opaque/.wh..wh..opq", ""));
+
+        string output = await SaveLayersAsync([lower, upper], noSquash);
+        string extracted = noSquash ? LayerOutput(output, 1, upper) : output;
+
+        Assert.True(Directory.Exists(Path.Combine(extracted, "state")));
+        Assert.Empty(Directory.EnumerateFileSystemEntries(Path.Combine(extracted, "state")));
+        Assert.True(Directory.Exists(Path.Combine(extracted, "opaque")));
+        Assert.False(File.Exists(Path.Combine(extracted, "opaque", "old")));
+        Assert.Equal(noSquash, File.Exists(Path.Combine(extracted, "opaque", ".wh..wh..opq")));
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task SaveLayers_PreservesUnixModes(bool noSquash)
+    {
+        if (OperatingSystem.IsWindows())
+        {
+            return;
+        }
+        UnixFileMode executable = (UnixFileMode)Convert.ToInt32("755", 8);
+        UnixFileMode directoryMode = (UnixFileMode)Convert.ToInt32("750", 8);
+        PaxTarEntry tool = FileEntry("bin/tool", "tool");
+        tool.Mode = executable;
+        byte[] layer = CreateArchive(
+            new(TarEntryType.Directory, "bin/") { Mode = directoryMode }, tool);
+
+        string output = await SaveLayersAsync([layer], noSquash);
+        string extracted = noSquash ? LayerOutput(output, 0, layer) : output;
+
+        Assert.Equal(executable, File.GetUnixFileMode(Path.Combine(extracted, "bin", "tool")));
+        Assert.Equal(directoryMode, File.GetUnixFileMode(Path.Combine(extracted, "bin")));
+    }
+
+    [Fact]
+    public async Task SaveLayers_HardLinkRetainsLowerTargetUnixMode()
+    {
+        if (OperatingSystem.IsWindows())
+        {
+            return;
+        }
+        UnixFileMode executable = (UnixFileMode)Convert.ToInt32("755", 8);
+        PaxTarEntry tool = FileEntry("original", "tool");
+        tool.Mode = executable;
+        byte[] lower = CreateArchive(tool);
+        byte[] upper = CreateArchive(new PaxTarEntry(TarEntryType.HardLink, "alias")
+        {
+            LinkName = "original", Mode = 0
+        });
+
+        string output = await SaveLayersAsync([lower, upper]);
+
+        Assert.Equal(executable, File.GetUnixFileMode(Path.Combine(output, "alias")));
+    }
+
+    [Fact]
+    public async Task SaveLayers_RestrictiveModesDoNotBlockLaterLayerChanges()
+    {
+        if (OperatingSystem.IsWindows())
+        {
+            return;
+        }
+        UnixFileMode readOnlyFile = (UnixFileMode)Convert.ToInt32("444", 8);
+        UnixFileMode readOnlyDirectory = (UnixFileMode)Convert.ToInt32("555", 8);
+        PaxTarEntry original = FileEntry("locked/original", "old");
+        original.Mode = readOnlyFile;
+        byte[] lower = CreateArchive(
+            new(TarEntryType.Directory, "locked/") { Mode = readOnlyDirectory }, original);
+        byte[] middle = CreateArchive(
+            new(TarEntryType.HardLink, "alias") { LinkName = "locked/original" },
+            FileEntry("locked/new", "added"));
+        byte[] upper = CreateArchive(FileEntry("locked/original", "new"));
+
+        string output = await SaveLayersAsync([lower, middle, upper]);
+
+        try
+        {
+            Assert.Equal("old", File.ReadAllText(Path.Combine(output, "alias")));
+            Assert.Equal("new", File.ReadAllText(Path.Combine(output, "locked", "original")));
+            Assert.Equal("added", File.ReadAllText(Path.Combine(output, "locked", "new")));
+            Assert.Equal(readOnlyFile, File.GetUnixFileMode(Path.Combine(output, "alias")));
+            Assert.Equal(readOnlyDirectory, File.GetUnixFileMode(Path.Combine(output, "locked")));
+        }
+        finally
+        {
+            File.SetUnixFileMode(Path.Combine(output, "locked"), (UnixFileMode)Convert.ToInt32("755", 8));
+        }
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task SaveLayers_WindowsSanitationCollisionsAreExplicit(bool separateLayers)
+    {
+        if (!OperatingSystem.IsWindows())
+        {
+            return;
+        }
+        byte[] first = CreateArchive(FileEntry("nested/a:b", "first"));
+        byte[] second = CreateArchive(FileEntry("nested/a?b", "second"));
+        byte[][] layers = separateLayers ? [first, second] :
+            [CreateArchive(FileEntry("nested/a:b", "first"), FileEntry("nested/a?b", "second"))];
+
+        InvalidDataException error = await Assert.ThrowsAsync<InvalidDataException>(
+            () => SaveLayersAsync(layers));
+
+        Assert.Contains("nested/a:b", error.Message);
+        Assert.Contains("nested/a?b", error.Message);
+        if (separateLayers)
+        {
+            Assert.Equal("first", File.ReadAllText(Path.Combine(cache.Root, "export", "nested", "a-b")));
+        }
+    }
+
+    [Fact]
+    public async Task SaveLayers_NoSquashLayerSelectionKeepsItsPrefixAndWhiteouts()
+    {
+        byte[] lower = CreateArchive(FileEntry("lower", "lower"));
+        byte[] upper = CreateArchive(FileEntry("upper", "upper"), FileEntry(".wh.lower", ""));
+
+        string output = await SaveLayersAsync([lower, upper], noSquash: true, layerIndex: 1);
+
+        Assert.Equal([Path.GetFileName(LayerOutput(output, 1, upper))],
+            Directory.EnumerateDirectories(output).Select(Path.GetFileName));
+        Assert.Equal("upper", File.ReadAllText(Path.Combine(LayerOutput(output, 1, upper), "upper")));
+        Assert.True(File.Exists(Path.Combine(LayerOutput(output, 1, upper), ".wh.lower")));
+    }
+
+    [Fact]
+    public async Task SaveLayers_SquashLayerSelectionStopsAtSelectedPrefix()
+    {
+        byte[] first = CreateArchive(FileEntry("value", "first"));
+        byte[] second = CreateArchive(FileEntry("value", "second"));
+        byte[] third = CreateArchive(FileEntry("value", "third"));
+
+        string output = await SaveLayersAsync([first, second, third], layerIndex: 1);
+
+        Assert.Equal("second", File.ReadAllText(Path.Combine(output, "value")));
+    }
+
+    [Fact]
+    public async Task SaveLayers_NoSquashWindowsNamesInSeparateLayersDoNotCollide()
+    {
+        if (!OperatingSystem.IsWindows())
+        {
+            return;
+        }
+        byte[] first = CreateArchive(FileEntry("nested/a:b", "first"));
+        byte[] second = CreateArchive(FileEntry("nested/a?b", "second"));
+
+        string output = await SaveLayersAsync([first, second], noSquash: true);
+
+        Assert.Equal("first", File.ReadAllText(Path.Combine(LayerOutput(output, 0, first), "nested", "a-b")));
+        Assert.Equal("second", File.ReadAllText(Path.Combine(LayerOutput(output, 1, second), "nested", "a-b")));
+    }
+
+    private async Task<string> SaveLayersAsync(byte[][] layers, bool noSquash = false, int? layerIndex = null)
+    {
+        Mock<IDockerRegistryClient> client = new() { DefaultValue = DefaultValue.Mock };
+        client.Setup(item => item.Manifests.GetAsync("library/image", "latest", It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new ManifestInfo("application/test", "sha256:manifest", new DockerManifest
+            {
+                Layers = [.. layers.Select(layer => new ManifestLayer
+                {
+                    Digest = LayerCacheTestContext.Digest(layer), Size = layer.Length
+                })]
+            }));
+        foreach (byte[] layer in layers)
+        {
+            client.Setup(item => item.Blobs.GetRangeAsync(
+                "library/image", LayerCacheTestContext.Digest(layer), 0, null, It.IsAny<CancellationToken>()))
+                .ReturnsAsync(() => FullBlob(layer));
+        }
+        Mock<IDockerRegistryClientFactory> factory = new();
+        factory.Setup(item => item.GetClientAsync(null, It.IsAny<CancellationToken>())).ReturnsAsync(client.Object);
+        string output = Path.Combine(cache.Root, "export");
+        await SaveAsync(factory.Object, "image", output, layerIndex, "--layer-index", noSquash,
+            new PlatformOptionsBase(), TestContext.Current.CancellationToken);
+        return output;
+    }
+
+    private static string LayerOutput(string root, int index, byte[] layer) =>
+        Path.Combine(root, $"layer{index}-{LayerCacheTestContext.Digest(layer)["sha256:".Length..]}");
+
+    private static PaxTarEntry FileEntry(string name, string content) =>
+        new(TarEntryType.RegularFile, name)
+        {
+            DataStream = new MemoryStream(Encoding.UTF8.GetBytes(content))
+        };
+
+    private static byte[] CreateArchive(params PaxTarEntry[] entries)
+    {
+        using MemoryStream output = new();
+        using (GZipStream gzip = new(output, CompressionMode.Compress, leaveOpen: true))
+        using (TarWriter writer = new(gzip, leaveOpen: true))
+        {
+            foreach (PaxTarEntry entry in entries)
+            {
+                writer.WriteEntry(entry);
+            }
+        }
+        return output.ToArray();
+    }
+
     private Task SaveAsync(
         IDockerRegistryClientFactory factory, string image, string destPath, int? layerIndex,
         string layerIndexOptionName, bool noSquash, PlatformOptionsBase options,

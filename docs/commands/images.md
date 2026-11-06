@@ -573,6 +573,20 @@ Set `output-path` to a new path or an existing regular directory. By default,
 an existing directory must be empty. Use `--force` to write to a non-empty
 directory.
 
+Squashing applies OCI whiteouts, including root opaque whiteouts, before adding
+the current layer's entries. Files and directories can replace each other
+between layers without `--force`; that option protects pre-existing output, not
+the image's own layer changes. Empty directories and symbolic links are retained.
+Directory symbolic links are not traversed while exporting, including with
+`--no-squash`. Parent traversal through symbolic links is clamped to the exported
+image root rather than reaching its host parent directory. On Unix hosts,
+exported files and explicit directories retain
+their archived permission bits.
+
+On Windows, characters that cannot appear in file names are replaced with `-`.
+If distinct archive paths map to the same Windows destination, Dredge reports an
+error instead of silently overwriting content.
+
 | Option | Description |
 |--------|-------------|
 | `--no-squash` | Save each selected layer in a separate directory instead of merging the layers |
