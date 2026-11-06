@@ -109,6 +109,24 @@ public class DockerfileCommandTests
             actual);
     }
 
+    [Theory]
+    [InlineData(false, false, "powershell -Command")]
+    [InlineData(false, true, "powershell -Command")]
+    [InlineData(true, false, "powershell -Command")]
+    [InlineData(true, true, "powershell -Command")]
+    [InlineData(false, false, "pwsh -NoLogo -Command")]
+    [InlineData(true, true, "pwsh -NoLogo -Command")]
+    public async Task InheritedShellMetadataIsRecognized(bool noFormat, bool noColor, string shell)
+    {
+        string actual = await RenderHistoryAsync(
+            [$"{shell} #(nop) ENV X=1", $"{shell} echo \"#(nop) literal\""],
+            noFormat, noColor);
+
+        Assert.Equal(
+            $"FROM scratch{Environment.NewLine}ENV X=1{Environment.NewLine}RUN echo \"#(nop) literal\"{Environment.NewLine}",
+            actual);
+    }
+
     private static async Task<string> RenderHistoryAsync(string[] history, bool noFormat, bool noColor)
     {
         CancellationToken cancellationToken = TestContext.Current.CancellationToken;

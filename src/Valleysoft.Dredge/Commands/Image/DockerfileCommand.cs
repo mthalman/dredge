@@ -490,6 +490,6 @@ public partial class DockerfileCommand : RegistryCommandBase<DockerfileOptions>
     [GeneratedRegex(@"\S+(?<whitespace>[ \t]{2,})", RegexOptions.Multiline)]
     private static partial Regex TwoOrMoreWhitespaceRegex();
 
-    [GeneratedRegex(@"\A\S+(?:[ \t]+[-/]\w+)*[ \t]+(?:-c|/C)[ \t]+")]
+    [GeneratedRegex(@"\A\S+(?:[ \t]+[-/]\w+)*[ \t]+(?=#\(nop\)[ \t])")]
     private static partial Regex HistoryMetadataPrefixRegex();
 }
