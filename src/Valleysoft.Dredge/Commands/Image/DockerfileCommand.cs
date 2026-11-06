@@ -172,8 +172,11 @@ public partial class DockerfileCommand : RegistryCommandBase<DockerfileOptions>
         }
         else
         {
-            Match metadataPrefix = HistoryMetadataPrefixRegex().Match(line);
-            nopIndex = metadataPrefix.Success ? metadataPrefix.Length : 0;
+            nopIndex = FindHistoryMetadataIndex(line);
+        }
+        if (nopIndex < 0)
+        {
+            nopIndex = 0;
         }
         while (nopIndex < line.Length && line[nopIndex] is ' ' or '\t')
         {
@@ -279,6 +282,56 @@ public partial class DockerfileCommand : RegistryCommandBase<DockerfileOptions>
         }
 
         return line;
+    }
+
+    internal static int FindHistoryMetadataIndex(string line)
+    {
+        const string Marker = "#(nop)";
+        bool atTokenStart = true;
+        char quote = '\0';
+        for (int i = 0; i < line.Length; i++)
+        {
+            char character = line[i];
+            if (character is '\r' or '\n')
+            {
+                return -1;
+            }
+            if (quote != '\0')
+            {
+                if (quote == '"' && character == '\\' && i + 1 < line.Length)
+                {
+                    i++;
+                }
+                else if (character == quote)
+                {
+                    quote = '\0';
+                }
+                continue;
+            }
+            if (character is ' ' or '\t')
+            {
+                atTokenStart = true;
+                continue;
+            }
+            if (atTokenStart)
+            {
+                if (character == '#')
+                {
+                    return line.AsSpan(i).StartsWith(Marker, StringComparison.Ordinal) &&
+                        i + Marker.Length < line.Length &&
+                        line[i + Marker.Length] is ' ' or '\t'
+                        ? i
+                        : -1;
+                }
+                // Flattened history can contain literal punctuation within executable paths.
+                if (character is '\'' or '"')
+                {
+                    quote = character;
+                }
+            }
+            atTokenStart = false;
+        }
+        return -1;
     }
 
     private static string FormatRunInstruction(string line)
@@ -494,6 +547,4 @@ public partial class DockerfileCommand : RegistryCommandBase<DockerfileOptions>
     [GeneratedRegex(@"\S+(?<whitespace>[ \t]{2,})", RegexOptions.Multiline)]
     private static partial Regex TwoOrMoreWhitespaceRegex();
 
-    [GeneratedRegex(@"\A(?:[^'""#\r\n]|'[^'\r\n]*'|""(?:\\[^\r\n]|[^""\\\r\n])*"")*?[ \t]+(?=#\(nop\)[ \t])")]
-    private static partial Regex HistoryMetadataPrefixRegex();
 }

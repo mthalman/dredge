@@ -1,6 +1,7 @@
 namespace Valleysoft.Dredge.Tests;
 
 using Spectre.Console;
+using System.Diagnostics;
 using System.Text;
 using System.Text.Json;
 using Valleysoft.DockerRegistryClient.Models.Images;
@@ -128,6 +129,12 @@ public class DockerfileCommandTests
     [InlineData(true, true, "\"C:\\Program Files\\PowerShell\\7\\pwsh.exe\" -Command")]
     [InlineData(false, false, "C:\\Program Files\\PowerShell\\7\\pwsh.exe -Command")]
     [InlineData(true, true, "C:\\Program Files\\PowerShell\\7\\pwsh.exe -Command")]
+    [InlineData(false, false, "C:\\tools\\O'Brien\\pwsh.exe -Command")]
+    [InlineData(true, true, "C:\\tools\\O'Brien\\pwsh.exe -Command")]
+    [InlineData(false, false, "C:\\tools\\build#1\\pwsh.exe -Command")]
+    [InlineData(true, true, "C:\\tools\\build#1\\pwsh.exe -Command")]
+    [InlineData(false, false, "/opt/O'Brien/sh -c")]
+    [InlineData(true, true, "/opt/build#1/sh -c")]
     public async Task InheritedShellMetadataIsRecognized(bool noFormat, bool noColor, string shell)
     {
         string actual = await RenderHistoryAsync(
@@ -164,6 +171,33 @@ public class DockerfileCommandTests
         string actual = await RenderHistoryAsync([Command], noFormat, noColor: true);
 
         Assert.Equal($"FROM scratch{Environment.NewLine}{Command}{Environment.NewLine}", actual);
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void MetadataDiscoveryHandlesLongWhitespaceInBoundedTime(bool hasMetadata)
+    {
+        string prefix = "/bin/sh -c" + new string(' ', 1_000_000);
+        string history = prefix + (hasMetadata ? "#(nop) ENV X=1" : "echo done");
+        Stopwatch timer = Stopwatch.StartNew();
+
+        int index = DockerfileCommand.FindHistoryMetadataIndex(history);
+
+        timer.Stop();
+        Assert.Equal(hasMetadata ? prefix.Length : -1, index);
+        Assert.True(timer.Elapsed < TimeSpan.FromSeconds(2), $"Metadata scanning took {timer.Elapsed}.");
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task LongWhitespaceBuildKitHistoryIsPreserved(bool noFormat)
+    {
+        string history = "RUN /bin/sh -c echo" + new string(' ', 16_384) + "done # buildkit";
+        string actual = await RenderHistoryAsync([history], noFormat, noColor: true);
+
+        Assert.Equal($"FROM scratch{Environment.NewLine}{history}{Environment.NewLine}", actual);
     }
 
     private static async Task<string> RenderHistoryAsync(string[] history, bool noFormat, bool noColor)
@@ -204,7 +238,7 @@ public class DockerfileCommandTests
             ColorSystem = ColorSystemSupport.NoColors,
             Out = new AnsiConsoleOutput(output)
         });
-        console.Profile.Width = 1000;
+        console.Profile.Width = 32_768;
         console.Write(new Markup(markup));
         return output.ToString();
     }
