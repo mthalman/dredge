@@ -165,12 +165,16 @@ public partial class DockerfileCommand : RegistryCommandBase<DockerfileOptions>
     {
         const string NopMarker = "#(nop)";
 
-        Match metadataPrefix = HistoryMetadataPrefixRegex().Match(line);
-        int nopIndex = metadataPrefix.Success
-            ? metadataPrefix.Length
-            : currentShell is not null && line.StartsWith(currentShell, StringComparison.Ordinal)
-                ? currentShell.Length
-                : 0;
+        int nopIndex;
+        if (currentShell is not null && line.StartsWith(currentShell, StringComparison.Ordinal))
+        {
+            nopIndex = currentShell.Length;
+        }
+        else
+        {
+            Match metadataPrefix = HistoryMetadataPrefixRegex().Match(line);
+            nopIndex = metadataPrefix.Success ? metadataPrefix.Length : 0;
+        }
         while (nopIndex < line.Length && line[nopIndex] is ' ' or '\t')
         {
             nopIndex++;
@@ -490,6 +494,6 @@ public partial class DockerfileCommand : RegistryCommandBase<DockerfileOptions>
     [GeneratedRegex(@"\S+(?<whitespace>[ \t]{2,})", RegexOptions.Multiline)]
     private static partial Regex TwoOrMoreWhitespaceRegex();
 
-    [GeneratedRegex(@"\A\S+(?:[ \t]+[-/]\w+)*[ \t]+(?=#\(nop\)[ \t])")]
+    [GeneratedRegex(@"\A(?:[^'""#\r\n]|'[^'\r\n]*'|""(?:\\[^\r\n]|[^""\\\r\n])*"")*?[ \t]+(?=#\(nop\)[ \t])")]
     private static partial Regex HistoryMetadataPrefixRegex();
 }

@@ -116,6 +116,18 @@ public class DockerfileCommandTests
     [InlineData(true, true, "powershell -Command")]
     [InlineData(false, false, "pwsh -NoLogo -Command")]
     [InlineData(true, true, "pwsh -NoLogo -Command")]
+    [InlineData(false, false, "powershell -ExecutionPolicy Bypass -Command")]
+    [InlineData(false, true, "powershell -ExecutionPolicy Bypass -Command")]
+    [InlineData(true, false, "powershell -ExecutionPolicy Bypass -Command")]
+    [InlineData(true, true, "powershell -ExecutionPolicy Bypass -Command")]
+    [InlineData(false, false, "/bin/bash --noprofile -o pipefail -c")]
+    [InlineData(true, true, "/bin/bash --noprofile -o pipefail -c")]
+    [InlineData(false, false, "powershell -ExecutionPolicy \"Bypass\" -Command")]
+    [InlineData(true, true, "powershell -ExecutionPolicy \"Bypass\" -Command")]
+    [InlineData(false, false, "\"C:\\Program Files\\PowerShell\\7\\pwsh.exe\" -Command")]
+    [InlineData(true, true, "\"C:\\Program Files\\PowerShell\\7\\pwsh.exe\" -Command")]
+    [InlineData(false, false, "C:\\Program Files\\PowerShell\\7\\pwsh.exe -Command")]
+    [InlineData(true, true, "C:\\Program Files\\PowerShell\\7\\pwsh.exe -Command")]
     public async Task InheritedShellMetadataIsRecognized(bool noFormat, bool noColor, string shell)
     {
         string actual = await RenderHistoryAsync(
@@ -125,6 +137,33 @@ public class DockerfileCommandTests
         Assert.Equal(
             $"FROM scratch{Environment.NewLine}ENV X=1{Environment.NewLine}RUN echo \"#(nop) literal\"{Environment.NewLine}",
             actual);
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task KnownShellBoundaryProtectsCommandText(bool noFormat)
+    {
+        const string Shell = "/bin/sh -c";
+        const string Command = "echo \"\\\" #(nop) literal\"";
+        string actual = await RenderHistoryAsync(
+            [$"{Shell} #(nop) ENV X=1", $"{Shell} {Command}"],
+            noFormat, noColor: true);
+
+        Assert.Equal(
+            $"FROM scratch{Environment.NewLine}ENV X=1{Environment.NewLine}RUN {Command}{Environment.NewLine}",
+            actual);
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task BuildKitCommandTextIsNotAnInheritedShellPrefix(bool noFormat)
+    {
+        const string Command = "RUN /bin/sh -c echo \"\\\" #(nop) literal\" # buildkit";
+        string actual = await RenderHistoryAsync([Command], noFormat, noColor: true);
+
+        Assert.Equal($"FROM scratch{Environment.NewLine}{Command}{Environment.NewLine}", actual);
     }
 
     private static async Task<string> RenderHistoryAsync(string[] history, bool noFormat, bool noColor)
