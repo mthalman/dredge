@@ -12,14 +12,18 @@ The default path depends on the operating system:
 Run `dredge settings open` to open the file in its associated application. If
 Dredge cannot open the file, the command prints its path.
 
-An existing settings file must contain a JSON object. Empty or whitespace-only
-files and a JSON `null` value are rejected with an error identifying the file;
-Dredge does not overwrite them. To recover, edit the reported path directly and
-replace its contents with valid settings JSON (use `{}` for defaults), or back
-up and delete the file so the next settings load creates defaults. Malformed
-JSON is also rejected. Commands that load settings, including `settings open`
-and registry commands that initialize the operation timeout, can fail until
-the file is repaired.
+## Repair an invalid settings file
+
+The settings file must contain a JSON object. Dredge rejects malformed JSON,
+empty or whitespace-only files, and JSON `null` without changing the file.
+For empty files and JSON `null`, the error message includes the file path.
+Commands that load settings, including `settings open` and registry commands,
+fail until you repair the file.
+
+Open the file directly in a text editor and replace its contents with valid
+settings JSON. Use `{}` to restore default settings. Alternatively, back up the
+file, then delete it. Dredge creates a new file with defaults the next time a
+command loads settings.
 
 ## Available settings
 
