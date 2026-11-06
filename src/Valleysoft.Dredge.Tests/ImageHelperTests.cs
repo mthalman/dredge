@@ -15,7 +15,7 @@ public class ImageHelperTests : IAsyncDisposable
     [Theory]
     [InlineData(false)]
     [InlineData(true)]
-    public async Task ReviewRegression_RejectsFortyHopParentTraversalBeforeClamping(bool noSquash)
+    public async Task ReviewRegression_ClampsFortyHopParentTraversal(bool noSquash)
     {
         if (OperatingSystem.IsWindows())
         {
@@ -32,17 +32,151 @@ public class ImageHelperTests : IAsyncDisposable
             new(TarEntryType.SymbolicLink, "link") { LinkName = "hop0/../outside" }]);
         File.WriteAllText(Path.Combine(cache.Root, "outside"), "host");
 
-        Exception? error = await Record.ExceptionAsync(() => SaveLayersAsync([layer], noSquash));
+        string output = await SaveLayersAsync([layer], noSquash);
         string extracted = noSquash ? LayerOutput(Path.Combine(cache.Root, "export"), 0, layer)
-            : Path.Combine(cache.Root, "export");
-        if (error is null)
-        {
-            Assert.Fail($"Unbounded link read '{File.ReadAllText(Path.Combine(extracted, "link"))}'.");
-        }
-        Assert.IsType<InvalidDataException>(error);
+            : output;
 
-        Assert.False(ImageFileSystemExtractor.PathExists(Path.Combine(extracted, "link")));
+        Assert.Equal("inside", File.ReadAllText(Path.Combine(extracted, "link")));
         Assert.Equal("host", File.ReadAllText(Path.Combine(cache.Root, "outside")));
+    }
+
+    [Theory]
+    [InlineData(false, 40)]
+    [InlineData(true, 40)]
+    [InlineData(false, 41)]
+    [InlineData(true, 41)]
+    public async Task ReviewRegression_ExportHonorsFortyHopLimit(bool noSquash, int hops)
+    {
+        PaxTarEntry[] links = [.. Enumerable.Range(0, hops).Select(index =>
+            new PaxTarEntry(TarEntryType.SymbolicLink, $"hop{index}")
+            {
+                LinkName = index == hops - 1 ? "value" : $"hop{index + 1}"
+            })];
+        byte[] layer = CreateArchive([FileEntry("value", "content"), .. links]);
+        if (hops > 40)
+        {
+            await Assert.ThrowsAsync<InvalidDataException>(() => SaveLayersAsync([layer], noSquash));
+            return;
+        }
+
+        string output = await SaveLayersAsync([layer], noSquash);
+        string extracted = noSquash ? LayerOutput(output, 0, layer) : output;
+
+        Assert.Equal("content", File.ReadAllText(Path.Combine(extracted, "hop0")));
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task ReviewRegression_AbsoluteWindowsLinksCannotAliasOtherLayers(bool linkFirst)
+    {
+        if (!OperatingSystem.IsWindows())
+        {
+            return;
+        }
+        byte[] file = CreateArchive(FileEntry("nested/a:b", "content"));
+        byte[] link = CreateArchive(
+            new PaxTarEntry(TarEntryType.SymbolicLink, "link") { LinkName = "/nested/a?b" });
+
+        await Assert.ThrowsAsync<InvalidDataException>(() =>
+            SaveLayersAsync(linkFirst ? [link, file] : [file, link]));
+    }
+
+    [Fact]
+    public async Task ReviewRegression_WhiteoutOnlyDirectoriesKeepWindowsMappings()
+    {
+        if (!OperatingSystem.IsWindows())
+        {
+            return;
+        }
+        byte[] lower = CreateArchive(FileEntry("a:b/.wh.gone", ""));
+        byte[] upper = CreateArchive(FileEntry("a?b/file", "content"));
+
+        await Assert.ThrowsAsync<InvalidDataException>(() => SaveLayersAsync([lower, upper]));
+
+        Assert.True(Directory.Exists(Path.Combine(cache.Root, "export", "a-b")));
+        Assert.False(File.Exists(Path.Combine(cache.Root, "export", "a-b", "file")));
+    }
+
+    [Theory]
+    [InlineData("whiteout")]
+    [InlineData("root-opacity")]
+    [InlineData("replacement")]
+    [InlineData("implicit-directory")]
+    public async Task ReviewRegression_RemovedWindowsLinksDoNotRetainTargetMappings(string removal)
+    {
+        if (!OperatingSystem.IsWindows())
+        {
+            return;
+        }
+        byte[] lower = CreateArchive(
+            new PaxTarEntry(TarEntryType.SymbolicLink, "link") { LinkName = "/a?b" });
+        PaxTarEntry replacement = removal switch
+        {
+            "whiteout" => FileEntry(".wh.link", ""),
+            "root-opacity" => FileEntry(".wh..wh..opq", ""),
+            "implicit-directory" => FileEntry("link/child", "child"),
+            _ => FileEntry("link", "replacement")
+        };
+        byte[] upper = CreateArchive(replacement, FileEntry("a:b", "content"));
+
+        string output = await SaveLayersAsync([lower, upper]);
+
+        Assert.Equal("content", File.ReadAllText(Path.Combine(output, "a-b")));
+        Assert.Null(new FileInfo(Path.Combine(output, "link")).LinkTarget);
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void ReviewRegression_ArchiveMappingSubtreeRemovalIsBounded(bool includePath)
+    {
+        CountingStringComparer comparer = new();
+        ImageHelper.ArchivePathMappings mappings = new(comparer);
+        for (int index = 0; index < 10_000; index++)
+        {
+            mappings[Path.Combine("unrelated", index.ToString())] = "unrelated";
+        }
+        mappings["dir"] = "dir";
+        string child = Path.Combine("dir", "child");
+        string finalChild = Path.Combine("dir", ((char)ushort.MaxValue).ToString());
+        string sibling = "dir" + (char)(Path.DirectorySeparatorChar + 1);
+        mappings[child] = "dir/child";
+        mappings[finalChild] = "dir/final";
+        mappings[sibling] = "sibling";
+        mappings.SetAbsoluteLinkTarget(child, "/target");
+        comparer.Comparisons = 0;
+
+        mappings.RemovePath("dir", includePath);
+
+        Assert.True(comparer.Comparisons < 250, $"Subtree removal used {comparer.Comparisons} comparisons.");
+        Assert.False(mappings.TryGetValue(child, out _));
+        Assert.False(mappings.TryGetValue(finalChild, out _));
+        Assert.True(mappings.TryGetValue(sibling, out _));
+        Assert.Equal(!includePath, mappings.TryGetValue("dir", out _));
+        Assert.True(mappings.TryGetValue(Path.Combine("unrelated", "9999"), out _));
+        Assert.Empty(mappings.AbsoluteLinkTargets);
+
+        comparer.Comparisons = 0;
+        mappings.RemovePath("missing", includePath: true);
+        Assert.True(comparer.Comparisons < 100, $"Missing subtree removal used {comparer.Comparisons} comparisons.");
+
+        mappings.Clear();
+        Assert.False(mappings.TryGetValue(sibling, out _));
+    }
+
+    private sealed class CountingStringComparer : StringComparer
+    {
+        public int Comparisons { get; set; }
+
+        public override int Compare(string? x, string? y)
+        {
+            Comparisons++;
+            return OrdinalIgnoreCase.Compare(x, y);
+        }
+
+        public override bool Equals(string? x, string? y) => OrdinalIgnoreCase.Equals(x, y);
+        public override int GetHashCode(string obj) => OrdinalIgnoreCase.GetHashCode(obj);
     }
 
     [Theory]

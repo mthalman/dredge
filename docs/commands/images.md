@@ -579,8 +579,9 @@ between layers without `--force`; that option protects pre-existing output, not
 the image's own layer changes. Empty directories and symbolic links are retained.
 Directory symbolic links are not traversed while exporting, including with
 `--no-squash`. Parent traversal through symbolic links is clamped to the exported
-image root rather than reaching its host parent directory. Links whose bounded
-resolution cannot establish a safe target cause an error. Root opaque whiteouts
+image root rather than reaching its host parent directory. Link resolution allows
+up to 40 symbolic-link traversals; longer chains or targets that cannot be safely
+rebased cause an error. Root opaque whiteouts
 must be empty regular files. On Unix hosts,
 exported files and explicit directories retain
 their archived permission bits.
@@ -588,7 +589,9 @@ their archived permission bits.
 On Windows, characters that cannot appear in file names are replaced with `-`.
 If distinct live archive paths map to the same Windows destination, Dredge
 reports an error instead of silently overwriting content. Whiteouts and
-directory replacement release mappings for removed entries.
+directory replacement release mappings for removed entries. Copied implicit
+directories retain their mappings, and absolute symbolic-link targets are checked
+against surviving names across layers.
 
 | Option | Description |
 |--------|-------------|

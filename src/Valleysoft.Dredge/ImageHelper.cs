@@ -74,7 +74,7 @@ internal static class ImageHelper
 
         cancellationToken.ThrowIfCancellationRequested();
         Directory.CreateDirectory(destPath);
-        Dictionary<string, string> archivePaths = new(
+        ArchivePathMappings archivePaths = new(
             OperatingSystem.IsWindows() ? StringComparer.OrdinalIgnoreCase : StringComparer.Ordinal);
         Dictionary<string, ImageFileSystemEntry> mergedMetadata = new(
             OperatingSystem.IsWindows() ? StringComparer.OrdinalIgnoreCase : StringComparer.Ordinal);
@@ -149,7 +149,7 @@ internal static class ImageHelper
         string layerDir,
         ImageLayerReference layer,
         string? mergedDirectory,
-        Dictionary<string, string> archivePaths,
+        ArchivePathMappings archivePaths,
         IReadOnlyDictionary<string, ImageFileSystemEntry> mergedMetadata,
         CancellationToken cancellationToken)
     {
@@ -162,7 +162,7 @@ internal static class ImageHelper
             ? StringComparer.OrdinalIgnoreCase : StringComparer.Ordinal;
         HashSet<string> whiteoutTargets = new(pathComparer);
         HashSet<string> opaqueDirectories = new(pathComparer);
-        Dictionary<string, string> layerArchivePaths = new(pathComparer);
+        ArchivePathMappings layerArchivePaths = new(pathComparer);
         Dictionary<string, ImageFileSystemEntry> metadata = new(StringComparer.Ordinal);
 
         using ImageTarReader.LayerArchive archive = ImageTarReader.Open(layerStream);
@@ -209,6 +209,7 @@ internal static class ImageHelper
                 Path = originalName,
                 Type = ImageLayerScanner.GetFileType(entry),
                 IntroducedLayer = layer,
+                LinkTarget = entry.EntryType == TarEntryType.SymbolicLink ? entry.LinkName : null,
                 Mode = (int)entry.Mode,
                 ModifiedTime = entry.ModificationTime.UtcDateTime
             };
@@ -228,10 +229,24 @@ internal static class ImageHelper
 
         if (OperatingSystem.IsWindows())
         {
-            foreach (string path in archivePaths.Keys.Where(path =>
-                IsHiddenLowerTarget(path, whiteoutTargets, opaqueDirectories)).ToArray())
+            foreach (string path in whiteoutTargets)
             {
-                archivePaths.Remove(path);
+                cancellationToken.ThrowIfCancellationRequested();
+                archivePaths.RemovePath(path, includePath: true);
+            }
+            foreach (string path in opaqueDirectories)
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+                archivePaths.RemovePath(path, includePath: false);
+            }
+            foreach ((string path, ImageFileSystemEntry entry) in metadata)
+            {
+                if (entry.Type != ImageFileType.Directory &&
+                    !ImagePath.GetFileName(entry.Path).StartsWith(WhiteoutMarkerPrefix, StringComparison.OrdinalIgnoreCase))
+                {
+                    cancellationToken.ThrowIfCancellationRequested();
+                    archivePaths.RemovePath(path, includePath: false);
+                }
             }
             foreach ((string path, ImageFileSystemEntry entry) in metadata)
             {
@@ -240,16 +255,20 @@ internal static class ImageHelper
                     continue;
                 }
                 _ = GetHostArchivePath(entry.Path, archivePaths);
-                if (entry.Type != ImageFileType.Directory && mergedDirectory is not null &&
-                    Directory.Exists(GetContainedPath(mergedDirectory, path, allowFinalLink: true)))
-                {
-                    string prefix = path + Path.DirectorySeparatorChar;
-                    foreach (string descendant in archivePaths.Keys.Where(candidate =>
-                        candidate.StartsWith(prefix, StringComparison.OrdinalIgnoreCase)).ToArray())
-                    {
-                        archivePaths.Remove(descendant);
-                    }
-                }
+                archivePaths.SetAbsoluteLinkTarget(path,
+                    entry.Type == ImageFileType.SymbolicLink &&
+                    entry.LinkTarget is string target && ImagePath.IsAbsolute(target) ? target : null);
+            }
+            foreach (DirectoryInfo directory in GetLayerEntries(new DirectoryInfo(layerDir)).OfType<DirectoryInfo>())
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+                string path = Path.GetRelativePath(layerDir, directory.FullName);
+                _ = GetHostArchivePath(layerArchivePaths[path], archivePaths);
+            }
+            foreach (string absoluteTarget in archivePaths.AbsoluteLinkTargets)
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+                _ = GetHostArchivePath(absoluteTarget.TrimStart('/'), archivePaths, remember: false);
             }
         }
 
@@ -580,7 +599,7 @@ internal static class ImageHelper
                 }
                 if (entry.LinkTarget is string target)
                 {
-                    if (++hops >= ImagePathResolver.MaximumLinkHops)
+                    if (++hops > ImagePathResolver.MaximumLinkHops)
                     {
                         throw new InvalidDataException(
                             $"Link '/{link}' cannot be safely rebased within {ImagePathResolver.MaximumLinkHops} hops.");
@@ -721,7 +740,7 @@ internal static class ImageHelper
         string entryName,
         List<(string Path, string Target)> hardLinks,
         List<(string Path, string Target)> symbolicLinks,
-        Dictionary<string, string> archivePaths,
+        ArchivePathMappings archivePaths,
         CancellationToken cancellationToken)
     {
         string filePath = GetContainedPath(workingDir, entryName);
@@ -785,7 +804,7 @@ internal static class ImageHelper
     }
 
     private static string GetHostArchivePath(
-        string original, Dictionary<string, string> archivePaths, bool remember = true)
+        string original, ArchivePathMappings archivePaths, bool remember = true)
     {
         if (!OperatingSystem.IsWindows())
         {
@@ -916,6 +935,83 @@ internal static class ImageHelper
         if (value.Contains(':'))
         {
             throw new InvalidDataException($"Invalid layer digest '{value}'.");
+        }
+    }
+
+    internal sealed class ArchivePathMappings
+    {
+        private readonly Dictionary<string, string> spellings;
+        private readonly SortedSet<string> paths;
+        private readonly Dictionary<string, string> absoluteLinkTargets;
+
+        public ArchivePathMappings(StringComparer comparer)
+        {
+            spellings = new(comparer);
+            paths = new(comparer);
+            absoluteLinkTargets = new(comparer);
+        }
+
+        public IEnumerable<string> AbsoluteLinkTargets => absoluteLinkTargets.Values;
+
+        public string this[string path]
+        {
+            get => spellings[path];
+            set
+            {
+                spellings[path] = value;
+                paths.Add(path);
+                absoluteLinkTargets.Remove(path);
+            }
+        }
+
+        public bool TryGetValue(string path, out string? spelling) =>
+            spellings.TryGetValue(path, out spelling);
+
+        public void SetAbsoluteLinkTarget(string path, string? target)
+        {
+            if (target is not null)
+            {
+                absoluteLinkTargets[path] = target;
+            }
+            else
+            {
+                absoluteLinkTargets.Remove(path);
+            }
+        }
+
+        public void Clear()
+        {
+            spellings.Clear();
+            paths.Clear();
+            absoluteLinkTargets.Clear();
+        }
+
+        public void RemovePath(string path, bool includePath)
+        {
+            if (path.Length == 0)
+            {
+                Clear();
+                return;
+            }
+            string prefix = path + Path.DirectorySeparatorChar;
+            string upperBound = path + (char)(Path.DirectorySeparatorChar + 1);
+            string[] descendants = [.. paths.GetViewBetween(prefix, upperBound)
+                .Where(candidate => paths.Comparer.Compare(candidate, upperBound) < 0)];
+            foreach (string descendant in descendants)
+            {
+                Remove(descendant);
+            }
+            if (includePath)
+            {
+                Remove(path);
+            }
+        }
+
+        private void Remove(string path)
+        {
+            spellings.Remove(path);
+            paths.Remove(path);
+            absoluteLinkTargets.Remove(path);
         }
     }
 }
