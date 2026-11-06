@@ -622,9 +622,12 @@ public class OsCommandTests
     }
 
     [Theory]
-    [InlineData(null, "10.0.20348.1366")]
-    [InlineData("10.0.26100.1", "10.0.26100.1")]
-    public async Task RegistryDescriptorPlatformReachesSourceOsAndDockerfile(string? configVersion, string expectedVersion)
+    [InlineData(null, "10.0.20348.1366", false)]
+    [InlineData("10.0.26100.1", "10.0.26100.1", false)]
+    [InlineData(null, "10.0.20348.1366", true)]
+    [InlineData("10.0.26100.1", "10.0.26100.1", true)]
+    public async Task RegistryDescriptorPlatformReachesSourceOsAndDockerfile(
+        string? configVersion, string expectedVersion, bool ansi)
     {
         CancellationToken token = TestContext.Current.CancellationToken;
         await using LayerCacheTestContext cache = new();
@@ -692,11 +695,14 @@ public class OsCommandTests
         using StringWriter dockerfileOutput = new();
         IAnsiConsole console = AnsiConsole.Create(new AnsiConsoleSettings
         {
-            Ansi = AnsiSupport.No, Out = new AnsiConsoleOutput(dockerfileOutput)
+            Ansi = ansi ? AnsiSupport.Yes : AnsiSupport.No,
+            ColorSystem = ColorSystemSupport.Standard,
+            Out = new AnsiConsoleOutput(dockerfileOutput)
         });
         DockerfileCommand dockerfile = new(factory.Object, console) { ImageSourceFactory = sources };
         ((IProcessTerminationAware)dockerfile).ProcessTerminator = new TestProcessTerminator();
-        Assert.Equal(0, await dockerfile.Parse(arguments).InvokeAsync(new InvocationConfiguration(), token));
+        Assert.Equal(0, await dockerfile.Parse([.. arguments, "--no-color"])
+            .InvokeAsync(new InvocationConfiguration(), token));
         Assert.Contains($"FROM mcr.microsoft.com/windows/nanoserver:{expectedVersion}-amd64", dockerfileOutput.ToString());
     }
 
