@@ -626,3 +626,15 @@ dredge image dockerfile <image> [--no-format] [--no-color] [--os <os>] [--arch <
 |--------|-------------|
 | `--no-format` | Disable heuristic line-break formatting |
 | `--no-color` | Disable syntax coloring |
+
+Formatting adds line breaks to unquoted shell commands, including commands inside
+balanced, nested `$()` substitutions. It preserves quoted operands, escaped
+characters, shell comments, parameter expansions, and arithmetic expansions.
+
+If the formatter cannot safely interpret the syntax, it leaves the affected text
+unformatted. This includes here-documents, `case` expressions, and deeply nested
+substitutions.
+
+For quoted PowerShell `-Command` scripts, formatting adds line breaks between
+statements but preserves single-quoted strings, including doubled apostrophes.
+Scripts with nested double quotes, comments, or escape syntax remain unformatted.

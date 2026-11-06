@@ -165,7 +165,29 @@ public partial class DockerfileCommand : RegistryCommandBase<DockerfileOptions>
     {
         const string NopMarker = "#(nop)";
 
-        int nopIndex = line.IndexOf(NopMarker);
+        int nopIndex;
+        if (currentShell is not null && line.StartsWith(currentShell, StringComparison.Ordinal))
+        {
+            nopIndex = currentShell.Length;
+        }
+        else
+        {
+            nopIndex = FindHistoryMetadataIndex(line);
+        }
+        if (nopIndex < 0)
+        {
+            nopIndex = 0;
+        }
+        while (nopIndex < line.Length && line[nopIndex] is ' ' or '\t')
+        {
+            nopIndex++;
+        }
+        if (!line.AsSpan(nopIndex).StartsWith(NopMarker, StringComparison.Ordinal) ||
+            nopIndex + NopMarker.Length >= line.Length ||
+            line[nopIndex + NopMarker.Length] is not (' ' or '\t'))
+        {
+            nopIndex = -1;
+        }
         if (nopIndex >= 0 || currentShell is null)
         {
             if (nopIndex >= 0)
@@ -262,7 +284,271 @@ public partial class DockerfileCommand : RegistryCommandBase<DockerfileOptions>
         return line;
     }
 
+    internal static int FindHistoryMetadataIndex(string line)
+    {
+        if (DockerfileInstructionPrefixRegex().IsMatch(line))
+        {
+            return -1;
+        }
+
+        const string Marker = "#(nop)";
+        bool atTokenStart = true;
+        char quote = '\0';
+        for (int i = 0; i < line.Length; i++)
+        {
+            char character = line[i];
+            if (character is '\r' or '\n')
+            {
+                return -1;
+            }
+            if (quote != '\0')
+            {
+                if (quote == '"' && character == '\\' && i + 1 < line.Length)
+                {
+                    i++;
+                }
+                else if (character == quote)
+                {
+                    quote = '\0';
+                }
+                continue;
+            }
+            if (character is ' ' or '\t')
+            {
+                atTokenStart = true;
+                continue;
+            }
+            if (atTokenStart)
+            {
+                if (character == '#')
+                {
+                    return line.AsSpan(i).StartsWith(Marker, StringComparison.Ordinal) &&
+                        i + Marker.Length < line.Length &&
+                        line[i + Marker.Length] is ' ' or '\t'
+                        ? i
+                        : -1;
+                }
+                // Flattened history can contain literal punctuation within executable paths.
+                if (character is '\'' or '"')
+                {
+                    quote = character;
+                }
+            }
+            atTokenStart = false;
+        }
+        return -1;
+    }
+
     private static string FormatRunInstruction(string line)
+    {
+        Match powerShellCommand = QuotedPowerShellCommandRegex().Match(line);
+        if (powerShellCommand.Success)
+        {
+            return FormatPowerShellCommand(line, powerShellCommand);
+        }
+
+        return FormatShellRunInstruction(line, depth: 0);
+    }
+
+    private static string FormatShellRunInstruction(string line, int depth)
+    {
+        if (depth >= 32)
+        {
+            return line;
+        }
+
+        // These constructs need shell-specific interpretation beyond balanced delimiters.
+        if (line.Contains("$'", StringComparison.Ordinal) ||
+            line.Contains("$\"", StringComparison.Ordinal) ||
+            line.Contains("<<", StringComparison.Ordinal) ||
+            line.IndexOfAny(['`', '\r', '\n']) >= 0)
+        {
+            return line;
+        }
+
+        StringBuilder formattedLine = new();
+        int segmentStart = 0;
+        for (int i = 0; i < line.Length; i++)
+        {
+            char character = line[i];
+            if (character == '^')
+            {
+                return line;
+            }
+
+            bool expansion = character == '$' && i + 1 < line.Length && line[i + 1] is '(' or '{';
+            if (!expansion && character is not ('\'' or '"' or '\\' or '#'))
+            {
+                continue;
+            }
+
+            formattedLine.Append(FormatUnquotedRunSegment(line[segmentStart..i], formatBraces: depth == 0));
+            int protectedStart = i;
+            if (character == '#')
+            {
+                formattedLine.Append(line[i..]);
+                return formattedLine.ToString();
+            }
+            if (character == '\\')
+            {
+                if (++i >= line.Length)
+                {
+                    return line;
+                }
+            }
+            else if (!TryFindProtectedRunTextEnd(line, i, out i))
+            {
+                return line;
+            }
+
+            if (expansion &&
+                line[protectedStart + 1] == '(' &&
+                line[protectedStart + 2] != '(')
+            {
+                formattedLine.Append("$(");
+                formattedLine.Append(FormatShellRunInstruction(line[(protectedStart + 2)..i], depth + 1));
+                formattedLine.Append(')');
+            }
+            else
+            {
+                formattedLine.Append(line[protectedStart..(i + 1)]);
+            }
+            segmentStart = i + 1;
+        }
+        formattedLine.Append(FormatUnquotedRunSegment(line[segmentStart..], formatBraces: depth == 0));
+        return formattedLine.ToString();
+    }
+
+    private static string FormatPowerShellCommand(string line, Match command)
+    {
+        if (line.IndexOfAny(['\u2018', '\u2019', '\u201c', '\u201d']) >= 0)
+        {
+            return line;
+        }
+
+        Group script = command.Groups["script"];
+        StringBuilder formatted = new(line[..script.Index]);
+        bool inString = false;
+        for (int i = script.Index; i < script.Index + script.Length; i++)
+        {
+            char character = line[i];
+            if (character == '\'')
+            {
+                if (inString && i + 1 < script.Index + script.Length && line[i + 1] == '\'')
+                {
+                    formatted.Append("''");
+                    i++;
+                    continue;
+                }
+                inString = !inString;
+            }
+            if (inString)
+            {
+                formatted.Append(character);
+                continue;
+            }
+            if (character is '`' or '#' ||
+                line.AsSpan(i).StartsWith("${", StringComparison.Ordinal) ||
+                line.AsSpan(i).StartsWith("@'", StringComparison.Ordinal) ||
+                line.AsSpan(i).StartsWith("--%", StringComparison.Ordinal))
+            {
+                return line;
+            }
+
+            if (character is ' ' or '\t')
+            {
+                int start = i;
+                while (i + 1 < script.Index + script.Length && line[i + 1] is ' ' or '\t')
+                {
+                    i++;
+                }
+                if (i > start && start > script.Index && line[start - 1] is ';' or '{')
+                {
+                    formatted.Append($" \\{Environment.NewLine}    ");
+                }
+                else
+                {
+                    formatted.Append(' ');
+                }
+            }
+            else
+            {
+                formatted.Append(character);
+            }
+        }
+
+        return inString ? line : formatted.Append(line[(script.Index + script.Length)..]).ToString();
+    }
+
+    private static bool TryFindProtectedRunTextEnd(string line, int start, out int end)
+    {
+        Stack<char> delimiters = new();
+        int i = start;
+        if (line[i] == '$')
+        {
+            delimiters.Push(line[++i] == '(' ? ')' : '}');
+        }
+        else
+        {
+            delimiters.Push(line[i]);
+        }
+
+        while (++i < line.Length)
+        {
+            char character = line[i];
+            char delimiter = delimiters.Peek();
+            if (delimiter == ')' &&
+                line.AsSpan(i).StartsWith("case", StringComparison.Ordinal) &&
+                i + 4 < line.Length && line[i + 4] is ' ' or '\t' &&
+                !char.IsAsciiLetterOrDigit(line[i - 1]) && line[i - 1] != '_')
+            {
+                break;
+            }
+            if (character == '\\' && delimiter != '\'')
+            {
+                i++;
+                continue;
+            }
+            if (character == delimiter)
+            {
+                delimiters.Pop();
+                if (delimiters.Count == 0)
+                {
+                    end = i;
+                    return true;
+                }
+                continue;
+            }
+            if (delimiter == '\'')
+            {
+                continue;
+            }
+            if (character == '$' && i + 1 < line.Length && line[i + 1] is '(' or '{')
+            {
+                delimiters.Push(line[++i] == '(' ? ')' : '}');
+            }
+            else if (delimiter != '"')
+            {
+                if (character is '\'' or '"')
+                {
+                    delimiters.Push(character);
+                }
+                else if (character is '(' or '{')
+                {
+                    delimiters.Push(character == '(' ? ')' : '}');
+                }
+                else if (character == '#' && delimiter == ')')
+                {
+                    break;
+                }
+            }
+        }
+
+        end = start;
+        return false;
+    }
+
+    private static string FormatUnquotedRunSegment(string line, bool formatBraces)
     {
         // Reformat to support multi-line patterns: 
         // 1. '&&' before a new line
@@ -271,10 +557,22 @@ public partial class DockerfileCommand : RegistryCommandBase<DockerfileOptions>
         line = AndAfterNewLineRegex().Replace(line, $" \\{Environment.NewLine}    && ");
         // 3. ';' before a new line
         line = SemiColonBeforeNewLineRegex().Replace(line, $"; \\{Environment.NewLine}    ");
-        // 4. '{' before a new line
-        line = OpenParenBeforeNewLineRegex().Replace(line, $"{{ \\{Environment.NewLine}    ");
-        // 5. '{' after a new line
-        line = CloseParenAfterNewLineRegex().Replace(line, $" \\{Environment.NewLine}    {{ ");
+        // Brace heuristics cannot distinguish literal operands from shell groups inside substitutions.
+        if (formatBraces)
+        {
+            line = OpenParenBeforeNewLineRegex().Replace(line, $"{{ \\{Environment.NewLine}    ");
+            line = CloseParenAfterNewLineRegex().Replace(line, $" \\{Environment.NewLine}    {{ ");
+        }
+
+        int leadingWhitespace = 0;
+        while (leadingWhitespace < line.Length && line[leadingWhitespace] is ' ' or '\t')
+        {
+            leadingWhitespace++;
+        }
+        if (leadingWhitespace > 1)
+        {
+            line = " " + line[leadingWhitespace..];
+        }
 
         // Trim extra spaces from commands that were originally multiline but represented in layer history
         // without newlines, leading to a bunch of spaces.
@@ -311,10 +609,9 @@ public partial class DockerfileCommand : RegistryCommandBase<DockerfileOptions>
 
     private static string FormatLineToRemoveWhitespace(string line)
     {
-        // A regex that captures whitespace of length 2 or more that's not contained in quotes.
-        Regex nonQuotedMultiWhitespaceRegex =
-            TwoOrMoreWhitespaceNotInQuotesRegex();
-        MatchCollection matches = nonQuotedMultiWhitespaceRegex.Matches(line);
+        Regex multiWhitespaceRegex =
+            TwoOrMoreWhitespaceRegex();
+        MatchCollection matches = multiWhitespaceRegex.Matches(line);
         if (matches.Count == 0)
         {
             return line;
@@ -413,6 +710,12 @@ public partial class DockerfileCommand : RegistryCommandBase<DockerfileOptions>
     
     [GeneratedRegex(@"[ \t]{2,}\{[ \t]+")]
     private static partial Regex CloseParenAfterNewLineRegex();
-    [GeneratedRegex(@"\S+(?<whitespace>[ \t]{2,})((?=(?<singlequoted>[^'""]*'[^']*')*[^'""]*$)|(?=(?<doublequoted>[^""']*""[^""]*"")*[^""']*$))", RegexOptions.Multiline)]
-    private static partial Regex TwoOrMoreWhitespaceNotInQuotesRegex();
+    [GeneratedRegex(@"\S+(?<whitespace>[ \t]{2,})", RegexOptions.Multiline)]
+    private static partial Regex TwoOrMoreWhitespaceRegex();
+
+    [GeneratedRegex(@"\A[ \t]*(?:ADD|ARG|CMD(?![ \t]+/[A-Za-z](?::[^ \t\r\n]+)?(?:[ \t]|$))|COPY|ENTRYPOINT|ENV|EXPOSE|FROM|HEALTHCHECK|LABEL|MAINTAINER|ONBUILD|RUN|SHELL|STOPSIGNAL|USER|VOLUME|WORKDIR)[ \t]", RegexOptions.IgnoreCase | RegexOptions.CultureInvariant)]
+    private static partial Regex DockerfileInstructionPrefixRegex();
+
+    [GeneratedRegex("\\A(?:powershell|pwsh)(?:\\.exe)?[ \\t]+(?:(?:-NoLogo|-NoProfile|-NonInteractive)[ \\t]+)*-Command[ \\t]+\"(?<script>[^\"\\r\\n]*)\"[ \\t]*\\z", RegexOptions.IgnoreCase | RegexOptions.CultureInvariant)]
+    private static partial Regex QuotedPowerShellCommandRegex();
 }

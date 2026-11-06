@@ -1,6 +1,7 @@
 namespace Valleysoft.Dredge.Tests;
 
 using Spectre.Console;
+using System.Diagnostics;
 using System.Text;
 using System.Text.Json;
 using Valleysoft.DockerRegistryClient.Models.Images;
@@ -11,6 +12,343 @@ using Valleysoft.Dredge.Commands.Image;
 public class DockerfileCommandTests
 {
     private const string Registry = "test-registry.io";
+
+    [Theory]
+    [InlineData(false, false)]
+    [InlineData(false, true)]
+    [InlineData(true, false)]
+    [InlineData(true, true)]
+    public async Task HistoryMarkerInShellLiteralIsPreserved(bool noFormat, bool noColor)
+    {
+        string actual = await RenderHistoryAsync(
+            ["/bin/sh -c #(nop) ENV X=1", "/bin/sh -c echo \"#(nop) literal\""],
+            noFormat, noColor);
+
+        Assert.Equal(
+            $"FROM scratch{Environment.NewLine}ENV X=1{Environment.NewLine}RUN echo \"#(nop) literal\"{Environment.NewLine}",
+            actual);
+    }
+
+    public static IEnumerable<TheoryDataRow<string, bool, bool>> GetLiteralRunData()
+    {
+        string[] commands =
+        [
+            "printf '%s' 'A &&  B'",
+            "printf '%s' \"A  && B\"",
+            "printf '%s' 'A;  B'",
+            "printf '%s' \"A {  B\"",
+            "printf '%s' 'A  { B'",
+            "printf '%s' 'A  B'",
+            "printf '%s' \"A '  B\"",
+            "printf '%s' 'A \"  B'",
+            "printf '%s' \"A \\\" &&  B\"",
+            "echo A\\ \\ B",
+            "echo $(printf '%s' 'A &&  B')",
+            "echo \"$(printf '%s' \"$(printf '%s' 'A &&  B')\")\"",
+            "echo $(case x in x) printf '%s' 'A &&  B';; esac)",
+            "echo $((1  +  2))",
+            "echo $(printf '%s' ${VALUE:-'A;  B'})",
+            "echo $(printf '%s' 'A &&  B' # literal;  comment)",
+            "echo " + string.Concat(Enumerable.Repeat("$(", 100)) + "printf '%s' 'A &&  B'" + new string(')', 100),
+            "echo `printf '%s' 'A &&  B'`",
+            "printf '%s' $'A\\' &&  B'",
+            "printf '%s' ${VALUE:-'A &&  B'}",
+            "echo done # literal &&  comment",
+            "echo A^ &&  echo B",
+            "powershell -Command \"Write-Output 'A &&  B';  # comment\"",
+            "powershell -Command \"Write-Output ${A;  B};  Write-Output done\"",
+            "powershell -Command \"Write-Output `A;  Write-Output done\"",
+            "powershell -Command \"cmd --% echo A;  B\"",
+            "powershell -Command \"Write-Output \u2018A;  B\u2019;  Write-Output done\""
+        ];
+        foreach (string command in commands)
+        {
+            foreach (bool noFormat in new[] { false, true })
+            {
+                foreach (bool noColor in new[] { false, true })
+                {
+                    yield return new(command, noFormat, noColor);
+                }
+            }
+        }
+    }
+
+    [Theory]
+    [MemberData(nameof(GetLiteralRunData))]
+    public async Task RunLiteralSemanticsArePreserved(string command, bool noFormat, bool noColor)
+    {
+        string actual = await RenderHistoryAsync(
+            ["/bin/sh -c #(nop) ENV X=1", $"/bin/sh -c {command}"],
+            noFormat, noColor);
+
+        string reconstructedCommand = actual.Split("RUN ", 2)[1].TrimEnd('\r', '\n')
+            .Replace($"\\{Environment.NewLine}", "", StringComparison.Ordinal);
+        Assert.Equal(command, reconstructedCommand);
+        Assert.Equal(
+            $"FROM scratch{Environment.NewLine}ENV X=1{Environment.NewLine}RUN {command}{Environment.NewLine}",
+            actual);
+    }
+
+    [Theory]
+    [InlineData(false, "echo B")]
+    [InlineData(true, "echo B")]
+    [InlineData(false, "echo \"B &&  C\"")]
+    [InlineData(true, "echo \"B &&  C\"")]
+    [InlineData(false, "echo \"$(printf '%s' 'B &&  C')\"")]
+    [InlineData(true, "echo \"$(printf '%s' 'B &&  C')\"")]
+    [InlineData(false, "echo $(printf '%s' 'B &&  C')")]
+    [InlineData(true, "echo $(printf '%s' 'B &&  C')")]
+    [InlineData(false, "echo \"${VALUE:-B &&  C}\"")]
+    [InlineData(true, "echo \"${VALUE:-B &&  C}\"")]
+    [InlineData(false, "echo \"$(printf '%s' \"$(printf '%s' 'B &&  C')\")\"")]
+    [InlineData(true, "echo \"$(printf '%s' \"$(printf '%s' 'B &&  C')\")\"")]
+    [InlineData(false, "echo $(printf '%s' 'B &&  C' | grep '^Version:')")]
+    [InlineData(true, "echo $(printf '%s' 'B &&  C' | grep '^Version:')")]
+    [InlineData(false, "echo 'B^ &&  C'")]
+    [InlineData(true, "echo 'B^ &&  C'")]
+    public async Task UnquotedRunStillFormats(bool noFormat, string secondCommand)
+    {
+        string actual = await RenderHistoryAsync(
+            ["/bin/sh -c #(nop) ENV X=1", $"/bin/sh -c echo  A &&  {secondCommand}"],
+            noFormat, noColor: false);
+
+        string expectedRun = noFormat
+            ? $"echo  A &&  {secondCommand}"
+            : $"echo A && \\{Environment.NewLine}    {secondCommand}";
+        Assert.Equal(
+            $"FROM scratch{Environment.NewLine}ENV X=1{Environment.NewLine}RUN {expectedRun}{Environment.NewLine}",
+            actual);
+    }
+
+    [Theory]
+    [InlineData(false, false)]
+    [InlineData(false, true)]
+    [InlineData(true, false)]
+    [InlineData(true, true)]
+    public async Task CommandSubstitutionStillFormats(bool noFormat, bool noColor)
+    {
+        const string command = "echo $(  if true; then  printf '%s' 'A &&  B';  else  echo $(printf '%s' 'C;  D';  printf '%s' E\\ \\ F);  fi  )";
+        string actual = await RenderHistoryAsync(
+            ["/bin/sh -c #(nop) ENV X=1", $"/bin/sh -c {command}"],
+            noFormat, noColor);
+
+        string expectedCommand = noFormat
+            ? command
+            : $"echo $( if true; then printf '%s' 'A &&  B'; \\{Environment.NewLine}    else echo $(printf '%s' 'C;  D'; \\{Environment.NewLine}    printf '%s' E\\ \\ F); \\{Environment.NewLine}    fi )";
+        Assert.Equal(
+            $"FROM scratch{Environment.NewLine}ENV X=1{Environment.NewLine}RUN {expectedCommand}{Environment.NewLine}",
+            actual);
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task CommandSubstitutionPreservesBraceOperand(bool noFormat)
+    {
+        const string command = "echo $(printf '%s' {  A  };  printf '%s' 'A &&  B')";
+        string actual = await RenderHistoryAsync(
+            ["/bin/sh -c #(nop) ENV X=1", $"/bin/sh -c {command}"],
+            noFormat, noColor: true);
+
+        string expectedCommand = noFormat
+            ? command
+            : $"echo $(printf '%s' {{ A }}; \\{Environment.NewLine}    printf '%s' 'A &&  B')";
+        Assert.Equal(
+            $"FROM scratch{Environment.NewLine}ENV X=1{Environment.NewLine}RUN {expectedCommand}{Environment.NewLine}",
+            actual);
+    }
+
+    [Theory]
+    [InlineData(false, false, "powershell -Command")]
+    [InlineData(false, true, "powershell -Command")]
+    [InlineData(true, false, "powershell -Command")]
+    [InlineData(true, true, "powershell -Command")]
+    [InlineData(false, false, "pwsh -NoLogo -NoProfile -Command")]
+    [InlineData(true, true, "pwsh -NoLogo -NoProfile -Command")]
+    [InlineData(false, true, "PowerShell.exe -NonInteractive -command")]
+    [InlineData(true, false, "PowerShell.exe -NonInteractive -command")]
+    public async Task QuotedPowerShellScriptStillFormats(bool noFormat, bool noColor, string prefix)
+    {
+        const string script = "Write-Output 'A &&  B;  C {  D';  Write-Output 'it''s;  unchanged'";
+        string actual = await RenderHistoryAsync(
+            ["cmd /S /C #(nop) ENV X=1", $"cmd /S /C {prefix} \"{script}\""],
+            noFormat, noColor);
+
+        string expectedScript = noFormat
+            ? script
+            : $"Write-Output 'A &&  B;  C {{  D'; \\{Environment.NewLine}    Write-Output 'it''s;  unchanged'";
+        Assert.Equal(
+            $"FROM scratch{Environment.NewLine}ENV X=1{Environment.NewLine}RUN {prefix} \"{expectedScript}\"{Environment.NewLine}",
+            actual);
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task ExplicitShellMetadataIsRecognized(bool noFormat)
+    {
+        string actual = await RenderHistoryAsync(
+            ["SHELL [\"/bin/bash\", \"-c\"]", "/bin/bash -c #(nop) ENV X=1", "/bin/bash -c echo \"#(nop) literal\""],
+            noFormat, noColor: true);
+
+        Assert.Equal(
+            $"FROM scratch{Environment.NewLine}SHELL [\"/bin/bash\", \"-c\"]{Environment.NewLine}ENV X=1{Environment.NewLine}RUN echo \"#(nop) literal\"{Environment.NewLine}",
+            actual);
+    }
+
+    [Theory]
+    [InlineData(false, false, "powershell -Command")]
+    [InlineData(false, true, "powershell -Command")]
+    [InlineData(true, false, "powershell -Command")]
+    [InlineData(true, true, "powershell -Command")]
+    [InlineData(false, false, "pwsh -NoLogo -Command")]
+    [InlineData(true, true, "pwsh -NoLogo -Command")]
+    [InlineData(false, false, "powershell -ExecutionPolicy Bypass -Command")]
+    [InlineData(false, true, "powershell -ExecutionPolicy Bypass -Command")]
+    [InlineData(true, false, "powershell -ExecutionPolicy Bypass -Command")]
+    [InlineData(true, true, "powershell -ExecutionPolicy Bypass -Command")]
+    [InlineData(false, false, "/bin/bash --noprofile -o pipefail -c")]
+    [InlineData(true, true, "/bin/bash --noprofile -o pipefail -c")]
+    [InlineData(false, false, "powershell -ExecutionPolicy \"Bypass\" -Command")]
+    [InlineData(true, true, "powershell -ExecutionPolicy \"Bypass\" -Command")]
+    [InlineData(false, false, "\"C:\\Program Files\\PowerShell\\7\\pwsh.exe\" -Command")]
+    [InlineData(true, true, "\"C:\\Program Files\\PowerShell\\7\\pwsh.exe\" -Command")]
+    [InlineData(false, false, "C:\\Program Files\\PowerShell\\7\\pwsh.exe -Command")]
+    [InlineData(true, true, "C:\\Program Files\\PowerShell\\7\\pwsh.exe -Command")]
+    [InlineData(false, false, "C:\\tools\\O'Brien\\pwsh.exe -Command")]
+    [InlineData(true, true, "C:\\tools\\O'Brien\\pwsh.exe -Command")]
+    [InlineData(false, false, "C:\\tools\\build#1\\pwsh.exe -Command")]
+    [InlineData(true, true, "C:\\tools\\build#1\\pwsh.exe -Command")]
+    [InlineData(false, false, "/opt/O'Brien/sh -c")]
+    [InlineData(true, true, "/opt/build#1/sh -c")]
+    [InlineData(false, false, "cmd /V:ON /S /C")]
+    [InlineData(false, true, "cmd /V:ON /S /C")]
+    [InlineData(true, false, "cmd /V:ON /S /C")]
+    [InlineData(true, true, "cmd /V:ON /S /C")]
+    [InlineData(false, false, "cmd /E:ON /S /C")]
+    [InlineData(true, true, "cmd /E:ON /S /C")]
+    [InlineData(false, false, "cmd /F:OFF /S /C")]
+    [InlineData(true, true, "cmd /F:OFF /S /C")]
+    [InlineData(false, false, "cmd /T:0A /S /C")]
+    [InlineData(true, true, "cmd /T:0A /S /C")]
+    public async Task InheritedShellMetadataIsRecognized(bool noFormat, bool noColor, string shell)
+    {
+        string actual = await RenderHistoryAsync(
+            [$"{shell} #(nop) ENV X=1", $"{shell} echo \"#(nop) literal\""],
+            noFormat, noColor);
+
+        Assert.Equal(
+            $"FROM scratch{Environment.NewLine}ENV X=1{Environment.NewLine}RUN echo \"#(nop) literal\"{Environment.NewLine}",
+            actual);
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task KnownShellBoundaryProtectsCommandText(bool noFormat)
+    {
+        const string Shell = "/bin/sh -c";
+        const string Command = "echo \"\\\" #(nop) literal\"";
+        string actual = await RenderHistoryAsync(
+            [$"{Shell} #(nop) ENV X=1", $"{Shell} {Command}"],
+            noFormat, noColor: true);
+
+        Assert.Equal(
+            $"FROM scratch{Environment.NewLine}ENV X=1{Environment.NewLine}RUN {Command}{Environment.NewLine}",
+            actual);
+    }
+
+    [Theory]
+    [InlineData(false, "RUN /bin/sh -c echo \"\\\" #(nop) literal\" # buildkit")]
+    [InlineData(true, "RUN /bin/sh -c echo \"\\\" #(nop) literal\" # buildkit")]
+    [InlineData(false, "RUN /bin/sh -c echo prefix\" #(nop) literal\" # buildkit")]
+    [InlineData(true, "RUN /bin/sh -c echo prefix\" #(nop) literal\" # buildkit")]
+    [InlineData(false, "RUN /bin/sh -c echo prefix' #(nop) literal' # buildkit")]
+    [InlineData(true, "RUN /bin/sh -c echo prefix' #(nop) literal' # buildkit")]
+    [InlineData(false, "RUN /bin/sh -c echo prefix\\\"\\ #(nop) literal # buildkit")]
+    [InlineData(true, "RUN /bin/sh -c echo prefix\\\"\\ #(nop) literal # buildkit")]
+    [InlineData(false, "LABEL text=prefix\" #(nop) literal\"")]
+    [InlineData(true, "LABEL text=prefix\" #(nop) literal\"")]
+    [InlineData(false, "CMD /bin/sh -c echo prefix\" #(nop) literal\"")]
+    [InlineData(true, "CMD /bin/sh -c echo prefix\" #(nop) literal\"")]
+    [InlineData(false, "run\t/bin/sh -c echo prefix\" #(nop) literal\" # buildkit")]
+    [InlineData(true, "run\t/bin/sh -c echo prefix\" #(nop) literal\" # buildkit")]
+    public async Task BuildKitCommandTextIsNotAnInheritedShellPrefix(bool noFormat, string command)
+    {
+        string actual = await RenderHistoryAsync([command], noFormat, noColor: true);
+
+        Assert.Equal($"FROM scratch{Environment.NewLine}{command}{Environment.NewLine}", actual);
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void MetadataDiscoveryHandlesLongWhitespaceInBoundedTime(bool hasMetadata)
+    {
+        string prefix = "/bin/sh -c" + new string(' ', 1_000_000);
+        string history = prefix + (hasMetadata ? "#(nop) ENV X=1" : "echo done");
+        Stopwatch timer = Stopwatch.StartNew();
+
+        int index = DockerfileCommand.FindHistoryMetadataIndex(history);
+
+        timer.Stop();
+        Assert.Equal(hasMetadata ? prefix.Length : -1, index);
+        Assert.True(timer.Elapsed < TimeSpan.FromSeconds(2), $"Metadata scanning took {timer.Elapsed}.");
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task LongWhitespaceBuildKitHistoryIsPreserved(bool noFormat)
+    {
+        string history = "RUN /bin/sh -c echo" + new string(' ', 16_384) + "done # buildkit";
+        string actual = await RenderHistoryAsync([history], noFormat, noColor: true);
+
+        Assert.Equal($"FROM scratch{Environment.NewLine}{history}{Environment.NewLine}", actual);
+    }
+
+    private static async Task<string> RenderHistoryAsync(string[] history, bool noFormat, bool noColor)
+    {
+        CancellationToken cancellationToken = TestContext.Current.CancellationToken;
+        Image image = new()
+        {
+            Os = "linux",
+            Architecture = "amd64",
+            History = [.. history.Select(static createdBy => new LayerHistory { CreatedBy = createdBy })]
+        };
+        Mock<IDockerRegistryClient> client = new();
+        client.Setup(o => o.Manifests.GetAsync("repo", "tag", cancellationToken))
+            .ReturnsAsync(new ManifestInfo("media-type", "digest", new DockerManifest
+            {
+                Config = new ManifestConfig { Digest = "config-digest" }
+            }));
+        client.Setup(o => o.Blobs.GetAsync("repo", "config-digest", cancellationToken))
+            .ReturnsAsync(new MemoryStream(Encoding.UTF8.GetBytes(JsonSerializer.Serialize(image))));
+        Mock<IDockerRegistryClientFactory> factory = new();
+        factory.Setup(o => o.GetClientAsync(Registry, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(client.Object);
+        DockerfileCommand command = new(factory.Object)
+        {
+            Options = new DockerfileOptions
+            {
+                Image = $"{Registry}/repo:tag",
+                NoFormat = noFormat,
+                NoColor = noColor
+            }
+        };
+
+        string markup = await command.GetMarkupStringAsync(cancellationToken);
+        StringWriter output = new();
+        IAnsiConsole console = AnsiConsole.Create(new AnsiConsoleSettings
+        {
+            Ansi = AnsiSupport.No,
+            ColorSystem = ColorSystemSupport.NoColors,
+            Out = new AnsiConsoleOutput(output)
+        });
+        console.Profile.Width = 32_768;
+        console.Write(new Markup(markup));
+        return output.ToString();
+    }
 
     public static IEnumerable<TheoryDataRow<TestScenario>> GetTestData()
     {
