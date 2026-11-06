@@ -47,7 +47,7 @@ dredge settings set platform.os linux
 
 Deletes compressed layer blobs, filesystem indexes, and merged views from the
 configured [persistent layer cache](../settings.md#configure-the-layer-cache).
-It also removes the legacy extracted-layer cache and comparison-tool output
+It also removes the legacy extracted-layer cache and retained comparison-tool output
 under Dredge's temporary directory. It leaves settings and unrelated files
 untouched.
 
@@ -59,6 +59,9 @@ The command reports the bytes deleted. Active blobs and staging files are
 skipped with a diagnostic; run the command again after other Dredge operations
 finish to remove them. Coordination files and the cache directory remain.
 
-Close external comparison tools before cleanup. Dredge versions before 7.0
+Close all external comparison tools and let comparison preparation finish
+before cleanup. Comparison inputs are retained per invocation because a GUI
+launcher can exit while a viewer still needs them; they are not automatically
+deleted when the launcher exits. Dredge versions before 7.0
 do not participate in the new cache coordination; do not clear their temporary
 output while they are running.

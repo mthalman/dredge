@@ -530,6 +530,17 @@ Compares the files in two images. Dredge downloads each image, applies its
 layers to a temporary directory, and starts the configured external comparison
 tool.
 
+Each invocation uses its own directory under Dredge's temporary `compare`
+directory, so later or concurrent comparisons do not overwrite another
+viewer's inputs. Dredge reports the retained directory on standard error and
+returns after launching the tool; it does not wait for the viewer to close.
+Inputs remain available even if the launcher exits after handing them to an
+already-running GUI. After closing all comparison tools and allowing other
+Dredge operations to finish, run
+[`dredge settings clear-cache`](settings.md#clear-cache) to remove retained
+inputs. Failed or canceled preparation and failed launches remove only their
+own workspace; cleanup failures report its path on standard error.
+
 Before running this command, [configure the file comparison
 tool](../settings.md#configure-the-file-comparison-tool).
 

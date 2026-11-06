@@ -165,10 +165,11 @@ public class DaemonImageCommandIntegrationTests
                         new TestAppSettingsStore(comparisonSettings), cache.Paths, launcher);
                     Assert.Equal(0, await InvokeAsync(files, sources, before, after));
                     Assert.Equal("test-compare", launcher.StartInfo?.FileName);
+                    string workspace = Path.GetDirectoryName(launcher.StartInfo!.Arguments.Split('"')[1])!;
                     foreach (string side in new[] { "base", "target" })
                     {
                         Assert.Equal("unpublished image\n", await File.ReadAllTextAsync(
-                            Path.Combine(cache.Paths.TempPath, "compare", side, "hello"), ct));
+                            Path.Combine(workspace, side, "hello"), ct));
                     }
                 }
             }

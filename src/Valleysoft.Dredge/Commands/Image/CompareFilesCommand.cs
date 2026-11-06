@@ -57,43 +57,61 @@ public class CompareFilesCommand : RegistryCommandBase<CompareFilesOptions>
             {
                 ReportComparison(baseSource!, targetSource!);
             }
-            await SaveImageLayersToDiskAsync(
-                Options.BaseImage,
-                BaseOutputDirName,
-                Options.BaseLayerIndex,
-                CompareFilesOptions.BaseLayerIndexOptionName,
-                ct, baseSource);
-            Console.Error.WriteLine();
-            await SaveImageLayersToDiskAsync(
-                Options.TargetImage,
-                TargetOutputDirName,
-                Options.TargetLayerIndex,
-                CompareFilesOptions.TargetLayerIndexOptionName,
-                ct, targetSource);
+            string workspace = Path.Combine(pathProvider.TempPath, "compare", Guid.NewGuid().ToString("N"));
+            bool launched = false;
+            try
+            {
+                ct.ThrowIfCancellationRequested();
+                CacheFileSystem.CreateDirectory(workspace);
+                string basePath = Path.Combine(workspace, BaseOutputDirName);
+                string targetPath = Path.Combine(workspace, TargetOutputDirName);
+                await SaveImageLayersToDiskAsync(
+                    Options.BaseImage,
+                    basePath,
+                    Options.BaseLayerIndex,
+                    CompareFilesOptions.BaseLayerIndexOptionName,
+                    ct, baseSource);
+                Error.WriteLine();
+                await SaveImageLayersToDiskAsync(
+                    Options.TargetImage,
+                    targetPath,
+                    Options.TargetLayerIndex,
+                    CompareFilesOptions.TargetLayerIndexOptionName,
+                    ct, targetSource);
 
-            string compareTempPath = Path.Combine(pathProvider.TempPath, "compare");
-            string args = settings.FileCompareTool.Args
-                .Replace("{0}", Path.Combine(compareTempPath, BaseOutputDirName))
-                .Replace("{1}", Path.Combine(compareTempPath, TargetOutputDirName));
-            ct.ThrowIfCancellationRequested();
-            processLauncher.Start(new ProcessStartInfo(settings.FileCompareTool.ExePath, args));
+                string args = settings.FileCompareTool.Args
+                    .Replace("{0}", basePath)
+                    .Replace("{1}", targetPath);
+                ct.ThrowIfCancellationRequested();
+                processLauncher.Start(new ProcessStartInfo(settings.FileCompareTool.ExePath, args));
+                launched = true;
+                Error.WriteLine($"Comparison inputs retained in '{workspace}'. Close comparison tools before running 'dredge settings clear-cache' to remove them.");
+            }
+            finally
+            {
+                if (!launched && Directory.Exists(workspace))
+                {
+                    try
+                    {
+                        Directory.Delete(workspace, recursive: true);
+                    }
+                    catch (Exception e) when (e is IOException or UnauthorizedAccessException)
+                    {
+                        Error.WriteLine($"Could not remove comparison workspace '{workspace}': {e.Message}");
+                    }
+                }
+            }
         });
     }
 
     private Task SaveImageLayersToDiskAsync(
         string image,
-        string outputDirName,
+        string workingDir,
         int? layerIndex,
         string layerIndexOptionName,
         CancellationToken cancellationToken,
         ResolvedImage? source)
     {
-        string workingDir = Path.Combine(pathProvider.TempPath, "compare", outputDirName);
-        if (Directory.Exists(workingDir))
-        {
-            Directory.Delete(workingDir, recursive: true);
-        }
-
         return ImageHelper.SaveImageLayersToDiskAsync(
             DockerRegistryClientFactory,
             image,
