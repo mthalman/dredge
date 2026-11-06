@@ -530,19 +530,22 @@ Compares the files in two images. Dredge downloads each image, applies its
 layers to a temporary directory, and starts the configured external comparison
 tool.
 
-Each invocation uses its own directory under Dredge's temporary `compare`
-directory, so later or concurrent comparisons do not overwrite another
-viewer's inputs. Dredge reports the retained directory on standard error and
-returns after launching the tool; it does not wait for the viewer to close.
-Inputs remain available even if the launcher exits after handing them to an
-already-running GUI. After closing all comparison tools and allowing other
-Dredge operations to finish, run
-[`dredge settings clear-cache`](settings.md#clear-cache) to remove retained
-inputs. Failed or canceled preparation and failed launches remove only their
-own workspace; cleanup failures report its path on standard error.
-
 Before running this command, [configure the file comparison
 tool](../settings.md#configure-the-file-comparison-tool).
+
+Each comparison uses a separate directory under Dredge's temporary `compare`
+directory, so concurrent or later comparisons leave existing inputs unchanged.
+Dredge reports this path on standard error and returns after starting the tool,
+without waiting for the viewer to close.
+
+Dredge keeps the inputs because a GUI launcher can exit while a viewer still
+needs them. To remove the inputs, first close all comparison tools and wait for
+other Dredge operations to finish. Then run
+[`dredge settings clear-cache`](settings.md#clear-cache).
+
+If preparation fails or is canceled, or the tool cannot be launched, Dredge
+removes only that comparison's directory. If cleanup fails, Dredge reports the
+directory path and the error on standard error.
 
 ```console
 dredge image compare files <base> <target> [--base-layer-index <n>] [--target-layer-index <n>] [--output <type>] [--os <os>] [--arch <arch>] [--os-version <version>]
