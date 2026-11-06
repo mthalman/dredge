@@ -135,6 +135,16 @@ public class DockerfileCommandTests
     [InlineData(true, true, "C:\\tools\\build#1\\pwsh.exe -Command")]
     [InlineData(false, false, "/opt/O'Brien/sh -c")]
     [InlineData(true, true, "/opt/build#1/sh -c")]
+    [InlineData(false, false, "cmd /V:ON /S /C")]
+    [InlineData(false, true, "cmd /V:ON /S /C")]
+    [InlineData(true, false, "cmd /V:ON /S /C")]
+    [InlineData(true, true, "cmd /V:ON /S /C")]
+    [InlineData(false, false, "cmd /E:ON /S /C")]
+    [InlineData(true, true, "cmd /E:ON /S /C")]
+    [InlineData(false, false, "cmd /F:OFF /S /C")]
+    [InlineData(true, true, "cmd /F:OFF /S /C")]
+    [InlineData(false, false, "cmd /T:0A /S /C")]
+    [InlineData(true, true, "cmd /T:0A /S /C")]
     public async Task InheritedShellMetadataIsRecognized(bool noFormat, bool noColor, string shell)
     {
         string actual = await RenderHistoryAsync(
