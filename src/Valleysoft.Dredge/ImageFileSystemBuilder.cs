@@ -70,14 +70,50 @@ internal sealed class ImageFileSystemBuilder
         bool extracting,
         CancellationToken cancellationToken,
         IProgress<ImageIndexProgress>? progress = null,
-        int? maxLayerIndex = null)
+        int? maxLayerIndex = null,
+        IReadOnlyList<string>? contentCandidates = null)
     {
         string normalizedPath = semantics.NormalizeRequested(contentPath);
-        if (!semantics.IsWindows && normalizedPath.Length > 0)
+        if (!semantics.IsWindows && (normalizedPath.Length > 0 || contentCandidates is { Count: > 0 }))
         {
+            int nextReplaySize = 1;
+            int lastReplayFirstLayer = manifest.Layers.Length;
             for (int firstLayer = manifest.Layers.Length - 1; firstLayer >= 0; firstLayer--)
             {
-                await GetIndexAsync(firstLayer, cancellationToken);
+                cancellationToken.ThrowIfCancellationRequested();
+                try
+                {
+                    await GetIndexAsync(firstLayer, cancellationToken);
+                }
+                catch (Exception exception) when (contentCandidates is not null &&
+                    firstLayer + 1 < lastReplayFirstLayer &&
+                    exception is IOException or InvalidDataException or HttpRequestException or RegistryException)
+                {
+                    cancellationToken.ThrowIfCancellationRequested();
+                    if (TryBuildContentCandidates(firstLayer + 1, contentCandidates, cancellationToken))
+                    {
+                        return false;
+                    }
+                    throw;
+                }
+                if (contentCandidates is not null)
+                {
+                    int suffixLength = manifest.Layers.Length - firstLayer;
+                    if (suffixLength < nextReplaySize && firstLayer > 0)
+                    {
+                        continue;
+                    }
+                    nextReplaySize = (int)Math.Min((long)suffixLength * 2, manifest.Layers.Length);
+                }
+                lastReplayFirstLayer = firstLayer;
+                if (contentCandidates is not null)
+                {
+                    if (TryBuildContentCandidates(firstLayer, contentCandidates, cancellationToken))
+                    {
+                        return firstLayer == 0;
+                    }
+                    continue;
+                }
                 entries.Clear();
                 deletedEntries.Clear();
                 try
@@ -115,6 +151,53 @@ internal sealed class ImageFileSystemBuilder
         return maxLayerIndex is null;
     }
 
+    private bool TryBuildContentCandidates(
+        int firstLayer, IReadOnlyList<string> candidates, CancellationToken cancellationToken)
+    {
+        entries.Clear();
+        deletedEntries.Clear();
+        try
+        {
+            for (int layer = firstLayer; layer < manifest.Layers.Length; layer++)
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+                ApplyLayer(indexes[layer].Changes, new(layer, indexes[layer].Digest), cancellationToken,
+                    deferUnresolvedHardLinks: firstLayer > 0);
+            }
+            return ContentCandidatesResolved(candidates, firstLayer == 0, cancellationToken);
+        }
+        catch (Exception exception) when (firstLayer > 0 &&
+            exception is FileNotFoundException or InvalidDataException)
+        {
+            return false;
+        }
+    }
+
+    private bool ContentCandidatesResolved(
+        IReadOnlyList<string> candidates, bool complete, CancellationToken cancellationToken)
+    {
+        foreach (string candidate in candidates)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            try
+            {
+                if (pathResolver.ResolveContentEntry(candidate, entries).Size > 0)
+                {
+                    return true;
+                }
+            }
+            catch (FileNotFoundException)
+            {
+                if (!complete)
+                {
+                    return false;
+                }
+                continue;
+            }
+        }
+        return true;
+    }
+
     public async Task<StoredLayerIndex> GetIndexAsync(int layerIndex, CancellationToken cancellationToken,
         IProgress<long>? progress = null)
     {
@@ -137,7 +220,8 @@ internal sealed class ImageFileSystemBuilder
     public void ApplyLayer(
         LayerChanges changes,
         ImageLayerReference layer,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        bool deferUnresolvedHardLinks = false)
     {
         foreach (string directory in changes.OpaqueDirectories)
         {
@@ -179,16 +263,31 @@ internal sealed class ImageFileSystemBuilder
             ImageFileSystemEntry current = scanned.ToEntry(introduced, modified, layer);
             if (current.Type == ImageFileType.HardLink)
             {
-                string targetPath = pathResolver.GetHardLinkTargetPath(current, entries);
-                entries.TryGetValue(targetPath, out ImageFileSystemEntry? foundTarget);
-                ImageFileSystemSemantics.ValidateHardLinkTarget(current.Path, targetPath, foundTarget?.Type);
+                string? targetPath;
+                try
+                {
+                    targetPath = pathResolver.GetHardLinkTargetPath(current, entries);
+                }
+                catch (FileNotFoundException) when (deferUnresolvedHardLinks)
+                {
+                    targetPath = null;
+                }
+                ImageFileSystemEntry? foundTarget = targetPath is null ? null : entries.GetValueOrDefault(targetPath);
+                if (deferUnresolvedHardLinks && foundTarget is null)
+                {
+                    RemoveEntry(current.Path, layer);
+                    continue;
+                }
+                string resolvedTargetPath = targetPath ??
+                    throw new InvalidDataException($"Hard link '/{current.Path}' has no resolved target.");
+                ImageFileSystemSemantics.ValidateHardLinkTarget(current.Path, resolvedTargetPath, foundTarget?.Type);
                 ImageFileSystemEntry target = foundTarget!;
                 current = current with
                 {
                     Type = semantics.IsWindows && target.Type == ImageFileType.Other
                         ? ImageFileType.Other : current.Type,
                     Windows = semantics.IsWindows && target.Type == ImageFileType.Other
-                        ? ImageFileSystemSemantics.UnsupportedHardLink(targetPath, current.Windows) : current.Windows,
+                        ? ImageFileSystemSemantics.UnsupportedHardLink(resolvedTargetPath, current.Windows) : current.Windows,
                     Size = target.Size,
                     ContentLayerIndex = target.ContentLayerIndex,
                     ContentPath = target.ContentPath,

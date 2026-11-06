@@ -31,15 +31,16 @@ internal sealed record ExplorerPlatform(string Os, string Architecture, string? 
         HasSamePlatform(other) &&
         string.Equals(NormalizedVariant, other.NormalizedVariant, StringComparison.OrdinalIgnoreCase);
 
-    public bool IsCompatibleWith(ExplorerPlatform other) =>
-        HasSamePlatform(other) &&
+    public bool IsCompatibleWith(ExplorerPlatform other, bool allowWindowsVersionDifference = false) =>
+        HasSamePlatform(other, allowWindowsVersionDifference) &&
         (HasUnknownVariant || other.HasUnknownVariant ||
             string.Equals(NormalizedVariant, other.NormalizedVariant, StringComparison.OrdinalIgnoreCase));
 
-    private bool HasSamePlatform(ExplorerPlatform other) =>
+    private bool HasSamePlatform(ExplorerPlatform other, bool allowWindowsVersionDifference = false) =>
         string.Equals(Os, other.Os, StringComparison.OrdinalIgnoreCase) &&
         string.Equals(Architecture, other.Architecture, StringComparison.OrdinalIgnoreCase) &&
-        string.Equals(OsVersion ?? "", other.OsVersion ?? "", StringComparison.OrdinalIgnoreCase);
+        (allowWindowsVersionDifference && string.Equals(Os, "windows", StringComparison.OrdinalIgnoreCase) ||
+            string.Equals(OsVersion ?? "", other.OsVersion ?? "", StringComparison.OrdinalIgnoreCase));
 
     private bool HasUnknownVariant => string.IsNullOrEmpty(Variant) &&
         !string.Equals(Architecture, "arm64", StringComparison.OrdinalIgnoreCase);
@@ -53,6 +54,11 @@ internal sealed record ExplorerPlatform(string Os, string Architecture, string? 
         new(config.Os, config.Architecture,
             string.IsNullOrEmpty(config.Variant) ? selectedPlatform?.Variant : config.Variant,
             string.IsNullOrEmpty(config.OsVersion) ? selectedPlatform?.OsVersion : config.OsVersion);
+
+    internal static ExplorerPlatform FromManifest(ManifestPlatform platform) =>
+        new(platform.Os ?? "", platform.Architecture ?? "",
+            string.IsNullOrEmpty(platform.Variant) ? null : platform.Variant,
+            string.IsNullOrEmpty(platform.OsVersion) ? null : platform.OsVersion);
 
     public override string ToString()
     {
@@ -115,7 +121,8 @@ internal sealed class ExplorerSource : IAsyncDisposable
         Func<IReadOnlyList<ExplorerPlatform>, ExplorerPlatform?>? choosePlatform = null,
         ExplorerPlatform? exactPlatform = null, LayerStore? store = null,
         ResolvedManifest? resolvedManifest = null, IDockerRegistryClient? registryClient = null,
-        string? daemonSnapshotReference = null, bool comparing = false)
+        string? daemonSnapshotReference = null, bool comparing = false,
+        Func<IReadOnlyList<ExplorerPlatform>, CancellationToken, Task<ExplorerPlatform?>>? chooseComparisonPlatform = null)
     {
         cancellationToken.ThrowIfCancellationRequested();
         if (exactPlatform is not null)
@@ -134,7 +141,8 @@ internal sealed class ExplorerSource : IAsyncDisposable
                 ExplorerSource result = await OpenAsync(client, registryFactory, ImageName.Parse(parsed.Value),
                     options, mixedBases ? null : baseImages?.Select(value => ImageSourceReference.Parse(value).Value).ToArray(),
                     cancellationToken, choosePlatform, exactPlatform: exactPlatform,
-                    skipBaseVerification: mixedBases, resolvedManifest: resolvedManifest, comparing: comparing);
+                    skipBaseVerification: mixedBases, resolvedManifest: resolvedManifest, comparing: comparing,
+                    chooseComparisonPlatform: chooseComparisonPlatform);
                 (IReadOnlyList<ExplorerBaseImage> bases, string? warning) = mixedBases
                     ? await VerifySourceBasesAsync(sourceFactory, result.Config, result.Resolved, false,
                         options, baseImages, cancellationToken, new RegistryImageContentSource(client, result.Image),
@@ -369,13 +377,14 @@ internal sealed class ExplorerSource : IAsyncDisposable
         CancellationToken cancellationToken,
         Func<IReadOnlyList<ExplorerPlatform>, ExplorerPlatform?>? choosePlatform = null,
         IAppSettingsStore? settingsStore = null, ExplorerPlatform? exactPlatform = null,
-        ResolvedManifest? resolvedManifest = null, bool skipBaseVerification = false, bool comparing = false)
+        ResolvedManifest? resolvedManifest = null, bool skipBaseVerification = false, bool comparing = false,
+        Func<IReadOnlyList<ExplorerPlatform>, CancellationToken, Task<ExplorerPlatform?>>? chooseComparisonPlatform = null)
     {
         (ResolvedManifest resolved, IReadOnlyList<ExplorerPlatform> platforms, ExplorerPlatform? platform) =
             resolvedManifest is null
                 ? await ResolveAsync(client, image, options, exactPlatform, cancellationToken, choosePlatform,
-                    settingsStore, comparing)
-                : (resolvedManifest, [], exactPlatform);
+                    settingsStore, comparing, chooseComparisonPlatform)
+                : (resolvedManifest, [], resolvedManifest.SelectedPlatform ?? exactPlatform);
         IImageManifest manifest = resolved.Manifest;
         string configDigest = manifest.Config?.Digest ??
             throw new InvalidDataException($"Image '{image}' has no config digest.");
@@ -386,20 +395,22 @@ internal sealed class ExplorerSource : IAsyncDisposable
             throw new NotSupportedException(
                 $"The image explorer supports Linux and Windows images (found '{config.Os}').");
         }
-        if (platform is null && string.Equals(config.Os, "windows", StringComparison.OrdinalIgnoreCase))
+        ExplorerPlatform? expectedPlatform = comparing ? platform ?? exactPlatform : exactPlatform;
+        bool allowWindowsVersionDifference = comparing && resolved.SelectedPlatform is null;
+        if (resolved.SelectedPlatform is null)
         {
-            platform = new(config.Os, config.Architecture ?? "",
-                string.IsNullOrEmpty(config.Variant) ? null : config.Variant, config.OsVersion);
+            platform = ExplorerPlatform.FromConfig(config, platform);
         }
         if (platform is not null && string.Equals(config.Os, "windows", StringComparison.OrdinalIgnoreCase))
         {
             platform = platform with { ManifestDigest = resolved.ManifestInfo.DockerContentDigest };
         }
         ExplorerPlatform actualPlatform = ExplorerPlatform.FromConfig(config, platform);
-        if (exactPlatform is not null && !actualPlatform.IsCompatibleWith(exactPlatform))
+        if (expectedPlatform is not null &&
+            !actualPlatform.IsCompatibleWith(expectedPlatform, allowWindowsVersionDifference))
         {
             throw new InvalidOperationException(
-                $"Image platform '{actualPlatform}' does not match the selected platform '{exactPlatform}'.");
+                $"Image platform '{actualPlatform}' does not match the selected platform '{expectedPlatform}'.");
         }
         platform ??= actualPlatform;
         PlatformOptionsBase resolvedOptions = ForPlatform(actualPlatform, options);
@@ -547,7 +558,7 @@ internal sealed class ExplorerSource : IAsyncDisposable
             throw new NotSupportedException(
                 $"The image name '{image}' has a media type of '{info.MediaType}' which is not supported.");
         }
-        return (new ResolvedManifest(info, manifest), platforms, platform);
+        return (new ResolvedManifest(info, manifest, platform), platforms, platform);
     }
 
     private static Task<ManifestInfo> GetPlatformManifestAsync(IDockerRegistryClient client, ImageName image,
@@ -577,14 +588,9 @@ internal sealed class ExplorerSource : IAsyncDisposable
                 .Where(static item => item.Platform is { } platform &&
                     (string.Equals(platform.Os, "linux", StringComparison.OrdinalIgnoreCase) ||
                     string.Equals(platform.Os, "windows", StringComparison.OrdinalIgnoreCase)))
-                .Select(static item => (item, ToPlatform(item.Platform!)))
+                .Select(static item => (item, ExplorerPlatform.FromManifest(item.Platform!)))
                 .ToArray()
             : [];
-
-    private static ExplorerPlatform ToPlatform(ManifestPlatform platform) =>
-        new(platform.Os ?? "", platform.Architecture ?? "",
-            string.IsNullOrEmpty(platform.Variant) ? null : platform.Variant,
-            string.IsNullOrEmpty(platform.OsVersion) ? null : platform.OsVersion);
 
 }
 

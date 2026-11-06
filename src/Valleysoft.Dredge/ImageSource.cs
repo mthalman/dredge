@@ -151,7 +151,8 @@ internal sealed class ImageSourceFactory : IImageSourceFactory
                 ValidateCapabilities(image.Os, requirements, options);
                 return new ResolvedImage(source, name, resolved, initial, image, json,
                     new RegistryImageContentSource(client, name), resolved.ManifestInfo.DockerContentDigest,
-                    GetPlatform(image), new RegistryOwner(client));
+                    GetPlatform(ExplorerPlatform.FromConfig(image, resolved.SelectedPlatform)),
+                    new RegistryOwner(client), selectedPlatform: resolved.SelectedPlatform);
             }
             catch
             {
@@ -594,8 +595,6 @@ internal sealed class ImageSourceFactory : IImageSourceFactory
     private static Image ParseConfiguration(byte[] json) =>
         JsonHelper.Deserialize<Image>(DecodeConfiguration(json)) ??
             throw new InvalidDataException("Image configuration JSON is invalid.");
-
-    private static string GetPlatform(Image image) => GetPlatform(ExplorerPlatform.FromConfig(image));
 
     private static string GetPlatform(ExplorerPlatform image) =>
         $"{image.Os}/{image.Architecture}" +

@@ -1,12 +1,10 @@
-using System.Formats.Tar;
-using System.Text.RegularExpressions;
 using Valleysoft.DockerRegistryClient;
 using Valleysoft.DockerRegistryClient.Models.Manifests;
 using ImageConfig = Valleysoft.DockerRegistryClient.Models.Images.Image;
 
 namespace Valleysoft.Dredge.Commands.Image;
 
-public partial class OsCommand : RegistryCommandBase<OsOptions>
+public class OsCommand : RegistryCommandBase<OsOptions>
 {
     private static readonly WindowsImageDefinition[] windowsImageDefinitions =
     [
@@ -16,7 +14,6 @@ public partial class OsCommand : RegistryCommandBase<OsOptions>
         new(WindowsType.Windows, "windows")
     ];
 
-    private static readonly Regex osReleaseRegex = OsReleaseRegex();
     private readonly IDredgePathProvider paths;
 
     public OsCommand(IDockerRegistryClientFactory dockerRegistryClientFactory, TextWriter? output = null)
@@ -37,7 +34,7 @@ public partial class OsCommand : RegistryCommandBase<OsOptions>
         return ExecuteCommandAsync(reference.Registry, cancellationToken, async ct =>
         {
             await using ResolvedImage source = await OpenImageAsync(Options.Image, Options, ct,
-                requirements: ImageSourceRequirements.Metadata);
+                requirements: reference.IsDaemon ? ImageSourceRequirements.LayerContent : ImageSourceRequirements.Metadata);
             source.Report(Error);
             IImageManifest manifest = source.Resolved.Manifest;
             ImageConfig imageConfig = source.Configuration;
@@ -58,20 +55,18 @@ public partial class OsCommand : RegistryCommandBase<OsOptions>
             }
             else
             {
-                IDescriptor baseLayer = manifest.Layers.FirstOrDefault() ??
-                    throw new InvalidOperationException("The image has no layers from which to derive OS information.");
-                if (baseLayer.Digest is null)
+                if (manifest.Layers.Length == 0)
                 {
-                    throw new Exception($"No digest was found for the base layer of '{Options.Image}'.");
+                    throw new InvalidOperationException("The image has no layers from which to derive OS information.");
                 }
 
                 await using LayerStore store = LayerStore.Create(paths);
                 if (source.IsDaemon)
                 {
                     await ExplorerContentIdentity.VerifyAsync(source.Content, imageConfig, source.Resolved,
-                        store, ct, layerCount: 1);
+                        store, ct, indexLayers: true);
                 }
-                osInfo = await GetLinuxOsInfoAsync(source.Content, baseLayer.Digest, baseLayer.Size, store, ct);
+                osInfo = await GetLinuxOsInfoAsync(source, store, ct);
             }
 
             if (osInfo is null)
@@ -85,42 +80,36 @@ public partial class OsCommand : RegistryCommandBase<OsOptions>
     }
 
     private static async Task<LinuxOsInfo?> GetLinuxOsInfoAsync(
-        IImageContentSource source,
-        string baseLayerDigest,
-        long? size,
+        ResolvedImage source,
         LayerStore store,
         CancellationToken cancellationToken)
     {
-        using Stream blobStream =
-            await store.OpenExtractionBlobAsync(source, baseLayerDigest, size, cancellationToken);
-        using ImageTarReader.LayerArchive archive = ImageTarReader.Open(blobStream);
-        TarReader tarReader = archive.Reader;
-        TarEntry? entry = null;
-        do
+        string[] releasePaths = ["etc/os-release", "usr/lib/os-release"];
+        await using ImageFileSystem fileSystem = await ImageFileSystem.CreateAsync(
+            source, cancellationToken, store, contentCandidates: releasePaths);
+        foreach (string path in releasePaths)
         {
             cancellationToken.ThrowIfCancellationRequested();
-            entry = await tarReader.GetNextEntryAsync(
-                copyData: false,
-                cancellationToken);
-
-            // Look for the os-release file (skip symlinks)
-            if (entry is not null &&
-                entry.EntryType is not TarEntryType.SymbolicLink and not TarEntryType.HardLink &&
-                entry.Length > 0 &&
-                (osReleaseRegex.IsMatch(entry.Name)))
+            ImageFileSystemEntry entry;
+            try
             {
-                using MemoryStream memStream = new();
-                await entry.DataStream!.CopyToAsync(memStream, cancellationToken);
-                memStream.Position = 0;
-                using StreamReader reader = new(memStream);
-                string content = await reader.ReadToEndAsync(cancellationToken);
-                return LinuxOsInfo.Parse(content);
+                entry = fileSystem.ResolveContentEntry(path);
             }
-            if (entry?.DataStream is not null)
+            catch (FileNotFoundException)
             {
-                await entry.DataStream.CopyToAsync(Stream.Null, cancellationToken);
+                continue;
             }
-        } while (entry is not null);
+            if (entry.Size == 0)
+            {
+                continue;
+            }
+            using MemoryStream memStream = new();
+            await fileSystem.CopyFileToAsync(path, memStream, cancellationToken);
+            memStream.Position = 0;
+            using StreamReader reader = new(memStream);
+            string content = await reader.ReadToEndAsync(cancellationToken);
+            return LinuxOsInfo.Parse(content);
+        }
 
         return null;
     }
@@ -249,9 +238,6 @@ public partial class OsCommand : RegistryCommandBase<OsOptions>
 
         return baseLayerCount;
     }
-
-    [GeneratedRegex(@"(\./)?(etc|usr/lib)/os-release")]
-    private static partial Regex OsReleaseRegex();
 
     private record WindowsImageDefinition(WindowsType Type, string Repo);
 }

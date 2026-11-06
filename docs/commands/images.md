@@ -83,6 +83,14 @@ dredge image inspect amd64/ubuntu:22.04
 
 Returns information about the OS of the specified image. Supports both Linux and Windows images.
 
+For Linux images, Dredge reads `etc/os-release` from the final image filesystem.
+If that file is missing or empty, it tries `usr/lib/os-release`.
+The command fails if it cannot determine the OS information.
+
+For Windows images, if the image configuration omits `os.version`, Dredge uses
+the value from the selected manifest-list descriptor. `image dockerfile` uses
+the same fallback to identify Windows base images.
+
 ```console
 dredge image os <image> [--os <os>] [--arch <arch>] [--os-version <version>]
 ```
@@ -171,6 +179,13 @@ swaps the two sides. Press `Enter` on a changed file to see a diff, or on a
 changed package to see which of its files changed.
 
 In a file diff, `Alt+V` switches between inline and side-by-side views.
+
+When comparing Windows registry images, Dredge first looks for the baseline's
+exact platform in the target image. If that Windows version is unavailable,
+it selects the only compatible version or asks you to choose if several match.
+The explorer keeps the selected target for later comparisons in the session.
+Initial image selection, base-image verification, and comparisons involving
+Docker daemon images still require matching OS versions.
 
 ### File history
 

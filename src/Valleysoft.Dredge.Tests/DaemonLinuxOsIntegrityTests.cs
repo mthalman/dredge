@@ -20,11 +20,14 @@ public class DaemonLinuxOsIntegrityTests
     [InlineData(true, false, true)]
     [InlineData(false, true, true)]
     [InlineData(true, true, true)]
-    public async Task LinuxOs_VerifiesOnlyPinnedBaseDiffIdBeforeReportingWithoutCaching(bool gzip, bool tamper, bool sha512)
+    [InlineData(false, true, false, true)]
+    [InlineData(true, true, true, true)]
+    public async Task LinuxOs_VerifiesEveryPinnedDiffIdBeforeReportingWithoutCaching(
+        bool gzip, bool tamper, bool sha512, bool tamperUpper = false)
     {
         await using LayerCacheTestContext cache = new();
         byte[] expectedLayer = BuildTar(("etc/os-release", Encoding.UTF8.GetBytes("ID=trusted\nNAME=\"Trusted Linux\"\n")));
-        byte[] actualLayer = tamper
+        byte[] actualLayer = tamper && !tamperUpper
             ? BuildTar(("etc/os-release", Encoding.UTF8.GetBytes("ID=forged\nNAME=\"Forged Linux\"\n")))
             : expectedLayer;
         if (gzip)
@@ -39,22 +42,28 @@ public class DaemonLinuxOsIntegrityTests
         string expectedDiffId = sha512
             ? $"sha512:{Convert.ToHexStringLower(System.Security.Cryptography.SHA512.HashData(expectedLayer))}"
             : LayerCacheTestContext.Digest(expectedLayer);
+        byte[] later = BuildTar(("etc/os-release", Encoding.UTF8.GetBytes("ID=updated\nNAME=\"Updated Linux\"\n")));
+        string laterDiffId = LayerCacheTestContext.Digest(later);
+        byte[] actualLater = tamperUpper
+            ? BuildTar(("etc/os-release", Encoding.UTF8.GetBytes("ID=forged\nNAME=\"Forged Linux\"\n")))
+            : later;
         byte[] config = Encoding.UTF8.GetBytes(
-            $$$"""{"os":"linux","architecture":"amd64","rootfs":{"type":"layers","diff_ids":["{{{expectedDiffId}}}","sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"]}}""");
+            $$$"""{"os":"linux","architecture":"amd64","rootfs":{"type":"layers","diff_ids":["{{{expectedDiffId}}}","{{{laterDiffId}}}"]}}""");
         string id = LayerCacheTestContext.Digest(config);
         byte[] export = BuildTar(
             ("manifest.json", Encoding.UTF8.GetBytes(
                 """[{"Config":"config.json","RepoTags":["local:dev"],"Layers":["layer.tar","later.tar"]}]""")),
             ("config.json", config),
             ("layer.tar", actualLayer),
-            ("later.tar", BuildTar(("later", "unverified"u8.ToArray()))));
+            ("later.tar", actualLater));
         MetadataEngine engine = new(id, export);
         ImageSourceFactory factory = new(Mock.Of<IDockerRegistryClientFactory>(),
             new AppSettingsStore(Path.Combine(cache.Root, "settings.json")), _ => engine,
             Path.Combine(cache.Root, "snapshots"));
+        VerifiedSourceFactory verifiedFactory = new(factory);
         using StringWriter output = new();
         using StringWriter errors = new();
-        CapturedOsCommand command = new(output, errors, cache.Paths) { ImageSourceFactory = factory };
+        CapturedOsCommand command = new(output, errors, cache.Paths) { ImageSourceFactory = verifiedFactory };
         ((IProcessTerminationAware)command).ProcessTerminator = new TestProcessTerminator();
 
         int exitCode = await command.Parse(
@@ -72,7 +81,24 @@ public class DaemonLinuxOsIntegrityTests
         else
         {
             Assert.Equal(0, exitCode);
-            Assert.Equal("trusted", JsonNode.Parse(output.ToString())!["ID"]!.GetValue<string>());
+            Assert.Equal("updated", JsonNode.Parse(output.ToString())!["ID"]!.GetValue<string>());
+            Assert.True(verifiedFactory.VerifiedAtAcquisition);
+        }
+    }
+
+    private sealed class VerifiedSourceFactory(IImageSourceFactory inner) : IImageSourceFactory
+    {
+        public bool VerifiedAtAcquisition { get; private set; }
+
+        public async Task<ResolvedImage> OpenAsync(string reference, PlatformOptionsBase options,
+            CancellationToken cancellationToken, ImageSourceRequirements requirements = ImageSourceRequirements.LayerContent)
+        {
+            ResolvedImage source = await inner.OpenAsync(reference, options, cancellationToken, requirements);
+            DockerImageArchive archive = Assert.IsType<DockerImageArchive>(source.Content);
+            string[] diffIds = source.Configuration.RootFilesystem!.DiffIds;
+            VerifiedAtAcquisition = source.Resolved.Manifest.Layers.Select((layer, index) =>
+                archive.TryGetVerifiedContentDigest(layer.Digest!, layer.Size, diffIds[index], out _)).All(value => value);
+            return source;
         }
     }
 

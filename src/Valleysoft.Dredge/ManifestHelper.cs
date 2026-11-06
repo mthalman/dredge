@@ -5,7 +5,8 @@ namespace Valleysoft.Dredge;
 
 internal record ResolvedManifest(
     ManifestInfo ManifestInfo,
-    IImageManifest Manifest);
+    IImageManifest Manifest,
+    ExplorerPlatform? SelectedPlatform = null);
 
 internal static class ManifestHelper
 {
@@ -51,6 +52,7 @@ internal static class ManifestHelper
         IAppSettingsStore settingsStore,
         CancellationToken cancellationToken)
     {
+        ExplorerPlatform? selectedPlatform = null;
         if (manifestInfo.Manifest is IManifestList manifestList)
         {
             (string? os, string? architecture, string? osVersion) = options.ResolvePlatform(settingsStore);
@@ -70,6 +72,10 @@ internal static class ManifestHelper
             }
 
             IManifestReference manifestRef = manifestRefs.First();
+            if (manifestRef.Platform is { } platform)
+            {
+                selectedPlatform = ExplorerPlatform.FromManifest(platform);
+            }
 
             if (manifestRef.Digest is null)
             {
@@ -86,6 +92,6 @@ internal static class ManifestHelper
                 $"The image name '{imageName}' has a media type of '{manifestInfo.MediaType}' which is not supported.");
         }
 
-        return new ResolvedManifest(manifestInfo, manifest);
+        return new ResolvedManifest(manifestInfo, manifest, selectedPlatform);
     }
 }
