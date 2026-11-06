@@ -146,9 +146,10 @@ public sealed class EmptyImageOutputTests : IDisposable
 
         public void Start(System.Diagnostics.ProcessStartInfo startInfo)
         {
+            string workspace = Assert.Single(Directory.GetDirectories(Path.Combine(root, "compare")));
             foreach (string side in new[] { "base", "target" })
             {
-                string path = Path.Combine(root, "compare", side);
+                string path = Path.Combine(workspace, side);
                 Assert.True(Directory.Exists(path));
                 Assert.Empty(Directory.EnumerateFileSystemEntries(path));
                 Assert.Contains(path, startInfo.Arguments);

@@ -331,6 +331,7 @@ internal sealed class ImageCommandIntegrationScenarios
             Assert.Equal(0, exitCode);
             launchedFile = processLauncher.StartInfo?.FileName;
             launchedArguments = processLauncher.StartInfo?.Arguments;
+            comparePath = Assert.Single(Directory.GetDirectories(comparePath));
             baseContent = File.ReadAllText(Path.Combine(comparePath, "base", "value"));
             targetContent = File.ReadAllText(Path.Combine(comparePath, "target", "value"));
             Assert.Equal("comparison-tool", launchedFile);

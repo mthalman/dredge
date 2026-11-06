@@ -812,10 +812,11 @@ public sealed class ExplorerWindowTests
         Assert.Equal(0, exitCode);
         Assert.Equal("", command.Options.OsVersion);
         Assert.NotNull(launcher.StartInfo);
+        string workspace = Assert.Single(Directory.GetDirectories(Path.Combine(cache.Paths.TempPath, "compare")));
         foreach (string side in new[] { "base", "target" })
         {
             Assert.Equal("fixture"u8.ToArray(),
-                await File.ReadAllBytesAsync(Path.Combine(cache.Paths.TempPath, "compare", side, "etc", "example"),
+                await File.ReadAllBytesAsync(Path.Combine(workspace, side, "etc", "example"),
                     TestContext.Current.CancellationToken));
         }
     }
