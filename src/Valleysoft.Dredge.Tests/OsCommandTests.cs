@@ -14,6 +14,81 @@ using Valleysoft.Dredge.Commands;
 public class OsCommandTests
 {
     [Theory]
+    [InlineData(false, false)]
+    [InlineData(true, false)]
+    [InlineData(false, true)]
+    [InlineData(true, true)]
+    [InlineData(false, false, true)]
+    [InlineData(true, false, true)]
+    public async Task LinuxOsUsesDeferredSuffixBeforeFailingOnUnneededLowerLayer(
+        bool linked, bool missingBlob, bool malformed = false)
+    {
+        await using LayerCacheTestContext cache = new();
+        byte[] lower = WindowsImageTestData.Layer(WindowsImageTestData.File("unrelated/base", "unavailable"));
+        byte[] release = WindowsImageTestData.Layer(
+            WindowsImageTestData.File(linked ? "opt/os-release" : "etc/os-release", "NAME=ResolvedLinux\n"));
+        byte[] middle = WindowsImageTestData.Layer(WindowsImageTestData.File("app/middle", "unrelated"));
+        byte[] upper = linked
+            ? WindowsImageTestData.Layer(new PaxTarEntry(TarEntryType.SymbolicLink, "etc/os-release")
+                { LinkName = "/opt/os-release" })
+            : WindowsImageTestData.Layer(WindowsImageTestData.File("app/upper", "unrelated"));
+        Mock<IDockerRegistryClient> client = WindowsImageTestData.Client("linux", "", lower, release, middle, upper);
+        client.Setup(item => item.Blobs.GetRangeAsync(WindowsImageTestData.Name.Repo,
+            LayerCacheTestContext.Digest(lower), 0, It.IsAny<long?>(), It.IsAny<CancellationToken>()))
+            .ThrowsAsync(malformed ? new InvalidDataException("Unneeded lower blob malformed.") :
+                missingBlob ? new FileNotFoundException("Unneeded lower blob unavailable.") :
+                    new IOException("Unneeded lower blob unavailable."));
+        Mock<IDockerRegistryClientFactory> factory = new();
+        factory.Setup(item => item.GetClientAsync(WindowsImageTestData.Name.Registry, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(client.Object);
+        using StringWriter output = new();
+        using StringWriter errors = new();
+        CapturedOsCommand command = new(factory.Object, output, errors, cache.Paths);
+        ((IProcessTerminationAware)command).ProcessTerminator = new TestProcessTerminator();
+
+        Assert.Equal(0, await command.Parse([WindowsImageTestData.Name.ToString()])
+            .InvokeAsync(new InvocationConfiguration(), TestContext.Current.CancellationToken));
+
+        using JsonDocument document = JsonDocument.Parse(output.ToString());
+        Assert.Equal("ResolvedLinux", document.RootElement.GetProperty("NAME").GetString());
+        Assert.Equal("", errors.ToString());
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task LinuxOsDoesNotRecoverWithUnprovenPreferredPath(bool cycle)
+    {
+        await using LayerCacheTestContext cache = new();
+        byte[] lower = WindowsImageTestData.Layer(WindowsImageTestData.File("etc/os-release", "NAME=PreferredLinux\n"));
+        byte[] middle = WindowsImageTestData.Layer(WindowsImageTestData.File("app/middle", "unrelated"));
+        byte[] older = WindowsImageTestData.Layer(WindowsImageTestData.File("app/older", "unrelated"));
+        List<TarEntry> upperEntries = [WindowsImageTestData.File("usr/lib/os-release", "NAME=FallbackLinux\n")];
+        if (cycle)
+        {
+            upperEntries.Add(new PaxTarEntry(TarEntryType.SymbolicLink, "etc/os-release") { LinkName = "os-release" });
+        }
+        byte[] upper = WindowsImageTestData.Layer([.. upperEntries]);
+        Mock<IDockerRegistryClient> client = WindowsImageTestData.Client("linux", "", lower, older, middle, upper);
+        client.Setup(item => item.Blobs.GetRangeAsync(WindowsImageTestData.Name.Repo,
+            LayerCacheTestContext.Digest(lower), 0, It.IsAny<long?>(), It.IsAny<CancellationToken>()))
+            .ThrowsAsync(new IOException("Required lower blob unavailable."));
+        Mock<IDockerRegistryClientFactory> factory = new();
+        factory.Setup(item => item.GetClientAsync(WindowsImageTestData.Name.Registry, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(client.Object);
+        using StringWriter output = new();
+        using StringWriter errors = new();
+        CapturedOsCommand command = new(factory.Object, output, errors, cache.Paths);
+        ((IProcessTerminationAware)command).ProcessTerminator = new TestProcessTerminator();
+
+        Assert.Equal(1, await command.Parse([WindowsImageTestData.Name.ToString()])
+            .InvokeAsync(new InvocationConfiguration(), TestContext.Current.CancellationToken));
+
+        Assert.Equal("", output.ToString());
+        Assert.Contains("Required lower blob unavailable", errors.ToString());
+    }
+
+    [Theory]
     [InlineData(false, 32)]
     [InlineData(true, 32)]
     [InlineData(false, 33)]

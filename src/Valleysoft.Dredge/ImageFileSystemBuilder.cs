@@ -77,10 +77,25 @@ internal sealed class ImageFileSystemBuilder
         if (!semantics.IsWindows && (normalizedPath.Length > 0 || contentCandidates is { Count: > 0 }))
         {
             int nextReplaySize = 1;
+            int lastReplayFirstLayer = manifest.Layers.Length;
             for (int firstLayer = manifest.Layers.Length - 1; firstLayer >= 0; firstLayer--)
             {
                 cancellationToken.ThrowIfCancellationRequested();
-                await GetIndexAsync(firstLayer, cancellationToken);
+                try
+                {
+                    await GetIndexAsync(firstLayer, cancellationToken);
+                }
+                catch (Exception exception) when (contentCandidates is not null &&
+                    firstLayer + 1 < lastReplayFirstLayer &&
+                    exception is IOException or InvalidDataException or HttpRequestException or RegistryException)
+                {
+                    cancellationToken.ThrowIfCancellationRequested();
+                    if (TryBuildContentCandidates(firstLayer + 1, contentCandidates, cancellationToken))
+                    {
+                        return false;
+                    }
+                    throw;
+                }
                 if (contentCandidates is not null)
                 {
                     int suffixLength = manifest.Layers.Length - firstLayer;
@@ -90,6 +105,15 @@ internal sealed class ImageFileSystemBuilder
                     }
                     nextReplaySize = (int)Math.Min((long)suffixLength * 2, manifest.Layers.Length);
                 }
+                lastReplayFirstLayer = firstLayer;
+                if (contentCandidates is not null)
+                {
+                    if (TryBuildContentCandidates(firstLayer, contentCandidates, cancellationToken))
+                    {
+                        return firstLayer == 0;
+                    }
+                    continue;
+                }
                 entries.Clear();
                 deletedEntries.Clear();
                 try
@@ -98,14 +122,7 @@ internal sealed class ImageFileSystemBuilder
                     {
                         ApplyLayer(indexes[i].Changes, new(i, indexes[i].Digest), cancellationToken);
                     }
-                    if (contentCandidates is not null)
-                    {
-                        if (ContentCandidatesResolved(contentCandidates, firstLayer == 0, cancellationToken))
-                        {
-                            return firstLayer == 0;
-                        }
-                    }
-                    else if (!extracting || pathResolver.GetExtractionSource(normalizedPath, entries).Type == ImageFileType.File)
+                    if (!extracting || pathResolver.GetExtractionSource(normalizedPath, entries).Type == ImageFileType.File)
                     {
                         _ = pathResolver.ResolveContentEntry(normalizedPath, entries);
                         return firstLayer == 0;
@@ -132,6 +149,27 @@ internal sealed class ImageFileSystemBuilder
             progress?.Report(new ImageIndexProgress(i, manifest.Layers.Length, index.BlobLength, true));
         }
         return maxLayerIndex is null;
+    }
+
+    private bool TryBuildContentCandidates(
+        int firstLayer, IReadOnlyList<string> candidates, CancellationToken cancellationToken)
+    {
+        entries.Clear();
+        deletedEntries.Clear();
+        try
+        {
+            for (int layer = firstLayer; layer < manifest.Layers.Length; layer++)
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+                ApplyLayer(indexes[layer].Changes, new(layer, indexes[layer].Digest), cancellationToken);
+            }
+            return ContentCandidatesResolved(candidates, firstLayer == 0, cancellationToken);
+        }
+        catch (Exception exception) when (firstLayer > 0 &&
+            exception is FileNotFoundException or InvalidDataException)
+        {
+            return false;
+        }
     }
 
     private bool ContentCandidatesResolved(

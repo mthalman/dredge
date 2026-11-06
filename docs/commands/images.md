@@ -95,6 +95,10 @@ from a deleted file.
 For registry images, both release paths share a newest-first lookup. Dredge
 reuses indexes and expands the inspected layer suffix in batches to keep layer
 replay bounded; a newest-layer replacement can avoid lower-layer downloads.
+If a lower-layer index cannot be acquired between batches, Dredge checks the
+already indexed suffix before failing. It reports OS information only when that
+suffix fully resolves the preferred nonempty release content; required-layer
+and selected-content read failures remain errors.
 For Docker daemon images, all pinned layer diff IDs are verified before OS
 information is reported, and filesystem indexing reuses that verification.
 
