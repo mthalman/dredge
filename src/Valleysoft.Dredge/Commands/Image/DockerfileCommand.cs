@@ -341,10 +341,8 @@ public partial class DockerfileCommand : RegistryCommandBase<DockerfileOptions>
 
     private static string FormatRunInstruction(string line)
     {
-        // Nested shell syntax needs a shell-specific parser; keep ambiguous history intact.
-        if (line.Contains("$(", StringComparison.Ordinal) ||
-            line.Contains("${", StringComparison.Ordinal) ||
-            line.Contains("$'", StringComparison.Ordinal) ||
+        // These constructs need shell-specific interpretation beyond balanced delimiters.
+        if (line.Contains("$'", StringComparison.Ordinal) ||
             line.Contains("$\"", StringComparison.Ordinal) ||
             line.Contains("<<", StringComparison.Ordinal) ||
             line.IndexOfAny(['`', '^', '\r', '\n']) >= 0)
@@ -357,7 +355,8 @@ public partial class DockerfileCommand : RegistryCommandBase<DockerfileOptions>
         for (int i = 0; i < line.Length; i++)
         {
             char character = line[i];
-            if (character is not ('\'' or '"' or '\\' or '#'))
+            bool expansion = character == '$' && i + 1 < line.Length && line[i + 1] is '(' or '{';
+            if (!expansion && character is not ('\'' or '"' or '\\' or '#'))
             {
                 continue;
             }
@@ -376,20 +375,9 @@ public partial class DockerfileCommand : RegistryCommandBase<DockerfileOptions>
                     return line;
                 }
             }
-            else
+            else if (!TryFindProtectedRunTextEnd(line, i, out i))
             {
-                char quote = character;
-                while (++i < line.Length && line[i] != quote)
-                {
-                    if (quote == '"' && line[i] == '\\')
-                    {
-                        i++;
-                    }
-                }
-                if (i >= line.Length)
-                {
-                    return line;
-                }
+                return line;
             }
 
             formattedLine.Append(line[protectedStart..(i + 1)]);
@@ -397,6 +385,74 @@ public partial class DockerfileCommand : RegistryCommandBase<DockerfileOptions>
         }
         formattedLine.Append(FormatUnquotedRunSegment(line[segmentStart..]));
         return formattedLine.ToString();
+    }
+
+    private static bool TryFindProtectedRunTextEnd(string line, int start, out int end)
+    {
+        Stack<char> delimiters = new();
+        int i = start;
+        if (line[i] == '$')
+        {
+            delimiters.Push(line[++i] == '(' ? ')' : '}');
+        }
+        else
+        {
+            delimiters.Push(line[i]);
+        }
+
+        while (++i < line.Length)
+        {
+            char character = line[i];
+            char delimiter = delimiters.Peek();
+            if (delimiter == ')' &&
+                line.AsSpan(i).StartsWith("case", StringComparison.Ordinal) &&
+                i + 4 < line.Length && line[i + 4] is ' ' or '\t' &&
+                !char.IsAsciiLetterOrDigit(line[i - 1]) && line[i - 1] != '_')
+            {
+                break;
+            }
+            if (character == '\\' && delimiter != '\'')
+            {
+                i++;
+                continue;
+            }
+            if (character == delimiter)
+            {
+                delimiters.Pop();
+                if (delimiters.Count == 0)
+                {
+                    end = i;
+                    return true;
+                }
+                continue;
+            }
+            if (delimiter == '\'')
+            {
+                continue;
+            }
+            if (character == '$' && i + 1 < line.Length && line[i + 1] is '(' or '{')
+            {
+                delimiters.Push(line[++i] == '(' ? ')' : '}');
+            }
+            else if (delimiter != '"')
+            {
+                if (character is '\'' or '"')
+                {
+                    delimiters.Push(character);
+                }
+                else if (character is '(' or '{')
+                {
+                    delimiters.Push(character == '(' ? ')' : '}');
+                }
+                else if (character == '#' && delimiter == ')')
+                {
+                    break;
+                }
+            }
+        }
+
+        end = start;
+        return false;
     }
 
     private static string FormatUnquotedRunSegment(string line)
@@ -412,6 +468,16 @@ public partial class DockerfileCommand : RegistryCommandBase<DockerfileOptions>
         line = OpenParenBeforeNewLineRegex().Replace(line, $"{{ \\{Environment.NewLine}    ");
         // 5. '{' after a new line
         line = CloseParenAfterNewLineRegex().Replace(line, $" \\{Environment.NewLine}    {{ ");
+
+        int leadingWhitespace = 0;
+        while (leadingWhitespace < line.Length && line[leadingWhitespace] is ' ' or '\t')
+        {
+            leadingWhitespace++;
+        }
+        if (leadingWhitespace > 1)
+        {
+            line = " " + line[leadingWhitespace..];
+        }
 
         // Trim extra spaces from commands that were originally multiline but represented in layer history
         // without newlines, leading to a bunch of spaces.

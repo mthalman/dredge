@@ -599,5 +599,7 @@ dredge image dockerfile <image> [--no-format] [--no-color] [--os <os>] [--arch <
 | `--no-color` | Disable syntax coloring |
 
 Formatting preserves quoted text, escaped characters, and shell comments.
-Histories with nested shell syntax, such as command substitutions or here-documents,
-are left unformatted rather than risking a change to command semantics.
+Balanced command substitutions and parameter expansions remain verbatim while
+the surrounding commands can be formatted across multiple lines. Histories with
+ambiguous syntax, such as here-documents, are left unformatted rather than risking
+a change to command semantics.

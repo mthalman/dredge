@@ -44,6 +44,8 @@ public class DockerfileCommandTests
             "printf '%s' \"A \\\" &&  B\"",
             "echo A\\ \\ B",
             "echo $(printf '%s' 'A &&  B')",
+            "echo \"$(printf '%s' \"$(printf '%s' 'A &&  B')\")\"",
+            "echo $(case x in x) printf '%s' 'A &&  B';; esac)",
             "echo `printf '%s' 'A &&  B'`",
             "printf '%s' $'A\\' &&  B'",
             "printf '%s' ${VALUE:-'A &&  B'}",
@@ -82,6 +84,14 @@ public class DockerfileCommandTests
     [InlineData(true, "echo B")]
     [InlineData(false, "echo \"B &&  C\"")]
     [InlineData(true, "echo \"B &&  C\"")]
+    [InlineData(false, "echo \"$(printf '%s' 'B &&  C')\"")]
+    [InlineData(true, "echo \"$(printf '%s' 'B &&  C')\"")]
+    [InlineData(false, "echo $(printf '%s' 'B &&  C')")]
+    [InlineData(true, "echo $(printf '%s' 'B &&  C')")]
+    [InlineData(false, "echo \"${VALUE:-B &&  C}\"")]
+    [InlineData(true, "echo \"${VALUE:-B &&  C}\"")]
+    [InlineData(false, "echo \"$(printf '%s' \"$(printf '%s' 'B &&  C')\")\"")]
+    [InlineData(true, "echo \"$(printf '%s' \"$(printf '%s' 'B &&  C')\")\"")]
     public async Task UnquotedRunStillFormats(bool noFormat, string secondCommand)
     {
         string actual = await RenderHistoryAsync(
