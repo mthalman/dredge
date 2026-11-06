@@ -18,6 +18,26 @@ public class SettingsInvalidConfigurationTests
     public void Command_EmptyOrNullSettingsFailsWithActionableErrorAndPreservesFile(
         string commandName, string content)
     {
+        AssertInvalidSettingsCommand(commandName, content, (settingsPath, error) =>
+        {
+            Assert.Contains(settingsPath, error);
+            Assert.Contains("JSON object", error);
+            Assert.Contains("{} for defaults", error);
+        });
+    }
+
+    [Theory]
+    [InlineData("get")]
+    [InlineData("set")]
+    public void Command_MalformedSettingsFailsWithoutChangingFile(string commandName)
+    {
+        AssertInvalidSettingsCommand(commandName, "{ invalid json", (_, error) =>
+            Assert.NotEmpty(error));
+    }
+
+    private static void AssertInvalidSettingsCommand(
+        string commandName, string content, Action<string, string> assertError)
+    {
         string settingsPath = Path.GetTempFileName();
         using StringWriter output = new();
         using StringWriter error = new();
@@ -39,47 +59,9 @@ public class SettingsInvalidConfigurationTests
 
             Assert.Equal(1, exitCode);
             Assert.Empty(output.ToString());
-            Assert.Contains(settingsPath, error.ToString());
-            Assert.Contains("JSON object", error.ToString());
-            Assert.Contains("{} for defaults", error.ToString());
             Assert.DoesNotContain("Object reference", error.ToString());
             Assert.Equal(originalBytes, File.ReadAllBytes(settingsPath));
-        }
-        finally
-        {
-            File.Delete(settingsPath);
-        }
-    }
-
-    [Theory]
-    [InlineData("get")]
-    [InlineData("set")]
-    public void Command_MalformedSettingsFailsWithoutChangingFile(string commandName)
-    {
-        string settingsPath = Path.GetTempFileName();
-        using StringWriter output = new();
-        using StringWriter error = new();
-        try
-        {
-            const string content = "{ invalid json";
-            File.WriteAllText(settingsPath, content);
-            AppSettingsStore store = new(settingsPath);
-            Command command = commandName == "get"
-                ? new SettingsGetCommand(store, output)
-                : new SettingsSetCommand(store);
-            string[] args = commandName == "get"
-                ? ["platform.arch"]
-                : ["platform.arch", "arm64"];
-
-            int exitCode = CommandHelper.InvokeRootCommand(
-                command.Parse(args),
-                new InvocationConfiguration { Output = output, Error = error });
-
-            Assert.Equal(1, exitCode);
-            Assert.Empty(output.ToString());
-            Assert.NotEmpty(error.ToString());
-            Assert.DoesNotContain("Object reference", error.ToString());
-            Assert.Equal(content, File.ReadAllText(settingsPath));
+            assertError(settingsPath, error.ToString());
         }
         finally
         {
