@@ -87,15 +87,25 @@ public class OsCommand : RegistryCommandBase<OsOptions>
         foreach (string path in new[] { "etc/os-release", "usr/lib/os-release" })
         {
             cancellationToken.ThrowIfCancellationRequested();
-            if (fileSystem.FindEntry(path) is { Type: ImageFileType.File, Size: > 0 })
+            ImageFileSystemEntry entry;
+            try
             {
-                using MemoryStream memStream = new();
-                await fileSystem.CopyFileToAsync(path, memStream, cancellationToken);
-                memStream.Position = 0;
-                using StreamReader reader = new(memStream);
-                string content = await reader.ReadToEndAsync(cancellationToken);
-                return LinuxOsInfo.Parse(content);
+                entry = fileSystem.ResolveContentEntry(path);
             }
+            catch (FileNotFoundException)
+            {
+                continue;
+            }
+            if (entry.Size == 0)
+            {
+                continue;
+            }
+            using MemoryStream memStream = new();
+            await fileSystem.CopyFileToAsync(path, memStream, cancellationToken);
+            memStream.Position = 0;
+            using StreamReader reader = new(memStream);
+            string content = await reader.ReadToEndAsync(cancellationToken);
+            return LinuxOsInfo.Parse(content);
         }
 
         return null;

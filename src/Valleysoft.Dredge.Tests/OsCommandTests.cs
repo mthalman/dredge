@@ -3,6 +3,7 @@ namespace Valleysoft.Dredge.Tests;
 using System.Text;
 using System.Text.Json;
 using System.CommandLine;
+using System.Formats.Tar;
 using Spectre.Console;
 using Valleysoft.DockerRegistryClient.Models.Images;
 using Valleysoft.DockerRegistryClient.Models.Manifests;
@@ -12,6 +13,149 @@ using Valleysoft.Dredge.Commands;
 
 public class OsCommandTests
 {
+    [Theory]
+    [InlineData("relative")]
+    [InlineData("absolute")]
+    [InlineData("hard")]
+    [InlineData("hard-to-symlink")]
+    [InlineData("parent-symlink")]
+    [InlineData("fallback-parent-symlink")]
+    public async Task LinuxOsFollowsEffectiveReleaseLinks(string linkKind)
+    {
+        await using LayerCacheTestContext cache = new();
+        byte[] lower = DockerArchiveFixture.BuildTar(
+            ("etc/os-release", "NAME=OldLinux\n"u8.ToArray()),
+            ("usr/lib/os-release", "NAME=FallbackLinux\n"u8.ToArray()));
+        string targetPath = linkKind == "parent-symlink" ? "opt/etc/os-release" : "opt/os-release";
+        List<TarEntry> entries = [WindowsImageTestData.File(targetPath, "NAME=NewLinux\n")];
+        if (linkKind == "hard-to-symlink")
+        {
+            entries.Add(new PaxTarEntry(TarEntryType.SymbolicLink, "opt/alias")
+            {
+                LinkName = "/opt/os-release"
+            });
+        }
+        entries.Add(linkKind switch
+        {
+            "hard" => new PaxTarEntry(TarEntryType.HardLink, "etc/os-release") { LinkName = "opt/os-release" },
+            "hard-to-symlink" => new PaxTarEntry(TarEntryType.HardLink, "etc/os-release") { LinkName = "opt/alias" },
+            "parent-symlink" => new PaxTarEntry(TarEntryType.SymbolicLink, "etc") { LinkName = "/opt/etc" },
+            "fallback-parent-symlink" => new PaxTarEntry(TarEntryType.SymbolicLink, "usr/lib") { LinkName = "/opt" },
+            _ => new PaxTarEntry(TarEntryType.SymbolicLink, "etc/os-release")
+            {
+                LinkName = linkKind == "absolute" ? "/opt/os-release" : "../opt/os-release"
+            }
+        });
+        if (linkKind == "fallback-parent-symlink")
+        {
+            entries.Add(WindowsImageTestData.File("etc/.wh.os-release", ""));
+        }
+        byte[] upper = WindowsImageTestData.Layer([.. entries]);
+        Mock<IDockerRegistryClient> client = WindowsImageTestData.Client("linux", "", lower, upper);
+        Mock<IDockerRegistryClientFactory> factory = new();
+        factory.Setup(item => item.GetClientAsync(WindowsImageTestData.Name.Registry, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(client.Object);
+        for (int run = 0; run < 2; run++)
+        {
+            using StringWriter output = new();
+            using StringWriter errors = new();
+            CapturedOsCommand command = new(factory.Object, output, errors, cache.Paths);
+            ((IProcessTerminationAware)command).ProcessTerminator = new TestProcessTerminator();
+
+            Assert.Equal(0, await command.Parse([WindowsImageTestData.Name.ToString()])
+                .InvokeAsync(new InvocationConfiguration(), TestContext.Current.CancellationToken));
+
+            using JsonDocument document = JsonDocument.Parse(output.ToString());
+            Assert.Equal("NewLinux", document.RootElement.GetProperty("NAME").GetString());
+        }
+    }
+
+    [Theory]
+    [InlineData("missing", "FallbackLinux", null)]
+    [InlineData("empty", "FallbackLinux", null)]
+    [InlineData("cycle", null, "link")]
+    public async Task LinuxOsDistinguishesMissingOrEmptyLinkedContentFromInvalidLinks(
+        string target, string? expected, string? error)
+    {
+        await using LayerCacheTestContext cache = new();
+        List<TarEntry> entries =
+        [
+            WindowsImageTestData.File("usr/lib/os-release", "NAME=FallbackLinux\n"),
+            new PaxTarEntry(TarEntryType.SymbolicLink, "etc/os-release")
+            {
+                LinkName = target == "cycle" ? "os-release" : "/opt/os-release"
+            }
+        ];
+        if (target == "empty")
+        {
+            entries.Add(WindowsImageTestData.File("opt/os-release", ""));
+        }
+        Mock<IDockerRegistryClient> client =
+            WindowsImageTestData.Client("linux", "", WindowsImageTestData.Layer([.. entries]));
+        Mock<IDockerRegistryClientFactory> factory = new();
+        factory.Setup(item => item.GetClientAsync(WindowsImageTestData.Name.Registry, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(client.Object);
+        using StringWriter output = new();
+        using StringWriter errors = new();
+        CapturedOsCommand command = new(factory.Object, output, errors, cache.Paths);
+        ((IProcessTerminationAware)command).ProcessTerminator = new TestProcessTerminator();
+
+        int exitCode = await command.Parse([WindowsImageTestData.Name.ToString()])
+            .InvokeAsync(new InvocationConfiguration(), TestContext.Current.CancellationToken);
+
+        if (expected is null)
+        {
+            Assert.Equal(1, exitCode);
+            Assert.Equal("", output.ToString());
+            Assert.Contains(error!, errors.ToString(), StringComparison.OrdinalIgnoreCase);
+        }
+        else
+        {
+            Assert.Equal(0, exitCode);
+            using JsonDocument document = JsonDocument.Parse(output.ToString());
+            Assert.Equal(expected, document.RootElement.GetProperty("NAME").GetString());
+        }
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task LinuxOsDoesNotTreatContentReadFailuresAsMissingReleasePaths(bool missingBlob)
+    {
+        await using LayerCacheTestContext cache = new();
+        byte[] lower = WindowsImageTestData.Layer(
+            WindowsImageTestData.File("usr/lib/os-release", "NAME=FallbackLinux\n"));
+        byte[] upper = WindowsImageTestData.Layer(
+            WindowsImageTestData.File("opt/os-release", "NAME=NewLinux\n"),
+            new PaxTarEntry(TarEntryType.SymbolicLink, "etc/os-release") { LinkName = "/opt/os-release" });
+        Mock<IDockerRegistryClient> client = WindowsImageTestData.Client("linux", "", lower, upper);
+        Mock<IDockerRegistryClientFactory> factory = new();
+        factory.Setup(item => item.GetClientAsync(WindowsImageTestData.Name.Registry, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(client.Object);
+        using StringWriter output = new();
+        using StringWriter errors = new();
+        CapturedOsCommand initial = new(factory.Object, output, errors, cache.Paths);
+        ((IProcessTerminationAware)initial).ProcessTerminator = new TestProcessTerminator();
+        Assert.Equal(0, await initial.Parse([WindowsImageTestData.Name.ToString()])
+            .InvokeAsync(new InvocationConfiguration(), TestContext.Current.CancellationToken));
+        await cache.EvictBlobsAsync();
+        client.Setup(item => item.Blobs.GetRangeAsync(WindowsImageTestData.Name.Repo,
+            LayerCacheTestContext.Digest(upper), 0, It.IsAny<long?>(), It.IsAny<CancellationToken>()))
+            .ThrowsAsync(missingBlob ? new FileNotFoundException("Release content unavailable.") :
+                new IOException("Release content unavailable."));
+        output.GetStringBuilder().Clear();
+        errors.GetStringBuilder().Clear();
+        CapturedOsCommand command = new(factory.Object, output, errors, cache.Paths);
+        ((IProcessTerminationAware)command).ProcessTerminator = new TestProcessTerminator();
+
+        int exitCode = await command.Parse([WindowsImageTestData.Name.ToString()])
+            .InvokeAsync(new InvocationConfiguration(), TestContext.Current.CancellationToken);
+
+        Assert.Equal(1, exitCode);
+        Assert.Equal("", output.ToString());
+        Assert.Contains("Release content unavailable", errors.ToString());
+    }
+
     [Theory]
     [InlineData("replace", "NewLinux")]
     [InlineData("introduce", "NewLinux")]

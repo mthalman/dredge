@@ -86,8 +86,11 @@ Returns information about the OS of the specified image. Supports both Linux and
 For Linux images, Dredge reads `etc/os-release`, falling back to
 `usr/lib/os-release`, from the effective filesystem after applying all layers.
 Later replacements, whiteouts, and opaque directories affect the reported OS.
-If neither file is available with nonempty regular-file content, the command
-fails rather than reporting metadata from a deleted file.
+Dredge follows valid symbolic links, hard links, and linked parent directories
+inside the image. A missing or empty release file falls back to the other path;
+invalid links and content-read failures are reported as errors. If neither path
+provides nonempty file content, the command fails rather than reporting metadata
+from a deleted file.
 
 For Windows images, Dredge uses the selected manifest-list descriptor's
 `os.version` when the image configuration omits it. This also applies to

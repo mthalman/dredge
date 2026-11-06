@@ -381,7 +381,7 @@ internal sealed class ExplorerSource : IAsyncDisposable
             resolvedManifest is null
                 ? await ResolveAsync(client, image, options, exactPlatform, cancellationToken, choosePlatform,
                     settingsStore, comparing)
-                : (resolvedManifest, [], resolvedManifest.SelectedPlatform);
+                : (resolvedManifest, [], resolvedManifest.SelectedPlatform ?? exactPlatform);
         IImageManifest manifest = resolved.Manifest;
         string configDigest = manifest.Config?.Digest ??
             throw new InvalidDataException($"Image '{image}' has no config digest.");
@@ -393,11 +393,10 @@ internal sealed class ExplorerSource : IAsyncDisposable
                 $"The image explorer supports Linux and Windows images (found '{config.Os}').");
         }
         ExplorerPlatform? expectedPlatform = comparing ? platform ?? exactPlatform : exactPlatform;
-        bool allowWindowsVersionDifference = comparing && platform is null;
-        if (platform is null && string.Equals(config.Os, "windows", StringComparison.OrdinalIgnoreCase))
+        bool allowWindowsVersionDifference = comparing && resolved.SelectedPlatform is null;
+        if (resolved.SelectedPlatform is null)
         {
-            platform = new(config.Os, config.Architecture ?? "",
-                string.IsNullOrEmpty(config.Variant) ? null : config.Variant, config.OsVersion);
+            platform = ExplorerPlatform.FromConfig(config, platform);
         }
         if (platform is not null && string.Equals(config.Os, "windows", StringComparison.OrdinalIgnoreCase))
         {

@@ -423,7 +423,7 @@ internal sealed class ImageFileSystem : IAsyncDisposable
     private async Task<StoredLayerIndex> GetIndexAsync(int layerIndex, CancellationToken cancellationToken) =>
         await builder.GetIndexAsync(layerIndex, cancellationToken);
 
-    private ImageFileSystemEntry ResolveContentEntry(string requestedPath) =>
+    internal ImageFileSystemEntry ResolveContentEntry(string requestedPath) =>
         pathResolver.ResolveContentEntry(requestedPath, entries);
 
     public string ResolveParentComponents(string path) =>

@@ -313,6 +313,51 @@ public sealed class WindowsExplorerTests : IAsyncDisposable
         Assert.Contains("does not match the selected platform", error.Message);
     }
 
+    [Theory]
+    [InlineData("", false, true)]
+    [InlineData("", true, true)]
+    [InlineData("10.0.20348.1", false, true)]
+    [InlineData("10.0.26100.1", false, false)]
+    [InlineData("10.0.26100.1", true, true)]
+    public async Task CachedManifestUsesSuppliedFallbackWithoutOverridingConfiguration(
+        string configVersion, bool comparing, bool compatible)
+    {
+        Mock<IDockerRegistryClient> client = Client();
+        string[] digests = AddComparisonTarget(client, ["10.0.20348.1"], configVersion);
+        ManifestInfo info = await client.Object.Manifests.GetAsync(Name.Repo, digests[0], Token);
+        ResolvedManifest cached = new(info, Assert.IsAssignableFrom<IImageManifest>(info.Manifest));
+        ExplorerPlatform fallback = new("windows", "amd64", "v8", "10.0.20348.1");
+        Task<ExplorerSource> Open() => ExplorerSource.OpenAsync(client.Object,
+            Mock.Of<IDockerRegistryClientFactory>(), ImageName.Parse("registry.test/windows:next"),
+            new(), null, Token, exactPlatform: fallback, resolvedManifest: cached, comparing: comparing);
+        if (!compatible)
+        {
+            await Assert.ThrowsAsync<InvalidOperationException>(Open);
+            return;
+        }
+
+        await using ExplorerSource source = await Open();
+
+        Assert.Equal(configVersion.Length == 0 ? fallback.OsVersion : configVersion, source.Platform!.OsVersion);
+        Assert.Equal(fallback.Variant, source.Platform.Variant);
+        Assert.Equal(configVersion, source.Config.OsVersion);
+        Assert.Null(source.Resolved.SelectedPlatform);
+    }
+
+    [Fact]
+    public async Task CachedSelectedDescriptorStillRejectsConflictingConfiguration()
+    {
+        Mock<IDockerRegistryClient> client = Client();
+        string[] digests = AddComparisonTarget(client, ["10.0.26100.1"], configVersion: "10.0.20348.2");
+        ManifestInfo info = await client.Object.Manifests.GetAsync(Name.Repo, digests[0], Token);
+        ExplorerPlatform selected = new("windows", "amd64", null, "10.0.26100.1");
+        ResolvedManifest cached = new(info, Assert.IsAssignableFrom<IImageManifest>(info.Manifest), selected);
+        await Assert.ThrowsAsync<InvalidOperationException>(() => ExplorerSource.OpenAsync(client.Object,
+            Mock.Of<IDockerRegistryClientFactory>(), ImageName.Parse("registry.test/windows:next"),
+            new(), null, Token, exactPlatform: new("windows", "amd64", null, "10.0.20348.1"),
+            resolvedManifest: cached, comparing: true));
+    }
+
     [Fact]
     public async Task HostComparisonUsesDescriptorVersionWhenConfigOmitsIt()
     {
