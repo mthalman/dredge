@@ -34,7 +34,7 @@ public class OsCommand : RegistryCommandBase<OsOptions>
         return ExecuteCommandAsync(reference.Registry, cancellationToken, async ct =>
         {
             await using ResolvedImage source = await OpenImageAsync(Options.Image, Options, ct,
-                requirements: ImageSourceRequirements.Metadata);
+                requirements: reference.IsDaemon ? ImageSourceRequirements.LayerContent : ImageSourceRequirements.Metadata);
             source.Report(Error);
             IImageManifest manifest = source.Resolved.Manifest;
             ImageConfig imageConfig = source.Configuration;
@@ -66,8 +66,7 @@ public class OsCommand : RegistryCommandBase<OsOptions>
                     await ExplorerContentIdentity.VerifyAsync(source.Content, imageConfig, source.Resolved,
                         store, ct, indexLayers: true);
                 }
-                await using ImageFileSystem fileSystem = await ImageFileSystem.CreateAsync(source, ct, store);
-                osInfo = await GetLinuxOsInfoAsync(fileSystem, ct);
+                osInfo = await GetLinuxOsInfoAsync(source, store, ct);
             }
 
             if (osInfo is null)
@@ -81,12 +80,16 @@ public class OsCommand : RegistryCommandBase<OsOptions>
     }
 
     private static async Task<LinuxOsInfo?> GetLinuxOsInfoAsync(
-        ImageFileSystem fileSystem,
+        ResolvedImage source,
+        LayerStore store,
         CancellationToken cancellationToken)
     {
         foreach (string path in new[] { "etc/os-release", "usr/lib/os-release" })
         {
             cancellationToken.ThrowIfCancellationRequested();
+            await using ImageFileSystem fileSystem = await ImageFileSystem.CreateAsync(
+                source.Content, source.Name, source.Resolved, source.Configuration,
+                cancellationToken, store, contentPath: path, allowMissingContent: true);
             ImageFileSystemEntry entry;
             try
             {

@@ -14,6 +14,39 @@ using Valleysoft.Dredge.Commands;
 public class OsCommandTests
 {
     [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task LinuxOsDoesNotDownloadShadowedLowerLayers(bool linked)
+    {
+        await using LayerCacheTestContext cache = new();
+        byte[] lower = WindowsImageTestData.Layer(
+            WindowsImageTestData.File("etc/os-release", "NAME=OldLinux\n"),
+            WindowsImageTestData.File("unrelated/large", "unneeded"));
+        byte[] upper = linked
+            ? WindowsImageTestData.Layer(
+                WindowsImageTestData.File("opt/os-release", "NAME=NewLinux\n"),
+                new PaxTarEntry(TarEntryType.SymbolicLink, "etc/os-release") { LinkName = "/opt/os-release" })
+            : WindowsImageTestData.Layer(WindowsImageTestData.File("etc/os-release", "NAME=NewLinux\n"));
+        Mock<IDockerRegistryClient> client = WindowsImageTestData.Client("linux", "", lower, upper);
+        Mock<IDockerRegistryClientFactory> factory = new();
+        factory.Setup(item => item.GetClientAsync(WindowsImageTestData.Name.Registry, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(client.Object);
+        using StringWriter output = new();
+        using StringWriter errors = new();
+        CapturedOsCommand command = new(factory.Object, output, errors, cache.Paths);
+        ((IProcessTerminationAware)command).ProcessTerminator = new TestProcessTerminator();
+
+        Assert.Equal(0, await command.Parse([WindowsImageTestData.Name.ToString()])
+            .InvokeAsync(new InvocationConfiguration(), TestContext.Current.CancellationToken));
+
+        using JsonDocument document = JsonDocument.Parse(output.ToString());
+        Assert.Equal("NewLinux", document.RootElement.GetProperty("NAME").GetString());
+        client.Verify(item => item.Blobs.GetRangeAsync(WindowsImageTestData.Name.Repo,
+            LayerCacheTestContext.Digest(lower), It.IsAny<long>(), It.IsAny<long?>(),
+            It.IsAny<CancellationToken>()), Times.Never);
+    }
+
+    [Theory]
     [InlineData("relative")]
     [InlineData("absolute")]
     [InlineData("hard")]
@@ -57,6 +90,11 @@ public class OsCommandTests
             .ReturnsAsync(client.Object);
         for (int run = 0; run < 2; run++)
         {
+            if (run == 1)
+            {
+                await using ImageFileSystem fullView = await ImageFileSystem.CreateAsync(
+                    client.Object, WindowsImageTestData.Name, new(), TestContext.Current.CancellationToken, cache.Store);
+            }
             using StringWriter output = new();
             using StringWriter errors = new();
             CapturedOsCommand command = new(factory.Object, output, errors, cache.Paths);

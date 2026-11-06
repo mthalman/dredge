@@ -70,7 +70,8 @@ internal sealed class ImageFileSystemBuilder
         bool extracting,
         CancellationToken cancellationToken,
         IProgress<ImageIndexProgress>? progress = null,
-        int? maxLayerIndex = null)
+        int? maxLayerIndex = null,
+        bool allowMissingContent = false)
     {
         string normalizedPath = semantics.NormalizeRequested(contentPath);
         if (!semantics.IsWindows && normalizedPath.Length > 0)
@@ -86,10 +87,17 @@ internal sealed class ImageFileSystemBuilder
                     {
                         ApplyLayer(indexes[i].Changes, new(i, indexes[i].Digest), cancellationToken);
                     }
-                    if (!extracting || pathResolver.GetExtractionSource(normalizedPath, entries).Type == ImageFileType.File)
+                    try
                     {
-                        _ = pathResolver.ResolveContentEntry(normalizedPath, entries);
-                        return firstLayer == 0;
+                        if (!extracting || pathResolver.GetExtractionSource(normalizedPath, entries).Type == ImageFileType.File)
+                        {
+                            _ = pathResolver.ResolveContentEntry(normalizedPath, entries);
+                            return firstLayer == 0;
+                        }
+                    }
+                    catch (FileNotFoundException) when (firstLayer == 0 && allowMissingContent)
+                    {
+                        return true;
                     }
                 }
                 catch (Exception exception) when (firstLayer > 0 &&

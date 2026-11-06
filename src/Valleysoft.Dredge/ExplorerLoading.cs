@@ -121,7 +121,8 @@ internal sealed class ExplorerSource : IAsyncDisposable
         Func<IReadOnlyList<ExplorerPlatform>, ExplorerPlatform?>? choosePlatform = null,
         ExplorerPlatform? exactPlatform = null, LayerStore? store = null,
         ResolvedManifest? resolvedManifest = null, IDockerRegistryClient? registryClient = null,
-        string? daemonSnapshotReference = null, bool comparing = false)
+        string? daemonSnapshotReference = null, bool comparing = false,
+        Func<IReadOnlyList<ExplorerPlatform>, CancellationToken, Task<ExplorerPlatform?>>? chooseComparisonPlatform = null)
     {
         cancellationToken.ThrowIfCancellationRequested();
         if (exactPlatform is not null)
@@ -140,7 +141,8 @@ internal sealed class ExplorerSource : IAsyncDisposable
                 ExplorerSource result = await OpenAsync(client, registryFactory, ImageName.Parse(parsed.Value),
                     options, mixedBases ? null : baseImages?.Select(value => ImageSourceReference.Parse(value).Value).ToArray(),
                     cancellationToken, choosePlatform, exactPlatform: exactPlatform,
-                    skipBaseVerification: mixedBases, resolvedManifest: resolvedManifest, comparing: comparing);
+                    skipBaseVerification: mixedBases, resolvedManifest: resolvedManifest, comparing: comparing,
+                    chooseComparisonPlatform: chooseComparisonPlatform);
                 (IReadOnlyList<ExplorerBaseImage> bases, string? warning) = mixedBases
                     ? await VerifySourceBasesAsync(sourceFactory, result.Config, result.Resolved, false,
                         options, baseImages, cancellationToken, new RegistryImageContentSource(client, result.Image),
@@ -375,12 +377,13 @@ internal sealed class ExplorerSource : IAsyncDisposable
         CancellationToken cancellationToken,
         Func<IReadOnlyList<ExplorerPlatform>, ExplorerPlatform?>? choosePlatform = null,
         IAppSettingsStore? settingsStore = null, ExplorerPlatform? exactPlatform = null,
-        ResolvedManifest? resolvedManifest = null, bool skipBaseVerification = false, bool comparing = false)
+        ResolvedManifest? resolvedManifest = null, bool skipBaseVerification = false, bool comparing = false,
+        Func<IReadOnlyList<ExplorerPlatform>, CancellationToken, Task<ExplorerPlatform?>>? chooseComparisonPlatform = null)
     {
         (ResolvedManifest resolved, IReadOnlyList<ExplorerPlatform> platforms, ExplorerPlatform? platform) =
             resolvedManifest is null
                 ? await ResolveAsync(client, image, options, exactPlatform, cancellationToken, choosePlatform,
-                    settingsStore, comparing)
+                    settingsStore, comparing, chooseComparisonPlatform)
                 : (resolvedManifest, [], resolvedManifest.SelectedPlatform ?? exactPlatform);
         IImageManifest manifest = resolved.Manifest;
         string configDigest = manifest.Config?.Digest ??

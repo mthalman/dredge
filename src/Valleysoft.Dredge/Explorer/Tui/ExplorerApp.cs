@@ -669,7 +669,7 @@ internal sealed class ExplorerHost : IExplorerHost, IAsyncDisposable
     }
 
     private async Task<(ResolvedManifest Resolved, ExplorerPlatform? Platform)>
-        GetTargetSnapshotAsync(ImageName name, CancellationToken cancellationToken, bool choosePlatform = false)
+        GetTargetSnapshotAsync(ImageName name, CancellationToken cancellationToken)
     {
         string key = name.ToString();
         if (!targetSnapshots.TryGetValue(key, out var snapshot))
@@ -683,7 +683,7 @@ internal sealed class ExplorerHost : IExplorerHost, IAsyncDisposable
             {
                 (ResolvedManifest resolved, _, ExplorerPlatform? platform) = await ExplorerSource.ResolveAsync(
                     targetClient, name, PlatformOptions, source.Platform, cancellationToken,
-                    comparing: true, chooseComparisonPlatform: choosePlatform ? ChoosePlatformAsync : null);
+                    comparing: true);
                 cancellationToken.ThrowIfCancellationRequested();
                 snapshot = (resolved, platform, null);
                 targetSnapshots.Add(key, snapshot);
@@ -767,10 +767,6 @@ internal sealed class ExplorerHost : IExplorerHost, IAsyncDisposable
                     ExplorerPlatform? platform = source.Platform;
                     string snapshotKey = name?.ToString() ?? reference;
                     string? daemonSnapshotReference = null;
-                    if (name is not null)
-                    {
-                        await GetTargetSnapshotAsync(name, cancellationToken, choosePlatform: true);
-                    }
                     if (targetSnapshots.TryGetValue(snapshotKey, out var snapshot))
                     {
                         resolved = snapshot.Resolved;
@@ -782,7 +778,8 @@ internal sealed class ExplorerHost : IExplorerHost, IAsyncDisposable
                         reference, PlatformOptions, null, cancellationToken, exactPlatform: platform,
                         store: targetStore, resolvedManifest: resolved,
                         registryClient: name?.Registry == source.Image.Registry ? client : null,
-                        daemonSnapshotReference: daemonSnapshotReference, comparing: true);
+                        daemonSnapshotReference: daemonSnapshotReference, comparing: true,
+                        chooseComparisonPlatform: ChoosePlatformAsync);
                     targetSnapshots.TryAdd(snapshotKey, (targetSource.Resolved, targetSource.Platform,
                         targetSource.IsDaemon ? $"docker://{targetSource.Source!.Identity}" : null));
                     target = await ExplorerSession.CreateAsync(targetSource.RegistryClient, targetSource,

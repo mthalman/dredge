@@ -60,9 +60,10 @@ public class DaemonLinuxOsIntegrityTests
         ImageSourceFactory factory = new(Mock.Of<IDockerRegistryClientFactory>(),
             new AppSettingsStore(Path.Combine(cache.Root, "settings.json")), _ => engine,
             Path.Combine(cache.Root, "snapshots"));
+        VerifiedSourceFactory verifiedFactory = new(factory);
         using StringWriter output = new();
         using StringWriter errors = new();
-        CapturedOsCommand command = new(output, errors, cache.Paths) { ImageSourceFactory = factory };
+        CapturedOsCommand command = new(output, errors, cache.Paths) { ImageSourceFactory = verifiedFactory };
         ((IProcessTerminationAware)command).ProcessTerminator = new TestProcessTerminator();
 
         int exitCode = await command.Parse(
@@ -81,6 +82,23 @@ public class DaemonLinuxOsIntegrityTests
         {
             Assert.Equal(0, exitCode);
             Assert.Equal("updated", JsonNode.Parse(output.ToString())!["ID"]!.GetValue<string>());
+            Assert.True(verifiedFactory.VerifiedAtAcquisition);
+        }
+    }
+
+    private sealed class VerifiedSourceFactory(IImageSourceFactory inner) : IImageSourceFactory
+    {
+        public bool VerifiedAtAcquisition { get; private set; }
+
+        public async Task<ResolvedImage> OpenAsync(string reference, PlatformOptionsBase options,
+            CancellationToken cancellationToken, ImageSourceRequirements requirements = ImageSourceRequirements.LayerContent)
+        {
+            ResolvedImage source = await inner.OpenAsync(reference, options, cancellationToken, requirements);
+            DockerImageArchive archive = Assert.IsType<DockerImageArchive>(source.Content);
+            string[] diffIds = source.Configuration.RootFilesystem!.DiffIds;
+            VerifiedAtAcquisition = source.Resolved.Manifest.Layers.Select((layer, index) =>
+                archive.TryGetVerifiedContentDigest(layer.Digest!, layer.Size, diffIds[index], out _)).All(value => value);
+            return source;
         }
     }
 

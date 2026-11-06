@@ -92,6 +92,11 @@ invalid links and content-read failures are reported as errors. If neither path
 provides nonempty file content, the command fails rather than reporting metadata
 from a deleted file.
 
+For registry images, release-file lookup works from the newest layer backward,
+avoiding lower-layer downloads when the selected content is fully resolved.
+For Docker daemon images, all pinned layer diff IDs are verified before OS
+information is reported, and filesystem indexing reuses that verification.
+
 For Windows images, Dredge uses the selected manifest-list descriptor's
 `os.version` when the image configuration omits it. This also applies to
 Windows base-image identification by `image dockerfile`.

@@ -359,6 +359,30 @@ public sealed class WindowsExplorerTests : IAsyncDisposable
     }
 
     [Fact]
+    public async Task HostComparisonAcquiresCrossRegistryClientOnlyOnce()
+    {
+        Mock<IDockerRegistryClient> client = Client(Layer(File("Files/App/value", "before")));
+        Mock<IDockerRegistryClient> target = Client();
+        AddComparisonTarget(target, ["10.0.26100.1"]);
+        Mock<IDockerRegistryClientFactory> factory = new();
+        factory.Setup(item => item.GetClientAsync("other.test", It.IsAny<CancellationToken>()))
+            .ReturnsAsync(target.Object);
+        (ExplorerSource source, ExplorerSession session) = await Load(client);
+        ExplorerLayerIndexer indexer = ExplorerLayerIndexer.Create(client.Object, source, cache.Store);
+        await using (ExplorerHost host = new(client.Object, factory.Object, source, cache.Store,
+            ExplorerImage.FromSource(source), indexer, new(null, null, false, ClipboardMode.Off, "", ""))
+            { Session = session })
+        {
+            using RetainedExplorerComparison result = await host.CompareRetainedAsync(
+                "other.test/windows:next", () => { }, Token);
+            Assert.Equal("10.0.26100.1", result.Comparison.Target.Platform!.OsVersion);
+            factory.Verify(item => item.GetClientAsync("other.test", It.IsAny<CancellationToken>()), Times.Once);
+            target.Verify(item => item.Dispose(), Times.Never);
+        }
+        target.Verify(item => item.Dispose(), Times.Once);
+    }
+
+    [Fact]
     public async Task HostComparisonUsesDescriptorVersionWhenConfigOmitsIt()
     {
         Mock<IDockerRegistryClient> client = Client(Layer(File("Files/App/value", "before")));
