@@ -21,6 +21,8 @@ public class AppSettingsTests
         {
             Assert.ThrowsAny<JsonException>(
                 () => AppSettings.Load(settingsPath));
+            Assert.Equal("{ invalid json", await File.ReadAllTextAsync(
+                settingsPath, TestContext.Current.CancellationToken));
         }
         finally
         {
@@ -177,19 +179,90 @@ public class AppSettingsTests
         }
     }
 
-    [Fact]
-    public void Load_WhitespaceContentReturnsNull()
+    [Theory]
+    [InlineData("")]
+    [InlineData(" ")]
+    [InlineData("\t\r\n ")]
+    [InlineData("null")]
+    [InlineData(" \r\nnull\t")]
+    public void Load_EmptyOrNullContentThrowsActionableErrorWithoutChangingFile(string content)
     {
         string settingsPath = Path.GetTempFileName();
         try
         {
-            File.WriteAllText(settingsPath, " ");
+            File.WriteAllText(settingsPath, content);
+            byte[] originalBytes = File.ReadAllBytes(settingsPath);
 
-            Assert.Null(AppSettings.Load(settingsPath));
+            JsonException exception = Assert.Throws<JsonException>(
+                () => AppSettings.Load(settingsPath));
+
+            Assert.Contains(settingsPath, exception.Message);
+            Assert.Contains("JSON object", exception.Message);
+            Assert.Contains("{} for defaults", exception.Message);
+            Assert.Contains("delete the file to recreate defaults", exception.Message);
+            Assert.Equal(originalBytes, File.ReadAllBytes(settingsPath));
         }
         finally
         {
             File.Delete(settingsPath);
+        }
+    }
+
+    [Theory]
+    [InlineData("{}", "", "00:30:00")]
+    [InlineData("""{"platform":{"arch":"arm64"},"operations":{"timeout":"00:05:00"}}""", "arm64", "00:05:00")]
+    public void Load_ValidContentPreservesFileAndSaveUsesOriginalPath(
+        string content, string architecture, string timeout)
+    {
+        string settingsPath = Path.GetTempFileName();
+        try
+        {
+            File.WriteAllText(settingsPath, content);
+
+            AppSettings settings = AppSettings.Load(settingsPath);
+
+            Assert.NotNull(settings);
+            Assert.Equal(architecture, settings.Platform.Architecture);
+            Assert.Equal(TimeSpan.Parse(timeout), settings.Operations.GetTimeout());
+            Assert.Equal(content, File.ReadAllText(settingsPath));
+
+            settings.Platform.Architecture = "amd64";
+            settings.Save();
+
+            Assert.Equal("amd64", AppSettings.Load(settingsPath).Platform.Architecture);
+        }
+        finally
+        {
+            File.Delete(settingsPath);
+        }
+    }
+
+    [Fact]
+    public void Load_MissingFileCreatesDefaultsAndSaveUsesOriginalPath()
+    {
+        string tempDir = Path.Combine(Path.GetTempPath(), $"dredge-settings-{Guid.NewGuid():N}");
+        string settingsPath = Path.Combine(tempDir, "settings.json");
+        try
+        {
+            AppSettings settings = AppSettings.Load(settingsPath);
+
+            Assert.True(File.Exists(settingsPath));
+            Assert.Equal(AppSettings.DefaultOperationTimeout, settings.Operations.GetTimeout());
+            Assert.Equal(string.Empty, settings.Platform.Architecture);
+            Assert.Equal(AppSettings.DefaultOperationTimeout,
+                AppSettings.Load(settingsPath).Operations.GetTimeout());
+
+            settings.Platform.Architecture = "arm64";
+            settings.Save();
+
+            Assert.Equal("arm64", AppSettings.Load(settingsPath).Platform.Architecture);
+        }
+        finally
+        {
+            if (Directory.Exists(tempDir))
+            {
+                Directory.Delete(tempDir, recursive: true);
+            }
         }
     }
 
