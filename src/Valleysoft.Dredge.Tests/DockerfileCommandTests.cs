@@ -163,14 +163,25 @@ public class DockerfileCommandTests
     }
 
     [Theory]
-    [InlineData(false)]
-    [InlineData(true)]
-    public async Task BuildKitCommandTextIsNotAnInheritedShellPrefix(bool noFormat)
+    [InlineData(false, "RUN /bin/sh -c echo \"\\\" #(nop) literal\" # buildkit")]
+    [InlineData(true, "RUN /bin/sh -c echo \"\\\" #(nop) literal\" # buildkit")]
+    [InlineData(false, "RUN /bin/sh -c echo prefix\" #(nop) literal\" # buildkit")]
+    [InlineData(true, "RUN /bin/sh -c echo prefix\" #(nop) literal\" # buildkit")]
+    [InlineData(false, "RUN /bin/sh -c echo prefix' #(nop) literal' # buildkit")]
+    [InlineData(true, "RUN /bin/sh -c echo prefix' #(nop) literal' # buildkit")]
+    [InlineData(false, "RUN /bin/sh -c echo prefix\\\"\\ #(nop) literal # buildkit")]
+    [InlineData(true, "RUN /bin/sh -c echo prefix\\\"\\ #(nop) literal # buildkit")]
+    [InlineData(false, "LABEL text=prefix\" #(nop) literal\"")]
+    [InlineData(true, "LABEL text=prefix\" #(nop) literal\"")]
+    [InlineData(false, "CMD /bin/sh -c echo prefix\" #(nop) literal\"")]
+    [InlineData(true, "CMD /bin/sh -c echo prefix\" #(nop) literal\"")]
+    [InlineData(false, "run\t/bin/sh -c echo prefix\" #(nop) literal\" # buildkit")]
+    [InlineData(true, "run\t/bin/sh -c echo prefix\" #(nop) literal\" # buildkit")]
+    public async Task BuildKitCommandTextIsNotAnInheritedShellPrefix(bool noFormat, string command)
     {
-        const string Command = "RUN /bin/sh -c echo \"\\\" #(nop) literal\" # buildkit";
-        string actual = await RenderHistoryAsync([Command], noFormat, noColor: true);
+        string actual = await RenderHistoryAsync([command], noFormat, noColor: true);
 
-        Assert.Equal($"FROM scratch{Environment.NewLine}{Command}{Environment.NewLine}", actual);
+        Assert.Equal($"FROM scratch{Environment.NewLine}{command}{Environment.NewLine}", actual);
     }
 
     [Theory]

@@ -286,6 +286,11 @@ public partial class DockerfileCommand : RegistryCommandBase<DockerfileOptions>
 
     internal static int FindHistoryMetadataIndex(string line)
     {
+        if (DockerfileInstructionPrefixRegex().IsMatch(line))
+        {
+            return -1;
+        }
+
         const string Marker = "#(nop)";
         bool atTokenStart = true;
         char quote = '\0';
@@ -547,4 +552,6 @@ public partial class DockerfileCommand : RegistryCommandBase<DockerfileOptions>
     [GeneratedRegex(@"\S+(?<whitespace>[ \t]{2,})", RegexOptions.Multiline)]
     private static partial Regex TwoOrMoreWhitespaceRegex();
 
+    [GeneratedRegex(@"\A[ \t]*(?:ADD|ARG|CMD(?![ \t]+/[A-Za-z](?:[ \t]|$))|COPY|ENTRYPOINT|ENV|EXPOSE|FROM|HEALTHCHECK|LABEL|MAINTAINER|ONBUILD|RUN|SHELL|STOPSIGNAL|USER|VOLUME|WORKDIR)[ \t]", RegexOptions.IgnoreCase | RegexOptions.CultureInvariant)]
+    private static partial Regex DockerfileInstructionPrefixRegex();
 }
