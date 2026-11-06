@@ -49,7 +49,8 @@ public class DockerfileCommandTests
             "echo `printf '%s' 'A &&  B'`",
             "printf '%s' $'A\\' &&  B'",
             "printf '%s' ${VALUE:-'A &&  B'}",
-            "echo done # literal &&  comment"
+            "echo done # literal &&  comment",
+            "echo A^ &&  echo B"
         ];
         foreach (string command in commands)
         {
@@ -92,6 +93,10 @@ public class DockerfileCommandTests
     [InlineData(true, "echo \"${VALUE:-B &&  C}\"")]
     [InlineData(false, "echo \"$(printf '%s' \"$(printf '%s' 'B &&  C')\")\"")]
     [InlineData(true, "echo \"$(printf '%s' \"$(printf '%s' 'B &&  C')\")\"")]
+    [InlineData(false, "echo $(printf '%s' 'B &&  C' | grep '^Version:')")]
+    [InlineData(true, "echo $(printf '%s' 'B &&  C' | grep '^Version:')")]
+    [InlineData(false, "echo 'B^ &&  C'")]
+    [InlineData(true, "echo 'B^ &&  C'")]
     public async Task UnquotedRunStillFormats(bool noFormat, string secondCommand)
     {
         string actual = await RenderHistoryAsync(

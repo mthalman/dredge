@@ -345,7 +345,7 @@ public partial class DockerfileCommand : RegistryCommandBase<DockerfileOptions>
         if (line.Contains("$'", StringComparison.Ordinal) ||
             line.Contains("$\"", StringComparison.Ordinal) ||
             line.Contains("<<", StringComparison.Ordinal) ||
-            line.IndexOfAny(['`', '^', '\r', '\n']) >= 0)
+            line.IndexOfAny(['`', '\r', '\n']) >= 0)
         {
             return line;
         }
@@ -355,6 +355,11 @@ public partial class DockerfileCommand : RegistryCommandBase<DockerfileOptions>
         for (int i = 0; i < line.Length; i++)
         {
             char character = line[i];
+            if (character == '^')
+            {
+                return line;
+            }
+
             bool expansion = character == '$' && i + 1 < line.Length && line[i + 1] is '(' or '{';
             if (!expansion && character is not ('\'' or '"' or '\\' or '#'))
             {
