@@ -83,35 +83,13 @@ dredge image inspect amd64/ubuntu:22.04
 
 Returns information about the OS of the specified image. Supports both Linux and Windows images.
 
-For Linux images, Dredge reads `etc/os-release`, falling back to
-`usr/lib/os-release`, from the effective filesystem after applying all layers.
-Later replacements, whiteouts, and opaque directories affect the reported OS.
-Dredge follows valid symbolic links, hard links, and linked parent directories
-inside the image. A missing or empty release file falls back to the other path;
-invalid links and content-read failures are reported as errors. If neither path
-provides nonempty file content, the command fails rather than reporting metadata
-from a deleted file.
+For Linux images, Dredge reads `etc/os-release` from the final image filesystem.
+If that file is missing or empty, it tries `usr/lib/os-release`.
+The command fails if it cannot determine the OS information.
 
-For registry images, both release paths share a newest-first lookup. Dredge
-reuses indexes and expands the inspected layer suffix in batches to keep layer
-replay bounded; a newest-layer replacement can avoid lower-layer downloads.
-If a lower-layer index cannot be acquired between batches, Dredge checks the
-already indexed suffix before failing. It reports OS information only when that
-suffix fully resolves the preferred nonempty release content; required-layer
-and selected-content read failures remain errors.
-Partial lookup defers hardlinks whose targets or target parents are missing from
-the indexed suffix, without scanning all existing entries for each deferred link.
-Invalid target paths, non-directory target parents, and target-parent link cycles
-remain errors.
-An unresolved replacement never exposes the previous file, and a hardlink needed
-to resolve release content still requires its target. Complete filesystem builds
-retain strict hardlink validation.
-For Docker daemon images, all pinned layer diff IDs are verified before OS
-information is reported, and filesystem indexing reuses that verification.
-
-For Windows images, Dredge uses the selected manifest-list descriptor's
-`os.version` when the image configuration omits it. This also applies to
-Windows base-image identification by `image dockerfile`.
+For Windows images, if the image configuration omits `os.version`, Dredge uses
+the value from the selected manifest-list descriptor. `image dockerfile` uses
+the same fallback to identify Windows base images.
 
 ```console
 dredge image os <image> [--os <os>] [--arch <arch>] [--os-version <version>]
@@ -202,12 +180,12 @@ changed package to see which of its files changed.
 
 In a file diff, `Alt+V` switches between inline and side-by-side views.
 
-For registry Windows images, comparisons prefer the baseline's exact platform.
-If that version is unavailable, Dredge selects a unique compatible Windows
-version or prompts you to choose among multiple versions. The selected target
-is retained for subsequent comparisons in the session. Initial image selection,
-base-image verification, and comparisons involving Docker daemon images still
-require matching OS versions.
+When comparing Windows registry images, Dredge first looks for the baseline's
+exact platform in the target image. If that Windows version is unavailable,
+it selects the only compatible version or asks you to choose if several match.
+The explorer keeps the selected target for later comparisons in the session.
+Initial image selection, base-image verification, and comparisons involving
+Docker daemon images still require matching OS versions.
 
 ### File history
 
