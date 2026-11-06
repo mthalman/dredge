@@ -161,7 +161,8 @@ internal sealed class ImageFileSystemBuilder
             for (int layer = firstLayer; layer < manifest.Layers.Length; layer++)
             {
                 cancellationToken.ThrowIfCancellationRequested();
-                ApplyLayer(indexes[layer].Changes, new(layer, indexes[layer].Digest), cancellationToken);
+                ApplyLayer(indexes[layer].Changes, new(layer, indexes[layer].Digest), cancellationToken,
+                    deferUnresolvedHardLinks: firstLayer > 0);
             }
             return ContentCandidatesResolved(candidates, firstLayer == 0, cancellationToken);
         }
@@ -219,7 +220,8 @@ internal sealed class ImageFileSystemBuilder
     public void ApplyLayer(
         LayerChanges changes,
         ImageLayerReference layer,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        bool deferUnresolvedHardLinks = false)
     {
         foreach (string directory in changes.OpaqueDirectories)
         {
@@ -261,16 +263,25 @@ internal sealed class ImageFileSystemBuilder
             ImageFileSystemEntry current = scanned.ToEntry(introduced, modified, layer);
             if (current.Type == ImageFileType.HardLink)
             {
-                string targetPath = pathResolver.GetHardLinkTargetPath(current, entries);
-                entries.TryGetValue(targetPath, out ImageFileSystemEntry? foundTarget);
-                ImageFileSystemSemantics.ValidateHardLinkTarget(current.Path, targetPath, foundTarget?.Type);
+                string? targetPath = deferUnresolvedHardLinks
+                    ? pathResolver.TryGetHardLinkTargetPath(current, entries)
+                    : pathResolver.GetHardLinkTargetPath(current, entries);
+                ImageFileSystemEntry? foundTarget = targetPath is null ? null : entries.GetValueOrDefault(targetPath);
+                if (deferUnresolvedHardLinks && foundTarget is null)
+                {
+                    RemovePath(current.Path, includePath: true, layer);
+                    continue;
+                }
+                string resolvedTargetPath = targetPath ??
+                    throw new InvalidDataException($"Hard link '/{current.Path}' has no resolved target.");
+                ImageFileSystemSemantics.ValidateHardLinkTarget(current.Path, resolvedTargetPath, foundTarget?.Type);
                 ImageFileSystemEntry target = foundTarget!;
                 current = current with
                 {
                     Type = semantics.IsWindows && target.Type == ImageFileType.Other
                         ? ImageFileType.Other : current.Type,
                     Windows = semantics.IsWindows && target.Type == ImageFileType.Other
-                        ? ImageFileSystemSemantics.UnsupportedHardLink(targetPath, current.Windows) : current.Windows,
+                        ? ImageFileSystemSemantics.UnsupportedHardLink(resolvedTargetPath, current.Windows) : current.Windows,
                     Size = target.Size,
                     ContentLayerIndex = target.ContentLayerIndex,
                     ContentPath = target.ContentPath,

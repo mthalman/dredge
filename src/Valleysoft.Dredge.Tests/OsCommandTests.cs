@@ -14,6 +14,92 @@ using Valleysoft.Dredge.Commands;
 public class OsCommandTests
 {
     [Theory]
+    [InlineData("available")]
+    [InlineData("unavailable")]
+    [InlineData("missing")]
+    public async Task LinuxOsDoesNotExposeReplacedContentWhileReleaseHardLinkIsUnresolved(string targetState)
+    {
+        await using LayerCacheTestContext cache = new();
+        List<TarEntry> baseEntries = [WindowsImageTestData.File("usr/lib/os-release", "NAME=FallbackLinux\n")];
+        if (targetState != "missing")
+        {
+            baseEntries.Add(WindowsImageTestData.File("opt/os-release", "NAME=NewLinux\n"));
+        }
+        byte[] lower = WindowsImageTestData.Layer([.. baseEntries]);
+        byte[] older = WindowsImageTestData.Layer(WindowsImageTestData.File("app/older", "unrelated"));
+        byte[] previous = WindowsImageTestData.Layer(WindowsImageTestData.File("etc/os-release", "NAME=OldLinux\n"));
+        byte[] middle = WindowsImageTestData.Layer(WindowsImageTestData.File("app/middle", "unrelated"));
+        byte[] upper = WindowsImageTestData.Layer(new PaxTarEntry(TarEntryType.HardLink, "etc/os-release")
+            { LinkName = "opt/os-release" });
+        Mock<IDockerRegistryClient> client = WindowsImageTestData.Client("linux", "", lower, older, previous, middle, upper);
+        if (targetState == "unavailable")
+        {
+            client.Setup(item => item.Blobs.GetRangeAsync(WindowsImageTestData.Name.Repo,
+                LayerCacheTestContext.Digest(lower), 0, It.IsAny<long?>(), It.IsAny<CancellationToken>()))
+                .ThrowsAsync(new IOException("Required release target unavailable."));
+        }
+        Mock<IDockerRegistryClientFactory> factory = new();
+        factory.Setup(item => item.GetClientAsync(WindowsImageTestData.Name.Registry, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(client.Object);
+        using StringWriter output = new();
+        using StringWriter errors = new();
+        CapturedOsCommand command = new(factory.Object, output, errors, cache.Paths);
+        ((IProcessTerminationAware)command).ProcessTerminator = new TestProcessTerminator();
+
+        int exitCode = await command.Parse([WindowsImageTestData.Name.ToString()])
+            .InvokeAsync(new InvocationConfiguration(), TestContext.Current.CancellationToken);
+
+        if (targetState == "available")
+        {
+            Assert.Equal(0, exitCode);
+            using JsonDocument document = JsonDocument.Parse(output.ToString());
+            Assert.Equal("NewLinux", document.RootElement.GetProperty("NAME").GetString());
+        }
+        else
+        {
+            Assert.Equal(1, exitCode);
+            Assert.Equal("", output.ToString());
+            Assert.Contains(targetState == "missing" ? "missing path" : "Required release target unavailable",
+                errors.ToString(), StringComparison.OrdinalIgnoreCase);
+        }
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task LinuxOsIgnoresUnrelatedHardLinkDependenciesInPartialSuffix(bool parentDependency)
+    {
+        await using LayerCacheTestContext cache = new();
+        byte[] lower = WindowsImageTestData.Layer(WindowsImageTestData.File(
+            parentDependency ? "payload/original" : "original", "unavailable"));
+        byte[] dependency = WindowsImageTestData.Layer(new PaxTarEntry(TarEntryType.HardLink, "app/alias")
+            { LinkName = parentDependency ? "payload/original" : "original" });
+        byte[] release = WindowsImageTestData.Layer(WindowsImageTestData.File("etc/os-release", "NAME=ResolvedLinux\n"));
+        byte[] middle = WindowsImageTestData.Layer(WindowsImageTestData.File("app/middle", "unrelated"));
+        byte[] upper = WindowsImageTestData.Layer(WindowsImageTestData.File("app/upper", "unrelated"));
+        Mock<IDockerRegistryClient> client = WindowsImageTestData.Client("linux", "", lower, dependency, release, middle, upper);
+        client.Setup(item => item.Blobs.GetRangeAsync(WindowsImageTestData.Name.Repo,
+            LayerCacheTestContext.Digest(lower), 0, It.IsAny<long?>(), It.IsAny<CancellationToken>()))
+            .ThrowsAsync(new IOException("Unneeded hardlink target layer unavailable."));
+        Mock<IDockerRegistryClientFactory> factory = new();
+        factory.Setup(item => item.GetClientAsync(WindowsImageTestData.Name.Registry, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(client.Object);
+        using StringWriter output = new();
+        using StringWriter errors = new();
+        CapturedOsCommand command = new(factory.Object, output, errors, cache.Paths);
+        ((IProcessTerminationAware)command).ProcessTerminator = new TestProcessTerminator();
+
+        Assert.Equal(0, await command.Parse([WindowsImageTestData.Name.ToString()])
+            .InvokeAsync(new InvocationConfiguration(), TestContext.Current.CancellationToken));
+
+        using JsonDocument document = JsonDocument.Parse(output.ToString());
+        Assert.Equal("ResolvedLinux", document.RootElement.GetProperty("NAME").GetString());
+        client.Verify(item => item.Blobs.GetRangeAsync(WindowsImageTestData.Name.Repo,
+            LayerCacheTestContext.Digest(lower), It.IsAny<long>(), It.IsAny<long?>(),
+            It.IsAny<CancellationToken>()), Times.Never);
+    }
+
+    [Theory]
     [InlineData(false, false)]
     [InlineData(true, false)]
     [InlineData(false, true)]
@@ -93,7 +179,9 @@ public class OsCommandTests
     [InlineData(true, 32)]
     [InlineData(false, 33)]
     [InlineData(true, 100)]
-    public async Task ReleaseCandidateLookupBoundsLayerReplay(bool fallback, int layerCount)
+    [InlineData(false, 100, true)]
+    [InlineData(true, 100, true)]
+    public async Task ReleaseCandidateLookupBoundsLayerReplay(bool fallback, int layerCount, bool unrelatedHardLinks = false)
     {
         int applications = 0;
         DockerManifest manifest = new()
@@ -107,8 +195,10 @@ public class OsCommandTests
             string path = index == 0
                 ? fallback ? "usr/lib/os-release" : "etc/os-release"
                 : fallback && index == layerCount - 1 ? "etc/os-release" : $"app/file{index}";
-            ScannedEntry entry = new(path, ImageFileType.File, 0, 0, 0,
-                fallback && index == layerCount - 1 ? 0 : 1, DateTime.UnixEpoch, null, 0, 0, 0, null);
+            bool hardLink = unrelatedHardLinks && index > 0 && path.StartsWith("app/", StringComparison.Ordinal);
+            ScannedEntry entry = new(path, hardLink ? ImageFileType.HardLink : ImageFileType.File, 0, 0, 0,
+                fallback && index == layerCount - 1 ? 0 : 1, DateTime.UnixEpoch,
+                hardLink ? fallback ? "usr/lib/os-release" : "etc/os-release" : null, 0, 0, 0, null);
             indexes.Add(index, new(manifest.Layers[index].Digest!, 1, new([], [], []), "tar")
             {
                 Changes = new(new CountingEntries([entry], () => applications++), [], [])
