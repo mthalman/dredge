@@ -1,4 +1,5 @@
 using System.Globalization;
+using System.Text.Json;
 using System.Text.Json.Serialization;
 using IOPath = System.IO.Path;
 
@@ -60,11 +61,14 @@ internal partial class AppSettings
             string settingsContent = File.ReadAllText(settingsPath);
             if (string.IsNullOrWhiteSpace(settingsContent))
             {
-                return null!;
+                throw new JsonException(
+                    $"The settings file '{settingsPath}' is empty. Replace its contents with a JSON object (use {{}} for defaults), or delete the file to recreate defaults.");
             }
 
             AppSettings loadedSettings = JsonHelper.Deserialize<AppSettings>(
-                JsonHelper.MergeDuplicateObjects(settingsContent))!;
+                JsonHelper.MergeDuplicateObjects(settingsContent))
+                ?? throw new JsonException(
+                    $"The settings file '{settingsPath}' contains null. Replace its contents with a JSON object (use {{}} for defaults), or delete the file to recreate defaults.");
             loadedSettings.settingsPath = settingsPath;
             return loadedSettings;
         }
