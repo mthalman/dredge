@@ -12,6 +12,146 @@ public class DockerfileCommandTests
 {
     private const string Registry = "test-registry.io";
 
+    [Theory]
+    [InlineData(false, false)]
+    [InlineData(false, true)]
+    [InlineData(true, false)]
+    [InlineData(true, true)]
+    public async Task HistoryMarkerInShellLiteralIsPreserved(bool noFormat, bool noColor)
+    {
+        string actual = await RenderHistoryAsync(
+            ["/bin/sh -c #(nop) ENV X=1", "/bin/sh -c echo \"#(nop) literal\""],
+            noFormat, noColor);
+
+        Assert.Equal(
+            $"FROM scratch{Environment.NewLine}ENV X=1{Environment.NewLine}RUN echo \"#(nop) literal\"{Environment.NewLine}",
+            actual);
+    }
+
+    public static IEnumerable<TheoryDataRow<string, bool, bool>> GetLiteralRunData()
+    {
+        string[] commands =
+        [
+            "printf '%s' 'A &&  B'",
+            "printf '%s' \"A  && B\"",
+            "printf '%s' 'A;  B'",
+            "printf '%s' \"A {  B\"",
+            "printf '%s' 'A  { B'",
+            "printf '%s' 'A  B'",
+            "printf '%s' \"A '  B\"",
+            "printf '%s' 'A \"  B'",
+            "printf '%s' \"A \\\" &&  B\"",
+            "echo A\\ \\ B",
+            "echo $(printf '%s' 'A &&  B')",
+            "echo `printf '%s' 'A &&  B'`",
+            "printf '%s' $'A\\' &&  B'",
+            "printf '%s' ${VALUE:-'A &&  B'}",
+            "echo done # literal &&  comment"
+        ];
+        foreach (string command in commands)
+        {
+            foreach (bool noFormat in new[] { false, true })
+            {
+                foreach (bool noColor in new[] { false, true })
+                {
+                    yield return new(command, noFormat, noColor);
+                }
+            }
+        }
+    }
+
+    [Theory]
+    [MemberData(nameof(GetLiteralRunData))]
+    public async Task RunLiteralSemanticsArePreserved(string command, bool noFormat, bool noColor)
+    {
+        string actual = await RenderHistoryAsync(
+            ["/bin/sh -c #(nop) ENV X=1", $"/bin/sh -c {command}"],
+            noFormat, noColor);
+
+        string reconstructedCommand = actual.Split("RUN ", 2)[1].TrimEnd('\r', '\n')
+            .Replace($"\\{Environment.NewLine}", "", StringComparison.Ordinal);
+        Assert.Equal(command, reconstructedCommand);
+        Assert.Equal(
+            $"FROM scratch{Environment.NewLine}ENV X=1{Environment.NewLine}RUN {command}{Environment.NewLine}",
+            actual);
+    }
+
+    [Theory]
+    [InlineData(false, "echo B")]
+    [InlineData(true, "echo B")]
+    [InlineData(false, "echo \"B &&  C\"")]
+    [InlineData(true, "echo \"B &&  C\"")]
+    public async Task UnquotedRunStillFormats(bool noFormat, string secondCommand)
+    {
+        string actual = await RenderHistoryAsync(
+            ["/bin/sh -c #(nop) ENV X=1", $"/bin/sh -c echo  A &&  {secondCommand}"],
+            noFormat, noColor: false);
+
+        string expectedRun = noFormat
+            ? $"echo  A &&  {secondCommand}"
+            : $"echo A && \\{Environment.NewLine}    {secondCommand}";
+        Assert.Equal(
+            $"FROM scratch{Environment.NewLine}ENV X=1{Environment.NewLine}RUN {expectedRun}{Environment.NewLine}",
+            actual);
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task ExplicitShellMetadataIsRecognized(bool noFormat)
+    {
+        string actual = await RenderHistoryAsync(
+            ["SHELL [\"/bin/bash\", \"-c\"]", "/bin/bash -c #(nop) ENV X=1", "/bin/bash -c echo \"#(nop) literal\""],
+            noFormat, noColor: true);
+
+        Assert.Equal(
+            $"FROM scratch{Environment.NewLine}SHELL [\"/bin/bash\", \"-c\"]{Environment.NewLine}ENV X=1{Environment.NewLine}RUN echo \"#(nop) literal\"{Environment.NewLine}",
+            actual);
+    }
+
+    private static async Task<string> RenderHistoryAsync(string[] history, bool noFormat, bool noColor)
+    {
+        CancellationToken cancellationToken = TestContext.Current.CancellationToken;
+        Image image = new()
+        {
+            Os = "linux",
+            Architecture = "amd64",
+            History = [.. history.Select(static createdBy => new LayerHistory { CreatedBy = createdBy })]
+        };
+        Mock<IDockerRegistryClient> client = new();
+        client.Setup(o => o.Manifests.GetAsync("repo", "tag", cancellationToken))
+            .ReturnsAsync(new ManifestInfo("media-type", "digest", new DockerManifest
+            {
+                Config = new ManifestConfig { Digest = "config-digest" }
+            }));
+        client.Setup(o => o.Blobs.GetAsync("repo", "config-digest", cancellationToken))
+            .ReturnsAsync(new MemoryStream(Encoding.UTF8.GetBytes(JsonSerializer.Serialize(image))));
+        Mock<IDockerRegistryClientFactory> factory = new();
+        factory.Setup(o => o.GetClientAsync(Registry, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(client.Object);
+        DockerfileCommand command = new(factory.Object)
+        {
+            Options = new DockerfileOptions
+            {
+                Image = $"{Registry}/repo:tag",
+                NoFormat = noFormat,
+                NoColor = noColor
+            }
+        };
+
+        string markup = await command.GetMarkupStringAsync(cancellationToken);
+        StringWriter output = new();
+        IAnsiConsole console = AnsiConsole.Create(new AnsiConsoleSettings
+        {
+            Ansi = AnsiSupport.No,
+            ColorSystem = ColorSystemSupport.NoColors,
+            Out = new AnsiConsoleOutput(output)
+        });
+        console.Profile.Width = 1000;
+        console.Write(new Markup(markup));
+        return output.ToString();
+    }
+
     public static IEnumerable<TheoryDataRow<TestScenario>> GetTestData()
     {
         DirectoryInfo workingDir = new(Path.Combine(Environment.CurrentDirectory, "TestData", "DockerfileCommand"));

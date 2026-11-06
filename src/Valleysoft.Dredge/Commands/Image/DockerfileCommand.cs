@@ -165,7 +165,22 @@ public partial class DockerfileCommand : RegistryCommandBase<DockerfileOptions>
     {
         const string NopMarker = "#(nop)";
 
-        int nopIndex = line.IndexOf(NopMarker);
+        Match metadataPrefix = HistoryMetadataPrefixRegex().Match(line);
+        int nopIndex = metadataPrefix.Success
+            ? metadataPrefix.Length
+            : currentShell is not null && line.StartsWith(currentShell, StringComparison.Ordinal)
+                ? currentShell.Length
+                : 0;
+        while (nopIndex < line.Length && line[nopIndex] is ' ' or '\t')
+        {
+            nopIndex++;
+        }
+        if (!line.AsSpan(nopIndex).StartsWith(NopMarker, StringComparison.Ordinal) ||
+            nopIndex + NopMarker.Length >= line.Length ||
+            line[nopIndex + NopMarker.Length] is not (' ' or '\t'))
+        {
+            nopIndex = -1;
+        }
         if (nopIndex >= 0 || currentShell is null)
         {
             if (nopIndex >= 0)
@@ -264,6 +279,66 @@ public partial class DockerfileCommand : RegistryCommandBase<DockerfileOptions>
 
     private static string FormatRunInstruction(string line)
     {
+        // Nested shell syntax needs a shell-specific parser; keep ambiguous history intact.
+        if (line.Contains("$(", StringComparison.Ordinal) ||
+            line.Contains("${", StringComparison.Ordinal) ||
+            line.Contains("$'", StringComparison.Ordinal) ||
+            line.Contains("$\"", StringComparison.Ordinal) ||
+            line.Contains("<<", StringComparison.Ordinal) ||
+            line.IndexOfAny(['`', '^', '\r', '\n']) >= 0)
+        {
+            return line;
+        }
+
+        StringBuilder formattedLine = new();
+        int segmentStart = 0;
+        for (int i = 0; i < line.Length; i++)
+        {
+            char character = line[i];
+            if (character is not ('\'' or '"' or '\\' or '#'))
+            {
+                continue;
+            }
+
+            formattedLine.Append(FormatUnquotedRunSegment(line[segmentStart..i]));
+            int protectedStart = i;
+            if (character == '#')
+            {
+                formattedLine.Append(line[i..]);
+                return formattedLine.ToString();
+            }
+            if (character == '\\')
+            {
+                if (++i >= line.Length)
+                {
+                    return line;
+                }
+            }
+            else
+            {
+                char quote = character;
+                while (++i < line.Length && line[i] != quote)
+                {
+                    if (quote == '"' && line[i] == '\\')
+                    {
+                        i++;
+                    }
+                }
+                if (i >= line.Length)
+                {
+                    return line;
+                }
+            }
+
+            formattedLine.Append(line[protectedStart..(i + 1)]);
+            segmentStart = i + 1;
+        }
+        formattedLine.Append(FormatUnquotedRunSegment(line[segmentStart..]));
+        return formattedLine.ToString();
+    }
+
+    private static string FormatUnquotedRunSegment(string line)
+    {
         // Reformat to support multi-line patterns: 
         // 1. '&&' before a new line
         line = AndBeforeNewLineRegex().Replace(line, $" && \\{Environment.NewLine}    ");
@@ -311,10 +386,9 @@ public partial class DockerfileCommand : RegistryCommandBase<DockerfileOptions>
 
     private static string FormatLineToRemoveWhitespace(string line)
     {
-        // A regex that captures whitespace of length 2 or more that's not contained in quotes.
-        Regex nonQuotedMultiWhitespaceRegex =
-            TwoOrMoreWhitespaceNotInQuotesRegex();
-        MatchCollection matches = nonQuotedMultiWhitespaceRegex.Matches(line);
+        Regex multiWhitespaceRegex =
+            TwoOrMoreWhitespaceRegex();
+        MatchCollection matches = multiWhitespaceRegex.Matches(line);
         if (matches.Count == 0)
         {
             return line;
@@ -413,6 +487,9 @@ public partial class DockerfileCommand : RegistryCommandBase<DockerfileOptions>
     
     [GeneratedRegex(@"[ \t]{2,}\{[ \t]+")]
     private static partial Regex CloseParenAfterNewLineRegex();
-    [GeneratedRegex(@"\S+(?<whitespace>[ \t]{2,})((?=(?<singlequoted>[^'""]*'[^']*')*[^'""]*$)|(?=(?<doublequoted>[^""']*""[^""]*"")*[^""']*$))", RegexOptions.Multiline)]
-    private static partial Regex TwoOrMoreWhitespaceNotInQuotesRegex();
+    [GeneratedRegex(@"\S+(?<whitespace>[ \t]{2,})", RegexOptions.Multiline)]
+    private static partial Regex TwoOrMoreWhitespaceRegex();
+
+    [GeneratedRegex(@"\A\S+(?:[ \t]+[-/]\w+)*[ \t]+(?:-c|/C)[ \t]+")]
+    private static partial Regex HistoryMetadataPrefixRegex();
 }
