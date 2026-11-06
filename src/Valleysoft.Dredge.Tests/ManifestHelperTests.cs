@@ -18,6 +18,7 @@ public class ManifestHelperTests
                 CreateReference("sha256:arm64", "linux", "arm64", "1")
             ]
         };
+        manifestList.Manifests[1].Platform!.Variant = "v8";
         DockerManifest resolvedManifest = new() { Layers = [] };
         Mock<IDockerRegistryClient> client = new() { DefaultValue = DefaultValue.Mock };
         client
@@ -39,6 +40,7 @@ public class ManifestHelperTests
 
         Assert.Same(resolvedManifest, result.Manifest);
         Assert.Equal("sha256:arm64", result.ManifestInfo.DockerContentDigest);
+        Assert.Equal(new ExplorerPlatform("linux", "arm64", "v8", "1"), result.SelectedPlatform);
     }
 
     [Fact]

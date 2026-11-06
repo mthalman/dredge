@@ -31,15 +31,16 @@ internal sealed record ExplorerPlatform(string Os, string Architecture, string? 
         HasSamePlatform(other) &&
         string.Equals(NormalizedVariant, other.NormalizedVariant, StringComparison.OrdinalIgnoreCase);
 
-    public bool IsCompatibleWith(ExplorerPlatform other) =>
-        HasSamePlatform(other) &&
+    public bool IsCompatibleWith(ExplorerPlatform other, bool allowWindowsVersionDifference = false) =>
+        HasSamePlatform(other, allowWindowsVersionDifference) &&
         (HasUnknownVariant || other.HasUnknownVariant ||
             string.Equals(NormalizedVariant, other.NormalizedVariant, StringComparison.OrdinalIgnoreCase));
 
-    private bool HasSamePlatform(ExplorerPlatform other) =>
+    private bool HasSamePlatform(ExplorerPlatform other, bool allowWindowsVersionDifference = false) =>
         string.Equals(Os, other.Os, StringComparison.OrdinalIgnoreCase) &&
         string.Equals(Architecture, other.Architecture, StringComparison.OrdinalIgnoreCase) &&
-        string.Equals(OsVersion ?? "", other.OsVersion ?? "", StringComparison.OrdinalIgnoreCase);
+        (allowWindowsVersionDifference && string.Equals(Os, "windows", StringComparison.OrdinalIgnoreCase) ||
+            string.Equals(OsVersion ?? "", other.OsVersion ?? "", StringComparison.OrdinalIgnoreCase));
 
     private bool HasUnknownVariant => string.IsNullOrEmpty(Variant) &&
         !string.Equals(Architecture, "arm64", StringComparison.OrdinalIgnoreCase);
@@ -53,6 +54,11 @@ internal sealed record ExplorerPlatform(string Os, string Architecture, string? 
         new(config.Os, config.Architecture,
             string.IsNullOrEmpty(config.Variant) ? selectedPlatform?.Variant : config.Variant,
             string.IsNullOrEmpty(config.OsVersion) ? selectedPlatform?.OsVersion : config.OsVersion);
+
+    internal static ExplorerPlatform FromManifest(ManifestPlatform platform) =>
+        new(platform.Os ?? "", platform.Architecture ?? "",
+            string.IsNullOrEmpty(platform.Variant) ? null : platform.Variant,
+            string.IsNullOrEmpty(platform.OsVersion) ? null : platform.OsVersion);
 
     public override string ToString()
     {
@@ -375,7 +381,7 @@ internal sealed class ExplorerSource : IAsyncDisposable
             resolvedManifest is null
                 ? await ResolveAsync(client, image, options, exactPlatform, cancellationToken, choosePlatform,
                     settingsStore, comparing)
-                : (resolvedManifest, [], exactPlatform);
+                : (resolvedManifest, [], resolvedManifest.SelectedPlatform);
         IImageManifest manifest = resolved.Manifest;
         string configDigest = manifest.Config?.Digest ??
             throw new InvalidDataException($"Image '{image}' has no config digest.");
@@ -386,6 +392,8 @@ internal sealed class ExplorerSource : IAsyncDisposable
             throw new NotSupportedException(
                 $"The image explorer supports Linux and Windows images (found '{config.Os}').");
         }
+        ExplorerPlatform? expectedPlatform = comparing ? platform ?? exactPlatform : exactPlatform;
+        bool allowWindowsVersionDifference = comparing && platform is null;
         if (platform is null && string.Equals(config.Os, "windows", StringComparison.OrdinalIgnoreCase))
         {
             platform = new(config.Os, config.Architecture ?? "",
@@ -396,10 +404,11 @@ internal sealed class ExplorerSource : IAsyncDisposable
             platform = platform with { ManifestDigest = resolved.ManifestInfo.DockerContentDigest };
         }
         ExplorerPlatform actualPlatform = ExplorerPlatform.FromConfig(config, platform);
-        if (exactPlatform is not null && !actualPlatform.IsCompatibleWith(exactPlatform))
+        if (expectedPlatform is not null &&
+            !actualPlatform.IsCompatibleWith(expectedPlatform, allowWindowsVersionDifference))
         {
             throw new InvalidOperationException(
-                $"Image platform '{actualPlatform}' does not match the selected platform '{exactPlatform}'.");
+                $"Image platform '{actualPlatform}' does not match the selected platform '{expectedPlatform}'.");
         }
         platform ??= actualPlatform;
         PlatformOptionsBase resolvedOptions = ForPlatform(actualPlatform, options);
@@ -547,7 +556,7 @@ internal sealed class ExplorerSource : IAsyncDisposable
             throw new NotSupportedException(
                 $"The image name '{image}' has a media type of '{info.MediaType}' which is not supported.");
         }
-        return (new ResolvedManifest(info, manifest), platforms, platform);
+        return (new ResolvedManifest(info, manifest, platform), platforms, platform);
     }
 
     private static Task<ManifestInfo> GetPlatformManifestAsync(IDockerRegistryClient client, ImageName image,
@@ -577,14 +586,9 @@ internal sealed class ExplorerSource : IAsyncDisposable
                 .Where(static item => item.Platform is { } platform &&
                     (string.Equals(platform.Os, "linux", StringComparison.OrdinalIgnoreCase) ||
                     string.Equals(platform.Os, "windows", StringComparison.OrdinalIgnoreCase)))
-                .Select(static item => (item, ToPlatform(item.Platform!)))
+                .Select(static item => (item, ExplorerPlatform.FromManifest(item.Platform!)))
                 .ToArray()
             : [];
-
-    private static ExplorerPlatform ToPlatform(ManifestPlatform platform) =>
-        new(platform.Os ?? "", platform.Architecture ?? "",
-            string.IsNullOrEmpty(platform.Variant) ? null : platform.Variant,
-            string.IsNullOrEmpty(platform.OsVersion) ? null : platform.OsVersion);
 
 }
 

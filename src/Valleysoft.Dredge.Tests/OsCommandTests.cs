@@ -2,13 +2,148 @@ namespace Valleysoft.Dredge.Tests;
 
 using System.Text;
 using System.Text.Json;
+using System.CommandLine;
+using Spectre.Console;
 using Valleysoft.DockerRegistryClient.Models.Images;
 using Valleysoft.DockerRegistryClient.Models.Manifests;
 using Valleysoft.DockerRegistryClient.Models.Manifests.Docker;
 using Valleysoft.Dredge.Commands.Image;
+using Valleysoft.Dredge.Commands;
 
 public class OsCommandTests
 {
+    [Theory]
+    [InlineData("replace", "NewLinux")]
+    [InlineData("introduce", "NewLinux")]
+    [InlineData("whiteout", null)]
+    [InlineData("opaque", null)]
+    [InlineData("parent-whiteout", null)]
+    [InlineData("fallback", "FallbackLinux")]
+    [InlineData("opaque-fallback", "FallbackLinux")]
+    public async Task LinuxOsUsesEffectiveFilesystem(string change, string? expected)
+    {
+        await using LayerCacheTestContext cache = new();
+        byte[] lower = change == "introduce"
+            ? DockerArchiveFixture.BuildTar(("placeholder", "empty"u8.ToArray()))
+            : DockerArchiveFixture.BuildTar(
+                ("etc/os-release", "NAME=OldLinux\n"u8.ToArray()),
+                ("usr/lib/os-release", "NAME=FallbackLinux\n"u8.ToArray()));
+        byte[] upper = DockerArchiveFixture.BuildTar(change switch
+        {
+            "replace" or "introduce" => ("etc/os-release", "NAME=NewLinux\n"u8.ToArray()),
+            "opaque" or "opaque-fallback" => ("etc/.wh..wh..opq", []),
+            "parent-whiteout" => (".wh.etc", []),
+            _ => ("etc/.wh.os-release", [])
+        });
+        if (expected is null)
+        {
+            lower = DockerArchiveFixture.BuildTar(("etc/os-release", "NAME=OldLinux\n"u8.ToArray()));
+        }
+        Mock<IDockerRegistryClient> client = WindowsImageTestData.Client("linux", "", lower, upper);
+        Mock<IDockerRegistryClientFactory> factory = new();
+        factory.Setup(item => item.GetClientAsync(WindowsImageTestData.Name.Registry, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(client.Object);
+        using StringWriter output = new();
+        using StringWriter errors = new();
+        CapturedOsCommand command = new(factory.Object, output, errors, cache.Paths);
+        ((IProcessTerminationAware)command).ProcessTerminator = new TestProcessTerminator();
+
+        int exitCode = await command.Parse([WindowsImageTestData.Name.ToString()])
+            .InvokeAsync(new InvocationConfiguration(), TestContext.Current.CancellationToken);
+
+        if (expected is null)
+        {
+            Assert.Equal(1, exitCode);
+            Assert.Equal("", output.ToString());
+            Assert.Contains("Unable to derive OS information", errors.ToString());
+        }
+        else
+        {
+            Assert.Equal(0, exitCode);
+            using JsonDocument document = JsonDocument.Parse(output.ToString());
+            Assert.Equal(expected, document.RootElement.GetProperty("NAME").GetString());
+        }
+    }
+
+    [Theory]
+    [InlineData(null, "10.0.20348.1366")]
+    [InlineData("10.0.26100.1", "10.0.26100.1")]
+    public async Task RegistryDescriptorPlatformReachesSourceOsAndDockerfile(string? configVersion, string expectedVersion)
+    {
+        CancellationToken token = TestContext.Current.CancellationToken;
+        await using LayerCacheTestContext cache = new();
+        Mock<IDockerRegistryClient> registry = new() { DefaultValue = DefaultValue.Mock };
+        Mock<IDockerRegistryClient> mcr = new() { DefaultValue = DefaultValue.Mock };
+        Mock<IDockerRegistryClientFactory> factory = new();
+        factory.Setup(item => item.GetClientAsync("registry.test", It.IsAny<CancellationToken>()))
+            .ReturnsAsync(registry.Object);
+        factory.Setup(item => item.GetClientAsync(RegistryHelper.McrRegistry, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(mcr.Object);
+        ExplorerPlatform descriptorPlatform = new("windows", "amd64", null, "10.0.20348.1366");
+        ManifestList index = new()
+        {
+            Manifests = [new ManifestReference
+            {
+                Digest = "sha256:selected",
+                Platform = new ManifestPlatform
+                {
+                    Os = descriptorPlatform.Os, Architecture = descriptorPlatform.Architecture,
+                    OsVersion = descriptorPlatform.OsVersion
+                }
+            }]
+        };
+        DockerManifest manifest = new()
+        {
+            Config = new ManifestConfig { Digest = "sha256:config" },
+            Layers = [new ManifestLayer { Digest = "baseLayer" }]
+        };
+        registry.Setup(item => item.Manifests.GetAsync("image", "latest", It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new ManifestInfo("application/index", "sha256:index", index));
+        registry.Setup(item => item.Manifests.GetAsync("image", "sha256:selected", It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new ManifestInfo("application/manifest", "sha256:selected", manifest));
+        byte[] config = JsonSerializer.SerializeToUtf8Bytes(new Image
+        {
+            Os = "windows", Architecture = "amd64", OsVersion = configVersion,
+            History = [new LayerHistory { CreatedBy = "base instruction" }]
+        });
+        registry.Setup(item => item.Blobs.GetAsync("image", "sha256:config", It.IsAny<CancellationToken>()))
+            .ReturnsAsync(() => new MemoryStream(config));
+        mcr.Setup(item => item.Blobs.ExistsAsync("windows/nanoserver", "baseLayer", It.IsAny<CancellationToken>()))
+            .ReturnsAsync(true);
+        ImageSourceFactory sources = new(factory.Object, new TestAppSettingsStore(new()));
+        await using (ResolvedImage source = await sources.OpenAsync("registry.test/image:latest",
+            new() { Os = "windows", Architecture = "amd64" }, token, ImageSourceRequirements.Metadata))
+        {
+            Assert.Equal(descriptorPlatform, source.SelectedPlatform);
+            Assert.Equal(descriptorPlatform, source.Resolved.SelectedPlatform);
+            Assert.Equal(configVersion, source.Configuration.OsVersion);
+            Assert.Equal(config, source.ConfigurationJson);
+            Assert.Equal($"windows/amd64 ({expectedVersion})", source.Platform);
+            WindowsImageInfo? info = await OsCommand.GetWindowsOsInfoAsync(source.Configuration,
+                source.Resolved.Manifest, factory.Object, token, selectedPlatform: source.SelectedPlatform);
+            Assert.Equal(expectedVersion, info!.Info.Version);
+        }
+
+        using StringWriter osOutput = new();
+        OsCommand os = new(factory.Object, osOutput, cache.Paths) { ImageSourceFactory = sources };
+        ((IProcessTerminationAware)os).ProcessTerminator = new TestProcessTerminator();
+        string[] arguments = ["registry.test/image:latest", "--os", "windows", "--arch", "amd64"];
+        Assert.Equal(0, await os.Parse(arguments).InvokeAsync(new InvocationConfiguration(), token));
+        using JsonDocument osDocument = JsonDocument.Parse(osOutput.ToString());
+        Assert.Equal("Nano Server", osDocument.RootElement.GetProperty("Type").GetString());
+        Assert.Equal(expectedVersion, osDocument.RootElement.GetProperty("Version").GetString());
+
+        using StringWriter dockerfileOutput = new();
+        IAnsiConsole console = AnsiConsole.Create(new AnsiConsoleSettings
+        {
+            Ansi = AnsiSupport.No, Out = new AnsiConsoleOutput(dockerfileOutput)
+        });
+        DockerfileCommand dockerfile = new(factory.Object, console) { ImageSourceFactory = sources };
+        ((IProcessTerminationAware)dockerfile).ProcessTerminator = new TestProcessTerminator();
+        Assert.Equal(0, await dockerfile.Parse(arguments).InvokeAsync(new InvocationConfiguration(), token));
+        Assert.Contains($"FROM mcr.microsoft.com/windows/nanoserver:{expectedVersion}-amd64", dockerfileOutput.ToString());
+    }
+
     [Fact]
     public async Task GetWindowsOsInfoAsyncUsesLongestDiffIdPrefixMatch()
     {
@@ -160,5 +295,19 @@ public class OsCommandTests
         mcrClientMock
             .Setup(o => o.Blobs.GetAsync(repo, configDigest, It.IsAny<CancellationToken>()))
             .ReturnsAsync(new MemoryStream(Encoding.UTF8.GetBytes(JsonSerializer.Serialize(baseImage))));
+    }
+
+    private sealed class CapturedOsCommand : OsCommand
+    {
+        private readonly TextWriter errors;
+
+        public CapturedOsCommand(IDockerRegistryClientFactory factory, TextWriter output,
+            TextWriter errors, IDredgePathProvider paths)
+            : base(factory, output, paths)
+        {
+            this.errors = errors;
+        }
+
+        protected override TextWriter Error => errors;
     }
 }

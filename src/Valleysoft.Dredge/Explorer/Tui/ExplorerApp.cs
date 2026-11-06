@@ -767,6 +767,10 @@ internal sealed class ExplorerHost : IExplorerHost, IAsyncDisposable
                     ExplorerPlatform? platform = source.Platform;
                     string snapshotKey = name?.ToString() ?? reference;
                     string? daemonSnapshotReference = null;
+                    if (name is not null)
+                    {
+                        await GetTargetSnapshotAsync(name, cancellationToken, choosePlatform: true);
+                    }
                     if (targetSnapshots.TryGetValue(snapshotKey, out var snapshot))
                     {
                         resolved = snapshot.Resolved;
