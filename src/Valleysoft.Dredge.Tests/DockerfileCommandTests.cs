@@ -46,6 +46,10 @@ public class DockerfileCommandTests
             "echo $(printf '%s' 'A &&  B')",
             "echo \"$(printf '%s' \"$(printf '%s' 'A &&  B')\")\"",
             "echo $(case x in x) printf '%s' 'A &&  B';; esac)",
+            "echo $((1  +  2))",
+            "echo $(printf '%s' ${VALUE:-'A;  B'})",
+            "echo $(printf '%s' 'A &&  B' # literal;  comment)",
+            "echo " + string.Concat(Enumerable.Repeat("$(", 100)) + "printf '%s' 'A &&  B'" + new string(')', 100),
             "echo `printf '%s' 'A &&  B'`",
             "printf '%s' $'A\\' &&  B'",
             "printf '%s' ${VALUE:-'A &&  B'}",
@@ -113,6 +117,44 @@ public class DockerfileCommandTests
             : $"echo A && \\{Environment.NewLine}    {secondCommand}";
         Assert.Equal(
             $"FROM scratch{Environment.NewLine}ENV X=1{Environment.NewLine}RUN {expectedRun}{Environment.NewLine}",
+            actual);
+    }
+
+    [Theory]
+    [InlineData(false, false)]
+    [InlineData(false, true)]
+    [InlineData(true, false)]
+    [InlineData(true, true)]
+    public async Task CommandSubstitutionStillFormats(bool noFormat, bool noColor)
+    {
+        const string command = "echo $(  if true; then  printf '%s' 'A &&  B';  else  echo $(printf '%s' 'C;  D';  printf '%s' E\\ \\ F);  fi  )";
+        string actual = await RenderHistoryAsync(
+            ["/bin/sh -c #(nop) ENV X=1", $"/bin/sh -c {command}"],
+            noFormat, noColor);
+
+        string expectedCommand = noFormat
+            ? command
+            : $"echo $( if true; then printf '%s' 'A &&  B'; \\{Environment.NewLine}    else echo $(printf '%s' 'C;  D'; \\{Environment.NewLine}    printf '%s' E\\ \\ F); \\{Environment.NewLine}    fi )";
+        Assert.Equal(
+            $"FROM scratch{Environment.NewLine}ENV X=1{Environment.NewLine}RUN {expectedCommand}{Environment.NewLine}",
+            actual);
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task CommandSubstitutionPreservesBraceOperand(bool noFormat)
+    {
+        const string command = "echo $(printf '%s' {  A  };  printf '%s' 'A &&  B')";
+        string actual = await RenderHistoryAsync(
+            ["/bin/sh -c #(nop) ENV X=1", $"/bin/sh -c {command}"],
+            noFormat, noColor: true);
+
+        string expectedCommand = noFormat
+            ? command
+            : $"echo $(printf '%s' {{ A }}; \\{Environment.NewLine}    printf '%s' 'A &&  B')";
+        Assert.Equal(
+            $"FROM scratch{Environment.NewLine}ENV X=1{Environment.NewLine}RUN {expectedCommand}{Environment.NewLine}",
             actual);
     }
 

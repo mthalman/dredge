@@ -347,6 +347,16 @@ public partial class DockerfileCommand : RegistryCommandBase<DockerfileOptions>
             return FormatPowerShellCommand(line, powerShellCommand);
         }
 
+        return FormatShellRunInstruction(line, depth: 0);
+    }
+
+    private static string FormatShellRunInstruction(string line, int depth)
+    {
+        if (depth >= 32)
+        {
+            return line;
+        }
+
         // These constructs need shell-specific interpretation beyond balanced delimiters.
         if (line.Contains("$'", StringComparison.Ordinal) ||
             line.Contains("$\"", StringComparison.Ordinal) ||
@@ -372,7 +382,7 @@ public partial class DockerfileCommand : RegistryCommandBase<DockerfileOptions>
                 continue;
             }
 
-            formattedLine.Append(FormatUnquotedRunSegment(line[segmentStart..i]));
+            formattedLine.Append(FormatUnquotedRunSegment(line[segmentStart..i], formatBraces: depth == 0));
             int protectedStart = i;
             if (character == '#')
             {
@@ -391,10 +401,21 @@ public partial class DockerfileCommand : RegistryCommandBase<DockerfileOptions>
                 return line;
             }
 
-            formattedLine.Append(line[protectedStart..(i + 1)]);
+            if (expansion &&
+                line[protectedStart + 1] == '(' &&
+                line[protectedStart + 2] != '(')
+            {
+                formattedLine.Append("$(");
+                formattedLine.Append(FormatShellRunInstruction(line[(protectedStart + 2)..i], depth + 1));
+                formattedLine.Append(')');
+            }
+            else
+            {
+                formattedLine.Append(line[protectedStart..(i + 1)]);
+            }
             segmentStart = i + 1;
         }
-        formattedLine.Append(FormatUnquotedRunSegment(line[segmentStart..]));
+        formattedLine.Append(FormatUnquotedRunSegment(line[segmentStart..], formatBraces: depth == 0));
         return formattedLine.ToString();
     }
 
@@ -527,7 +548,7 @@ public partial class DockerfileCommand : RegistryCommandBase<DockerfileOptions>
         return false;
     }
 
-    private static string FormatUnquotedRunSegment(string line)
+    private static string FormatUnquotedRunSegment(string line, bool formatBraces)
     {
         // Reformat to support multi-line patterns: 
         // 1. '&&' before a new line
@@ -536,10 +557,12 @@ public partial class DockerfileCommand : RegistryCommandBase<DockerfileOptions>
         line = AndAfterNewLineRegex().Replace(line, $" \\{Environment.NewLine}    && ");
         // 3. ';' before a new line
         line = SemiColonBeforeNewLineRegex().Replace(line, $"; \\{Environment.NewLine}    ");
-        // 4. '{' before a new line
-        line = OpenParenBeforeNewLineRegex().Replace(line, $"{{ \\{Environment.NewLine}    ");
-        // 5. '{' after a new line
-        line = CloseParenAfterNewLineRegex().Replace(line, $" \\{Environment.NewLine}    {{ ");
+        // Brace heuristics cannot distinguish literal operands from shell groups inside substitutions.
+        if (formatBraces)
+        {
+            line = OpenParenBeforeNewLineRegex().Replace(line, $"{{ \\{Environment.NewLine}    ");
+            line = CloseParenAfterNewLineRegex().Replace(line, $" \\{Environment.NewLine}    {{ ");
+        }
 
         int leadingWhitespace = 0;
         while (leadingWhitespace < line.Length && line[leadingWhitespace] is ' ' or '\t')
