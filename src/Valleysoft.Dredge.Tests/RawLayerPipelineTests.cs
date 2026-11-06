@@ -299,7 +299,7 @@ public sealed class RawLayerPipelineTests : IAsyncDisposable
         StoredLayerIndex gzipIndex = await store.GetIndexAsync(gzipSource, new(0, Digest(gzip)), gzip.Length, Token);
         JsonObject legacy = JsonNode.Parse(JsonHelper.Serialize(gzipIndex, JsonHelper.CompactSettings))!.AsObject();
         Assert.True(legacy.Remove("encoding"));
-        await store.WriteMetadataAsync(gzipIndex.Digest, "index", legacy, Token);
+        await store.WriteMetadataAsync(gzipIndex.Digest, ImageFileSystemSemantics.LinuxIndexKind, legacy, Token);
         StoredLayerIndex restored = await store.GetIndexAsync(gzipSource, new(0, Digest(gzip)), gzip.Length, Token);
         Assert.Equal("gzip", restored.Encoding);
         Assert.Equal(1, gzipSource.FullRequests);
@@ -324,7 +324,7 @@ public sealed class RawLayerPipelineTests : IAsyncDisposable
         TestSource source = new(bytes);
         await using LayerStore store = new(root);
         StoredLayerIndex index = await store.GetIndexAsync(source, new(0, Digest(bytes)), bytes.Length, Token);
-        await store.WriteMetadataAsync(index.Digest, "index",
+        await store.WriteMetadataAsync(index.Digest, ImageFileSystemSemantics.LinuxIndexKind,
             new StoredLayerIndex(index.Digest, index.BlobLength, index.Changes, "unsupported"), Token);
 
         StoredLayerIndex rebuilt = await store.GetIndexAsync(source, new(0, Digest(bytes)), bytes.Length, Token);

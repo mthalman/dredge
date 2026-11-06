@@ -188,6 +188,7 @@ public sealed class WindowsFileSystemRoundTwoTests : IAsyncDisposable
     [InlineData("windows-v9.view")]
     [InlineData("windows-v10.view")]
     [InlineData("windows-v11.view")]
+    [InlineData("windows-v12.view")]
     public async Task OldWindowsViewsAreNotRestoredButVerifiedBlobsRemainReusable(string previousSuffix)
     {
         byte[] layer = Layer(File("Files/value", "value"));

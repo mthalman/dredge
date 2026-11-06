@@ -637,11 +637,11 @@ public sealed class ExplorerMixedSourceRegressionTests
 
         Assert.Equal(1, Assert.Single(bases).LayerCount);
         Assert.NotNull(await store.ReadMetadataAsync<StoredLayerIndex>(
-            registry.Resolved.Manifest.Layers[0].Digest!, "index", Token));
+            registry.Resolved.Manifest.Layers[0].Digest!, ImageFileSystemSemantics.LinuxIndexKind, Token));
         if (!daemonTarget)
         {
             Assert.Null(await store.ReadMetadataAsync<StoredLayerIndex>(
-                registry.Resolved.Manifest.Layers[1].Digest!, "index", Token));
+                registry.Resolved.Manifest.Layers[1].Digest!, ImageFileSystemSemantics.LinuxIndexKind, Token));
         }
     }
 

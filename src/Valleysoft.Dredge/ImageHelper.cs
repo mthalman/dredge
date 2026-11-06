@@ -162,6 +162,7 @@ internal static class ImageHelper
             ? StringComparer.OrdinalIgnoreCase : StringComparer.Ordinal;
         HashSet<string> whiteoutTargets = new(pathComparer);
         HashSet<string> opaqueDirectories = new(pathComparer);
+        Dictionary<string, string> layerArchivePaths = new(pathComparer);
         Dictionary<string, ImageFileSystemEntry> metadata = new(StringComparer.Ordinal);
 
         using ImageTarReader.LayerArchive archive = ImageTarReader.Open(layerStream);
@@ -190,18 +191,19 @@ internal static class ImageHelper
             if (entryFileName.StartsWith(WhiteoutMarkerPrefix, StringComparison.OrdinalIgnoreCase) &&
                 !string.Equals(entryFileName, OpaqueWhiteoutMarker, StringComparison.OrdinalIgnoreCase))
             {
-                ValidatePathSegment(entryFileName[WhiteoutMarkerPrefix.Length..], "whiteout target");
+                ImagePath.ValidateSegment(entryFileName[WhiteoutMarkerPrefix.Length..], "whiteout target");
                 whiteoutTargets.Add(GetHostArchivePath(ImagePath.Join(
                     ImagePath.GetDirectoryName(originalName),
-                    entryFileName[WhiteoutMarkerPrefix.Length..]), archivePaths));
+                    entryFileName[WhiteoutMarkerPrefix.Length..]), archivePaths, remember: false));
             }
             else if (string.Equals(entryFileName, OpaqueWhiteoutMarker, StringComparison.OrdinalIgnoreCase))
             {
+                ImageLayerScanner.ValidateRootOpaqueWhiteout(entry, ImagePath.GetDirectoryName(originalName));
                 opaqueDirectories.Add(GetHostArchivePath(
-                    ImagePath.GetDirectoryName(originalName), archivePaths));
+                    ImagePath.GetDirectoryName(originalName), archivePaths, remember: false));
             }
 
-            string entryName = GetHostArchivePath(originalName, archivePaths);
+            string entryName = GetHostArchivePath(originalName, layerArchivePaths);
             metadata[entryName] = new()
             {
                 Path = originalName,
@@ -221,7 +223,34 @@ internal static class ImageHelper
                 continue;
             }
             await ExtractTarEntry(
-                layerDir, entry, entryName, hardLinks, symbolicLinks, archivePaths, cancellationToken);
+                layerDir, entry, entryName, hardLinks, symbolicLinks, layerArchivePaths, cancellationToken);
+        }
+
+        if (OperatingSystem.IsWindows())
+        {
+            foreach (string path in archivePaths.Keys.Where(path =>
+                IsHiddenLowerTarget(path, whiteoutTargets, opaqueDirectories)).ToArray())
+            {
+                archivePaths.Remove(path);
+            }
+            foreach ((string path, ImageFileSystemEntry entry) in metadata)
+            {
+                if (ImagePath.GetFileName(entry.Path).StartsWith(WhiteoutMarkerPrefix, StringComparison.OrdinalIgnoreCase))
+                {
+                    continue;
+                }
+                _ = GetHostArchivePath(entry.Path, archivePaths);
+                if (entry.Type != ImageFileType.Directory && mergedDirectory is not null &&
+                    Directory.Exists(GetContainedPath(mergedDirectory, path, allowFinalLink: true)))
+                {
+                    string prefix = path + Path.DirectorySeparatorChar;
+                    foreach (string descendant in archivePaths.Keys.Where(candidate =>
+                        candidate.StartsWith(prefix, StringComparison.OrdinalIgnoreCase)).ToArray())
+                    {
+                        archivePaths.Remove(descendant);
+                    }
+                }
+            }
         }
 
         while (hardLinks.Count > 0)
@@ -230,13 +259,15 @@ internal static class ImageHelper
             for (int i = hardLinks.Count - 1; i >= 0; i--)
             {
                 (string path, string target) = hardLinks[i];
-                string relativeTarget = GetHostArchivePath(
-                    ImagePath.NormalizeArchive(target.TrimStart('/')), archivePaths);
+                string normalizedTarget = ImagePath.NormalizeArchive(target.TrimStart('/'));
+                string relativeTarget = GetHostArchivePath(normalizedTarget, layerArchivePaths);
                 string targetPath = GetContainedPath(layerDir, relativeTarget);
                 if (!File.Exists(targetPath) && mergedDirectory is not null &&
                     !metadata.ContainsKey(relativeTarget) &&
+                    !HasNonDirectoryAncestor(relativeTarget, metadata) &&
                     !IsHiddenLowerTarget(relativeTarget, whiteoutTargets, opaqueDirectories))
                 {
+                    _ = GetHostArchivePath(normalizedTarget, archivePaths, remember: false);
                     targetPath = GetContainedPath(mergedDirectory, relativeTarget);
                 }
                 if (File.Exists(targetPath))
@@ -279,6 +310,20 @@ internal static class ImageHelper
             FileHelper.CreateSymbolicLink(path, target, isDirectory);
         }
         return metadata;
+    }
+
+    private static bool HasNonDirectoryAncestor(
+        string path, IReadOnlyDictionary<string, ImageFileSystemEntry> metadata)
+    {
+        while ((path = Path.GetDirectoryName(path) ?? string.Empty).Length > 0)
+        {
+            if (metadata.TryGetValue(path, out ImageFileSystemEntry? entry) &&
+                entry.Type != ImageFileType.Directory)
+            {
+                return true;
+            }
+        }
+        return false;
     }
 
     private static bool IsHiddenLowerTarget(
@@ -459,10 +504,17 @@ internal static class ImageHelper
             try
             {
                 clampedTarget = GetRootClampedTarget(link, entries, cancellationToken);
+                if (clampedTarget is not null)
+                {
+                    _ = GetContainedPath(root, clampedTarget, allowFinalLink: true, validateLinkParents: false);
+                }
             }
             catch (InvalidDataException)
             {
-                DeleteDestinationEntry(destination);
+                foreach (string exportedLink in links)
+                {
+                    DeleteDestinationEntry(GetContainedPath(root, exportedLink, allowFinalLink: true));
+                }
                 throw;
             }
             if (clampedTarget is null)
@@ -486,9 +538,18 @@ internal static class ImageHelper
         string current = link;
         bool clamped = false;
         int hops = 0;
+        HashSet<string> visited = new(StringComparer.Ordinal);
         while (true)
         {
             cancellationToken.ThrowIfCancellationRequested();
+            if (!visited.Add(current))
+            {
+                if (clamped)
+                {
+                    throw new InvalidDataException($"Link '/{link}' cannot be safely rebased through a cycle.");
+                }
+                return null;
+            }
             string[] segments = current.Split('/', StringSplitOptions.RemoveEmptyEntries);
             List<string> resolved = [];
             bool restarted = false;
@@ -521,12 +582,8 @@ internal static class ImageHelper
                 {
                     if (++hops >= ImagePathResolver.MaximumLinkHops)
                     {
-                        if (clamped)
-                        {
-                            throw new InvalidDataException(
-                                $"Link '/{link}' cannot be safely rebased within {ImagePathResolver.MaximumLinkHops} hops.");
-                        }
-                        return null;
+                        throw new InvalidDataException(
+                            $"Link '/{link}' cannot be safely rebased within {ImagePathResolver.MaximumLinkHops} hops.");
                     }
                     string remainder = string.Join('/', segments.Skip(index + 1));
                     if (Path.IsPathRooted(target))
@@ -727,7 +784,8 @@ internal static class ImageHelper
         return segment;
     }
 
-    private static string GetHostArchivePath(string original, Dictionary<string, string> archivePaths)
+    private static string GetHostArchivePath(
+        string original, Dictionary<string, string> archivePaths, bool remember = true)
     {
         if (!OperatingSystem.IsWindows())
         {
@@ -744,7 +802,10 @@ internal static class ImageHelper
                 throw new InvalidDataException(
                     $"Archive paths '{previous}' and '{imagePath}' map to the same destination '{hostPath}'.");
             }
-            archivePaths[hostPath] = imagePath;
+            if (remember)
+            {
+                archivePaths[hostPath] = imagePath;
+            }
         }
         if (OperatingSystem.IsWindows())
         {

@@ -15,6 +15,151 @@ public class ImageHelperTests : IAsyncDisposable
     [Theory]
     [InlineData(false)]
     [InlineData(true)]
+    public async Task ReviewRegression_RejectsFortyHopParentTraversalBeforeClamping(bool noSquash)
+    {
+        if (OperatingSystem.IsWindows())
+        {
+            return;
+        }
+        PaxTarEntry[] links = [.. Enumerable.Range(0, 39).Select(index =>
+            new PaxTarEntry(TarEntryType.SymbolicLink, $"hop{index}")
+            {
+                LinkName = index == 38 ? "." : $"hop{index + 1}"
+            })];
+        byte[] layer = CreateArchive([
+            FileEntry("outside", "inside"),
+            .. links,
+            new(TarEntryType.SymbolicLink, "link") { LinkName = "hop0/../outside" }]);
+        File.WriteAllText(Path.Combine(cache.Root, "outside"), "host");
+
+        Exception? error = await Record.ExceptionAsync(() => SaveLayersAsync([layer], noSquash));
+        string extracted = noSquash ? LayerOutput(Path.Combine(cache.Root, "export"), 0, layer)
+            : Path.Combine(cache.Root, "export");
+        if (error is null)
+        {
+            Assert.Fail($"Unbounded link read '{File.ReadAllText(Path.Combine(extracted, "link"))}'.");
+        }
+        Assert.IsType<InvalidDataException>(error);
+
+        Assert.False(ImageFileSystemExtractor.PathExists(Path.Combine(extracted, "link")));
+        Assert.Equal("host", File.ReadAllText(Path.Combine(cache.Root, "outside")));
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task ReviewRegression_RejectsUnsafeUnresolvedClampedTail(bool noSquash)
+    {
+        byte[] layer = CreateArchive(
+            new(TarEntryType.SymbolicLink, "sub/root") { LinkName = ".." },
+            new(TarEntryType.SymbolicLink, "link")
+            {
+                LinkName = "sub/root/../missing/../../outside"
+            });
+
+        await Assert.ThrowsAsync<InvalidDataException>(() => SaveLayersAsync([layer], noSquash));
+
+        string extracted = noSquash ? LayerOutput(Path.Combine(cache.Root, "export"), 0, layer)
+            : Path.Combine(cache.Root, "export");
+        Assert.False(ImageFileSystemExtractor.PathExists(Path.Combine(extracted, "link")));
+    }
+
+    [Theory]
+    [InlineData("nested/.wh.a:b", false)]
+    [InlineData("nested/.wh.a:b", true)]
+    [InlineData("nested/.wh..wh..opq", false)]
+    [InlineData("nested/.wh..wh..opq", true)]
+    [InlineData(".wh..wh..opq", false)]
+    [InlineData(".wh..wh..opq", true)]
+    public async Task ReviewRegression_WhiteoutsReleaseObsoleteWindowsMappings(string marker, bool markerFirst)
+    {
+        if (!OperatingSystem.IsWindows())
+        {
+            return;
+        }
+        byte[] lower = CreateArchive(FileEntry("nested/a:b", "old"));
+        PaxTarEntry whiteout = FileEntry(marker, "");
+        PaxTarEntry replacement = FileEntry("nested/a?b", "new");
+        byte[] upper = CreateArchive(markerFirst ? [whiteout, replacement] : [replacement, whiteout]);
+
+        string output = await SaveLayersAsync([lower, upper]);
+
+        Assert.Equal("new", File.ReadAllText(Path.Combine(output, "nested", "a-b")));
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task ReviewRegression_WindowsReferencesCannotAliasDifferentLowerNames(bool hardLink)
+    {
+        if (!OperatingSystem.IsWindows())
+        {
+            return;
+        }
+        byte[] lower = CreateArchive(FileEntry("nested/a:b", "old"));
+        byte[] upper = CreateArchive(hardLink
+            ? new PaxTarEntry(TarEntryType.HardLink, "alias") { LinkName = "nested/a?b" }
+            : FileEntry("nested/.wh.a?b", ""));
+
+        await Assert.ThrowsAsync<InvalidDataException>(() => SaveLayersAsync([lower, upper]));
+
+        Assert.Equal("old", File.ReadAllText(Path.Combine(cache.Root, "export", "nested", "a-b")));
+    }
+
+    [Fact]
+    public async Task ReviewRegression_DirectoryReplacementReleasesDescendantWindowsMappings()
+    {
+        if (!OperatingSystem.IsWindows())
+        {
+            return;
+        }
+        byte[] lower = CreateArchive(FileEntry("dir/a:b", "old"));
+        byte[] middle = CreateArchive(FileEntry("dir", "replacement"));
+        byte[] upper = CreateArchive(new(TarEntryType.Directory, "dir"), FileEntry("dir/a?b", "new"));
+
+        string output = await SaveLayersAsync([lower, middle, upper]);
+
+        Assert.Equal("new", File.ReadAllText(Path.Combine(output, "dir", "a-b")));
+    }
+
+    [Theory]
+    [InlineData("directory")]
+    [InlineData("symbolic-link")]
+    [InlineData("nonempty-file")]
+    public async Task ReviewRegression_RejectsInvalidRootOpaqueMarkersBeforeApplying(string kind)
+    {
+        PaxTarEntry marker = kind switch
+        {
+            "directory" => new(TarEntryType.Directory, ".wh..wh..opq"),
+            "symbolic-link" => new(TarEntryType.SymbolicLink, ".wh..wh..opq") { LinkName = "target" },
+            _ => FileEntry(".wh..wh..opq", "invalid")
+        };
+        byte[] lower = CreateArchive(FileEntry("old", "old"));
+        byte[] upper = CreateArchive(marker, FileEntry("target", "target"));
+
+        await Assert.ThrowsAsync<InvalidDataException>(() => SaveLayersAsync([lower, upper]));
+
+        Assert.Equal("old", File.ReadAllText(Path.Combine(cache.Root, "export", "old")));
+    }
+
+    [Theory]
+    [InlineData("dir/file", "dir")]
+    [InlineData("dir/sub/file", "dir")]
+    [InlineData("dir/sub/file", "dir/sub")]
+    public async Task ReviewRegression_HardlinksCannotCaptureLowerDescendantsOfReplacedParents(
+        string target, string replacement)
+    {
+        byte[] lower = CreateArchive(FileEntry(target, "old"));
+        byte[] upper = CreateArchive(
+            FileEntry(replacement, "replacement"),
+            new(TarEntryType.HardLink, "alias") { LinkName = target });
+
+        await Assert.ThrowsAsync<InvalidDataException>(() => SaveLayersAsync([lower, upper]));
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
     public async Task SaveLayers_PreservesDirectoryLinksAndCycles(bool noSquash)
     {
         byte[] layer = CreateArchive(

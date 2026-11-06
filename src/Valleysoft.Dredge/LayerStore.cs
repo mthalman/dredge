@@ -1382,6 +1382,8 @@ internal sealed class LayerStore : IAsyncDisposable
         string suffix = kind switch
         {
             "index" or "view" => kind,
+            ImageFileSystemSemantics.LinuxIndexKind => ImageFileSystemSemantics.LinuxInterpretation + ".index",
+            ImageFileSystemSemantics.LinuxViewKind => ImageFileSystemSemantics.LinuxInterpretation + ".view",
             ImageFileSystemSemantics.WindowsIndexKind => ImageFileSystemSemantics.WindowsInterpretation + ".index",
             ImageFileSystemSemantics.WindowsViewKind => ImageFileSystemSemantics.WindowsInterpretation + ".view",
             _ => throw new ArgumentException("Unknown cache metadata kind.", nameof(kind))
