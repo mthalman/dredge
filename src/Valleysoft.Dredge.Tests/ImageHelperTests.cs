@@ -165,6 +165,48 @@ public class ImageHelperTests : IAsyncDisposable
         Assert.False(mappings.TryGetValue(sibling, out _));
     }
 
+    [Fact]
+    public void ReviewRegression_UnchangedMappingsDoNotRepeatAbsoluteTargetAudits()
+    {
+        ImageHelper.ArchivePathMappings mappings = new(StringComparer.OrdinalIgnoreCase);
+        mappings["link"] = "link";
+        mappings.SetAbsoluteLinkTarget("link", "/target");
+        Assert.Equal(["/target"], mappings.AbsoluteLinkTargets);
+        mappings.MarkTargetsValidated();
+
+        mappings["directory"] = "directory";
+        Assert.Equal(["/target"], mappings.AbsoluteLinkTargets);
+        mappings.MarkTargetsValidated();
+        mappings["directory"] = "directory";
+        mappings.RemovePath("missing", includePath: true);
+
+        Assert.Empty(mappings.AbsoluteLinkTargets);
+
+        mappings["target"] = "target";
+        Assert.Equal(["/target"], mappings.AbsoluteLinkTargets);
+        mappings.MarkTargetsValidated();
+        mappings.RemovePath("target", includePath: true);
+        Assert.Equal(["/target"], mappings.AbsoluteLinkTargets);
+        mappings.MarkTargetsValidated();
+        mappings.Clear();
+        Assert.Empty(mappings.AbsoluteLinkTargets);
+    }
+
+    [Fact]
+    public void ReviewRegression_ScratchMappingsDoNotBuildSortedIndexes()
+    {
+        CountingStringComparer comparer = new();
+        ImageHelper.ArchivePathMappings mappings = new(comparer, trackMergedPaths: false);
+        for (int index = 0; index < 10_000; index++)
+        {
+            mappings[index.ToString()] = index.ToString();
+        }
+
+        Assert.Equal(0, comparer.Comparisons);
+        Assert.True(mappings.TryGetValue("9999", out string? spelling));
+        Assert.Equal("9999", spelling);
+    }
+
     private sealed class CountingStringComparer : StringComparer
     {
         public int Comparisons { get; set; }

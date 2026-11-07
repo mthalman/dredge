@@ -162,7 +162,7 @@ internal static class ImageHelper
             ? StringComparer.OrdinalIgnoreCase : StringComparer.Ordinal;
         HashSet<string> whiteoutTargets = new(pathComparer);
         HashSet<string> opaqueDirectories = new(pathComparer);
-        ArchivePathMappings layerArchivePaths = new(pathComparer);
+        ArchivePathMappings layerArchivePaths = new(pathComparer, trackMergedPaths: false);
         Dictionary<string, ImageFileSystemEntry> metadata = new(StringComparer.Ordinal);
 
         using ImageTarReader.LayerArchive archive = ImageTarReader.Open(layerStream);
@@ -270,6 +270,7 @@ internal static class ImageHelper
                 cancellationToken.ThrowIfCancellationRequested();
                 _ = GetHostArchivePath(absoluteTarget.TrimStart('/'), archivePaths, remember: false);
             }
+            archivePaths.MarkTargetsValidated();
         }
 
         while (hardLinks.Count > 0)
@@ -941,26 +942,43 @@ internal static class ImageHelper
     internal sealed class ArchivePathMappings
     {
         private readonly Dictionary<string, string> spellings;
-        private readonly SortedSet<string> paths;
-        private readonly Dictionary<string, string> absoluteLinkTargets;
+        private readonly SortedSet<string>? paths;
+        private readonly Dictionary<string, string>? absoluteLinkTargets;
+        private bool targetsNeedValidation;
 
-        public ArchivePathMappings(StringComparer comparer)
+        public ArchivePathMappings(StringComparer comparer, bool trackMergedPaths = true)
         {
             spellings = new(comparer);
-            paths = new(comparer);
-            absoluteLinkTargets = new(comparer);
+            if (trackMergedPaths)
+            {
+                paths = new(comparer);
+                absoluteLinkTargets = new(comparer);
+            }
         }
 
-        public IEnumerable<string> AbsoluteLinkTargets => absoluteLinkTargets.Values;
+        public IEnumerable<string> AbsoluteLinkTargets =>
+            targetsNeedValidation && absoluteLinkTargets is not null ? absoluteLinkTargets.Values : [];
+
+        public void MarkTargetsValidated() => targetsNeedValidation = false;
 
         public string this[string path]
         {
             get => spellings[path];
             set
             {
+                if (paths is not null)
+                {
+                    if (!spellings.TryGetValue(path, out string? previous) || previous != value)
+                    {
+                        targetsNeedValidation = true;
+                    }
+                    paths.Add(path);
+                    if (absoluteLinkTargets!.Remove(path))
+                    {
+                        targetsNeedValidation = true;
+                    }
+                }
                 spellings[path] = value;
-                paths.Add(path);
-                absoluteLinkTargets.Remove(path);
             }
         }
 
@@ -969,25 +987,41 @@ internal static class ImageHelper
 
         public void SetAbsoluteLinkTarget(string path, string? target)
         {
+            if (absoluteLinkTargets is null)
+            {
+                throw new InvalidOperationException("Scratch mappings do not track absolute links.");
+            }
             if (target is not null)
             {
+                if (!absoluteLinkTargets.TryGetValue(path, out string? previous) || previous != target)
+                {
+                    targetsNeedValidation = true;
+                }
                 absoluteLinkTargets[path] = target;
             }
             else
             {
-                absoluteLinkTargets.Remove(path);
+                if (absoluteLinkTargets.Remove(path))
+                {
+                    targetsNeedValidation = true;
+                }
             }
         }
 
         public void Clear()
         {
             spellings.Clear();
-            paths.Clear();
-            absoluteLinkTargets.Clear();
+            paths?.Clear();
+            absoluteLinkTargets?.Clear();
+            targetsNeedValidation = false;
         }
 
         public void RemovePath(string path, bool includePath)
         {
+            if (paths is null)
+            {
+                throw new InvalidOperationException("Scratch mappings do not support subtree removal.");
+            }
             if (path.Length == 0)
             {
                 Clear();
@@ -1009,9 +1043,15 @@ internal static class ImageHelper
 
         private void Remove(string path)
         {
-            spellings.Remove(path);
-            paths.Remove(path);
-            absoluteLinkTargets.Remove(path);
+            if (spellings.Remove(path))
+            {
+                targetsNeedValidation = true;
+            }
+            paths!.Remove(path);
+            if (absoluteLinkTargets!.Remove(path))
+            {
+                targetsNeedValidation = true;
+            }
         }
     }
 }
