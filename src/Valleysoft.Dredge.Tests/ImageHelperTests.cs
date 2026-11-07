@@ -62,7 +62,15 @@ public class ImageHelperTests : IAsyncDisposable
         string output = await SaveLayersAsync([layer], noSquash);
         string extracted = noSquash ? LayerOutput(output, 0, layer) : output;
 
-        Assert.Equal("content", File.ReadAllText(Path.Combine(extracted, "hop0")));
+        foreach (PaxTarEntry link in links)
+        {
+            Assert.Equal(link.LinkName, new FileInfo(Path.Combine(extracted, link.Name)).LinkTarget);
+        }
+        Assert.Equal("content", File.ReadAllText(Path.Combine(extracted, $"hop{hops - 1}")));
+        if (!OperatingSystem.IsMacOS())
+        {
+            Assert.Equal("content", File.ReadAllText(Path.Combine(extracted, "hop0")));
+        }
     }
 
     [Theory]
