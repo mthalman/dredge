@@ -2,7 +2,10 @@ namespace Valleysoft.Dredge;
 
 internal sealed class ImageFileSystemSemantics
 {
-    internal const string WindowsInterpretation = "windows-v12";
+    internal const string LinuxInterpretation = "linux-v2";
+    internal const string LinuxIndexKind = "index-" + LinuxInterpretation;
+    internal const string LinuxViewKind = "view-" + LinuxInterpretation;
+    internal const string WindowsInterpretation = "windows-v13";
     internal const string WindowsIndexKind = "index-" + WindowsInterpretation;
     internal const string WindowsViewKind = "view-" + WindowsInterpretation;
 
@@ -16,8 +19,8 @@ internal sealed class ImageFileSystemSemantics
     public bool StartsWith(string value, string prefix) => IsWindows
         ? WindowsImagePathComparer.StartsWith(value, prefix)
         : value.StartsWith(prefix, StringComparison.Ordinal);
-    public string IndexKind => IsWindows ? WindowsIndexKind : "index";
-    public string ViewKind => IsWindows ? WindowsViewKind : "view";
+    public string IndexKind => IsWindows ? WindowsIndexKind : LinuxIndexKind;
+    public string ViewKind => IsWindows ? WindowsViewKind : LinuxViewKind;
 
     public static ImageFileSystemSemantics ForOs(string? os) =>
         string.Equals(os, "windows", StringComparison.OrdinalIgnoreCase) ? Windows : Linux;
@@ -42,6 +45,10 @@ internal sealed class ImageFileSystemSemantics
 
     public string[] Descendants(SortedSet<string> paths, string path)
     {
+        if (path.Length == 0)
+        {
+            return [.. paths];
+        }
         string prefix = path + "/";
         // Bounding the separator includes suffixes beginning with U+FFFF.
         return [.. paths.GetViewBetween(prefix, path + "0").Where(candidate => StartsWith(candidate, prefix))];

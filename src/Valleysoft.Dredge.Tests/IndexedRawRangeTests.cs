@@ -196,7 +196,7 @@ public sealed class IndexedRawRangeTests : IAsyncDisposable
         StoredLayerIndex index = new(digest, offset + 2048, new([entry], [], []), "tar");
         ExtentSource source = new(index, selected);
         await using LayerStore store = new(root);
-        await store.WriteMetadataAsync(digest, "index", index, Token);
+        await store.WriteMetadataAsync(digest, ImageFileSystemSemantics.LinuxIndexKind, index, Token);
         StoredLayerIndex restored = await store.GetIndexAsync(source, new(0, digest), index.BlobLength, Token);
         using (Stream blob = await store.OpenIndexedBlobAsync(source, restored, [0], Token))
         {

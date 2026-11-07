@@ -24,6 +24,144 @@ public class ImageFileSystemTests : IAsyncDisposable
     private const string ConfigDigest = "sha256:config";
     private static readonly ImageName ImageName = ImageName.Parse("registry.test/repo:tag");
 
+    [Theory]
+    [InlineData("directory")]
+    [InlineData("symbolic-link")]
+    [InlineData("nonempty-file")]
+    public async Task ReviewRegression_ScannerRejectsInvalidRootOpaqueMarkers(string kind)
+    {
+        Entry marker = kind switch
+        {
+            "directory" => Entry.Directory(".wh..wh..opq"),
+            "symbolic-link" => Entry.SymbolicLink(".wh..wh..opq", "target"),
+            _ => Entry.File(".wh..wh..opq", "invalid")
+        };
+        using IDockerRegistryClient client = CreateClient([CreateLayer(marker)]).Object;
+
+        await Assert.ThrowsAsync<InvalidDataException>(async () =>
+        {
+            await using ImageFileSystem files = await CreateFileSystemAsync(
+                client, ImageName, new PlatformOptionsBase(), TestContext.Current.CancellationToken);
+        });
+    }
+
+    [Fact]
+    public async Task ReviewRegression_LegacyViewCannotRestoreOldHardlinkBindings()
+    {
+        byte[] layer = CreateLayer(
+            Entry.File("a/target", "lexical"),
+            Entry.File("b/target", "resolved"),
+            Entry.Directory("b/c"),
+            Entry.SymbolicLink("a/jump", "../b/c"),
+            Entry.HardLink("link", "a/jump/../target"));
+        using IDockerRegistryClient client = CreateClient([layer]).Object;
+        await using ImageFileSystem indexed = await ImageFileSystem.CreateAsync(
+            client, ImageName, new PlatformOptionsBase(), TestContext.Current.CancellationToken,
+            cache.Store, requireLayerIndexes: true, maxLayerIndex: 0);
+        ImageFileSystem.StoredEntry[] legacyEntries = [.. indexed.List(null, true, false)
+            .Select(ImageFileSystem.StoredEntry.FromEntry)
+            .Select(entry => entry.Value.Path == "link"
+                ? entry with
+                {
+                    ContentPath = "a/target",
+                    ContentEntryIndex = 0,
+                    Value = entry.Value with { Size = Encoding.UTF8.GetByteCount("lexical") }
+                }
+                : entry)];
+        ManifestInfo manifest = await client.Manifests.GetAsync(
+            ImageName.Repo, ImageName.Tag!, TestContext.Current.CancellationToken);
+        await cache.Store.WriteMetadataAsync(manifest.DockerContentDigest, "view",
+            new ImageFileSystem.StoredFileSystem([LayerCacheTestContext.Digest(layer)], legacyEntries, []),
+            TestContext.Current.CancellationToken);
+        await using ImageFileSystem warm = await CreateFileSystemAsync(
+            client, ImageName, new PlatformOptionsBase(), TestContext.Current.CancellationToken);
+        using MemoryStream output = new();
+
+        await warm.CopyFileToAsync("link", output, TestContext.Current.CancellationToken);
+
+        Assert.Equal("resolved", Encoding.UTF8.GetString(output.ToArray()));
+    }
+
+    [Theory]
+    [InlineData("index")]
+    [InlineData("view")]
+    public async Task ReviewRegression_LegacyMetadataCannotBypassRootMarkerValidation(string kind)
+    {
+        byte[] layer = CreateLayer(Entry.File(".wh..wh..opq", "invalid"));
+        string digest = LayerCacheTestContext.Digest(layer);
+        using IDockerRegistryClient client = CreateClient([layer]).Object;
+        if (kind == "index")
+        {
+            await cache.Store.WriteMetadataAsync(digest, kind,
+                new StoredLayerIndex(digest, layer.Length, new([], [], [""]), "gzip"),
+                TestContext.Current.CancellationToken);
+        }
+        else
+        {
+            ManifestInfo manifest = await client.Manifests.GetAsync(
+                ImageName.Repo, ImageName.Tag!, TestContext.Current.CancellationToken);
+            await cache.Store.WriteMetadataAsync(manifest.DockerContentDigest, kind,
+                new ImageFileSystem.StoredFileSystem([digest], [], []),
+                TestContext.Current.CancellationToken);
+        }
+
+        await Assert.ThrowsAsync<InvalidDataException>(async () =>
+        {
+            await using ImageFileSystem files = await CreateFileSystemAsync(
+                client, ImageName, new PlatformOptionsBase(), TestContext.Current.CancellationToken);
+        });
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task ResolveLinks_ProcessesParentSegmentsAfterIntermediateSymlinks(bool hardLink)
+    {
+        byte[] layer = CreateLayer(
+            Entry.File("a/target", "lexical"),
+            Entry.File("b/target", "resolved"),
+            Entry.Directory("b/c"),
+            Entry.SymbolicLink("a/jump", "../b/c"),
+            hardLink ? Entry.HardLink("link", "a/jump/../target") :
+                Entry.SymbolicLink("link", "a/jump/../target"));
+        using IDockerRegistryClient client = CreateClient([layer]).Object;
+        await using ImageFileSystem files = await CreateFileSystemAsync(
+            client, ImageName, new PlatformOptionsBase(), TestContext.Current.CancellationToken);
+        using MemoryStream output = new();
+
+        await files.CopyFileToAsync("link", output, TestContext.Current.CancellationToken);
+
+        Assert.Equal("resolved", Encoding.UTF8.GetString(output.ToArray()));
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task RootOpaqueWhiteout_HidesOnlyPreviousLayerChildren(bool markerFirst)
+    {
+        byte[] lower = CreateLayer(Entry.File("old", "old"), Entry.File("nested/old", "old"));
+        Entry marker = Entry.File(".wh..wh..opq", "");
+        Entry sibling = Entry.File("new", "new");
+        byte[] upper = CreateLayer(markerFirst ? [marker, sibling] : [sibling, marker]);
+        using IDockerRegistryClient client = CreateClient([lower, upper]).Object;
+        await using ImageFileSystem files = await CreateFileSystemAsync(
+            client, ImageName, new PlatformOptionsBase(), TestContext.Current.CancellationToken);
+
+        Assert.Equal("new", Assert.Single(files.List(null, true, false)).Path);
+        Assert.Contains(files.List(null, true, true), entry => entry.Path == "old" && entry.IsDeleted);
+        StoredLayerIndex? cached = await cache.Store.ReadMetadataAsync<StoredLayerIndex>(
+            LayerCacheTestContext.Digest(upper), ImageFileSystemSemantics.Linux.IndexKind,
+            TestContext.Current.CancellationToken);
+        Assert.NotNull(cached);
+        Assert.True(LayerStore.ValidateIndex(cached));
+        await using ImageFileSystem warm = await ImageFileSystem.CreateAsync(
+            client, ImageName, new PlatformOptionsBase(), TestContext.Current.CancellationToken,
+            cache.Store, requireLayerIndexes: true);
+        using MemoryStream content = new();
+        await warm.CopyFileToAsync("new", content, TestContext.Current.CancellationToken);
+        Assert.Equal("new", Encoding.UTF8.GetString(content.ToArray()));
+    }
+
     [Fact]
     public void CachedViewPrevalidationDoesNotMaterializeFilesystemEntries()
     {

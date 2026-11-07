@@ -323,7 +323,7 @@ public sealed class ColdIndexVerificationTests : IAsyncDisposable
                 [new ScannedEntry("file", ImageFileType.File, 0x1A4, 0, 0, 3,
                     DateTime.UnixEpoch, null, 0, 512, content.Bytes.Length, new string('a', 64))],
                 [], []), "gzip");
-        await store.WriteMetadataAsync(content.Digest, "index", forged, Token);
+        await store.WriteMetadataAsync(content.Digest, ImageFileSystemSemantics.LinuxIndexKind, forged, Token);
         Assert.Equal(new string('a', 64), Assert.Single(
             (await store.GetIndexAsync(content, new(0, content.Digest), content.Bytes.Length, Token))
                 .Changes.Entries).ContentHash);

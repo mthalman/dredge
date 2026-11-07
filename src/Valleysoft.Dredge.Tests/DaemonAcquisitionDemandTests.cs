@@ -276,7 +276,7 @@ public class DaemonAcquisitionDemandTests : IDisposable
                 source.Configuration.RootFilesystem!.DiffIds[0], out _));
             string configurationDigest = source.Resolved.Manifest.Config!.Digest!;
             string viewPath = Path.Combine(directory, "cache", "layer-store", "data",
-                LayerStore.GetKey(configurationDigest) + ".view");
+                LayerStore.GetKey(configurationDigest) + "." + ImageFileSystemSemantics.LinuxInterpretation + ".view");
             File.Delete(viewPath);
             using (CancellationTokenSource cancellation = new())
             {
@@ -288,7 +288,7 @@ public class DaemonAcquisitionDemandTests : IDisposable
             Assert.Equal(expected, files.List(null, recursive: true, showDeleted: false).Select(entry => entry.Path));
             Assert.Empty(Directory.GetFiles(Path.Combine(directory, "cache"), "*.index", SearchOption.AllDirectories));
             Assert.False(File.Exists(viewPath));
-            await store.WriteMetadataAsync(configurationDigest, "view",
+            await store.WriteMetadataAsync(configurationDigest, ImageFileSystemSemantics.LinuxViewKind,
                 new ImageFileSystem.StoredFileSystem([.. cached.Layers], [.. cached.Entries], [.. cached.DeletedEntries]), Token);
             await source.DisposeAsync();
             Assert.Null(archive.CachedFileSystem);
@@ -457,7 +457,7 @@ public class DaemonAcquisitionDemandTests : IDisposable
                 IntroducedLayer = new(0, digest)
             }, 0, i, null, null))];
         await using LayerStore store = new(Path.Combine(directory, "cache"));
-        await store.WriteMetadataAsync(fixture.Id, "view",
+        await store.WriteMetadataAsync(fixture.Id, ImageFileSystemSemantics.LinuxViewKind,
             new ImageFileSystem.StoredFileSystem([digest], entries[..(count / 2)], entries[(count / 2)..]), Token);
         ImageSourceFactory factory = Factory(fixture, Mock.Of<IDockerRegistryClientFactory>(), store.CreateScope);
         await using ResolvedImage source = await factory.OpenAsync("docker://local",
@@ -518,7 +518,7 @@ public class DaemonAcquisitionDemandTests : IDisposable
     {
         DockerArchiveFixture fixture = DockerArchiveFixture.Create(oci: true, gzip: gzip);
         await using LayerStore store = new(Path.Combine(directory, "cache"));
-        await store.WriteMetadataAsync(fixture.Id, "view",
+        await store.WriteMetadataAsync(fixture.Id, ImageFileSystemSemantics.LinuxViewKind,
             new ImageFileSystem.StoredFileSystem(["sha256:" + new string('0', 64)],
                 [new(null!, 0, 0, null, null)], []), Token);
         ImageSourceFactory factory = Factory(fixture, Mock.Of<IDockerRegistryClientFactory>(), store.CreateScope);
@@ -549,7 +549,7 @@ public class DaemonAcquisitionDemandTests : IDisposable
             Type = ImageFileType.File,
             IntroducedLayer = new(0, digest)
         }, 0, 0, null, null);
-        await store.WriteMetadataAsync(fixture.Id, "view",
+        await store.WriteMetadataAsync(fixture.Id, ImageFileSystemSemantics.LinuxViewKind,
             new ImageFileSystem.StoredFileSystem([digest], deleted ? [] : [entry, entry],
                 deleted ? [entry, entry] : []), Token);
         ImageSourceFactory factory = Factory(fixture, Mock.Of<IDockerRegistryClientFactory>(), store.CreateScope);

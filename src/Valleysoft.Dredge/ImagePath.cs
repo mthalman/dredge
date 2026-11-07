@@ -13,7 +13,7 @@ internal static class ImagePath
             throw new InvalidDataException(
                 $"Archive entry path '{value}' must be a relative Linux path.");
         }
-        return Normalize(value, allowParentSegments: false, "archive entry");
+        return Normalize(value, "archive entry");
     }
 
     public static string NormalizeRequested(string? value)
@@ -23,7 +23,7 @@ internal static class ImagePath
         {
             throw new InvalidDataException($"Invalid image path '{value}'.");
         }
-        return Normalize(value.TrimStart('/'), allowParentSegments: false, "image");
+        return Normalize(value.TrimStart('/'), "image");
     }
 
     public static string ResolveLinkTarget(
@@ -42,7 +42,15 @@ internal static class ImagePath
             ? target.TrimStart('/')
             : Join(basePath, target);
         combined = Join(combined, remainder);
-        return Normalize(combined, allowParentSegments: true, $"link target for '/{linkPath}'");
+        // Parent segments must be evaluated after resolving preceding symlinks.
+        foreach (string segment in combined.Split('/', StringSplitOptions.RemoveEmptyEntries))
+        {
+            if (segment is not ("." or ".."))
+            {
+                ValidateSegment(segment, $"link target for '/{linkPath}'");
+            }
+        }
+        return combined;
     }
 
     public static bool IsAbsolute(string path) => path.StartsWith('/');
@@ -73,7 +81,6 @@ internal static class ImagePath
 
     private static string Normalize(
         string value,
-        bool allowParentSegments,
         string description)
     {
         List<string> segments = [];
@@ -85,17 +92,8 @@ internal static class ImagePath
             }
             if (segment == "..")
             {
-                if (!allowParentSegments)
-                {
-                    throw new InvalidDataException(
-                        $"The {description} path '{value}' escapes the image root.");
-                }
-                if (segments.Count > 0)
-                {
-                    segments.RemoveAt(segments.Count - 1);
-                }
-                // Linux clamps excess ".." segments at the filesystem root.
-                continue;
+                throw new InvalidDataException(
+                    $"The {description} path '{value}' escapes the image root.");
             }
             ValidateSegment(segment, $"{description} path segment");
             segments.Add(segment);

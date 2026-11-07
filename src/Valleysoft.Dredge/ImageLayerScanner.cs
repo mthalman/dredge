@@ -114,11 +114,7 @@ internal static class ImageLayerScanner
             string parent = ImagePath.GetDirectoryName(path);
             if (string.Equals(fileName, OpaqueWhiteout, StringComparison.Ordinal))
             {
-                if (parent.Length == 0)
-                {
-                    throw new InvalidDataException(
-                        "The opaque whiteout marker cannot exist at the image root.");
-                }
+                ValidateRootOpaqueWhiteout(tarEntry, parent);
                 await ReadContentAsync(tarEntry, layer, uncompressed, offset, false, cancellationToken);
                 opaqueDirectories.Add(parent);
                 continue;
@@ -449,7 +445,15 @@ internal static class ImageLayerScanner
         while (!completed);
     }
 
-    private static ImageFileType GetFileType(TarEntry entry) =>
+    internal static void ValidateRootOpaqueWhiteout(TarEntry entry, string parent)
+    {
+        if (parent.Length == 0 && (GetFileType(entry) != ImageFileType.File || entry.Length != 0))
+        {
+            throw new InvalidDataException("A root opaque whiteout must be an empty regular file.");
+        }
+    }
+
+    internal static ImageFileType GetFileType(TarEntry entry) =>
         entry.EntryType switch
         {
             TarEntryType.RegularFile or

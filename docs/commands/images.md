@@ -602,6 +602,11 @@ Set `output-path` to a new path or an existing regular directory. By default,
 an existing directory must be empty. Use `--force` to write to a non-empty
 directory.
 
+On Unix hosts, exported files and explicit directories retain their archived
+permission bits.
+
+On Windows, characters that cannot appear in file names are replaced with `-`.
+
 | Option | Description |
 |--------|-------------|
 | `--no-squash` | Save each selected layer in a separate directory instead of merging the layers |

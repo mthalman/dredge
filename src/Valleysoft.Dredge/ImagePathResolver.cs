@@ -2,7 +2,7 @@ namespace Valleysoft.Dredge;
 
 internal sealed class ImagePathResolver
 {
-    private const int MaximumLinkHops = 40;
+    internal const int MaximumLinkHops = 40;
 
     private readonly IReadOnlyDictionary<string, ImageFileSystemEntry> entries;
     private readonly ImageFileSystemSemantics semantics;
@@ -77,14 +77,29 @@ internal sealed class ImagePathResolver
     private string ResolvePathName(string requestedPath, IReadOnlyDictionary<string, ImageFileSystemEntry> entries,
         ref int hops)
     {
-        string current = semantics.NormalizeRequested(requestedPath);
+        string current = semantics.IsWindows ? semantics.NormalizeRequested(requestedPath) : requestedPath.TrimStart('/');
         while (true)
         {
             string[] segments = current.Split('/', StringSplitOptions.RemoveEmptyEntries);
+            List<string> resolved = [];
             bool followedLink = false;
             for (int i = 0; i < segments.Length; i++)
             {
-                string candidate = string.Join('/', segments.Take(i + 1));
+                if (!semantics.IsWindows && segments[i] == ".")
+                {
+                    continue;
+                }
+                if (!semantics.IsWindows && segments[i] == "..")
+                {
+                    if (resolved.Count > 0)
+                    {
+                        resolved.RemoveAt(resolved.Count - 1);
+                    }
+                    continue;
+                }
+                ImagePath.ValidateSegment(segments[i], "image path segment");
+                resolved.Add(segments[i]);
+                string candidate = string.Join('/', resolved);
                 if (!entries.TryGetValue(candidate, out ImageFileSystemEntry? entry))
                 {
                     throw new FileNotFoundException(
@@ -93,6 +108,11 @@ internal sealed class ImagePathResolver
 
                 if (entry.Type != ImageFileType.SymbolicLink)
                 {
+                    if (i < segments.Length - 1 && entry.Type != ImageFileType.Directory)
+                    {
+                        throw new InvalidDataException(
+                            $"Path '/{requestedPath}' has a non-directory parent '/{candidate}'.");
+                    }
                     continue;
                 }
 
@@ -111,6 +131,7 @@ internal sealed class ImagePathResolver
 
             if (!followedLink)
             {
+                current = string.Join('/', resolved);
                 if (current.Length == 0)
                 {
                     return current;

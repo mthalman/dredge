@@ -74,10 +74,18 @@ internal static class ImageHelper
 
         cancellationToken.ThrowIfCancellationRequested();
         Directory.CreateDirectory(destPath);
+        ArchivePathMappings archivePaths = new(
+            OperatingSystem.IsWindows() ? StringComparer.OrdinalIgnoreCase : StringComparer.Ordinal);
+        Dictionary<string, ImageFileSystemEntry> mergedMetadata = new(
+            OperatingSystem.IsWindows() ? StringComparer.OrdinalIgnoreCase : StringComparer.Ordinal);
 
         for (int i = startIndex; i < layerCount; i++)
         {
             cancellationToken.ThrowIfCancellationRequested();
+            if (noSquash)
+            {
+                archivePaths.Clear();
+            }
             IDescriptor layer = manifest.Layers[i];
             if (string.IsNullOrEmpty(layer.Digest))
             {
@@ -94,7 +102,9 @@ internal static class ImageHelper
             {
                 using Stream layerStream =
                     await store.OpenExtractionBlobAsync(content, layer.Digest, layer.Size, cancellationToken);
-                await ExtractLayerAsync(layerStream, layerDir, cancellationToken);
+                Dictionary<string, ImageFileSystemEntry> metadata = await ExtractLayerAsync(
+                    layerStream, layerDir, new(i, layer.Digest), noSquash ? null : destPath,
+                    archivePaths, mergedMetadata, cancellationToken);
 
                 if (noSquash)
                 {
@@ -106,11 +116,11 @@ internal static class ImageHelper
                     {
                         DeleteDestinationEntry(layerOutputPath);
                     }
-                    await FileHelper.CopyDirectoryAsync(layerDir, layerOutputPath, cancellationToken);
+                    await CopyLayerAsync(layerDir, layerOutputPath, metadata, cancellationToken);
                 }
                 else
                 {
-                    await ApplyLayerAsync(layerDir, destPath, overwriteExisting, cancellationToken);
+                    await ApplyLayerAsync(layerDir, destPath, metadata, mergedMetadata, cancellationToken);
                 }
                 completed = true;
             }
@@ -127,17 +137,33 @@ internal static class ImageHelper
                 }
             }
         }
+        if (!noSquash)
+        {
+            RebaseRootClampedLinks(destPath, mergedMetadata, cancellationToken);
+            ApplyLayerMetadata(destPath, mergedMetadata, cancellationToken);
+        }
     }
 
-    private static async Task ExtractLayerAsync(
+    private static async Task<Dictionary<string, ImageFileSystemEntry>> ExtractLayerAsync(
         Stream layerStream,
         string layerDir,
+        ImageLayerReference layer,
+        string? mergedDirectory,
+        ArchivePathMappings archivePaths,
+        IReadOnlyDictionary<string, ImageFileSystemEntry> mergedMetadata,
         CancellationToken cancellationToken)
     {
         Console.Error.WriteLine($"\tExtracting layer...");
 
         Directory.CreateDirectory(layerDir);
         List<(string Path, string Target)> hardLinks = [];
+        List<(string Path, string Target)> symbolicLinks = [];
+        StringComparer pathComparer = OperatingSystem.IsWindows()
+            ? StringComparer.OrdinalIgnoreCase : StringComparer.Ordinal;
+        HashSet<string> whiteoutTargets = new(pathComparer);
+        HashSet<string> opaqueDirectories = new(pathComparer);
+        ArchivePathMappings layerArchivePaths = new(pathComparer, trackMergedPaths: false);
+        Dictionary<string, ImageFileSystemEntry> metadata = new(StringComparer.Ordinal);
 
         using ImageTarReader.LayerArchive archive = ImageTarReader.Open(layerStream);
         TarReader tarReader = archive.Reader;
@@ -154,39 +180,97 @@ internal static class ImageHelper
                 break;
             }
 
-            if (entry.EntryType == TarEntryType.Directory)
+            string originalName = ImagePath.NormalizeArchive(entry.Name);
+            if (originalName.Length == 0)
             {
-                string directoryPath = GetContainedPath(layerDir, entry.Name);
-                if (!Directory.Exists(directoryPath))
-                {
-                    Directory.CreateDirectory(directoryPath);
-                }
                 continue;
             }
 
-            string entryName = entry.Name;
-            string entryDirName = Path.GetDirectoryName(entryName) ?? string.Empty;
-            string entryFileName = Path.GetFileName(entryName);
-
-            foreach (char invalidChar in Path.GetInvalidPathChars())
-            {
-                entryDirName = entryDirName.Replace(invalidChar, '-');
-            }
-
-            foreach (char invalidChar in Path.GetInvalidFileNameChars())
-            {
-                entryFileName = entryFileName.Replace(invalidChar, '-');
-            }
+            string entryFileName = ImagePath.GetFileName(originalName);
 
             if (entryFileName.StartsWith(WhiteoutMarkerPrefix, StringComparison.OrdinalIgnoreCase) &&
                 !string.Equals(entryFileName, OpaqueWhiteoutMarker, StringComparison.OrdinalIgnoreCase))
             {
-                ValidatePathSegment(entryFileName[WhiteoutMarkerPrefix.Length..], "whiteout target");
+                ImagePath.ValidateSegment(entryFileName[WhiteoutMarkerPrefix.Length..], "whiteout target");
+                whiteoutTargets.Add(GetHostArchivePath(ImagePath.Join(
+                    ImagePath.GetDirectoryName(originalName),
+                    entryFileName[WhiteoutMarkerPrefix.Length..]), archivePaths, remember: false));
+            }
+            else if (string.Equals(entryFileName, OpaqueWhiteoutMarker, StringComparison.OrdinalIgnoreCase))
+            {
+                ImageLayerScanner.ValidateRootOpaqueWhiteout(entry, ImagePath.GetDirectoryName(originalName));
+                opaqueDirectories.Add(GetHostArchivePath(
+                    ImagePath.GetDirectoryName(originalName), archivePaths, remember: false));
             }
 
-            entryName = Path.Combine(entryDirName, entryFileName);
+            string entryName = GetHostArchivePath(originalName, layerArchivePaths);
+            metadata[entryName] = new()
+            {
+                Path = originalName,
+                Type = ImageLayerScanner.GetFileType(entry),
+                IntroducedLayer = layer,
+                LinkTarget = entry.EntryType == TarEntryType.SymbolicLink ? entry.LinkName : null,
+                Mode = (int)entry.Mode,
+                ModifiedTime = entry.ModificationTime.UtcDateTime
+            };
+            if (entry.EntryType == TarEntryType.Directory)
+            {
+                string directoryPath = GetContainedPath(layerDir, entryName);
+                if (File.Exists(directoryPath))
+                {
+                    File.Delete(directoryPath);
+                }
+                Directory.CreateDirectory(directoryPath);
+                continue;
+            }
             await ExtractTarEntry(
-                layerDir, entry, entryName, hardLinks, cancellationToken);
+                layerDir, entry, entryName, hardLinks, symbolicLinks, layerArchivePaths, cancellationToken);
+        }
+
+        if (OperatingSystem.IsWindows())
+        {
+            foreach (string path in whiteoutTargets)
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+                archivePaths.RemovePath(path, includePath: true);
+            }
+            foreach (string path in opaqueDirectories)
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+                archivePaths.RemovePath(path, includePath: false);
+            }
+            foreach ((string path, ImageFileSystemEntry entry) in metadata)
+            {
+                if (entry.Type != ImageFileType.Directory &&
+                    !ImagePath.GetFileName(entry.Path).StartsWith(WhiteoutMarkerPrefix, StringComparison.OrdinalIgnoreCase))
+                {
+                    cancellationToken.ThrowIfCancellationRequested();
+                    archivePaths.RemovePath(path, includePath: false);
+                }
+            }
+            foreach ((string path, ImageFileSystemEntry entry) in metadata)
+            {
+                if (ImagePath.GetFileName(entry.Path).StartsWith(WhiteoutMarkerPrefix, StringComparison.OrdinalIgnoreCase))
+                {
+                    continue;
+                }
+                _ = GetHostArchivePath(entry.Path, archivePaths);
+                archivePaths.SetAbsoluteLinkTarget(path,
+                    entry.Type == ImageFileType.SymbolicLink &&
+                    entry.LinkTarget is string target && ImagePath.IsAbsolute(target) ? target : null);
+            }
+            foreach (DirectoryInfo directory in GetLayerEntries(new DirectoryInfo(layerDir)).OfType<DirectoryInfo>())
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+                string path = Path.GetRelativePath(layerDir, directory.FullName);
+                _ = GetHostArchivePath(layerArchivePaths[path], archivePaths);
+            }
+            foreach (string absoluteTarget in archivePaths.AbsoluteLinkTargets)
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+                _ = GetHostArchivePath(absoluteTarget.TrimStart('/'), archivePaths, remember: false);
+            }
+            archivePaths.MarkTargetsValidated();
         }
 
         while (hardLinks.Count > 0)
@@ -195,13 +279,28 @@ internal static class ImageHelper
             for (int i = hardLinks.Count - 1; i >= 0; i--)
             {
                 (string path, string target) = hardLinks[i];
-                string targetPath = GetContainedPath(
-                    layerDir,
-                    target.TrimStart(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar));
+                string normalizedTarget = ImagePath.NormalizeArchive(target.TrimStart('/'));
+                string relativeTarget = GetHostArchivePath(normalizedTarget, layerArchivePaths);
+                string targetPath = GetContainedPath(layerDir, relativeTarget);
+                if (!File.Exists(targetPath) && mergedDirectory is not null &&
+                    !metadata.ContainsKey(relativeTarget) &&
+                    !HasNonDirectoryAncestor(relativeTarget, metadata) &&
+                    !IsHiddenLowerTarget(relativeTarget, whiteoutTargets, opaqueDirectories))
+                {
+                    _ = GetHostArchivePath(normalizedTarget, archivePaths, remember: false);
+                    targetPath = GetContainedPath(mergedDirectory, relativeTarget);
+                }
                 if (File.Exists(targetPath))
                 {
+                    cancellationToken.ThrowIfCancellationRequested();
                     await FileHelper.CopyFileAsync(
                         new FileInfo(targetPath), path, overwrite: true, cancellationToken);
+                    string relativePath = Path.GetRelativePath(layerDir, path);
+                    int targetMode = (metadata.TryGetValue(relativeTarget, out ImageFileSystemEntry? targetMetadata) ||
+                        mergedMetadata.TryGetValue(relativeTarget, out targetMetadata))
+                        ? targetMetadata.Mode
+                        : OperatingSystem.IsWindows() ? 0 : (int)File.GetUnixFileMode(targetPath);
+                    metadata[relativePath] = metadata[relativePath] with { Mode = targetMode };
                     hardLinks.RemoveAt(i);
                     copiedLinkCount++;
                 }
@@ -212,19 +311,71 @@ internal static class ImageHelper
                 throw new InvalidDataException($"Unable to resolve hard link target '{hardLinks[0].Target}'.");
             }
         }
+        foreach ((string path, string target) in symbolicLinks)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            if (ImageFileSystemExtractor.PathExists(path))
+            {
+                throw new InvalidDataException(
+                    $"Layer path '{path}' conflicts with a symbolic link.");
+            }
+            string targetPath = GetLinkTargetPath(layerDir, path, target);
+            bool isDirectory = Directory.Exists(targetPath);
+            if (!isDirectory && mergedDirectory is not null)
+            {
+                isDirectory = Directory.Exists(GetContainedPath(
+                    mergedDirectory, Path.GetRelativePath(layerDir, targetPath),
+                    allowFinalLink: true, validateLinkParents: false));
+            }
+            FileHelper.CreateSymbolicLink(path, target, isDirectory);
+        }
+        return metadata;
+    }
+
+    private static bool HasNonDirectoryAncestor(
+        string path, IReadOnlyDictionary<string, ImageFileSystemEntry> metadata)
+    {
+        while ((path = Path.GetDirectoryName(path) ?? string.Empty).Length > 0)
+        {
+            if (metadata.TryGetValue(path, out ImageFileSystemEntry? entry) &&
+                entry.Type != ImageFileType.Directory)
+            {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private static bool IsHiddenLowerTarget(
+        string path, IReadOnlySet<string> whiteouts, IReadOnlySet<string> opaqueDirectories)
+    {
+        while (path.Length > 0)
+        {
+            if (whiteouts.Contains(path))
+            {
+                return true;
+            }
+            path = Path.GetDirectoryName(path) ?? string.Empty;
+            if (opaqueDirectories.Contains(path))
+            {
+                return true;
+            }
+        }
+        return false;
     }
 
     private static async Task ApplyLayerAsync(
         string layerDir,
         string workingDir,
-        bool overwriteExisting,
+        IReadOnlyDictionary<string, ImageFileSystemEntry> metadata,
+        Dictionary<string, ImageFileSystemEntry> mergedMetadata,
         CancellationToken cancellationToken)
     {
         Console.Error.WriteLine($"\tApplying layer...");
 
-        FileInfo[] layerFiles = [.. GetLayerFiles(new DirectoryInfo(layerDir))];
+        FileSystemInfo[] layerFiles = [.. GetLayerEntries(new DirectoryInfo(layerDir))];
 
-        foreach (FileInfo layerFile in layerFiles
+        foreach (FileSystemInfo layerFile in layerFiles
             .Where(IsOpaqueWhiteout)
             .OrderBy(file => Path.GetRelativePath(layerDir, file.FullName).Count(c => c == Path.DirectorySeparatorChar)))
         {
@@ -232,7 +383,13 @@ internal static class ImageHelper
             string? layerFileDirName = Path.GetDirectoryName(Path.GetRelativePath(layerDir, layerFile.FullName));
             if (string.IsNullOrEmpty(layerFileDirName))
             {
-                throw new Exception("The opaque whiteout file marker should not exist in the root directory.");
+                foreach (string child in Directory.EnumerateFileSystemEntries(workingDir))
+                {
+                    cancellationToken.ThrowIfCancellationRequested();
+                    DeleteDestinationEntry(child);
+                }
+                mergedMetadata.Clear();
+                continue;
             }
 
             string fullDirPath = GetContainedPath(
@@ -240,9 +397,10 @@ internal static class ImageHelper
                 layerFileDirName,
                 allowFinalLink: true);
             DeleteDestinationEntry(fullDirPath);
+            RemoveLayerMetadata(mergedMetadata, layerFileDirName, includePath: false);
         }
 
-        foreach (FileInfo layerFile in layerFiles.Where(IsWhiteout))
+        foreach (FileSystemInfo layerFile in layerFiles.Where(IsWhiteout))
         {
             cancellationToken.ThrowIfCancellationRequested();
             string layerFileRelativePath = Path.GetRelativePath(layerDir, layerFile.FullName);
@@ -254,9 +412,27 @@ internal static class ImageHelper
                 Path.Combine(layerFileDirName ?? string.Empty, actualFileName),
                 allowFinalLink: true);
             DeleteDestinationEntry(fullPath);
+            RemoveLayerMetadata(mergedMetadata,
+                Path.Combine(layerFileDirName ?? string.Empty, actualFileName), includePath: true);
         }
 
-        foreach (FileInfo layerFile in layerFiles.Where(file => !IsOpaqueWhiteout(file) && !IsWhiteout(file)))
+        await CopyLayerAsync(
+            layerDir, workingDir, metadata, cancellationToken,
+            skipWhiteouts: true, mergedMetadata: mergedMetadata);
+    }
+
+    private static async Task CopyLayerAsync(
+        string layerDir,
+        string workingDir,
+        IReadOnlyDictionary<string, ImageFileSystemEntry> metadata,
+        CancellationToken cancellationToken,
+        bool skipWhiteouts = false,
+        Dictionary<string, ImageFileSystemEntry>? mergedMetadata = null)
+    {
+        Directory.CreateDirectory(workingDir);
+        FileSystemInfo[] layerEntries = [.. GetLayerEntries(new DirectoryInfo(layerDir))];
+        foreach (FileSystemInfo layerFile in layerEntries
+            .Where(file => !skipWhiteouts || (!IsOpaqueWhiteout(file) && !IsWhiteout(file))))
         {
             cancellationToken.ThrowIfCancellationRequested();
             string layerFileRelativePath = Path.GetRelativePath(layerDir, layerFile.FullName);
@@ -264,47 +440,232 @@ internal static class ImageHelper
                 workingDir,
                 layerFileRelativePath,
                 allowFinalLink: true);
+            if (mergedMetadata is not null)
+            {
+                if (layerFile.LinkTarget is not null || layerFile is not DirectoryInfo)
+                {
+                    if (Directory.Exists(dest) && !IsReparsePoint(dest))
+                    {
+                        RemoveLayerMetadata(mergedMetadata, layerFileRelativePath, includePath: true);
+                    }
+                    else
+                    {
+                        mergedMetadata.Remove(layerFileRelativePath);
+                    }
+                }
+                else if (mergedMetadata.TryGetValue(layerFileRelativePath, out ImageFileSystemEntry? previous) &&
+                    previous.Type != ImageFileType.Directory)
+                {
+                    mergedMetadata.Remove(layerFileRelativePath);
+                }
+                if (metadata.TryGetValue(layerFileRelativePath, out ImageFileSystemEntry? current))
+                {
+                    mergedMetadata[layerFileRelativePath] = current;
+                }
+            }
             string destDir = Path.GetDirectoryName(dest)!;
             if (!Directory.Exists(destDir))
             {
-                CreateDestinationDirectory(workingDir, destDir, overwriteExisting);
+                CreateDestinationDirectory(workingDir, destDir);
             }
 
             if (layerFile.LinkTarget is not null)
             {
                 DeleteDestinationEntry(dest);
 
-                string sourceTarget = GetLinkTargetPath(layerDir, layerFile.FullName, layerFile.LinkTarget);
-                string destTarget = GetContainedPath(
-                    workingDir,
-                    Path.GetRelativePath(layerDir, sourceTarget));
-                FileHelper.CreateSymbolicLink(dest, Path.GetRelativePath(destDir, destTarget));
+                FileHelper.CreateSymbolicLink(
+                    dest, layerFile.LinkTarget, layerFile is DirectoryInfo);
             }
-            else
+            else if (layerFile is DirectoryInfo)
             {
-                if (IsReparsePoint(dest) ||
-                    (overwriteExisting && Directory.Exists(dest)))
+                if (File.Exists(dest) || IsReparsePoint(dest))
                 {
                     DeleteDestinationEntry(dest);
                 }
+                Directory.CreateDirectory(dest);
+            }
+            else
+            {
+                DeleteDestinationEntry(dest);
 
                 await FileHelper.CopyFileAsync(
-                    layerFile, dest, overwrite: true, cancellationToken);
+                    (FileInfo)layerFile, dest, overwrite: true, cancellationToken);
             }
+        }
+        if (mergedMetadata is null)
+        {
+            RebaseRootClampedLinks(workingDir, metadata, cancellationToken);
+            ApplyLayerMetadata(workingDir, metadata, cancellationToken);
+        }
+    }
+
+    private static void RebaseRootClampedLinks(
+        string root, IReadOnlyDictionary<string, ImageFileSystemEntry> metadata,
+        CancellationToken cancellationToken)
+    {
+        string[] links = [.. metadata.Where(item => item.Value.Type == ImageFileType.SymbolicLink)
+            .Select(item => item.Key.Replace(Path.DirectorySeparatorChar, '/'))];
+        if (links.Length == 0)
+        {
+            return;
+        }
+        Dictionary<string, FileSystemInfo> entries = new(
+            OperatingSystem.IsWindows() ? StringComparer.OrdinalIgnoreCase : StringComparer.Ordinal);
+        foreach (FileSystemInfo entry in GetLayerEntries(new DirectoryInfo(root)))
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            entries.Add(Path.GetRelativePath(root, entry.FullName).Replace(Path.DirectorySeparatorChar, '/'), entry);
+        }
+        foreach (string link in links)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            string? clampedTarget;
+            string destination = GetContainedPath(root, link, allowFinalLink: true);
+            try
+            {
+                clampedTarget = GetRootClampedTarget(link, entries, cancellationToken);
+                if (clampedTarget is not null)
+                {
+                    _ = GetContainedPath(root, clampedTarget, allowFinalLink: true, validateLinkParents: false);
+                }
+            }
+            catch (InvalidDataException)
+            {
+                foreach (string exportedLink in links)
+                {
+                    DeleteDestinationEntry(GetContainedPath(root, exportedLink, allowFinalLink: true));
+                }
+                throw;
+            }
+            if (clampedTarget is null)
+            {
+                continue;
+            }
+            string target = string.Concat(Enumerable.Repeat(
+                $"..{Path.DirectorySeparatorChar}", link.Count(character => character == '/'))) +
+                clampedTarget.Replace('/', Path.DirectorySeparatorChar);
+            bool targetIsDirectory = clampedTarget.Length == 0 ||
+                (entries.TryGetValue(clampedTarget, out FileSystemInfo? targetEntry) && targetEntry is DirectoryInfo);
+            DeleteDestinationEntry(destination);
+            FileHelper.CreateSymbolicLink(destination, target.Length == 0 ? "." : target, targetIsDirectory);
+        }
+    }
+
+    private static string? GetRootClampedTarget(
+        string link, IReadOnlyDictionary<string, FileSystemInfo> entries,
+        CancellationToken cancellationToken)
+    {
+        string current = link;
+        bool clamped = false;
+        int hops = 0;
+        HashSet<string> visited = new(StringComparer.Ordinal);
+        while (true)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            if (!visited.Add(current))
+            {
+                if (clamped)
+                {
+                    throw new InvalidDataException($"Link '/{link}' cannot be safely rebased through a cycle.");
+                }
+                return null;
+            }
+            string[] segments = current.Split('/', StringSplitOptions.RemoveEmptyEntries);
+            List<string> resolved = [];
+            bool restarted = false;
+            for (int index = 0; index < segments.Length; index++)
+            {
+                if (segments[index] == ".")
+                {
+                    continue;
+                }
+                if (segments[index] == "..")
+                {
+                    if (resolved.Count == 0)
+                    {
+                        // An image root clamps ".."; a host export directory does not.
+                        clamped = true;
+                        current = string.Join('/', segments.Skip(index + 1));
+                        restarted = true;
+                        break;
+                    }
+                    resolved.RemoveAt(resolved.Count - 1);
+                    continue;
+                }
+                resolved.Add(segments[index]);
+                string candidate = string.Join('/', resolved);
+                if (!entries.TryGetValue(candidate, out FileSystemInfo? entry))
+                {
+                    return clamped ? current : null;
+                }
+                if (entry.LinkTarget is string target)
+                {
+                    if (++hops > ImagePathResolver.MaximumLinkHops)
+                    {
+                        throw new InvalidDataException(
+                            $"Link '/{link}' cannot be safely rebased within {ImagePathResolver.MaximumLinkHops} hops.");
+                    }
+                    string remainder = string.Join('/', segments.Skip(index + 1));
+                    if (Path.IsPathRooted(target))
+                    {
+                        throw new InvalidDataException(
+                            $"Link '/{link}' traverses an absolute host link '/{candidate}'.");
+                    }
+                    current = ImagePath.ResolveLinkTarget(ImagePath.GetDirectoryName(candidate),
+                        target.Replace(Path.DirectorySeparatorChar, '/'), remainder, candidate);
+                    restarted = true;
+                    break;
+                }
+                if (entry is not DirectoryInfo && index < segments.Length - 1)
+                {
+                    return clamped ? current : null;
+                }
+            }
+            if (!restarted)
+            {
+                return clamped ? string.Join('/', resolved) : null;
+            }
+        }
+    }
+
+    private static void RemoveLayerMetadata(
+        Dictionary<string, ImageFileSystemEntry> metadata, string path, bool includePath)
+    {
+        if (includePath && metadata.TryGetValue(path, out ImageFileSystemEntry? entry) &&
+            entry.Type != ImageFileType.Directory)
+        {
+            metadata.Remove(path);
+            return;
+        }
+        StringComparison comparison = OperatingSystem.IsWindows()
+            ? StringComparison.OrdinalIgnoreCase : StringComparison.Ordinal;
+        string prefix = path + Path.DirectorySeparatorChar;
+        foreach (string candidate in metadata.Keys.Where(candidate =>
+            (includePath && candidate.Equals(path, comparison)) ||
+            candidate.StartsWith(prefix, comparison)).ToArray())
+        {
+            metadata.Remove(candidate);
+        }
+    }
+
+    private static void ApplyLayerMetadata(
+        string root, IReadOnlyDictionary<string, ImageFileSystemEntry> metadata,
+        CancellationToken cancellationToken)
+    {
+        // Restrictive archived modes must not block later layers from reading or replacing content.
+        foreach ((string path, ImageFileSystemEntry attributes) in metadata
+            .Where(item => item.Value.Type != ImageFileType.SymbolicLink)
+            .OrderByDescending(item => item.Key.Count(character => character == Path.DirectorySeparatorChar)))
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            ImageFileSystemExtractor.ApplyMetadata(GetContainedPath(root, path), attributes);
         }
     }
 
     private static void CreateDestinationDirectory(
         string workingDir,
-        string directoryPath,
-        bool overwriteExisting)
+        string directoryPath)
     {
-        if (!overwriteExisting)
-        {
-            Directory.CreateDirectory(directoryPath);
-            return;
-        }
-
         string currentPath = Path.GetFullPath(workingDir);
         Directory.CreateDirectory(currentPath);
         string relativePath = Path.GetRelativePath(currentPath, directoryPath);
@@ -352,31 +713,25 @@ internal static class ImageHelper
         }
     }
 
-    private static bool IsOpaqueWhiteout(FileInfo file) =>
+    private static bool IsOpaqueWhiteout(FileSystemInfo file) =>
         string.Equals(file.Name, OpaqueWhiteoutMarker, StringComparison.OrdinalIgnoreCase);
 
-    private static IEnumerable<FileInfo> GetLayerFiles(DirectoryInfo directory)
+    private static IEnumerable<FileSystemInfo> GetLayerEntries(DirectoryInfo directory)
     {
-        foreach (FileInfo file in directory.GetFiles())
+        foreach (FileSystemInfo entry in directory.EnumerateFileSystemInfos())
         {
-            yield return file;
-        }
-
-        foreach (DirectoryInfo subdirectory in directory.GetDirectories())
-        {
-            if (IsReparsePoint(subdirectory.FullName))
+            yield return entry;
+            if (entry is DirectoryInfo subdirectory && entry.LinkTarget is null)
             {
-                throw new InvalidDataException($"Layer directory '{subdirectory.FullName}' is a symbolic link.");
-            }
-
-            foreach (FileInfo file in GetLayerFiles(subdirectory))
-            {
-                yield return file;
+                foreach (FileSystemInfo child in GetLayerEntries(subdirectory))
+                {
+                    yield return child;
+                }
             }
         }
     }
 
-    private static bool IsWhiteout(FileInfo file) =>
+    private static bool IsWhiteout(FileSystemInfo file) =>
         !IsOpaqueWhiteout(file) &&
         file.Name.StartsWith(WhiteoutMarkerPrefix, StringComparison.OrdinalIgnoreCase);
 
@@ -385,6 +740,8 @@ internal static class ImageHelper
         TarEntry entry,
         string entryName,
         List<(string Path, string Target)> hardLinks,
+        List<(string Path, string Target)> symbolicLinks,
+        ArchivePathMappings archivePaths,
         CancellationToken cancellationToken)
     {
         string filePath = GetContainedPath(workingDir, entryName);
@@ -405,12 +762,28 @@ internal static class ImageHelper
                 File.Delete(filePath);
             }
 
-            string targetPath = GetLinkTargetPath(workingDir, filePath, entry.LinkName);
-            string relativeTarget = Path.GetRelativePath(directoryPath!, targetPath);
-            FileHelper.CreateSymbolicLink(filePath, relativeTarget);
+            _ = ImagePath.ResolveLinkTarget(
+                ImagePath.GetDirectoryName(ImagePath.NormalizeArchive(entry.Name)),
+                entry.LinkName, string.Empty, entry.Name);
+            string target = string.Join(Path.DirectorySeparatorChar,
+                entry.LinkName.Split('/').Select(segment =>
+                    segment is "" or "." or ".." ? segment : SanitizeHostSegment(segment)));
+            if (ImagePath.IsAbsolute(entry.LinkName))
+            {
+                int depth = ImagePath.GetDirectoryName(ImagePath.NormalizeArchive(entry.Name))
+                    .Split('/', StringSplitOptions.RemoveEmptyEntries).Length;
+                target = string.Concat(Enumerable.Repeat($"..{Path.DirectorySeparatorChar}", depth)) +
+                    GetHostArchivePath(entry.LinkName.TrimStart('/'), archivePaths);
+            }
+            _ = GetLinkTargetPath(workingDir, filePath, target);
+            symbolicLinks.Add((filePath, target));
         }
         else
         {
+            if (Directory.Exists(filePath))
+            {
+                Directory.Delete(filePath, recursive: true);
+            }
             using FileStream outputStream = File.Create(filePath);
             if (entry.DataStream is not null)
             {
@@ -419,19 +792,63 @@ internal static class ImageHelper
         }
     }
 
+    private static string SanitizeHostSegment(string segment)
+    {
+        if (OperatingSystem.IsWindows())
+        {
+            foreach (char invalid in Path.GetInvalidFileNameChars())
+            {
+                segment = segment.Replace(invalid, '-');
+            }
+        }
+        return segment;
+    }
+
+    private static string GetHostArchivePath(
+        string original, ArchivePathMappings archivePaths, bool remember = true)
+    {
+        if (!OperatingSystem.IsWindows())
+        {
+            return original.Replace('/', Path.DirectorySeparatorChar);
+        }
+        string hostPath = string.Empty;
+        string imagePath = string.Empty;
+        foreach (string segment in original.Split('/', StringSplitOptions.RemoveEmptyEntries))
+        {
+            imagePath = ImagePath.Join(imagePath, segment);
+            hostPath = Path.Combine(hostPath, SanitizeHostSegment(segment));
+            if (archivePaths.TryGetValue(hostPath, out string? previous) && previous != imagePath)
+            {
+                throw new InvalidDataException(
+                    $"Archive paths '{previous}' and '{imagePath}' map to the same destination '{hostPath}'.");
+            }
+            if (remember)
+            {
+                archivePaths[hostPath] = imagePath;
+            }
+        }
+        if (OperatingSystem.IsWindows())
+        {
+            ImageFileSystemExtractor.ValidateWindowsDestinationPath(hostPath.Replace('\\', '/'));
+        }
+        return hostPath;
+    }
+
     private static string GetLinkTargetPath(string workingDir, string linkPath, string linkTarget)
     {
         string target = Path.IsPathRooted(linkTarget)
             ? linkTarget.TrimStart(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar)
             : Path.Combine(Path.GetDirectoryName(Path.GetRelativePath(workingDir, linkPath)) ?? string.Empty, linkTarget);
 
-        return GetContainedPath(workingDir, target);
+        return GetContainedPath(
+            workingDir, target, allowFinalLink: true, validateLinkParents: false);
     }
 
     private static string GetContainedPath(
         string rootPath,
         string relativePath,
-        bool allowFinalLink = false)
+        bool allowFinalLink = false,
+        bool validateLinkParents = true)
     {
         string fullRootPath = Path.GetFullPath(rootPath);
         string fullPath = Path.GetFullPath(Path.Combine(fullRootPath, relativePath));
@@ -445,7 +862,10 @@ internal static class ImageHelper
             throw new InvalidDataException($"Archive entry path '{relativePath}' is outside the layer directory.");
         }
 
-        ValidateNoLinkParents(fullRootPath, fullPath);
+        if (validateLinkParents)
+        {
+            ValidateNoLinkParents(fullRootPath, fullPath);
+        }
         if (!allowFinalLink && IsReparsePoint(fullPath))
         {
             throw new InvalidDataException($"Path '{fullPath}' is a symbolic link.");
@@ -516,6 +936,122 @@ internal static class ImageHelper
         if (value.Contains(':'))
         {
             throw new InvalidDataException($"Invalid layer digest '{value}'.");
+        }
+    }
+
+    internal sealed class ArchivePathMappings
+    {
+        private readonly Dictionary<string, string> spellings;
+        private readonly SortedSet<string>? paths;
+        private readonly Dictionary<string, string>? absoluteLinkTargets;
+        private bool targetsNeedValidation;
+
+        public ArchivePathMappings(StringComparer comparer, bool trackMergedPaths = true)
+        {
+            spellings = new(comparer);
+            if (trackMergedPaths)
+            {
+                paths = new(comparer);
+                absoluteLinkTargets = new(comparer);
+            }
+        }
+
+        public IEnumerable<string> AbsoluteLinkTargets =>
+            targetsNeedValidation && absoluteLinkTargets is not null ? absoluteLinkTargets.Values : [];
+
+        public void MarkTargetsValidated() => targetsNeedValidation = false;
+
+        public string this[string path]
+        {
+            get => spellings[path];
+            set
+            {
+                if (paths is not null)
+                {
+                    if (!spellings.TryGetValue(path, out string? previous) || previous != value)
+                    {
+                        targetsNeedValidation = true;
+                    }
+                    paths.Add(path);
+                    if (absoluteLinkTargets!.Remove(path))
+                    {
+                        targetsNeedValidation = true;
+                    }
+                }
+                spellings[path] = value;
+            }
+        }
+
+        public bool TryGetValue(string path, out string? spelling) =>
+            spellings.TryGetValue(path, out spelling);
+
+        public void SetAbsoluteLinkTarget(string path, string? target)
+        {
+            if (absoluteLinkTargets is null)
+            {
+                throw new InvalidOperationException("Scratch mappings do not track absolute links.");
+            }
+            if (target is not null)
+            {
+                if (!absoluteLinkTargets.TryGetValue(path, out string? previous) || previous != target)
+                {
+                    targetsNeedValidation = true;
+                }
+                absoluteLinkTargets[path] = target;
+            }
+            else
+            {
+                if (absoluteLinkTargets.Remove(path))
+                {
+                    targetsNeedValidation = true;
+                }
+            }
+        }
+
+        public void Clear()
+        {
+            spellings.Clear();
+            paths?.Clear();
+            absoluteLinkTargets?.Clear();
+            targetsNeedValidation = false;
+        }
+
+        public void RemovePath(string path, bool includePath)
+        {
+            if (paths is null)
+            {
+                throw new InvalidOperationException("Scratch mappings do not support subtree removal.");
+            }
+            if (path.Length == 0)
+            {
+                Clear();
+                return;
+            }
+            string prefix = path + Path.DirectorySeparatorChar;
+            string upperBound = path + (char)(Path.DirectorySeparatorChar + 1);
+            string[] descendants = [.. paths.GetViewBetween(prefix, upperBound)
+                .Where(candidate => paths.Comparer.Compare(candidate, upperBound) < 0)];
+            foreach (string descendant in descendants)
+            {
+                Remove(descendant);
+            }
+            if (includePath)
+            {
+                Remove(path);
+            }
+        }
+
+        private void Remove(string path)
+        {
+            if (spellings.Remove(path))
+            {
+                targetsNeedValidation = true;
+            }
+            paths!.Remove(path);
+            if (absoluteLinkTargets!.Remove(path))
+            {
+                targetsNeedValidation = true;
+            }
         }
     }
 }
