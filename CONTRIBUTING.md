@@ -6,8 +6,8 @@ request with a proposed change.
 ## Prerequisites
 
 - [.NET 10 SDK](https://dotnet.microsoft.com/download/dotnet/10.0)
-- [Docker](https://docs.docker.com/get-docker/) if you need to build the
-  container image
+- [Docker](https://docs.docker.com/get-docker/) with an available engine to run
+  the full test suite or build the container image
 
 ## Build and test
 
@@ -18,6 +18,13 @@ solution, and run the test suite:
 dotnet restore
 dotnet build -c Release --no-restore
 dotnet test --no-restore -v normal -c Release
+```
+
+The full suite starts disposable registry containers for integration tests.
+To run without Docker, replace the test command with:
+
+```shell
+dotnet test --no-restore -v normal -c Release --filter "Category!=Integration"
 ```
 
 To run one test class:

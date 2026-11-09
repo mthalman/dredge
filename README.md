@@ -47,10 +47,11 @@ See the [explorer guide](docs/commands/images.md#explore).
 - Inspect and retrieve OCI artifacts or check for required artifact types in CI.
 - Inspect an image's [configuration](docs/commands/images.md#inspect) and
   [operating system information](docs/commands/images.md#os).
-- [Explore a Linux image interactively](docs/commands/images.md#explore):
+- [Explore an image interactively](docs/commands/images.md#explore):
   walk its layers, find wasted space, and compare it with another tag.
-- Browse, read, and selectively [extract files from Linux
+- Browse, read, and selectively [extract files from
   images](docs/commands/images.md#ls) with layer provenance.
+  See [Windows filesystem limitations](docs/commands/images.md#windows-filesystem-support).
 - Compare [layers](docs/commands/images.md#compare-layers) or
   [files](docs/commands/images.md#compare-files) between images.
 - [Generate a Dockerfile](docs/commands/images.md#dockerfile) from an image.
