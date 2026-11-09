@@ -21,3 +21,4 @@ select an image platform, and interpret command results.
 - [Configure Dredge](settings.md)
 - [Resolve a platform-specific image](platform-resolution.md)
 - [Understand exit codes](exit-codes.md)
+- [Upgrade across breaking changes](migrations/README.md)

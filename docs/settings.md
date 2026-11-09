@@ -87,8 +87,10 @@ not included in this limit.
 
 Use [`dredge settings clear-cache`](commands/settings.md#clear-cache) to remove
 cached data. Changing `cache.path` does not move or delete the previous cache.
-The cache does not support offline image resolution: commands still resolve
-manifests and request image configuration from the registry.
+The cache does not support offline registry image resolution: commands still
+resolve manifests and request image configuration from the registry.
+Daemon-only commands require the selected Docker engine, not registry access.
+See [Image sources](commands/images.md#image-sources).
 
 ## Configure the file comparison tool
 

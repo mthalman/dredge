@@ -37,6 +37,28 @@ an installed Docker CLI. Select a connection with `--docker-context <name>` or
 `--docker-host <endpoint>`. These options are mutually exclusive and apply to
 all daemon operands in one command.
 
+Dredge selects the connection in this order:
+
+1. An explicit `--docker-context` or `--docker-host` option.
+2. The `DOCKER_CONTEXT` environment variable.
+3. The `DOCKER_HOST` environment variable.
+4. The saved `currentContext` in Docker's `config.json`.
+5. The platform default: `unix:///var/run/docker.sock` on Linux and macOS, or
+   `npipe://./pipe/docker_engine` on Windows.
+
+Set `DOCKER_CONFIG` to use a different Docker configuration directory; otherwise,
+Dredge reads `.docker` under your home directory. Explicit options bypass
+ambient context and host selection. The `default` context selects the platform
+default endpoint.
+
+Supported endpoints use an absolute Unix socket path, a Windows named pipe,
+or HTTP (`http://` or `tcp://`). Use a local socket or named pipe, or a separately
+secured local HTTP tunnel. SSH contexts and HTTPS/certificate/TLS configuration
+are not supported. Dredge rejects `https://` endpoints, contexts with TLS
+material or `SkipTLSVerify=true`, and any nonempty `DOCKER_TLS_VERIFY`, `DOCKER_TLS`,
+or `DOCKER_CERT_PATH` value, even when an explicit connection option is supplied.
+It does not disable TLS, downgrade connections, or try another endpoint.
+
 ### Command and platform support
 
 | Commands | Registry | Linux daemon | Windows daemon |
@@ -381,9 +403,9 @@ also selected remain hard links; otherwise, Dredge materializes their effective
 content. Archive entries and extraction destinations cannot escape their
 respective roots.
 
-The `explore`, `ls`, `cat`, and `extract` commands support gzip-compressed tar
-layers for Linux and the Windows representations described below. This applies
-to both registry and Docker Engine images.
+The `explore`, `ls`, `cat`, and `extract` commands support gzip-compressed and
+uncompressed tar layers for Linux, from both registries and Docker Engine.
+Windows layer representations and limitations are described below.
 
 ### Windows filesystem support
 
@@ -409,7 +431,8 @@ Keep these limitations in mind:
 
 `explore`, `ls`, `cat`, `extract`, `save-layers`, `compare files`, and Linux `os` share a
 persistent cache to reduce repeated layer downloads. Registry access is still
-required, even when image layers are cached.
+required for registry sources, even when image layers are cached. Daemon-only
+commands require the selected Docker engine instead.
 
 See [Configure the layer cache](../settings.md#configure-the-layer-cache) for
 cache locations, storage limits, and cleanup.
@@ -417,7 +440,12 @@ cache locations, storage limits, and cleanup.
 ## Compare metadata
 
 Compares image configuration, manifest descriptors, and platform metadata
-without downloading image layers.
+without downloading registry image layers.
+
+When either image comes from Docker Engine, Dredge compares configuration
+metadata only for both images. Original registry manifests, annotations, and
+platform inventories are unavailable for daemon images. Acquiring a daemon
+image transfers an image export from the engine, including its layers.
 
 ```console
 dredge image compare metadata <base> <target> [--output <format>] [--no-color] [--os <os>] [--arch <arch>] [--os-version <version>]
@@ -428,7 +456,7 @@ dredge image compare metadata <base> <target> [--output <format>] [--no-color] [
 | `--output` | Output format: `side-by-side` (default), `inline`, or `json` |
 | `--no-color` | Disable color output and use text-based diff indicators instead |
 
-The comparison includes:
+For two registry images, the comparison includes:
 
 - Available platforms and their descriptors
 - Manifest media types, annotations, config descriptors, and layer descriptors
@@ -436,9 +464,10 @@ The comparison includes:
 - Entrypoint, command, environment variables, labels, exposed ports, volumes, user, and working directory
 - Image history, including creation time, command, author, comment, and empty-layer status
 
-For a multi-platform reference, Dredge compares the complete platform index.
-The platform options select the per-platform manifests and image configurations
-for the deeper comparison. Dredge uses the configured
+When both sources are registries, Dredge also compares the complete platform
+index for a multi-platform reference. The platform options select the
+per-platform manifests and image configurations for the deeper comparison.
+Dredge uses the configured
 [platform resolution](../platform-resolution.md) defaults when platform options
 are omitted.
 
@@ -477,6 +506,16 @@ dredge image compare layers <base> <target> [--output <format>] [--history] [--c
 | `--history` | Include the layer history (Dockerfile instructions) |
 | `--compressed-size` | Show compressed layer sizes |
 | `--no-color` | Disable color output and use text-based diff indicators instead |
+
+For two registry images, layer identities are registry blob digests. When either
+image comes from Docker Engine, Dredge compares uncompressed content digests
+(diff IDs) for both images instead. Layers with identical uncompressed content
+can therefore compare equal even when their registry blob digests differ.
+Dredge reports this identity choice on standard error.
+
+Original compressed sizes are unavailable for daemon layers. With
+`--compressed-size`, JSON output uses `null` for those layers; registry layers
+still report their stored sizes.
 
 The command returns the following exit codes:
 
