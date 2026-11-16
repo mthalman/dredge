@@ -3,7 +3,9 @@
   "extends": [
     "config:best-practices"
   ],
-  "dependencyDashboard": false,
+  "dependencyDashboard": {
+    "enabled": false
+  },
   "minimumReleaseAge": "10 days",
   "mode": "full",
   "packageRules": [
