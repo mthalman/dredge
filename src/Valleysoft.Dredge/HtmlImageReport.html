@@ -1,0 +1,295 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'">
+<title>Dredge image report</title>
+<script>
+  (() => {
+    const param = new URLSearchParams(window.location.search).get("scoutTheme");
+    const theme =
+      param || (window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light");
+    document.documentElement.setAttribute("data-theme", theme);
+  })();
+</script>
+<style>
+:root {
+  color-scheme: light;
+  --cp-bg: #f7f4ef;
+  --cp-bg-elevated: #fcfbf8;
+  --cp-surface: #ffffff;
+  --cp-surface-soft: #f5f5f5;
+  --cp-border: #dedede;
+  --cp-border-strong: #919191;
+  --cp-text: #242424;
+  --cp-text-muted: #5c5c5c;
+  --cp-text-soft: #6f6f6f;
+  --cp-accent: #b11f4b;
+  --cp-accent-hover: #9a1a41;
+  --cp-accent-soft: rgba(177, 31, 75, 0.08);
+  --cp-accent-fg: #ffffff;
+  --cp-success: #16a34a;
+  --cp-danger: #dc2626;
+  --cp-warning: #f59e0b;
+  --cp-link: #0078d4;
+  --cp-shadow: 0 18px 48px rgba(0, 0, 0, 0.12);
+  --cp-overlay: rgba(255, 255, 255, 0.8);
+  --cp-panel: rgba(255, 255, 255, 0.86);
+  --cp-panel-strong: rgba(255, 255, 255, 0.96);
+  --cp-sheen: rgba(255, 255, 255, 0.55);
+  --cp-highlight: rgba(177, 31, 75, 0.12);
+}
+html[data-theme="dark"] {
+  color-scheme: dark;
+  --cp-bg: #3d3b3a;
+  --cp-bg-elevated: #343231;
+  --cp-surface: #292929;
+  --cp-surface-soft: #2e2e2e;
+  --cp-border: #474747;
+  --cp-border-strong: #5f5f5f;
+  --cp-text: #dedede;
+  --cp-text-muted: #919191;
+  --cp-text-soft: #b0b0b0;
+  --cp-accent: #fd8ea1;
+  --cp-accent-hover: #fb7b91;
+  --cp-accent-soft: rgba(253, 142, 161, 0.14);
+  --cp-accent-fg: #1a1a1a;
+  --cp-success: #4ade80;
+  --cp-danger: #f87171;
+  --cp-warning: #fbbf24;
+  --cp-link: #4da6ff;
+  --cp-shadow: 0 18px 48px rgba(0, 0, 0, 0.32);
+  --cp-overlay: rgba(41, 41, 41, 0.88);
+  --cp-panel: rgba(41, 41, 41, 0.72);
+  --cp-panel-strong: rgba(41, 41, 41, 0.96);
+  --cp-sheen: rgba(255, 255, 255, 0.04);
+  --cp-highlight: rgba(253, 142, 161, 0.12);
+}
+* { box-sizing: border-box; }
+body { margin: 0; background: var(--cp-bg); color: var(--cp-text); font: 16px "Segoe UI", Aptos, Calibri, -apple-system, BlinkMacSystemFont, sans-serif; }
+main { max-width: 90rem; margin: auto; padding: 2rem; }
+h1 { margin: 0; font-size: 1.8rem; }
+h2 { margin: 0 0 1rem; font-size: 1.15rem; }
+p { color: var(--cp-text-muted); overflow-wrap: anywhere; }
+.heading { display: flex; align-items: baseline; gap: 1rem; flex-wrap: wrap; }
+.brand { color: var(--cp-accent); font-weight: 700; letter-spacing: .08em; text-transform: uppercase; }
+.panel { background: var(--cp-surface); border: 1px solid var(--cp-border); border-radius: 16px; padding: 1.25rem; margin: 1rem 0; }
+.controls { display: flex; gap: 1rem; flex-wrap: wrap; align-items: end; }
+label { display: grid; gap: .35rem; color: var(--cp-text-muted); font-size: .9rem; }
+select, input, button { font: inherit; color: var(--cp-text); background: var(--cp-surface); border: 1px solid var(--cp-border-strong); border-radius: .625rem; padding: .5rem .7rem; }
+select, input { max-width: 100%; }
+button { cursor: pointer; }
+button:hover { background: var(--cp-accent-soft); }
+button:focus-visible, select:focus-visible, input:focus-visible { outline: 2px solid var(--cp-accent); outline-offset: 2px; }
+.search { flex: 1; min-width: 12rem; }
+.muted, .size { color: var(--cp-text-muted); }
+.mono, pre, .tree { font-family: Consolas, "Courier New", Courier, monospace; }
+pre { overflow: auto; white-space: pre-wrap; overflow-wrap: anywhere; }
+.summary { display: flex; flex-wrap: wrap; gap: .5rem 1.5rem; }
+.summary p { margin: .25rem 0; }
+.warning { border-left: .25rem solid var(--cp-warning); padding-left: .75rem; }
+.tree, .tree ul { list-style: none; margin: 0; padding: 0; }
+.tree ul { margin-left: 1.2rem; border-left: 1px solid var(--cp-border); padding-left: .6rem; }
+.tree li { margin: .2rem 0; }
+.row { display: flex; flex-wrap: wrap; align-items: baseline; gap: .6rem; overflow-wrap: anywhere; }
+.row button { padding: .1rem .35rem; }
+.name { overflow-wrap: anywhere; }
+.change { color: var(--cp-accent); font-size: .85em; }
+.size { font-size: .85em; }
+.history-item { padding: .6rem 0; border-top: 1px solid var(--cp-border); overflow-wrap: anywhere; }
+[hidden] { display: none !important; }
+@media (max-width: 600px) { main { padding: 1rem; } .panel { padding: 1rem; } }
+</style>
+</head>
+<body>
+<main>
+  <div class="heading"><span class="brand">Dredge</span><h1>Image exploration</h1></div>
+  <div id="summary" class="summary"></div>
+  <div id="warnings"></div>
+  <section class="panel" aria-label="Report controls">
+    <div class="controls">
+      <label id="image-label">Image <select id="image"></select></label>
+      <label>View <select id="view">
+        <option value="layer">Layer changes</option>
+        <option value="files">Filesystem</option>
+        <option value="comparison">Image differences</option>
+        <option value="history">History</option>
+        <option value="metadata">Metadata</option>
+      </select></label>
+      <label id="layer-label">Layer <select id="layer"></select></label>
+      <label id="search-label" class="search">Filter paths <input id="search" type="search" placeholder="Search paths"></label>
+    </div>
+  </section>
+  <section class="panel" aria-labelledby="section-title">
+    <h2 id="section-title"></h2>
+    <p id="status" aria-live="polite"></p>
+    <div id="content"></div>
+  </section>
+</main>
+<script>
+"use strict";
+const report = /* DREDGE_REPORT_DATA */;
+const imageSelect = document.getElementById("image");
+const view = document.getElementById("view");
+const layer = document.getElementById("layer");
+const search = document.getElementById("search");
+const content = document.getElementById("content");
+const status = document.getElementById("status");
+const title = document.getElementById("section-title");
+const summary = document.getElementById("summary");
+const warnings = document.getElementById("warnings");
+const layerLabel = document.getElementById("layer-label");
+const searchLabel = document.getElementById("search-label");
+const comparisonOption = view.querySelector('[value="comparison"]');
+
+function element(tag, text, className) {
+  const node = document.createElement(tag);
+  if (text !== undefined) node.textContent = text;
+  if (className) node.className = className;
+  return node;
+}
+function option(value, text) {
+  const item = element("option", text);
+  item.value = value;
+  return item;
+}
+function bytes(value) {
+  if (value === null || value === undefined) return "—";
+  if (value < 1000) return `${value} B`;
+  const units = ["KB", "MB", "GB", "TB"];
+  let amount = value / 1000, unit = 0;
+  while (amount >= 1000 && unit < units.length - 1) { amount /= 1000; unit++; }
+  return `${amount.toFixed(amount < 10 ? 1 : 0)} ${units[unit]}`;
+}
+function selectedImage() { return report.images[Number(imageSelect.value)]; }
+function updateImage() {
+  const image = selectedImage();
+  layer.replaceChildren();
+  image.layers.forEach(item => layer.append(option(String(item.index),
+    `${item.index}: ${item.digest} (${bytes(item.size)})${item.baseImage ? ` — base ${item.baseImage}` : ""}`)));
+  if (image.layers.length) {
+    const requested = report.initialLayer;
+    layer.value = String(requested != null && requested < image.layers.length ? requested : image.layers.length - 1);
+  }
+  summary.replaceChildren(
+    element("p", `Image: ${image.reference}`),
+    element("p", `Platform: ${image.platform}`),
+    element("p", `Snapshot: ${image.identity}`, "mono"));
+  warnings.replaceChildren();
+  [...image.warnings, ...report.limitations].forEach(message =>
+    warnings.append(element("p", message, "warning")));
+  render();
+}
+function tree(items, query) {
+  const root = { children: new Map() };
+  let matches = 0;
+  for (const item of items) {
+    if (query && !item.path.toLocaleLowerCase().includes(query)) continue;
+    matches++;
+    if (query) {
+      root.children.set(item.path, { name: `/${item.path}`, item, children: new Map() });
+      continue;
+    }
+    let parent = root;
+    for (const part of item.path.split("/").filter(Boolean)) {
+      if (!parent.children.has(part)) parent.children.set(part, { name: part, children: new Map() });
+      parent = parent.children.get(part);
+    }
+    parent.item = item;
+  }
+  const list = element("ul", undefined, "tree");
+  appendBatch(list, root);
+  return { list, matches };
+}
+function appendBatch(list, node) {
+  const children = [...node.children.values()].sort((a, b) => a.name.localeCompare(b.name));
+  let offset = 0;
+  function appendMore() {
+    more?.remove();
+    for (const child of children.slice(offset, offset + 100)) {
+      const li = element("li");
+      const row = element("div", undefined, "row");
+      if (child.children.size) {
+        const toggle = element("button", "+");
+        toggle.type = "button";
+        toggle.setAttribute("aria-label", `Expand ${child.name}`);
+        toggle.setAttribute("aria-expanded", "false");
+        toggle.addEventListener("click", () => {
+          const expanded = toggle.getAttribute("aria-expanded") === "true";
+          toggle.setAttribute("aria-expanded", String(!expanded));
+          toggle.setAttribute("aria-label", `${expanded ? "Expand" : "Collapse"} ${child.name}`);
+          toggle.textContent = expanded ? "+" : "−";
+          if (!expanded && !child.list) {
+            child.list = element("ul");
+            appendBatch(child.list, child);
+            li.append(child.list);
+          }
+          child.list.hidden = expanded;
+        });
+        row.append(toggle);
+      }
+      row.append(element("span", child.name, "name"));
+      if (child.item) {
+        const item = child.item;
+        if (item.type) row.append(element("span", item.type, "muted"));
+        if (item.change) row.append(element("span", item.change, "change"));
+        const sizes = item.before !== undefined || item.after !== undefined
+          ? `${bytes(item.before)} → ${bytes(item.after)}` : bytes(item.size);
+        row.append(element("span", sizes, "size"));
+      }
+      li.append(row);
+      list.append(li);
+    }
+    offset += 100;
+    if (offset < children.length) list.append(more);
+  }
+  const more = element("li");
+  const moreButton = element("button", "Show more");
+  moreButton.type = "button";
+  moreButton.addEventListener("click", appendMore);
+  more.append(moreButton);
+  appendMore();
+}
+function render() {
+  const image = selectedImage();
+  const selected = view.value;
+  const isTree = selected === "layer" || selected === "files" || selected === "comparison";
+  layerLabel.hidden = selected !== "layer";
+  searchLabel.hidden = !isTree;
+  content.replaceChildren();
+  status.textContent = "";
+  title.textContent = view.selectedOptions[0].textContent;
+  if (isTree) {
+    const items = selected === "files" ? image.files :
+      selected === "comparison" ? report.differences :
+      image.layers[Number(layer.value)]?.changes ?? [];
+    const result = tree(items ?? [], search.value.trim().toLocaleLowerCase());
+    status.textContent = `${result.matches} matching entries` +
+      (selected === "comparison" ? ` · ${report.images[0].reference} → ${report.images[1].reference}` : "");
+    content.append(result.list);
+  } else if (selected === "metadata") {
+    content.append(element("pre", image.metadata));
+  } else {
+    image.history.forEach(item => {
+      const row = element("div", undefined, "history-item");
+      row.append(element("div", item.layer == null ? "Metadata only" : `Layer ${item.layer}`, "change"));
+      row.append(element("div", item.instruction, "mono"));
+      if (item.created) row.append(element("div", item.created, "muted"));
+      content.append(row);
+    });
+    status.textContent = `${image.history.length} history entries`;
+  }
+}
+report.images.forEach((image, index) => imageSelect.append(option(String(index), image.reference)));
+document.getElementById("image-label").hidden = report.images.length === 1;
+comparisonOption.hidden = report.differences == null;
+if (report.differences != null) view.value = "comparison";
+imageSelect.addEventListener("change", updateImage);
+view.addEventListener("change", render);
+layer.addEventListener("change", render);
+search.addEventListener("input", render);
+updateImage();
+</script>
+</body>
+</html>

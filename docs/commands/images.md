@@ -155,7 +155,7 @@ its layers, see which files each layer adds, changes, or deletes, find wasted
 space, and compare it with another version of the image.
 
 ```console
-dredge image explore <image> [--layer <n>] [--compare <image-or-tag>] [--base-image <image> ...] [--no-mouse] [--os <os>] [--arch <arch>] [--os-version <version>]
+dredge image explore <image> [--layer <n>] [--compare <image-or-tag>] [--base-image <image> ...] [--output <tui|html>] [--no-mouse] [--os <os>] [--arch <arch>] [--os-version <version>]
 ```
 
 - `--layer <n>` starts with layer `n` selected.
@@ -167,6 +167,27 @@ dredge image explore <image> [--layer <n>] [--compare <image-or-tag>] [--base-im
   image's annotations, when there is one.
 - `--no-mouse` turns off mouse support so you can select text in the terminal
   normally.
+- `--output html` writes a self-contained, interactive report to standard output.
+  The default, `tui`, opens the terminal explorer.
+
+### HTML reports
+
+```console
+dredge image explore docker://my-image:dev --output html > report.html
+dredge image explore docker://my-image:base --compare docker://my-image:dev --output html > comparison.html
+```
+
+The report includes the image configuration and history, file sizes and
+filesystem tree, per-layer changes, and, when `--compare` is supplied, file
+differences. It does not include file contents or package inventories. It works
+offline and has no fixed size limit; large images can produce large reports.
+`--layer` selects the initial layer, and `--base-image` identifies base layers.
+`--no-mouse` applies only to the terminal explorer.
+
+Reports accept registry and `docker://` references, including mixed-source
+comparisons, and use the same platform options and filesystem limitations as
+the explorer. Because HTML generation is non-interactive, an ambiguous
+platform must be resolved using the platform options or saved settings.
 
 ### Browsing layers and files
 

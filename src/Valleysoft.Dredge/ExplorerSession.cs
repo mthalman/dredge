@@ -170,7 +170,7 @@ internal sealed class ExplorerSession
         }
     }
 
-    internal static ExplorerComparison Compare(ExplorerSession baseline, ExplorerSession target)
+    internal static ExplorerComparison Compare(ExplorerSession baseline, ExplorerSession target, bool includePackages = true)
     {
         ImageFileSystemSemantics semantics = baseline.Semantics;
         bool samePlatform = baseline.IsDaemon || target.IsDaemon
@@ -233,7 +233,8 @@ internal sealed class ExplorerSession
         }
 
         List<ExplorerPackageDifference> packages = [];
-        foreach (InstalledPackageEcosystem ecosystem in Enum.GetValues<InstalledPackageEcosystem>())
+        foreach (InstalledPackageEcosystem ecosystem in includePackages
+            ? Enum.GetValues<InstalledPackageEcosystem>() : [])
         {
             InstalledPackageEcosystemMetadata old = baseline.Packages.Ecosystems[ecosystem];
             InstalledPackageEcosystemMetadata current = target.Packages.Ecosystems[ecosystem];
