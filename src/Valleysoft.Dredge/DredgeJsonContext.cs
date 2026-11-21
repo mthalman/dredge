@@ -14,6 +14,7 @@ namespace Valleysoft.Dredge;
 [JsonSerializable(typeof(ErrorJsonEnvelope))]
 [JsonSerializable(typeof(CompareLayersResult))]
 [JsonSerializable(typeof(CompareMetadataResult))]
+[JsonSerializable(typeof(CompareResult))]
 [JsonSerializable(typeof(ImageFileSystemEntry[]))]
 [JsonSerializable(typeof(LinuxOsInfo))]
 [JsonSerializable(typeof(WindowsOsInfo))]

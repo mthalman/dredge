@@ -104,7 +104,7 @@ public class InstalledPackageReaderTests
 
         Assert.Equal(
             [
-                new InstalledPackage("installed", "1:2.3-4"),
+                new InstalledPackage("installed", "1:2.3-4") { Architecture = "amd64" },
                 new InstalledPackage("also-installed", "6.7")
             ],
             packages);
@@ -160,8 +160,8 @@ public class InstalledPackageReaderTests
 
         Assert.Equal(
             [
-                new InstalledPackage("musl", "1.2.5-r1"),
-                new InstalledPackage("busybox", "1.36.1-r29")
+                new InstalledPackage("musl", "1.2.5-r1") { Architecture = "x86_64" },
+                new InstalledPackage("busybox", "1.36.1-r29") { Architecture = "x86_64" }
             ],
             packages);
     }
@@ -203,7 +203,7 @@ public class InstalledPackageReaderTests
 
         Assert.Equal(
             [
-                new InstalledPackage("alpine-baselayout-data", "3.7.0-r0"),
+                new InstalledPackage("alpine-baselayout-data", "3.7.0-r0") { Architecture = "x86_64" },
                 new InstalledPackage("busybox", "1.37.0-r12")
             ],
             InstalledPackageReader.ParseApkInstalled(Content));

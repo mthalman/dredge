@@ -132,6 +132,30 @@ internal static class PackageFileLister
         return [.. files.Order(StringComparer.Ordinal)];
     }
 
+    internal static IReadOnlyDictionary<string, IReadOnlyList<string>> ParseApkOwnership(string content)
+    {
+        Dictionary<string, List<string>> files = new(StringComparer.Ordinal);
+        string? name = null;
+        string directory = "";
+        foreach (string raw in content.Split('\n'))
+        {
+            string line = raw.TrimEnd('\r');
+            if (line.Length == 0) { name = null; directory = ""; }
+            else if (line.StartsWith("P:", StringComparison.Ordinal))
+            {
+                name = line[2..];
+                if (!files.ContainsKey(name)) { files[name] = []; }
+            }
+            else if (line.StartsWith("F:", StringComparison.Ordinal)) { directory = line[2..].Trim('/'); }
+            else if (name is not null && line.StartsWith("R:", StringComparison.Ordinal))
+            {
+                files[name].Add(directory.Length == 0 ? line[2..] : directory + "/" + line[2..]);
+            }
+        }
+        return files.ToDictionary(static p => p.Key,
+            static p => (IReadOnlyList<string>)p.Value.Distinct(StringComparer.Ordinal).Order(StringComparer.Ordinal).ToArray(), StringComparer.Ordinal);
+    }
+
     internal static IReadOnlyList<string> ParsePipRecord(string content, string root)
     {
         List<string> files = [];

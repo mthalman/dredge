@@ -52,7 +52,9 @@ See the [explorer guide](docs/commands/images.md#explore).
 - Browse, read, and selectively [extract files from
   images](docs/commands/images.md#ls) with layer provenance.
   See [Windows filesystem limitations](docs/commands/images.md#windows-filesystem-support).
-- Compare [layers](docs/commands/images.md#compare-layers) or
+- [Compare effective image facts headlessly](docs/commands/images.md#compare-semantic):
+  filesystem, scoped packages, configuration, layers, and sizes, with versioned
+  JSON and explicit incomplete coverage. Or compare [layers](docs/commands/images.md#compare-layers) or
   [files](docs/commands/images.md#compare-files) between images.
 - [Generate a Dockerfile](docs/commands/images.md#dockerfile) from an image.
 - [Save image layers](docs/commands/images.md#save-layers) as a merged

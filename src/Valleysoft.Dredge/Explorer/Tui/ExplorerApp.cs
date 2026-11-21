@@ -1123,7 +1123,9 @@ internal sealed class ExplorerHost : IExplorerHost, IAsyncDisposable
             {
                 string[] allPaths = [.. side.Entries.Select(entry => entry.Path)];
                 IReadOnlyList<string> paths = package.Ecosystem == InstalledPackageEcosystem.Npm
-                    ? PackageFileLister.ListNpm(side.Packages.NpmPackageRoots.GetValueOrDefault(package.Name) ?? [], allPaths)
+                    ? PackageFileLister.ListNpm(package.Scope is null
+                        ? side.Packages.NpmPackageRoots.GetValueOrDefault(package.Name) ?? []
+                        : [package.Scope], allPaths)
                     : await PackageFileLister.ListAsync(package.Ecosystem, package.Name, allPaths,
                     async (path, token) =>
                     {
@@ -1140,6 +1142,11 @@ internal sealed class ExplorerHost : IExplorerHost, IAsyncDisposable
                     (path, error) => warnings.Add($"{label} /{path}: {error.Message}"));
                 foreach (string path in paths)
                 {
+                    if (package.Ecosystem == InstalledPackageEcosystem.Pip && package.Scope is not null &&
+                        !path.StartsWith(package.Scope + "/", StringComparison.Ordinal))
+                    {
+                        continue;
+                    }
                     cancellationToken.ThrowIfCancellationRequested();
                     try
                     {

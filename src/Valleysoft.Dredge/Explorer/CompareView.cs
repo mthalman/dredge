@@ -407,7 +407,11 @@ internal sealed class CompareView
                 {
                     continue;
                 }
-                int unchanged = Math.Max(0, c.Comparison.Target.Packages.Ecosystems[ecosystem].Packages.Count
+                int inventoryCount = c.Comparison.Target.Packages.Coverage.Count == 0
+                    ? c.Comparison.Target.Packages.Ecosystems[ecosystem].Packages.Count
+                    : c.Comparison.Target.Packages.ScopedPackages.Where(p => p.Ecosystem == ecosystem)
+                        .DistinctBy(static p => (p.Scope, p.Name)).Count();
+                int unchanged = Math.Max(0, inventoryCount
                     - changes.Count(p => p.TargetVersion is not null));
                 if (changes.Count == 0 && unchanged == 0)
                 {
@@ -520,7 +524,8 @@ internal sealed class CompareView
             Change.Removed => p.BaselineVersion!,
             _ => $"{p.BaselineVersion} → {p.TargetVersion}",
         };
-        return new($"pkg:{p.Ecosystem}:{p.Name}", CompareRowKind.Package, branch, p.Name, change, Versions: versions, Package: p);
+        return new(p.Scope is null ? $"pkg:{p.Ecosystem}:{p.Name}" : $"pkg:{p.Ecosystem}:{p.Scope}:{p.Name}", CompareRowKind.Package, branch,
+            p.Scope is null ? p.Name : $"{p.Name} [{p.Scope}]", change, Versions: versions, Package: p);
     }
 
     public PaneContent Diff()

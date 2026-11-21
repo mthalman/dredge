@@ -769,9 +769,21 @@ public sealed class ExplorerDefenseHostTests : IAsyncDisposable
         TestImage baseline = await CreateAsync(Layer("1"));
         TestImage target = await CreateAsync(Layer("2"));
         ExplorerComparison comparison = await CompareAsync(baseline, target);
-        ExplorerPackageDifference package = Assert.Single(comparison.Packages, package => package.Name == name);
+        ExplorerPackageDifference[] packages = [.. comparison.Packages.Where(package => package.Name == name)];
+        Assert.Equal(["app/node_modules/@aliases/second", "app/node_modules/alias"],
+            packages.Select(static package => package.Scope));
+        foreach (ExplorerPackageDifference package in packages)
+        {
+            PackageFilesContent scoped = await Host(baseline).PackageFilesAsync(comparison, package, Token);
+            Assert.Empty(scoped.Warnings!);
+            Assert.NotNull(scoped.Files);
+            Assert.Equal([package.Scope + "/index.js", package.Scope + "/package.json"],
+                scoped.Files!.Select(static file => file.Path));
+            Assert.All(scoped.Files, static file => Assert.Equal(Change.Modified, file.Change));
+        }
 
-        PackageFilesContent result = await Host(baseline).PackageFilesAsync(comparison, package, Token);
+        PackageFilesContent result = await Host(baseline).PackageFilesAsync(comparison,
+            new(InstalledPackageEcosystem.Npm, name, "1", "2"), Token);
 
         Assert.Empty(result.Warnings!);
         Assert.NotNull(result.Files);
@@ -797,14 +809,21 @@ public sealed class ExplorerDefenseHostTests : IAsyncDisposable
         var inventory = baseline.Session.Packages.Ecosystems[InstalledPackageEcosystem.Pip].Packages;
         Assert.Equal("friendly-bard", Assert.Single(inventory).Key);
         Assert.Equal(["1"], inventory["friendly-bard"]);
+        Assert.Equal(new ExplorerPackageDifference(InstalledPackageEcosystem.Pip, "friendly-bard", "1", null)
+        {
+            Scope = "venv"
+        }, Assert.Single(comparison.Packages, static package => package.Scope == "venv"));
         if (targetVersion == "1")
         {
-            Assert.Empty(comparison.Packages);
+            Assert.Single(comparison.Packages);
         }
         else
         {
-            Assert.Equal(new(InstalledPackageEcosystem.Pip, "friendly-bard", "1", "2"),
-                Assert.Single(comparison.Packages));
+            Assert.Equal(2, comparison.Packages.Count);
+            Assert.Equal(new ExplorerPackageDifference(InstalledPackageEcosystem.Pip, "friendly-bard", "1", "2")
+            {
+                Scope = "site"
+            }, Assert.Single(comparison.Packages, static package => package.Scope == "site"));
         }
     }
 

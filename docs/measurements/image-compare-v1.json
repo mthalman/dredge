@@ -1,0 +1,2315 @@
+{
+  "environment": {
+    "os": "Microsoft Windows NT 10.0.26300.0",
+    "runtime": "10.0.14",
+    "processorCount": 12
+  },
+  "measurements": [
+    {
+      "Fixture": "small",
+      "Source": "registry",
+      "Format": "text",
+      "Cache": "cold",
+      "Repeat": 0,
+      "ElapsedMs": 530.4227,
+      "PeakWorkingSetBytes": 96796672,
+      "ManagedAllocatedBytes": 5548600,
+      "PeakCacheBytes": 199501,
+      "PeakDaemonScratchBytes": 0,
+      "PeakDiskBytes": 199501,
+      "RetainedCacheBytes": 199501,
+      "BaseLayerDigests": [
+        "sha256:5c06921bcbcd87572a6b4223381a3a9acb3938cf526f3e55d84b2b1a8058ddc2"
+      ],
+      "TargetLayerDigests": [
+        "sha256:5c06921bcbcd87572a6b4223381a3a9acb3938cf526f3e55d84b2b1a8058ddc2",
+        "sha256:6f99e7bfcf4c6b77ed1a319aaee4126d8a08644aa6c0b3110e7993da23827646"
+      ],
+      "BaseCompressedBytes": 1418,
+      "TargetCompressedBytes": 1668,
+      "OutputCharacters": 1722,
+      "FileDifferences": 16
+    },
+    {
+      "Fixture": "small",
+      "Source": "registry",
+      "Format": "text",
+      "Cache": "warm",
+      "Repeat": 0,
+      "ElapsedMs": 56.9415,
+      "PeakWorkingSetBytes": 96419840,
+      "ManagedAllocatedBytes": 5011144,
+      "PeakCacheBytes": 199501,
+      "PeakDaemonScratchBytes": 0,
+      "PeakDiskBytes": 199501,
+      "RetainedCacheBytes": 199501,
+      "BaseLayerDigests": [
+        "sha256:5c06921bcbcd87572a6b4223381a3a9acb3938cf526f3e55d84b2b1a8058ddc2"
+      ],
+      "TargetLayerDigests": [
+        "sha256:5c06921bcbcd87572a6b4223381a3a9acb3938cf526f3e55d84b2b1a8058ddc2",
+        "sha256:6f99e7bfcf4c6b77ed1a319aaee4126d8a08644aa6c0b3110e7993da23827646"
+      ],
+      "BaseCompressedBytes": 1418,
+      "TargetCompressedBytes": 1668,
+      "OutputCharacters": 1722,
+      "FileDifferences": 16
+    },
+    {
+      "Fixture": "small",
+      "Source": "registry",
+      "Format": "text",
+      "Cache": "cold",
+      "Repeat": 1,
+      "ElapsedMs": 106.371,
+      "PeakWorkingSetBytes": 97067008,
+      "ManagedAllocatedBytes": 4527496,
+      "PeakCacheBytes": 199501,
+      "PeakDaemonScratchBytes": 0,
+      "PeakDiskBytes": 199501,
+      "RetainedCacheBytes": 199501,
+      "BaseLayerDigests": [
+        "sha256:5c06921bcbcd87572a6b4223381a3a9acb3938cf526f3e55d84b2b1a8058ddc2"
+      ],
+      "TargetLayerDigests": [
+        "sha256:5c06921bcbcd87572a6b4223381a3a9acb3938cf526f3e55d84b2b1a8058ddc2",
+        "sha256:6f99e7bfcf4c6b77ed1a319aaee4126d8a08644aa6c0b3110e7993da23827646"
+      ],
+      "BaseCompressedBytes": 1418,
+      "TargetCompressedBytes": 1668,
+      "OutputCharacters": 1722,
+      "FileDifferences": 16
+    },
+    {
+      "Fixture": "small",
+      "Source": "registry",
+      "Format": "text",
+      "Cache": "warm",
+      "Repeat": 1,
+      "ElapsedMs": 51.8335,
+      "PeakWorkingSetBytes": 97222656,
+      "ManagedAllocatedBytes": 3885376,
+      "PeakCacheBytes": 199501,
+      "PeakDaemonScratchBytes": 0,
+      "PeakDiskBytes": 199501,
+      "RetainedCacheBytes": 199501,
+      "BaseLayerDigests": [
+        "sha256:5c06921bcbcd87572a6b4223381a3a9acb3938cf526f3e55d84b2b1a8058ddc2"
+      ],
+      "TargetLayerDigests": [
+        "sha256:5c06921bcbcd87572a6b4223381a3a9acb3938cf526f3e55d84b2b1a8058ddc2",
+        "sha256:6f99e7bfcf4c6b77ed1a319aaee4126d8a08644aa6c0b3110e7993da23827646"
+      ],
+      "BaseCompressedBytes": 1418,
+      "TargetCompressedBytes": 1668,
+      "OutputCharacters": 1722,
+      "FileDifferences": 16
+    },
+    {
+      "Fixture": "small",
+      "Source": "registry",
+      "Format": "text",
+      "Cache": "cold",
+      "Repeat": 2,
+      "ElapsedMs": 128.2732,
+      "PeakWorkingSetBytes": 95203328,
+      "ManagedAllocatedBytes": 4520656,
+      "PeakCacheBytes": 199501,
+      "PeakDaemonScratchBytes": 0,
+      "PeakDiskBytes": 199501,
+      "RetainedCacheBytes": 199501,
+      "BaseLayerDigests": [
+        "sha256:5c06921bcbcd87572a6b4223381a3a9acb3938cf526f3e55d84b2b1a8058ddc2"
+      ],
+      "TargetLayerDigests": [
+        "sha256:5c06921bcbcd87572a6b4223381a3a9acb3938cf526f3e55d84b2b1a8058ddc2",
+        "sha256:6f99e7bfcf4c6b77ed1a319aaee4126d8a08644aa6c0b3110e7993da23827646"
+      ],
+      "BaseCompressedBytes": 1418,
+      "TargetCompressedBytes": 1668,
+      "OutputCharacters": 1722,
+      "FileDifferences": 16
+    },
+    {
+      "Fixture": "small",
+      "Source": "registry",
+      "Format": "text",
+      "Cache": "warm",
+      "Repeat": 2,
+      "ElapsedMs": 68.2369,
+      "PeakWorkingSetBytes": 96288768,
+      "ManagedAllocatedBytes": 4973448,
+      "PeakCacheBytes": 199501,
+      "PeakDaemonScratchBytes": 0,
+      "PeakDiskBytes": 199501,
+      "RetainedCacheBytes": 199501,
+      "BaseLayerDigests": [
+        "sha256:5c06921bcbcd87572a6b4223381a3a9acb3938cf526f3e55d84b2b1a8058ddc2"
+      ],
+      "TargetLayerDigests": [
+        "sha256:5c06921bcbcd87572a6b4223381a3a9acb3938cf526f3e55d84b2b1a8058ddc2",
+        "sha256:6f99e7bfcf4c6b77ed1a319aaee4126d8a08644aa6c0b3110e7993da23827646"
+      ],
+      "BaseCompressedBytes": 1418,
+      "TargetCompressedBytes": 1668,
+      "OutputCharacters": 1722,
+      "FileDifferences": 16
+    },
+    {
+      "Fixture": "small",
+      "Source": "registry",
+      "Format": "json",
+      "Cache": "cold",
+      "Repeat": 0,
+      "ElapsedMs": 302.1959,
+      "PeakWorkingSetBytes": 97366016,
+      "ManagedAllocatedBytes": 4846640,
+      "PeakCacheBytes": 199501,
+      "PeakDaemonScratchBytes": 0,
+      "PeakDiskBytes": 199501,
+      "RetainedCacheBytes": 199501,
+      "BaseLayerDigests": [
+        "sha256:5c06921bcbcd87572a6b4223381a3a9acb3938cf526f3e55d84b2b1a8058ddc2"
+      ],
+      "TargetLayerDigests": [
+        "sha256:5c06921bcbcd87572a6b4223381a3a9acb3938cf526f3e55d84b2b1a8058ddc2",
+        "sha256:6f99e7bfcf4c6b77ed1a319aaee4126d8a08644aa6c0b3110e7993da23827646"
+      ],
+      "BaseCompressedBytes": 1418,
+      "TargetCompressedBytes": 1668,
+      "OutputCharacters": 30033,
+      "FileDifferences": 16
+    },
+    {
+      "Fixture": "small",
+      "Source": "registry",
+      "Format": "json",
+      "Cache": "warm",
+      "Repeat": 0,
+      "ElapsedMs": 84.0985,
+      "PeakWorkingSetBytes": 97792000,
+      "ManagedAllocatedBytes": 4804568,
+      "PeakCacheBytes": 199501,
+      "PeakDaemonScratchBytes": 0,
+      "PeakDiskBytes": 199501,
+      "RetainedCacheBytes": 199501,
+      "BaseLayerDigests": [
+        "sha256:5c06921bcbcd87572a6b4223381a3a9acb3938cf526f3e55d84b2b1a8058ddc2"
+      ],
+      "TargetLayerDigests": [
+        "sha256:5c06921bcbcd87572a6b4223381a3a9acb3938cf526f3e55d84b2b1a8058ddc2",
+        "sha256:6f99e7bfcf4c6b77ed1a319aaee4126d8a08644aa6c0b3110e7993da23827646"
+      ],
+      "BaseCompressedBytes": 1418,
+      "TargetCompressedBytes": 1668,
+      "OutputCharacters": 30033,
+      "FileDifferences": 16
+    },
+    {
+      "Fixture": "small",
+      "Source": "registry",
+      "Format": "json",
+      "Cache": "cold",
+      "Repeat": 1,
+      "ElapsedMs": 142.7515,
+      "PeakWorkingSetBytes": 98508800,
+      "ManagedAllocatedBytes": 3887240,
+      "PeakCacheBytes": 199501,
+      "PeakDaemonScratchBytes": 0,
+      "PeakDiskBytes": 199501,
+      "RetainedCacheBytes": 199501,
+      "BaseLayerDigests": [
+        "sha256:5c06921bcbcd87572a6b4223381a3a9acb3938cf526f3e55d84b2b1a8058ddc2"
+      ],
+      "TargetLayerDigests": [
+        "sha256:5c06921bcbcd87572a6b4223381a3a9acb3938cf526f3e55d84b2b1a8058ddc2",
+        "sha256:6f99e7bfcf4c6b77ed1a319aaee4126d8a08644aa6c0b3110e7993da23827646"
+      ],
+      "BaseCompressedBytes": 1418,
+      "TargetCompressedBytes": 1668,
+      "OutputCharacters": 30033,
+      "FileDifferences": 16
+    },
+    {
+      "Fixture": "small",
+      "Source": "registry",
+      "Format": "json",
+      "Cache": "warm",
+      "Repeat": 1,
+      "ElapsedMs": 64.1575,
+      "PeakWorkingSetBytes": 99282944,
+      "ManagedAllocatedBytes": 5209272,
+      "PeakCacheBytes": 199501,
+      "PeakDaemonScratchBytes": 0,
+      "PeakDiskBytes": 199501,
+      "RetainedCacheBytes": 199501,
+      "BaseLayerDigests": [
+        "sha256:5c06921bcbcd87572a6b4223381a3a9acb3938cf526f3e55d84b2b1a8058ddc2"
+      ],
+      "TargetLayerDigests": [
+        "sha256:5c06921bcbcd87572a6b4223381a3a9acb3938cf526f3e55d84b2b1a8058ddc2",
+        "sha256:6f99e7bfcf4c6b77ed1a319aaee4126d8a08644aa6c0b3110e7993da23827646"
+      ],
+      "BaseCompressedBytes": 1418,
+      "TargetCompressedBytes": 1668,
+      "OutputCharacters": 30033,
+      "FileDifferences": 16
+    },
+    {
+      "Fixture": "small",
+      "Source": "registry",
+      "Format": "json",
+      "Cache": "cold",
+      "Repeat": 2,
+      "ElapsedMs": 162.1586,
+      "PeakWorkingSetBytes": 99352576,
+      "ManagedAllocatedBytes": 4660600,
+      "PeakCacheBytes": 199501,
+      "PeakDaemonScratchBytes": 0,
+      "PeakDiskBytes": 199501,
+      "RetainedCacheBytes": 199501,
+      "BaseLayerDigests": [
+        "sha256:5c06921bcbcd87572a6b4223381a3a9acb3938cf526f3e55d84b2b1a8058ddc2"
+      ],
+      "TargetLayerDigests": [
+        "sha256:5c06921bcbcd87572a6b4223381a3a9acb3938cf526f3e55d84b2b1a8058ddc2",
+        "sha256:6f99e7bfcf4c6b77ed1a319aaee4126d8a08644aa6c0b3110e7993da23827646"
+      ],
+      "BaseCompressedBytes": 1418,
+      "TargetCompressedBytes": 1668,
+      "OutputCharacters": 30033,
+      "FileDifferences": 16
+    },
+    {
+      "Fixture": "small",
+      "Source": "registry",
+      "Format": "json",
+      "Cache": "warm",
+      "Repeat": 2,
+      "ElapsedMs": 87.9949,
+      "PeakWorkingSetBytes": 99471360,
+      "ManagedAllocatedBytes": 4045536,
+      "PeakCacheBytes": 199501,
+      "PeakDaemonScratchBytes": 0,
+      "PeakDiskBytes": 199501,
+      "RetainedCacheBytes": 199501,
+      "BaseLayerDigests": [
+        "sha256:5c06921bcbcd87572a6b4223381a3a9acb3938cf526f3e55d84b2b1a8058ddc2"
+      ],
+      "TargetLayerDigests": [
+        "sha256:5c06921bcbcd87572a6b4223381a3a9acb3938cf526f3e55d84b2b1a8058ddc2",
+        "sha256:6f99e7bfcf4c6b77ed1a319aaee4126d8a08644aa6c0b3110e7993da23827646"
+      ],
+      "BaseCompressedBytes": 1418,
+      "TargetCompressedBytes": 1668,
+      "OutputCharacters": 30033,
+      "FileDifferences": 16
+    },
+    {
+      "Fixture": "small",
+      "Source": "mixed",
+      "Format": "text",
+      "Cache": "cold",
+      "Repeat": 0,
+      "ElapsedMs": 292.954,
+      "PeakWorkingSetBytes": 100466688,
+      "ManagedAllocatedBytes": 5858144,
+      "PeakCacheBytes": 254751,
+      "PeakDaemonScratchBytes": 153600,
+      "PeakDiskBytes": 332168,
+      "RetainedCacheBytes": 254751,
+      "BaseLayerDigests": [
+        "sha256:5c06921bcbcd87572a6b4223381a3a9acb3938cf526f3e55d84b2b1a8058ddc2"
+      ],
+      "TargetLayerDigests": [
+        "sha256:5c06921bcbcd87572a6b4223381a3a9acb3938cf526f3e55d84b2b1a8058ddc2",
+        "sha256:6f99e7bfcf4c6b77ed1a319aaee4126d8a08644aa6c0b3110e7993da23827646"
+      ],
+      "BaseCompressedBytes": 1418,
+      "TargetCompressedBytes": 1668,
+      "OutputCharacters": 1929,
+      "FileDifferences": 16
+    },
+    {
+      "Fixture": "small",
+      "Source": "mixed",
+      "Format": "text",
+      "Cache": "warm",
+      "Repeat": 0,
+      "ElapsedMs": 107.4003,
+      "PeakWorkingSetBytes": 101076992,
+      "ManagedAllocatedBytes": 6001184,
+      "PeakCacheBytes": 254751,
+      "PeakDaemonScratchBytes": 153600,
+      "PeakDiskBytes": 408351,
+      "RetainedCacheBytes": 254751,
+      "BaseLayerDigests": [
+        "sha256:5c06921bcbcd87572a6b4223381a3a9acb3938cf526f3e55d84b2b1a8058ddc2"
+      ],
+      "TargetLayerDigests": [
+        "sha256:5c06921bcbcd87572a6b4223381a3a9acb3938cf526f3e55d84b2b1a8058ddc2",
+        "sha256:6f99e7bfcf4c6b77ed1a319aaee4126d8a08644aa6c0b3110e7993da23827646"
+      ],
+      "BaseCompressedBytes": 1418,
+      "TargetCompressedBytes": 1668,
+      "OutputCharacters": 1929,
+      "FileDifferences": 16
+    },
+    {
+      "Fixture": "small",
+      "Source": "mixed",
+      "Format": "text",
+      "Cache": "cold",
+      "Repeat": 1,
+      "ElapsedMs": 151.3629,
+      "PeakWorkingSetBytes": 99119104,
+      "ManagedAllocatedBytes": 6444480,
+      "PeakCacheBytes": 254751,
+      "PeakDaemonScratchBytes": 153600,
+      "PeakDiskBytes": 339508,
+      "RetainedCacheBytes": 254751,
+      "BaseLayerDigests": [
+        "sha256:5c06921bcbcd87572a6b4223381a3a9acb3938cf526f3e55d84b2b1a8058ddc2"
+      ],
+      "TargetLayerDigests": [
+        "sha256:5c06921bcbcd87572a6b4223381a3a9acb3938cf526f3e55d84b2b1a8058ddc2",
+        "sha256:6f99e7bfcf4c6b77ed1a319aaee4126d8a08644aa6c0b3110e7993da23827646"
+      ],
+      "BaseCompressedBytes": 1418,
+      "TargetCompressedBytes": 1668,
+      "OutputCharacters": 1929,
+      "FileDifferences": 16
+    },
+    {
+      "Fixture": "small",
+      "Source": "mixed",
+      "Format": "text",
+      "Cache": "warm",
+      "Repeat": 1,
+      "ElapsedMs": 95.1022,
+      "PeakWorkingSetBytes": 99614720,
+      "ManagedAllocatedBytes": 5493048,
+      "PeakCacheBytes": 321094,
+      "PeakDaemonScratchBytes": 153600,
+      "PeakDiskBytes": 474694,
+      "RetainedCacheBytes": 254751,
+      "BaseLayerDigests": [
+        "sha256:5c06921bcbcd87572a6b4223381a3a9acb3938cf526f3e55d84b2b1a8058ddc2"
+      ],
+      "TargetLayerDigests": [
+        "sha256:5c06921bcbcd87572a6b4223381a3a9acb3938cf526f3e55d84b2b1a8058ddc2",
+        "sha256:6f99e7bfcf4c6b77ed1a319aaee4126d8a08644aa6c0b3110e7993da23827646"
+      ],
+      "BaseCompressedBytes": 1418,
+      "TargetCompressedBytes": 1668,
+      "OutputCharacters": 1929,
+      "FileDifferences": 16
+    },
+    {
+      "Fixture": "small",
+      "Source": "mixed",
+      "Format": "text",
+      "Cache": "cold",
+      "Repeat": 2,
+      "ElapsedMs": 180.8833,
+      "PeakWorkingSetBytes": 99573760,
+      "ManagedAllocatedBytes": 6509304,
+      "PeakCacheBytes": 254751,
+      "PeakDaemonScratchBytes": 153600,
+      "PeakDiskBytes": 408351,
+      "RetainedCacheBytes": 254751,
+      "BaseLayerDigests": [
+        "sha256:5c06921bcbcd87572a6b4223381a3a9acb3938cf526f3e55d84b2b1a8058ddc2"
+      ],
+      "TargetLayerDigests": [
+        "sha256:5c06921bcbcd87572a6b4223381a3a9acb3938cf526f3e55d84b2b1a8058ddc2",
+        "sha256:6f99e7bfcf4c6b77ed1a319aaee4126d8a08644aa6c0b3110e7993da23827646"
+      ],
+      "BaseCompressedBytes": 1418,
+      "TargetCompressedBytes": 1668,
+      "OutputCharacters": 1929,
+      "FileDifferences": 16
+    },
+    {
+      "Fixture": "small",
+      "Source": "mixed",
+      "Format": "text",
+      "Cache": "warm",
+      "Repeat": 2,
+      "ElapsedMs": 111.9204,
+      "PeakWorkingSetBytes": 100003840,
+      "ManagedAllocatedBytes": 6527456,
+      "PeakCacheBytes": 321094,
+      "PeakDaemonScratchBytes": 153600,
+      "PeakDiskBytes": 408351,
+      "RetainedCacheBytes": 254751,
+      "BaseLayerDigests": [
+        "sha256:5c06921bcbcd87572a6b4223381a3a9acb3938cf526f3e55d84b2b1a8058ddc2"
+      ],
+      "TargetLayerDigests": [
+        "sha256:5c06921bcbcd87572a6b4223381a3a9acb3938cf526f3e55d84b2b1a8058ddc2",
+        "sha256:6f99e7bfcf4c6b77ed1a319aaee4126d8a08644aa6c0b3110e7993da23827646"
+      ],
+      "BaseCompressedBytes": 1418,
+      "TargetCompressedBytes": 1668,
+      "OutputCharacters": 1929,
+      "FileDifferences": 16
+    },
+    {
+      "Fixture": "small",
+      "Source": "mixed",
+      "Format": "json",
+      "Cache": "cold",
+      "Repeat": 0,
+      "ElapsedMs": 167.6516,
+      "PeakWorkingSetBytes": 100102144,
+      "ManagedAllocatedBytes": 5893704,
+      "PeakCacheBytes": 254751,
+      "PeakDaemonScratchBytes": 153600,
+      "PeakDiskBytes": 408351,
+      "RetainedCacheBytes": 254751,
+      "BaseLayerDigests": [
+        "sha256:5c06921bcbcd87572a6b4223381a3a9acb3938cf526f3e55d84b2b1a8058ddc2"
+      ],
+      "TargetLayerDigests": [
+        "sha256:5c06921bcbcd87572a6b4223381a3a9acb3938cf526f3e55d84b2b1a8058ddc2",
+        "sha256:6f99e7bfcf4c6b77ed1a319aaee4126d8a08644aa6c0b3110e7993da23827646"
+      ],
+      "BaseCompressedBytes": 1418,
+      "TargetCompressedBytes": 1668,
+      "OutputCharacters": 28762,
+      "FileDifferences": 16
+    },
+    {
+      "Fixture": "small",
+      "Source": "mixed",
+      "Format": "json",
+      "Cache": "warm",
+      "Repeat": 0,
+      "ElapsedMs": 96.2312,
+      "PeakWorkingSetBytes": 99151872,
+      "ManagedAllocatedBytes": 5328848,
+      "PeakCacheBytes": 254751,
+      "PeakDaemonScratchBytes": 153600,
+      "PeakDiskBytes": 477194,
+      "RetainedCacheBytes": 254751,
+      "BaseLayerDigests": [
+        "sha256:5c06921bcbcd87572a6b4223381a3a9acb3938cf526f3e55d84b2b1a8058ddc2"
+      ],
+      "TargetLayerDigests": [
+        "sha256:5c06921bcbcd87572a6b4223381a3a9acb3938cf526f3e55d84b2b1a8058ddc2",
+        "sha256:6f99e7bfcf4c6b77ed1a319aaee4126d8a08644aa6c0b3110e7993da23827646"
+      ],
+      "BaseCompressedBytes": 1418,
+      "TargetCompressedBytes": 1668,
+      "OutputCharacters": 28762,
+      "FileDifferences": 16
+    },
+    {
+      "Fixture": "small",
+      "Source": "mixed",
+      "Format": "json",
+      "Cache": "cold",
+      "Repeat": 1,
+      "ElapsedMs": 156.326,
+      "PeakWorkingSetBytes": 99037184,
+      "ManagedAllocatedBytes": 6409080,
+      "PeakCacheBytes": 254751,
+      "PeakDaemonScratchBytes": 153600,
+      "PeakDiskBytes": 408351,
+      "RetainedCacheBytes": 254751,
+      "BaseLayerDigests": [
+        "sha256:5c06921bcbcd87572a6b4223381a3a9acb3938cf526f3e55d84b2b1a8058ddc2"
+      ],
+      "TargetLayerDigests": [
+        "sha256:5c06921bcbcd87572a6b4223381a3a9acb3938cf526f3e55d84b2b1a8058ddc2",
+        "sha256:6f99e7bfcf4c6b77ed1a319aaee4126d8a08644aa6c0b3110e7993da23827646"
+      ],
+      "BaseCompressedBytes": 1418,
+      "TargetCompressedBytes": 1668,
+      "OutputCharacters": 28762,
+      "FileDifferences": 16
+    },
+    {
+      "Fixture": "small",
+      "Source": "mixed",
+      "Format": "json",
+      "Cache": "warm",
+      "Repeat": 1,
+      "ElapsedMs": 98.6896,
+      "PeakWorkingSetBytes": 99819520,
+      "ManagedAllocatedBytes": 5757288,
+      "PeakCacheBytes": 254751,
+      "PeakDaemonScratchBytes": 153600,
+      "PeakDiskBytes": 474694,
+      "RetainedCacheBytes": 254751,
+      "BaseLayerDigests": [
+        "sha256:5c06921bcbcd87572a6b4223381a3a9acb3938cf526f3e55d84b2b1a8058ddc2"
+      ],
+      "TargetLayerDigests": [
+        "sha256:5c06921bcbcd87572a6b4223381a3a9acb3938cf526f3e55d84b2b1a8058ddc2",
+        "sha256:6f99e7bfcf4c6b77ed1a319aaee4126d8a08644aa6c0b3110e7993da23827646"
+      ],
+      "BaseCompressedBytes": 1418,
+      "TargetCompressedBytes": 1668,
+      "OutputCharacters": 28762,
+      "FileDifferences": 16
+    },
+    {
+      "Fixture": "small",
+      "Source": "mixed",
+      "Format": "json",
+      "Cache": "cold",
+      "Repeat": 2,
+      "ElapsedMs": 170.9012,
+      "PeakWorkingSetBytes": 100175872,
+      "ManagedAllocatedBytes": 6618168,
+      "PeakCacheBytes": 254751,
+      "PeakDaemonScratchBytes": 153600,
+      "PeakDiskBytes": 339508,
+      "RetainedCacheBytes": 254751,
+      "BaseLayerDigests": [
+        "sha256:5c06921bcbcd87572a6b4223381a3a9acb3938cf526f3e55d84b2b1a8058ddc2"
+      ],
+      "TargetLayerDigests": [
+        "sha256:5c06921bcbcd87572a6b4223381a3a9acb3938cf526f3e55d84b2b1a8058ddc2",
+        "sha256:6f99e7bfcf4c6b77ed1a319aaee4126d8a08644aa6c0b3110e7993da23827646"
+      ],
+      "BaseCompressedBytes": 1418,
+      "TargetCompressedBytes": 1668,
+      "OutputCharacters": 28762,
+      "FileDifferences": 16
+    },
+    {
+      "Fixture": "small",
+      "Source": "mixed",
+      "Format": "json",
+      "Cache": "warm",
+      "Repeat": 2,
+      "ElapsedMs": 114.9431,
+      "PeakWorkingSetBytes": 100675584,
+      "ManagedAllocatedBytes": 5474960,
+      "PeakCacheBytes": 254751,
+      "PeakDaemonScratchBytes": 153600,
+      "PeakDiskBytes": 408351,
+      "RetainedCacheBytes": 254751,
+      "BaseLayerDigests": [
+        "sha256:5c06921bcbcd87572a6b4223381a3a9acb3938cf526f3e55d84b2b1a8058ddc2"
+      ],
+      "TargetLayerDigests": [
+        "sha256:5c06921bcbcd87572a6b4223381a3a9acb3938cf526f3e55d84b2b1a8058ddc2",
+        "sha256:6f99e7bfcf4c6b77ed1a319aaee4126d8a08644aa6c0b3110e7993da23827646"
+      ],
+      "BaseCompressedBytes": 1418,
+      "TargetCompressedBytes": 1668,
+      "OutputCharacters": 28762,
+      "FileDifferences": 16
+    },
+    {
+      "Fixture": "dependencies",
+      "Source": "registry",
+      "Format": "text",
+      "Cache": "cold",
+      "Repeat": 0,
+      "ElapsedMs": 1388.0267,
+      "PeakWorkingSetBytes": 186974208,
+      "ManagedAllocatedBytes": 218356808,
+      "PeakCacheBytes": 8926158,
+      "PeakDaemonScratchBytes": 0,
+      "PeakDiskBytes": 8926158,
+      "RetainedCacheBytes": 8926158,
+      "BaseLayerDigests": [
+        "sha256:abb8266fdd5ffff91db0cfdfccada46a67f24ce7e1b82b4a015edfc3169f2fed"
+      ],
+      "TargetLayerDigests": [
+        "sha256:abb8266fdd5ffff91db0cfdfccada46a67f24ce7e1b82b4a015edfc3169f2fed",
+        "sha256:6c490feaa9c82bc510ec6c9d0c78a61f1f71fd5c56658a54a15391a49ad67a33"
+      ],
+      "BaseCompressedBytes": 58380,
+      "TargetCompressedBytes": 62511,
+      "OutputCharacters": 1767,
+      "FileDifferences": 481
+    },
+    {
+      "Fixture": "dependencies",
+      "Source": "registry",
+      "Format": "text",
+      "Cache": "warm",
+      "Repeat": 0,
+      "ElapsedMs": 942.8417,
+      "PeakWorkingSetBytes": 239943680,
+      "ManagedAllocatedBytes": 208691192,
+      "PeakCacheBytes": 12159805,
+      "PeakDaemonScratchBytes": 0,
+      "PeakDiskBytes": 12159805,
+      "RetainedCacheBytes": 8926158,
+      "BaseLayerDigests": [
+        "sha256:abb8266fdd5ffff91db0cfdfccada46a67f24ce7e1b82b4a015edfc3169f2fed"
+      ],
+      "TargetLayerDigests": [
+        "sha256:abb8266fdd5ffff91db0cfdfccada46a67f24ce7e1b82b4a015edfc3169f2fed",
+        "sha256:6c490feaa9c82bc510ec6c9d0c78a61f1f71fd5c56658a54a15391a49ad67a33"
+      ],
+      "BaseCompressedBytes": 58380,
+      "TargetCompressedBytes": 62511,
+      "OutputCharacters": 1767,
+      "FileDifferences": 481
+    },
+    {
+      "Fixture": "dependencies",
+      "Source": "registry",
+      "Format": "text",
+      "Cache": "cold",
+      "Repeat": 1,
+      "ElapsedMs": 581.8293,
+      "PeakWorkingSetBytes": 245747712,
+      "ManagedAllocatedBytes": 193535568,
+      "PeakCacheBytes": 8926158,
+      "PeakDaemonScratchBytes": 0,
+      "PeakDiskBytes": 8926158,
+      "RetainedCacheBytes": 8926158,
+      "BaseLayerDigests": [
+        "sha256:abb8266fdd5ffff91db0cfdfccada46a67f24ce7e1b82b4a015edfc3169f2fed"
+      ],
+      "TargetLayerDigests": [
+        "sha256:abb8266fdd5ffff91db0cfdfccada46a67f24ce7e1b82b4a015edfc3169f2fed",
+        "sha256:6c490feaa9c82bc510ec6c9d0c78a61f1f71fd5c56658a54a15391a49ad67a33"
+      ],
+      "BaseCompressedBytes": 58380,
+      "TargetCompressedBytes": 62511,
+      "OutputCharacters": 1767,
+      "FileDifferences": 481
+    },
+    {
+      "Fixture": "dependencies",
+      "Source": "registry",
+      "Format": "text",
+      "Cache": "warm",
+      "Repeat": 1,
+      "ElapsedMs": 785.0615,
+      "PeakWorkingSetBytes": 272392192,
+      "ManagedAllocatedBytes": 207725512,
+      "PeakCacheBytes": 8926158,
+      "PeakDaemonScratchBytes": 0,
+      "PeakDiskBytes": 8926158,
+      "RetainedCacheBytes": 8926158,
+      "BaseLayerDigests": [
+        "sha256:abb8266fdd5ffff91db0cfdfccada46a67f24ce7e1b82b4a015edfc3169f2fed"
+      ],
+      "TargetLayerDigests": [
+        "sha256:abb8266fdd5ffff91db0cfdfccada46a67f24ce7e1b82b4a015edfc3169f2fed",
+        "sha256:6c490feaa9c82bc510ec6c9d0c78a61f1f71fd5c56658a54a15391a49ad67a33"
+      ],
+      "BaseCompressedBytes": 58380,
+      "TargetCompressedBytes": 62511,
+      "OutputCharacters": 1767,
+      "FileDifferences": 481
+    },
+    {
+      "Fixture": "dependencies",
+      "Source": "registry",
+      "Format": "text",
+      "Cache": "cold",
+      "Repeat": 2,
+      "ElapsedMs": 854.483,
+      "PeakWorkingSetBytes": 279351296,
+      "ManagedAllocatedBytes": 261340944,
+      "PeakCacheBytes": 8926158,
+      "PeakDaemonScratchBytes": 0,
+      "PeakDiskBytes": 8926158,
+      "RetainedCacheBytes": 8926158,
+      "BaseLayerDigests": [
+        "sha256:abb8266fdd5ffff91db0cfdfccada46a67f24ce7e1b82b4a015edfc3169f2fed"
+      ],
+      "TargetLayerDigests": [
+        "sha256:abb8266fdd5ffff91db0cfdfccada46a67f24ce7e1b82b4a015edfc3169f2fed",
+        "sha256:6c490feaa9c82bc510ec6c9d0c78a61f1f71fd5c56658a54a15391a49ad67a33"
+      ],
+      "BaseCompressedBytes": 58380,
+      "TargetCompressedBytes": 62511,
+      "OutputCharacters": 1767,
+      "FileDifferences": 481
+    },
+    {
+      "Fixture": "dependencies",
+      "Source": "registry",
+      "Format": "text",
+      "Cache": "warm",
+      "Repeat": 2,
+      "ElapsedMs": 906.5303,
+      "PeakWorkingSetBytes": 292098048,
+      "ManagedAllocatedBytes": 276611664,
+      "PeakCacheBytes": 12084243,
+      "PeakDaemonScratchBytes": 0,
+      "PeakDiskBytes": 12159805,
+      "RetainedCacheBytes": 8926158,
+      "BaseLayerDigests": [
+        "sha256:abb8266fdd5ffff91db0cfdfccada46a67f24ce7e1b82b4a015edfc3169f2fed"
+      ],
+      "TargetLayerDigests": [
+        "sha256:abb8266fdd5ffff91db0cfdfccada46a67f24ce7e1b82b4a015edfc3169f2fed",
+        "sha256:6c490feaa9c82bc510ec6c9d0c78a61f1f71fd5c56658a54a15391a49ad67a33"
+      ],
+      "BaseCompressedBytes": 58380,
+      "TargetCompressedBytes": 62511,
+      "OutputCharacters": 1767,
+      "FileDifferences": 481
+    },
+    {
+      "Fixture": "dependencies",
+      "Source": "registry",
+      "Format": "json",
+      "Cache": "cold",
+      "Repeat": 0,
+      "ElapsedMs": 501.5309,
+      "PeakWorkingSetBytes": 278536192,
+      "ManagedAllocatedBytes": 214816616,
+      "PeakCacheBytes": 8926158,
+      "PeakDaemonScratchBytes": 0,
+      "PeakDiskBytes": 8926158,
+      "RetainedCacheBytes": 8926158,
+      "BaseLayerDigests": [
+        "sha256:abb8266fdd5ffff91db0cfdfccada46a67f24ce7e1b82b4a015edfc3169f2fed"
+      ],
+      "TargetLayerDigests": [
+        "sha256:abb8266fdd5ffff91db0cfdfccada46a67f24ce7e1b82b4a015edfc3169f2fed",
+        "sha256:6c490feaa9c82bc510ec6c9d0c78a61f1f71fd5c56658a54a15391a49ad67a33"
+      ],
+      "BaseCompressedBytes": 58380,
+      "TargetCompressedBytes": 62511,
+      "OutputCharacters": 1682443,
+      "FileDifferences": 481
+    },
+    {
+      "Fixture": "dependencies",
+      "Source": "registry",
+      "Format": "json",
+      "Cache": "warm",
+      "Repeat": 0,
+      "ElapsedMs": 584.907,
+      "PeakWorkingSetBytes": 292249600,
+      "ManagedAllocatedBytes": 220252280,
+      "PeakCacheBytes": 12084243,
+      "PeakDaemonScratchBytes": 0,
+      "PeakDiskBytes": 12084243,
+      "RetainedCacheBytes": 8926158,
+      "BaseLayerDigests": [
+        "sha256:abb8266fdd5ffff91db0cfdfccada46a67f24ce7e1b82b4a015edfc3169f2fed"
+      ],
+      "TargetLayerDigests": [
+        "sha256:abb8266fdd5ffff91db0cfdfccada46a67f24ce7e1b82b4a015edfc3169f2fed",
+        "sha256:6c490feaa9c82bc510ec6c9d0c78a61f1f71fd5c56658a54a15391a49ad67a33"
+      ],
+      "BaseCompressedBytes": 58380,
+      "TargetCompressedBytes": 62511,
+      "OutputCharacters": 1682443,
+      "FileDifferences": 481
+    },
+    {
+      "Fixture": "dependencies",
+      "Source": "registry",
+      "Format": "json",
+      "Cache": "cold",
+      "Repeat": 1,
+      "ElapsedMs": 500.4133,
+      "PeakWorkingSetBytes": 260534272,
+      "ManagedAllocatedBytes": 237569456,
+      "PeakCacheBytes": 8926158,
+      "PeakDaemonScratchBytes": 0,
+      "PeakDiskBytes": 8926158,
+      "RetainedCacheBytes": 8926158,
+      "BaseLayerDigests": [
+        "sha256:abb8266fdd5ffff91db0cfdfccada46a67f24ce7e1b82b4a015edfc3169f2fed"
+      ],
+      "TargetLayerDigests": [
+        "sha256:abb8266fdd5ffff91db0cfdfccada46a67f24ce7e1b82b4a015edfc3169f2fed",
+        "sha256:6c490feaa9c82bc510ec6c9d0c78a61f1f71fd5c56658a54a15391a49ad67a33"
+      ],
+      "BaseCompressedBytes": 58380,
+      "TargetCompressedBytes": 62511,
+      "OutputCharacters": 1682443,
+      "FileDifferences": 481
+    },
+    {
+      "Fixture": "dependencies",
+      "Source": "registry",
+      "Format": "json",
+      "Cache": "warm",
+      "Repeat": 1,
+      "ElapsedMs": 587.5938,
+      "PeakWorkingSetBytes": 225595392,
+      "ManagedAllocatedBytes": 283255216,
+      "PeakCacheBytes": 8926158,
+      "PeakDaemonScratchBytes": 0,
+      "PeakDiskBytes": 12159805,
+      "RetainedCacheBytes": 8926158,
+      "BaseLayerDigests": [
+        "sha256:abb8266fdd5ffff91db0cfdfccada46a67f24ce7e1b82b4a015edfc3169f2fed"
+      ],
+      "TargetLayerDigests": [
+        "sha256:abb8266fdd5ffff91db0cfdfccada46a67f24ce7e1b82b4a015edfc3169f2fed",
+        "sha256:6c490feaa9c82bc510ec6c9d0c78a61f1f71fd5c56658a54a15391a49ad67a33"
+      ],
+      "BaseCompressedBytes": 58380,
+      "TargetCompressedBytes": 62511,
+      "OutputCharacters": 1682443,
+      "FileDifferences": 481
+    },
+    {
+      "Fixture": "dependencies",
+      "Source": "registry",
+      "Format": "json",
+      "Cache": "cold",
+      "Repeat": 2,
+      "ElapsedMs": 602.0814,
+      "PeakWorkingSetBytes": 242860032,
+      "ManagedAllocatedBytes": 244534976,
+      "PeakCacheBytes": 8926158,
+      "PeakDaemonScratchBytes": 0,
+      "PeakDiskBytes": 8926158,
+      "RetainedCacheBytes": 8926158,
+      "BaseLayerDigests": [
+        "sha256:abb8266fdd5ffff91db0cfdfccada46a67f24ce7e1b82b4a015edfc3169f2fed"
+      ],
+      "TargetLayerDigests": [
+        "sha256:abb8266fdd5ffff91db0cfdfccada46a67f24ce7e1b82b4a015edfc3169f2fed",
+        "sha256:6c490feaa9c82bc510ec6c9d0c78a61f1f71fd5c56658a54a15391a49ad67a33"
+      ],
+      "BaseCompressedBytes": 58380,
+      "TargetCompressedBytes": 62511,
+      "OutputCharacters": 1682443,
+      "FileDifferences": 481
+    },
+    {
+      "Fixture": "dependencies",
+      "Source": "registry",
+      "Format": "json",
+      "Cache": "warm",
+      "Repeat": 2,
+      "ElapsedMs": 544.1731,
+      "PeakWorkingSetBytes": 261316608,
+      "ManagedAllocatedBytes": 287427960,
+      "PeakCacheBytes": 8926158,
+      "PeakDaemonScratchBytes": 0,
+      "PeakDiskBytes": 8926158,
+      "RetainedCacheBytes": 8926158,
+      "BaseLayerDigests": [
+        "sha256:abb8266fdd5ffff91db0cfdfccada46a67f24ce7e1b82b4a015edfc3169f2fed"
+      ],
+      "TargetLayerDigests": [
+        "sha256:abb8266fdd5ffff91db0cfdfccada46a67f24ce7e1b82b4a015edfc3169f2fed",
+        "sha256:6c490feaa9c82bc510ec6c9d0c78a61f1f71fd5c56658a54a15391a49ad67a33"
+      ],
+      "BaseCompressedBytes": 58380,
+      "TargetCompressedBytes": 62511,
+      "OutputCharacters": 1682443,
+      "FileDifferences": 481
+    },
+    {
+      "Fixture": "dependencies",
+      "Source": "mixed",
+      "Format": "text",
+      "Cache": "cold",
+      "Repeat": 0,
+      "ElapsedMs": 606.4283,
+      "PeakWorkingSetBytes": 246226944,
+      "ManagedAllocatedBytes": 351162480,
+      "PeakCacheBytes": 11181149,
+      "PeakDaemonScratchBytes": 5638144,
+      "PeakDiskBytes": 16819293,
+      "RetainedCacheBytes": 11181149,
+      "BaseLayerDigests": [
+        "sha256:abb8266fdd5ffff91db0cfdfccada46a67f24ce7e1b82b4a015edfc3169f2fed"
+      ],
+      "TargetLayerDigests": [
+        "sha256:abb8266fdd5ffff91db0cfdfccada46a67f24ce7e1b82b4a015edfc3169f2fed",
+        "sha256:6c490feaa9c82bc510ec6c9d0c78a61f1f71fd5c56658a54a15391a49ad67a33"
+      ],
+      "BaseCompressedBytes": 58380,
+      "TargetCompressedBytes": 62511,
+      "OutputCharacters": 1970,
+      "FileDifferences": 481
+    },
+    {
+      "Fixture": "dependencies",
+      "Source": "mixed",
+      "Format": "text",
+      "Cache": "warm",
+      "Repeat": 0,
+      "ElapsedMs": 796.5752,
+      "PeakWorkingSetBytes": 216887296,
+      "ManagedAllocatedBytes": 339990920,
+      "PeakCacheBytes": 14414796,
+      "PeakDaemonScratchBytes": 5638144,
+      "PeakDiskBytes": 19977378,
+      "RetainedCacheBytes": 11181149,
+      "BaseLayerDigests": [
+        "sha256:abb8266fdd5ffff91db0cfdfccada46a67f24ce7e1b82b4a015edfc3169f2fed"
+      ],
+      "TargetLayerDigests": [
+        "sha256:abb8266fdd5ffff91db0cfdfccada46a67f24ce7e1b82b4a015edfc3169f2fed",
+        "sha256:6c490feaa9c82bc510ec6c9d0c78a61f1f71fd5c56658a54a15391a49ad67a33"
+      ],
+      "BaseCompressedBytes": 58380,
+      "TargetCompressedBytes": 62511,
+      "OutputCharacters": 1970,
+      "FileDifferences": 481
+    },
+    {
+      "Fixture": "dependencies",
+      "Source": "mixed",
+      "Format": "text",
+      "Cache": "cold",
+      "Repeat": 1,
+      "ElapsedMs": 632.159,
+      "PeakWorkingSetBytes": 214495232,
+      "ManagedAllocatedBytes": 269941240,
+      "PeakCacheBytes": 11181149,
+      "PeakDaemonScratchBytes": 5638144,
+      "PeakDiskBytes": 16819293,
+      "RetainedCacheBytes": 11181149,
+      "BaseLayerDigests": [
+        "sha256:abb8266fdd5ffff91db0cfdfccada46a67f24ce7e1b82b4a015edfc3169f2fed"
+      ],
+      "TargetLayerDigests": [
+        "sha256:abb8266fdd5ffff91db0cfdfccada46a67f24ce7e1b82b4a015edfc3169f2fed",
+        "sha256:6c490feaa9c82bc510ec6c9d0c78a61f1f71fd5c56658a54a15391a49ad67a33"
+      ],
+      "BaseCompressedBytes": 58380,
+      "TargetCompressedBytes": 62511,
+      "OutputCharacters": 1970,
+      "FileDifferences": 481
+    },
+    {
+      "Fixture": "dependencies",
+      "Source": "mixed",
+      "Format": "text",
+      "Cache": "warm",
+      "Repeat": 1,
+      "ElapsedMs": 647.528,
+      "PeakWorkingSetBytes": 288817152,
+      "ManagedAllocatedBytes": 314460688,
+      "PeakCacheBytes": 11181149,
+      "PeakDaemonScratchBytes": 5638144,
+      "PeakDiskBytes": 16819293,
+      "RetainedCacheBytes": 11181149,
+      "BaseLayerDigests": [
+        "sha256:abb8266fdd5ffff91db0cfdfccada46a67f24ce7e1b82b4a015edfc3169f2fed"
+      ],
+      "TargetLayerDigests": [
+        "sha256:abb8266fdd5ffff91db0cfdfccada46a67f24ce7e1b82b4a015edfc3169f2fed",
+        "sha256:6c490feaa9c82bc510ec6c9d0c78a61f1f71fd5c56658a54a15391a49ad67a33"
+      ],
+      "BaseCompressedBytes": 58380,
+      "TargetCompressedBytes": 62511,
+      "OutputCharacters": 1970,
+      "FileDifferences": 481
+    },
+    {
+      "Fixture": "dependencies",
+      "Source": "mixed",
+      "Format": "text",
+      "Cache": "cold",
+      "Repeat": 2,
+      "ElapsedMs": 666.5497,
+      "PeakWorkingSetBytes": 316768256,
+      "ManagedAllocatedBytes": 311911328,
+      "PeakCacheBytes": 11181149,
+      "PeakDaemonScratchBytes": 5638144,
+      "PeakDiskBytes": 16819293,
+      "RetainedCacheBytes": 11181149,
+      "BaseLayerDigests": [
+        "sha256:abb8266fdd5ffff91db0cfdfccada46a67f24ce7e1b82b4a015edfc3169f2fed"
+      ],
+      "TargetLayerDigests": [
+        "sha256:abb8266fdd5ffff91db0cfdfccada46a67f24ce7e1b82b4a015edfc3169f2fed",
+        "sha256:6c490feaa9c82bc510ec6c9d0c78a61f1f71fd5c56658a54a15391a49ad67a33"
+      ],
+      "BaseCompressedBytes": 58380,
+      "TargetCompressedBytes": 62511,
+      "OutputCharacters": 1970,
+      "FileDifferences": 481
+    },
+    {
+      "Fixture": "dependencies",
+      "Source": "mixed",
+      "Format": "text",
+      "Cache": "warm",
+      "Repeat": 2,
+      "ElapsedMs": 892.5896,
+      "PeakWorkingSetBytes": 374882304,
+      "ManagedAllocatedBytes": 255935216,
+      "PeakCacheBytes": 14414796,
+      "PeakDaemonScratchBytes": 5638144,
+      "PeakDiskBytes": 16819293,
+      "RetainedCacheBytes": 11181149,
+      "BaseLayerDigests": [
+        "sha256:abb8266fdd5ffff91db0cfdfccada46a67f24ce7e1b82b4a015edfc3169f2fed"
+      ],
+      "TargetLayerDigests": [
+        "sha256:abb8266fdd5ffff91db0cfdfccada46a67f24ce7e1b82b4a015edfc3169f2fed",
+        "sha256:6c490feaa9c82bc510ec6c9d0c78a61f1f71fd5c56658a54a15391a49ad67a33"
+      ],
+      "BaseCompressedBytes": 58380,
+      "TargetCompressedBytes": 62511,
+      "OutputCharacters": 1970,
+      "FileDifferences": 481
+    },
+    {
+      "Fixture": "dependencies",
+      "Source": "mixed",
+      "Format": "json",
+      "Cache": "cold",
+      "Repeat": 0,
+      "ElapsedMs": 659.1583,
+      "PeakWorkingSetBytes": 333713408,
+      "ManagedAllocatedBytes": 277007712,
+      "PeakCacheBytes": 11181149,
+      "PeakDaemonScratchBytes": 5638144,
+      "PeakDiskBytes": 16819293,
+      "RetainedCacheBytes": 11181149,
+      "BaseLayerDigests": [
+        "sha256:abb8266fdd5ffff91db0cfdfccada46a67f24ce7e1b82b4a015edfc3169f2fed"
+      ],
+      "TargetLayerDigests": [
+        "sha256:abb8266fdd5ffff91db0cfdfccada46a67f24ce7e1b82b4a015edfc3169f2fed",
+        "sha256:6c490feaa9c82bc510ec6c9d0c78a61f1f71fd5c56658a54a15391a49ad67a33"
+      ],
+      "BaseCompressedBytes": 58380,
+      "TargetCompressedBytes": 62511,
+      "OutputCharacters": 1681167,
+      "FileDifferences": 481
+    },
+    {
+      "Fixture": "dependencies",
+      "Source": "mixed",
+      "Format": "json",
+      "Cache": "warm",
+      "Repeat": 0,
+      "ElapsedMs": 742.2023,
+      "PeakWorkingSetBytes": 264384512,
+      "ManagedAllocatedBytes": 351040336,
+      "PeakCacheBytes": 11181149,
+      "PeakDaemonScratchBytes": 5638144,
+      "PeakDiskBytes": 16819293,
+      "RetainedCacheBytes": 11181149,
+      "BaseLayerDigests": [
+        "sha256:abb8266fdd5ffff91db0cfdfccada46a67f24ce7e1b82b4a015edfc3169f2fed"
+      ],
+      "TargetLayerDigests": [
+        "sha256:abb8266fdd5ffff91db0cfdfccada46a67f24ce7e1b82b4a015edfc3169f2fed",
+        "sha256:6c490feaa9c82bc510ec6c9d0c78a61f1f71fd5c56658a54a15391a49ad67a33"
+      ],
+      "BaseCompressedBytes": 58380,
+      "TargetCompressedBytes": 62511,
+      "OutputCharacters": 1681167,
+      "FileDifferences": 481
+    },
+    {
+      "Fixture": "dependencies",
+      "Source": "mixed",
+      "Format": "json",
+      "Cache": "cold",
+      "Repeat": 1,
+      "ElapsedMs": 715.5192,
+      "PeakWorkingSetBytes": 283680768,
+      "ManagedAllocatedBytes": 285705608,
+      "PeakCacheBytes": 11181149,
+      "PeakDaemonScratchBytes": 5638144,
+      "PeakDiskBytes": 16819293,
+      "RetainedCacheBytes": 11181149,
+      "BaseLayerDigests": [
+        "sha256:abb8266fdd5ffff91db0cfdfccada46a67f24ce7e1b82b4a015edfc3169f2fed"
+      ],
+      "TargetLayerDigests": [
+        "sha256:abb8266fdd5ffff91db0cfdfccada46a67f24ce7e1b82b4a015edfc3169f2fed",
+        "sha256:6c490feaa9c82bc510ec6c9d0c78a61f1f71fd5c56658a54a15391a49ad67a33"
+      ],
+      "BaseCompressedBytes": 58380,
+      "TargetCompressedBytes": 62511,
+      "OutputCharacters": 1681167,
+      "FileDifferences": 481
+    },
+    {
+      "Fixture": "dependencies",
+      "Source": "mixed",
+      "Format": "json",
+      "Cache": "warm",
+      "Repeat": 1,
+      "ElapsedMs": 731.2963,
+      "PeakWorkingSetBytes": 297721856,
+      "ManagedAllocatedBytes": 355350824,
+      "PeakCacheBytes": 14339234,
+      "PeakDaemonScratchBytes": 5638144,
+      "PeakDiskBytes": 16819293,
+      "RetainedCacheBytes": 11181149,
+      "BaseLayerDigests": [
+        "sha256:abb8266fdd5ffff91db0cfdfccada46a67f24ce7e1b82b4a015edfc3169f2fed"
+      ],
+      "TargetLayerDigests": [
+        "sha256:abb8266fdd5ffff91db0cfdfccada46a67f24ce7e1b82b4a015edfc3169f2fed",
+        "sha256:6c490feaa9c82bc510ec6c9d0c78a61f1f71fd5c56658a54a15391a49ad67a33"
+      ],
+      "BaseCompressedBytes": 58380,
+      "TargetCompressedBytes": 62511,
+      "OutputCharacters": 1681167,
+      "FileDifferences": 481
+    },
+    {
+      "Fixture": "dependencies",
+      "Source": "mixed",
+      "Format": "json",
+      "Cache": "cold",
+      "Repeat": 2,
+      "ElapsedMs": 667.0693,
+      "PeakWorkingSetBytes": 304287744,
+      "ManagedAllocatedBytes": 322970584,
+      "PeakCacheBytes": 11181149,
+      "PeakDaemonScratchBytes": 5638144,
+      "PeakDiskBytes": 16819293,
+      "RetainedCacheBytes": 11181149,
+      "BaseLayerDigests": [
+        "sha256:abb8266fdd5ffff91db0cfdfccada46a67f24ce7e1b82b4a015edfc3169f2fed"
+      ],
+      "TargetLayerDigests": [
+        "sha256:abb8266fdd5ffff91db0cfdfccada46a67f24ce7e1b82b4a015edfc3169f2fed",
+        "sha256:6c490feaa9c82bc510ec6c9d0c78a61f1f71fd5c56658a54a15391a49ad67a33"
+      ],
+      "BaseCompressedBytes": 58380,
+      "TargetCompressedBytes": 62511,
+      "OutputCharacters": 1681167,
+      "FileDifferences": 481
+    },
+    {
+      "Fixture": "dependencies",
+      "Source": "mixed",
+      "Format": "json",
+      "Cache": "warm",
+      "Repeat": 2,
+      "ElapsedMs": 941.6489,
+      "PeakWorkingSetBytes": 320036864,
+      "ManagedAllocatedBytes": 361546904,
+      "PeakCacheBytes": 11181149,
+      "PeakDaemonScratchBytes": 5638144,
+      "PeakDiskBytes": 20052940,
+      "RetainedCacheBytes": 11181149,
+      "BaseLayerDigests": [
+        "sha256:abb8266fdd5ffff91db0cfdfccada46a67f24ce7e1b82b4a015edfc3169f2fed"
+      ],
+      "TargetLayerDigests": [
+        "sha256:abb8266fdd5ffff91db0cfdfccada46a67f24ce7e1b82b4a015edfc3169f2fed",
+        "sha256:6c490feaa9c82bc510ec6c9d0c78a61f1f71fd5c56658a54a15391a49ad67a33"
+      ],
+      "BaseCompressedBytes": 58380,
+      "TargetCompressedBytes": 62511,
+      "OutputCharacters": 1681167,
+      "FileDifferences": 481
+    },
+    {
+      "Fixture": "large",
+      "Source": "registry",
+      "Format": "text",
+      "Cache": "cold",
+      "Repeat": 0,
+      "ElapsedMs": 1714.0617,
+      "PeakWorkingSetBytes": 374648832,
+      "ManagedAllocatedBytes": 791737144,
+      "PeakCacheBytes": 32460902,
+      "PeakDaemonScratchBytes": 0,
+      "PeakDiskBytes": 32460902,
+      "RetainedCacheBytes": 32460902,
+      "BaseLayerDigests": [
+        "sha256:9547374b229af2734c55dd58e66743c8aa914a2fde2c74250141f21bcc0c76ce",
+        "sha256:061295c021f575c34f244b7d9d71093aa7c2abb4f4004ca3bf196dc79ff19d7d",
+        "sha256:666ff9c86c6f96d9c757da22eaea81687af2d528b20c6f3135369d780f10502c",
+        "sha256:6e871f9f3d539756329b643902563b44500e63ab2c195f9f70ae7083dc83bc61",
+        "sha256:3a466bed8f466374083ff190c990d99630e31875f94ba237761193057e81f95e",
+        "sha256:d354b87fd47e640c37bb58c7dd06fa829b0961f6f0bca311f346c119a10dc5c1"
+      ],
+      "TargetLayerDigests": [
+        "sha256:9547374b229af2734c55dd58e66743c8aa914a2fde2c74250141f21bcc0c76ce",
+        "sha256:061295c021f575c34f244b7d9d71093aa7c2abb4f4004ca3bf196dc79ff19d7d",
+        "sha256:666ff9c86c6f96d9c757da22eaea81687af2d528b20c6f3135369d780f10502c",
+        "sha256:6e871f9f3d539756329b643902563b44500e63ab2c195f9f70ae7083dc83bc61",
+        "sha256:3a466bed8f466374083ff190c990d99630e31875f94ba237761193057e81f95e",
+        "sha256:d354b87fd47e640c37bb58c7dd06fa829b0961f6f0bca311f346c119a10dc5c1",
+        "sha256:20e4635ef9e2485aa01c58c6bd47b4b303f678e9aec106c23da3e611e6c18204"
+      ],
+      "BaseCompressedBytes": 198312,
+      "TargetCompressedBytes": 218086,
+      "OutputCharacters": 1763,
+      "FileDifferences": 2404
+    },
+    {
+      "Fixture": "large",
+      "Source": "registry",
+      "Format": "text",
+      "Cache": "warm",
+      "Repeat": 0,
+      "ElapsedMs": 2014.5811,
+      "PeakWorkingSetBytes": 444006400,
+      "ManagedAllocatedBytes": 982793816,
+      "PeakCacheBytes": 43703323,
+      "PeakDaemonScratchBytes": 0,
+      "PeakDiskBytes": 32460902,
+      "RetainedCacheBytes": 32460902,
+      "BaseLayerDigests": [
+        "sha256:9547374b229af2734c55dd58e66743c8aa914a2fde2c74250141f21bcc0c76ce",
+        "sha256:061295c021f575c34f244b7d9d71093aa7c2abb4f4004ca3bf196dc79ff19d7d",
+        "sha256:666ff9c86c6f96d9c757da22eaea81687af2d528b20c6f3135369d780f10502c",
+        "sha256:6e871f9f3d539756329b643902563b44500e63ab2c195f9f70ae7083dc83bc61",
+        "sha256:3a466bed8f466374083ff190c990d99630e31875f94ba237761193057e81f95e",
+        "sha256:d354b87fd47e640c37bb58c7dd06fa829b0961f6f0bca311f346c119a10dc5c1"
+      ],
+      "TargetLayerDigests": [
+        "sha256:9547374b229af2734c55dd58e66743c8aa914a2fde2c74250141f21bcc0c76ce",
+        "sha256:061295c021f575c34f244b7d9d71093aa7c2abb4f4004ca3bf196dc79ff19d7d",
+        "sha256:666ff9c86c6f96d9c757da22eaea81687af2d528b20c6f3135369d780f10502c",
+        "sha256:6e871f9f3d539756329b643902563b44500e63ab2c195f9f70ae7083dc83bc61",
+        "sha256:3a466bed8f466374083ff190c990d99630e31875f94ba237761193057e81f95e",
+        "sha256:d354b87fd47e640c37bb58c7dd06fa829b0961f6f0bca311f346c119a10dc5c1",
+        "sha256:20e4635ef9e2485aa01c58c6bd47b4b303f678e9aec106c23da3e611e6c18204"
+      ],
+      "BaseCompressedBytes": 198312,
+      "TargetCompressedBytes": 218086,
+      "OutputCharacters": 1763,
+      "FileDifferences": 2404
+    },
+    {
+      "Fixture": "large",
+      "Source": "registry",
+      "Format": "text",
+      "Cache": "cold",
+      "Repeat": 1,
+      "ElapsedMs": 2141.2701,
+      "PeakWorkingSetBytes": 487211008,
+      "ManagedAllocatedBytes": 765047480,
+      "PeakCacheBytes": 32460902,
+      "PeakDaemonScratchBytes": 0,
+      "PeakDiskBytes": 32460902,
+      "RetainedCacheBytes": 32460902,
+      "BaseLayerDigests": [
+        "sha256:9547374b229af2734c55dd58e66743c8aa914a2fde2c74250141f21bcc0c76ce",
+        "sha256:061295c021f575c34f244b7d9d71093aa7c2abb4f4004ca3bf196dc79ff19d7d",
+        "sha256:666ff9c86c6f96d9c757da22eaea81687af2d528b20c6f3135369d780f10502c",
+        "sha256:6e871f9f3d539756329b643902563b44500e63ab2c195f9f70ae7083dc83bc61",
+        "sha256:3a466bed8f466374083ff190c990d99630e31875f94ba237761193057e81f95e",
+        "sha256:d354b87fd47e640c37bb58c7dd06fa829b0961f6f0bca311f346c119a10dc5c1"
+      ],
+      "TargetLayerDigests": [
+        "sha256:9547374b229af2734c55dd58e66743c8aa914a2fde2c74250141f21bcc0c76ce",
+        "sha256:061295c021f575c34f244b7d9d71093aa7c2abb4f4004ca3bf196dc79ff19d7d",
+        "sha256:666ff9c86c6f96d9c757da22eaea81687af2d528b20c6f3135369d780f10502c",
+        "sha256:6e871f9f3d539756329b643902563b44500e63ab2c195f9f70ae7083dc83bc61",
+        "sha256:3a466bed8f466374083ff190c990d99630e31875f94ba237761193057e81f95e",
+        "sha256:d354b87fd47e640c37bb58c7dd06fa829b0961f6f0bca311f346c119a10dc5c1",
+        "sha256:20e4635ef9e2485aa01c58c6bd47b4b303f678e9aec106c23da3e611e6c18204"
+      ],
+      "BaseCompressedBytes": 198312,
+      "TargetCompressedBytes": 218086,
+      "OutputCharacters": 1763,
+      "FileDifferences": 2404
+    },
+    {
+      "Fixture": "large",
+      "Source": "registry",
+      "Format": "text",
+      "Cache": "warm",
+      "Repeat": 1,
+      "ElapsedMs": 1947.5641,
+      "PeakWorkingSetBytes": 525582336,
+      "ManagedAllocatedBytes": 989132696,
+      "PeakCacheBytes": 32460902,
+      "PeakDaemonScratchBytes": 0,
+      "PeakDiskBytes": 32460902,
+      "RetainedCacheBytes": 32460902,
+      "BaseLayerDigests": [
+        "sha256:9547374b229af2734c55dd58e66743c8aa914a2fde2c74250141f21bcc0c76ce",
+        "sha256:061295c021f575c34f244b7d9d71093aa7c2abb4f4004ca3bf196dc79ff19d7d",
+        "sha256:666ff9c86c6f96d9c757da22eaea81687af2d528b20c6f3135369d780f10502c",
+        "sha256:6e871f9f3d539756329b643902563b44500e63ab2c195f9f70ae7083dc83bc61",
+        "sha256:3a466bed8f466374083ff190c990d99630e31875f94ba237761193057e81f95e",
+        "sha256:d354b87fd47e640c37bb58c7dd06fa829b0961f6f0bca311f346c119a10dc5c1"
+      ],
+      "TargetLayerDigests": [
+        "sha256:9547374b229af2734c55dd58e66743c8aa914a2fde2c74250141f21bcc0c76ce",
+        "sha256:061295c021f575c34f244b7d9d71093aa7c2abb4f4004ca3bf196dc79ff19d7d",
+        "sha256:666ff9c86c6f96d9c757da22eaea81687af2d528b20c6f3135369d780f10502c",
+        "sha256:6e871f9f3d539756329b643902563b44500e63ab2c195f9f70ae7083dc83bc61",
+        "sha256:3a466bed8f466374083ff190c990d99630e31875f94ba237761193057e81f95e",
+        "sha256:d354b87fd47e640c37bb58c7dd06fa829b0961f6f0bca311f346c119a10dc5c1",
+        "sha256:20e4635ef9e2485aa01c58c6bd47b4b303f678e9aec106c23da3e611e6c18204"
+      ],
+      "BaseCompressedBytes": 198312,
+      "TargetCompressedBytes": 218086,
+      "OutputCharacters": 1763,
+      "FileDifferences": 2404
+    },
+    {
+      "Fixture": "large",
+      "Source": "registry",
+      "Format": "text",
+      "Cache": "cold",
+      "Repeat": 2,
+      "ElapsedMs": 2001.8181,
+      "PeakWorkingSetBytes": 373022720,
+      "ManagedAllocatedBytes": 638617688,
+      "PeakCacheBytes": 32460902,
+      "PeakDaemonScratchBytes": 0,
+      "PeakDiskBytes": 32460902,
+      "RetainedCacheBytes": 32460902,
+      "BaseLayerDigests": [
+        "sha256:9547374b229af2734c55dd58e66743c8aa914a2fde2c74250141f21bcc0c76ce",
+        "sha256:061295c021f575c34f244b7d9d71093aa7c2abb4f4004ca3bf196dc79ff19d7d",
+        "sha256:666ff9c86c6f96d9c757da22eaea81687af2d528b20c6f3135369d780f10502c",
+        "sha256:6e871f9f3d539756329b643902563b44500e63ab2c195f9f70ae7083dc83bc61",
+        "sha256:3a466bed8f466374083ff190c990d99630e31875f94ba237761193057e81f95e",
+        "sha256:d354b87fd47e640c37bb58c7dd06fa829b0961f6f0bca311f346c119a10dc5c1"
+      ],
+      "TargetLayerDigests": [
+        "sha256:9547374b229af2734c55dd58e66743c8aa914a2fde2c74250141f21bcc0c76ce",
+        "sha256:061295c021f575c34f244b7d9d71093aa7c2abb4f4004ca3bf196dc79ff19d7d",
+        "sha256:666ff9c86c6f96d9c757da22eaea81687af2d528b20c6f3135369d780f10502c",
+        "sha256:6e871f9f3d539756329b643902563b44500e63ab2c195f9f70ae7083dc83bc61",
+        "sha256:3a466bed8f466374083ff190c990d99630e31875f94ba237761193057e81f95e",
+        "sha256:d354b87fd47e640c37bb58c7dd06fa829b0961f6f0bca311f346c119a10dc5c1",
+        "sha256:20e4635ef9e2485aa01c58c6bd47b4b303f678e9aec106c23da3e611e6c18204"
+      ],
+      "BaseCompressedBytes": 198312,
+      "TargetCompressedBytes": 218086,
+      "OutputCharacters": 1763,
+      "FileDifferences": 2404
+    },
+    {
+      "Fixture": "large",
+      "Source": "registry",
+      "Format": "text",
+      "Cache": "warm",
+      "Repeat": 2,
+      "ElapsedMs": 2216.4527,
+      "PeakWorkingSetBytes": 439414784,
+      "ManagedAllocatedBytes": 966079784,
+      "PeakCacheBytes": 43703323,
+      "PeakDaemonScratchBytes": 0,
+      "PeakDiskBytes": 32460902,
+      "RetainedCacheBytes": 32460902,
+      "BaseLayerDigests": [
+        "sha256:9547374b229af2734c55dd58e66743c8aa914a2fde2c74250141f21bcc0c76ce",
+        "sha256:061295c021f575c34f244b7d9d71093aa7c2abb4f4004ca3bf196dc79ff19d7d",
+        "sha256:666ff9c86c6f96d9c757da22eaea81687af2d528b20c6f3135369d780f10502c",
+        "sha256:6e871f9f3d539756329b643902563b44500e63ab2c195f9f70ae7083dc83bc61",
+        "sha256:3a466bed8f466374083ff190c990d99630e31875f94ba237761193057e81f95e",
+        "sha256:d354b87fd47e640c37bb58c7dd06fa829b0961f6f0bca311f346c119a10dc5c1"
+      ],
+      "TargetLayerDigests": [
+        "sha256:9547374b229af2734c55dd58e66743c8aa914a2fde2c74250141f21bcc0c76ce",
+        "sha256:061295c021f575c34f244b7d9d71093aa7c2abb4f4004ca3bf196dc79ff19d7d",
+        "sha256:666ff9c86c6f96d9c757da22eaea81687af2d528b20c6f3135369d780f10502c",
+        "sha256:6e871f9f3d539756329b643902563b44500e63ab2c195f9f70ae7083dc83bc61",
+        "sha256:3a466bed8f466374083ff190c990d99630e31875f94ba237761193057e81f95e",
+        "sha256:d354b87fd47e640c37bb58c7dd06fa829b0961f6f0bca311f346c119a10dc5c1",
+        "sha256:20e4635ef9e2485aa01c58c6bd47b4b303f678e9aec106c23da3e611e6c18204"
+      ],
+      "BaseCompressedBytes": 198312,
+      "TargetCompressedBytes": 218086,
+      "OutputCharacters": 1763,
+      "FileDifferences": 2404
+    },
+    {
+      "Fixture": "large",
+      "Source": "registry",
+      "Format": "json",
+      "Cache": "cold",
+      "Repeat": 0,
+      "ElapsedMs": 2326.4989,
+      "PeakWorkingSetBytes": 421232640,
+      "ManagedAllocatedBytes": 753170160,
+      "PeakCacheBytes": 32460902,
+      "PeakDaemonScratchBytes": 0,
+      "PeakDiskBytes": 32460902,
+      "RetainedCacheBytes": 32460902,
+      "BaseLayerDigests": [
+        "sha256:9547374b229af2734c55dd58e66743c8aa914a2fde2c74250141f21bcc0c76ce",
+        "sha256:061295c021f575c34f244b7d9d71093aa7c2abb4f4004ca3bf196dc79ff19d7d",
+        "sha256:666ff9c86c6f96d9c757da22eaea81687af2d528b20c6f3135369d780f10502c",
+        "sha256:6e871f9f3d539756329b643902563b44500e63ab2c195f9f70ae7083dc83bc61",
+        "sha256:3a466bed8f466374083ff190c990d99630e31875f94ba237761193057e81f95e",
+        "sha256:d354b87fd47e640c37bb58c7dd06fa829b0961f6f0bca311f346c119a10dc5c1"
+      ],
+      "TargetLayerDigests": [
+        "sha256:9547374b229af2734c55dd58e66743c8aa914a2fde2c74250141f21bcc0c76ce",
+        "sha256:061295c021f575c34f244b7d9d71093aa7c2abb4f4004ca3bf196dc79ff19d7d",
+        "sha256:666ff9c86c6f96d9c757da22eaea81687af2d528b20c6f3135369d780f10502c",
+        "sha256:6e871f9f3d539756329b643902563b44500e63ab2c195f9f70ae7083dc83bc61",
+        "sha256:3a466bed8f466374083ff190c990d99630e31875f94ba237761193057e81f95e",
+        "sha256:d354b87fd47e640c37bb58c7dd06fa829b0961f6f0bca311f346c119a10dc5c1",
+        "sha256:20e4635ef9e2485aa01c58c6bd47b4b303f678e9aec106c23da3e611e6c18204"
+      ],
+      "BaseCompressedBytes": 198312,
+      "TargetCompressedBytes": 218086,
+      "OutputCharacters": 3487932,
+      "FileDifferences": 2404
+    },
+    {
+      "Fixture": "large",
+      "Source": "registry",
+      "Format": "json",
+      "Cache": "warm",
+      "Repeat": 0,
+      "ElapsedMs": 2087.6308,
+      "PeakWorkingSetBytes": 451682304,
+      "ManagedAllocatedBytes": 1011714272,
+      "PeakCacheBytes": 43325739,
+      "PeakDaemonScratchBytes": 0,
+      "PeakDiskBytes": 43703323,
+      "RetainedCacheBytes": 32460902,
+      "BaseLayerDigests": [
+        "sha256:9547374b229af2734c55dd58e66743c8aa914a2fde2c74250141f21bcc0c76ce",
+        "sha256:061295c021f575c34f244b7d9d71093aa7c2abb4f4004ca3bf196dc79ff19d7d",
+        "sha256:666ff9c86c6f96d9c757da22eaea81687af2d528b20c6f3135369d780f10502c",
+        "sha256:6e871f9f3d539756329b643902563b44500e63ab2c195f9f70ae7083dc83bc61",
+        "sha256:3a466bed8f466374083ff190c990d99630e31875f94ba237761193057e81f95e",
+        "sha256:d354b87fd47e640c37bb58c7dd06fa829b0961f6f0bca311f346c119a10dc5c1"
+      ],
+      "TargetLayerDigests": [
+        "sha256:9547374b229af2734c55dd58e66743c8aa914a2fde2c74250141f21bcc0c76ce",
+        "sha256:061295c021f575c34f244b7d9d71093aa7c2abb4f4004ca3bf196dc79ff19d7d",
+        "sha256:666ff9c86c6f96d9c757da22eaea81687af2d528b20c6f3135369d780f10502c",
+        "sha256:6e871f9f3d539756329b643902563b44500e63ab2c195f9f70ae7083dc83bc61",
+        "sha256:3a466bed8f466374083ff190c990d99630e31875f94ba237761193057e81f95e",
+        "sha256:d354b87fd47e640c37bb58c7dd06fa829b0961f6f0bca311f346c119a10dc5c1",
+        "sha256:20e4635ef9e2485aa01c58c6bd47b4b303f678e9aec106c23da3e611e6c18204"
+      ],
+      "BaseCompressedBytes": 198312,
+      "TargetCompressedBytes": 218086,
+      "OutputCharacters": 3487932,
+      "FileDifferences": 2404
+    },
+    {
+      "Fixture": "large",
+      "Source": "registry",
+      "Format": "json",
+      "Cache": "cold",
+      "Repeat": 1,
+      "ElapsedMs": 2067.5649,
+      "PeakWorkingSetBytes": 449646592,
+      "ManagedAllocatedBytes": 788768136,
+      "PeakCacheBytes": 32460902,
+      "PeakDaemonScratchBytes": 0,
+      "PeakDiskBytes": 32460902,
+      "RetainedCacheBytes": 32460902,
+      "BaseLayerDigests": [
+        "sha256:9547374b229af2734c55dd58e66743c8aa914a2fde2c74250141f21bcc0c76ce",
+        "sha256:061295c021f575c34f244b7d9d71093aa7c2abb4f4004ca3bf196dc79ff19d7d",
+        "sha256:666ff9c86c6f96d9c757da22eaea81687af2d528b20c6f3135369d780f10502c",
+        "sha256:6e871f9f3d539756329b643902563b44500e63ab2c195f9f70ae7083dc83bc61",
+        "sha256:3a466bed8f466374083ff190c990d99630e31875f94ba237761193057e81f95e",
+        "sha256:d354b87fd47e640c37bb58c7dd06fa829b0961f6f0bca311f346c119a10dc5c1"
+      ],
+      "TargetLayerDigests": [
+        "sha256:9547374b229af2734c55dd58e66743c8aa914a2fde2c74250141f21bcc0c76ce",
+        "sha256:061295c021f575c34f244b7d9d71093aa7c2abb4f4004ca3bf196dc79ff19d7d",
+        "sha256:666ff9c86c6f96d9c757da22eaea81687af2d528b20c6f3135369d780f10502c",
+        "sha256:6e871f9f3d539756329b643902563b44500e63ab2c195f9f70ae7083dc83bc61",
+        "sha256:3a466bed8f466374083ff190c990d99630e31875f94ba237761193057e81f95e",
+        "sha256:d354b87fd47e640c37bb58c7dd06fa829b0961f6f0bca311f346c119a10dc5c1",
+        "sha256:20e4635ef9e2485aa01c58c6bd47b4b303f678e9aec106c23da3e611e6c18204"
+      ],
+      "BaseCompressedBytes": 198312,
+      "TargetCompressedBytes": 218086,
+      "OutputCharacters": 3487932,
+      "FileDifferences": 2404
+    },
+    {
+      "Fixture": "large",
+      "Source": "registry",
+      "Format": "json",
+      "Cache": "warm",
+      "Repeat": 1,
+      "ElapsedMs": 2002.0345,
+      "PeakWorkingSetBytes": 400412672,
+      "ManagedAllocatedBytes": 1007774680,
+      "PeakCacheBytes": 43703323,
+      "PeakDaemonScratchBytes": 0,
+      "PeakDiskBytes": 32460902,
+      "RetainedCacheBytes": 32460902,
+      "BaseLayerDigests": [
+        "sha256:9547374b229af2734c55dd58e66743c8aa914a2fde2c74250141f21bcc0c76ce",
+        "sha256:061295c021f575c34f244b7d9d71093aa7c2abb4f4004ca3bf196dc79ff19d7d",
+        "sha256:666ff9c86c6f96d9c757da22eaea81687af2d528b20c6f3135369d780f10502c",
+        "sha256:6e871f9f3d539756329b643902563b44500e63ab2c195f9f70ae7083dc83bc61",
+        "sha256:3a466bed8f466374083ff190c990d99630e31875f94ba237761193057e81f95e",
+        "sha256:d354b87fd47e640c37bb58c7dd06fa829b0961f6f0bca311f346c119a10dc5c1"
+      ],
+      "TargetLayerDigests": [
+        "sha256:9547374b229af2734c55dd58e66743c8aa914a2fde2c74250141f21bcc0c76ce",
+        "sha256:061295c021f575c34f244b7d9d71093aa7c2abb4f4004ca3bf196dc79ff19d7d",
+        "sha256:666ff9c86c6f96d9c757da22eaea81687af2d528b20c6f3135369d780f10502c",
+        "sha256:6e871f9f3d539756329b643902563b44500e63ab2c195f9f70ae7083dc83bc61",
+        "sha256:3a466bed8f466374083ff190c990d99630e31875f94ba237761193057e81f95e",
+        "sha256:d354b87fd47e640c37bb58c7dd06fa829b0961f6f0bca311f346c119a10dc5c1",
+        "sha256:20e4635ef9e2485aa01c58c6bd47b4b303f678e9aec106c23da3e611e6c18204"
+      ],
+      "BaseCompressedBytes": 198312,
+      "TargetCompressedBytes": 218086,
+      "OutputCharacters": 3487932,
+      "FileDifferences": 2404
+    },
+    {
+      "Fixture": "large",
+      "Source": "registry",
+      "Format": "json",
+      "Cache": "cold",
+      "Repeat": 2,
+      "ElapsedMs": 1995.2755,
+      "PeakWorkingSetBytes": 458420224,
+      "ManagedAllocatedBytes": 814097616,
+      "PeakCacheBytes": 32460902,
+      "PeakDaemonScratchBytes": 0,
+      "PeakDiskBytes": 32460902,
+      "RetainedCacheBytes": 32460902,
+      "BaseLayerDigests": [
+        "sha256:9547374b229af2734c55dd58e66743c8aa914a2fde2c74250141f21bcc0c76ce",
+        "sha256:061295c021f575c34f244b7d9d71093aa7c2abb4f4004ca3bf196dc79ff19d7d",
+        "sha256:666ff9c86c6f96d9c757da22eaea81687af2d528b20c6f3135369d780f10502c",
+        "sha256:6e871f9f3d539756329b643902563b44500e63ab2c195f9f70ae7083dc83bc61",
+        "sha256:3a466bed8f466374083ff190c990d99630e31875f94ba237761193057e81f95e",
+        "sha256:d354b87fd47e640c37bb58c7dd06fa829b0961f6f0bca311f346c119a10dc5c1"
+      ],
+      "TargetLayerDigests": [
+        "sha256:9547374b229af2734c55dd58e66743c8aa914a2fde2c74250141f21bcc0c76ce",
+        "sha256:061295c021f575c34f244b7d9d71093aa7c2abb4f4004ca3bf196dc79ff19d7d",
+        "sha256:666ff9c86c6f96d9c757da22eaea81687af2d528b20c6f3135369d780f10502c",
+        "sha256:6e871f9f3d539756329b643902563b44500e63ab2c195f9f70ae7083dc83bc61",
+        "sha256:3a466bed8f466374083ff190c990d99630e31875f94ba237761193057e81f95e",
+        "sha256:d354b87fd47e640c37bb58c7dd06fa829b0961f6f0bca311f346c119a10dc5c1",
+        "sha256:20e4635ef9e2485aa01c58c6bd47b4b303f678e9aec106c23da3e611e6c18204"
+      ],
+      "BaseCompressedBytes": 198312,
+      "TargetCompressedBytes": 218086,
+      "OutputCharacters": 3487932,
+      "FileDifferences": 2404
+    },
+    {
+      "Fixture": "large",
+      "Source": "registry",
+      "Format": "json",
+      "Cache": "warm",
+      "Repeat": 2,
+      "ElapsedMs": 1754.7806,
+      "PeakWorkingSetBytes": 419176448,
+      "ManagedAllocatedBytes": 959376552,
+      "PeakCacheBytes": 43703323,
+      "PeakDaemonScratchBytes": 0,
+      "PeakDiskBytes": 43703323,
+      "RetainedCacheBytes": 32460902,
+      "BaseLayerDigests": [
+        "sha256:9547374b229af2734c55dd58e66743c8aa914a2fde2c74250141f21bcc0c76ce",
+        "sha256:061295c021f575c34f244b7d9d71093aa7c2abb4f4004ca3bf196dc79ff19d7d",
+        "sha256:666ff9c86c6f96d9c757da22eaea81687af2d528b20c6f3135369d780f10502c",
+        "sha256:6e871f9f3d539756329b643902563b44500e63ab2c195f9f70ae7083dc83bc61",
+        "sha256:3a466bed8f466374083ff190c990d99630e31875f94ba237761193057e81f95e",
+        "sha256:d354b87fd47e640c37bb58c7dd06fa829b0961f6f0bca311f346c119a10dc5c1"
+      ],
+      "TargetLayerDigests": [
+        "sha256:9547374b229af2734c55dd58e66743c8aa914a2fde2c74250141f21bcc0c76ce",
+        "sha256:061295c021f575c34f244b7d9d71093aa7c2abb4f4004ca3bf196dc79ff19d7d",
+        "sha256:666ff9c86c6f96d9c757da22eaea81687af2d528b20c6f3135369d780f10502c",
+        "sha256:6e871f9f3d539756329b643902563b44500e63ab2c195f9f70ae7083dc83bc61",
+        "sha256:3a466bed8f466374083ff190c990d99630e31875f94ba237761193057e81f95e",
+        "sha256:d354b87fd47e640c37bb58c7dd06fa829b0961f6f0bca311f346c119a10dc5c1",
+        "sha256:20e4635ef9e2485aa01c58c6bd47b4b303f678e9aec106c23da3e611e6c18204"
+      ],
+      "BaseCompressedBytes": 198312,
+      "TargetCompressedBytes": 218086,
+      "OutputCharacters": 3487932,
+      "FileDifferences": 2404
+    },
+    {
+      "Fixture": "large",
+      "Source": "mixed",
+      "Format": "text",
+      "Cache": "cold",
+      "Repeat": 0,
+      "ElapsedMs": 2741.7067,
+      "PeakWorkingSetBytes": 405737472,
+      "ManagedAllocatedBytes": 1169407208,
+      "PeakCacheBytes": 41542156,
+      "PeakDaemonScratchBytes": 35086336,
+      "PeakDiskBytes": 76628492,
+      "RetainedCacheBytes": 41542156,
+      "BaseLayerDigests": [
+        "sha256:9547374b229af2734c55dd58e66743c8aa914a2fde2c74250141f21bcc0c76ce",
+        "sha256:061295c021f575c34f244b7d9d71093aa7c2abb4f4004ca3bf196dc79ff19d7d",
+        "sha256:666ff9c86c6f96d9c757da22eaea81687af2d528b20c6f3135369d780f10502c",
+        "sha256:6e871f9f3d539756329b643902563b44500e63ab2c195f9f70ae7083dc83bc61",
+        "sha256:3a466bed8f466374083ff190c990d99630e31875f94ba237761193057e81f95e",
+        "sha256:d354b87fd47e640c37bb58c7dd06fa829b0961f6f0bca311f346c119a10dc5c1"
+      ],
+      "TargetLayerDigests": [
+        "sha256:9547374b229af2734c55dd58e66743c8aa914a2fde2c74250141f21bcc0c76ce",
+        "sha256:061295c021f575c34f244b7d9d71093aa7c2abb4f4004ca3bf196dc79ff19d7d",
+        "sha256:666ff9c86c6f96d9c757da22eaea81687af2d528b20c6f3135369d780f10502c",
+        "sha256:6e871f9f3d539756329b643902563b44500e63ab2c195f9f70ae7083dc83bc61",
+        "sha256:3a466bed8f466374083ff190c990d99630e31875f94ba237761193057e81f95e",
+        "sha256:d354b87fd47e640c37bb58c7dd06fa829b0961f6f0bca311f346c119a10dc5c1",
+        "sha256:20e4635ef9e2485aa01c58c6bd47b4b303f678e9aec106c23da3e611e6c18204"
+      ],
+      "BaseCompressedBytes": 198312,
+      "TargetCompressedBytes": 218086,
+      "OutputCharacters": 1962,
+      "FileDifferences": 2404
+    },
+    {
+      "Fixture": "large",
+      "Source": "mixed",
+      "Format": "text",
+      "Cache": "warm",
+      "Repeat": 0,
+      "ElapsedMs": 2140.5114,
+      "PeakWorkingSetBytes": 542621696,
+      "ManagedAllocatedBytes": 1295019896,
+      "PeakCacheBytes": 52784577,
+      "PeakDaemonScratchBytes": 35086336,
+      "PeakDiskBytes": 87493329,
+      "RetainedCacheBytes": 41542156,
+      "BaseLayerDigests": [
+        "sha256:9547374b229af2734c55dd58e66743c8aa914a2fde2c74250141f21bcc0c76ce",
+        "sha256:061295c021f575c34f244b7d9d71093aa7c2abb4f4004ca3bf196dc79ff19d7d",
+        "sha256:666ff9c86c6f96d9c757da22eaea81687af2d528b20c6f3135369d780f10502c",
+        "sha256:6e871f9f3d539756329b643902563b44500e63ab2c195f9f70ae7083dc83bc61",
+        "sha256:3a466bed8f466374083ff190c990d99630e31875f94ba237761193057e81f95e",
+        "sha256:d354b87fd47e640c37bb58c7dd06fa829b0961f6f0bca311f346c119a10dc5c1"
+      ],
+      "TargetLayerDigests": [
+        "sha256:9547374b229af2734c55dd58e66743c8aa914a2fde2c74250141f21bcc0c76ce",
+        "sha256:061295c021f575c34f244b7d9d71093aa7c2abb4f4004ca3bf196dc79ff19d7d",
+        "sha256:666ff9c86c6f96d9c757da22eaea81687af2d528b20c6f3135369d780f10502c",
+        "sha256:6e871f9f3d539756329b643902563b44500e63ab2c195f9f70ae7083dc83bc61",
+        "sha256:3a466bed8f466374083ff190c990d99630e31875f94ba237761193057e81f95e",
+        "sha256:d354b87fd47e640c37bb58c7dd06fa829b0961f6f0bca311f346c119a10dc5c1",
+        "sha256:20e4635ef9e2485aa01c58c6bd47b4b303f678e9aec106c23da3e611e6c18204"
+      ],
+      "BaseCompressedBytes": 198312,
+      "TargetCompressedBytes": 218086,
+      "OutputCharacters": 1962,
+      "FileDifferences": 2404
+    },
+    {
+      "Fixture": "large",
+      "Source": "mixed",
+      "Format": "text",
+      "Cache": "cold",
+      "Repeat": 1,
+      "ElapsedMs": 2262.4509,
+      "PeakWorkingSetBytes": 592457728,
+      "ManagedAllocatedBytes": 1164871680,
+      "PeakCacheBytes": 41542156,
+      "PeakDaemonScratchBytes": 35086336,
+      "PeakDiskBytes": 76628492,
+      "RetainedCacheBytes": 41542156,
+      "BaseLayerDigests": [
+        "sha256:9547374b229af2734c55dd58e66743c8aa914a2fde2c74250141f21bcc0c76ce",
+        "sha256:061295c021f575c34f244b7d9d71093aa7c2abb4f4004ca3bf196dc79ff19d7d",
+        "sha256:666ff9c86c6f96d9c757da22eaea81687af2d528b20c6f3135369d780f10502c",
+        "sha256:6e871f9f3d539756329b643902563b44500e63ab2c195f9f70ae7083dc83bc61",
+        "sha256:3a466bed8f466374083ff190c990d99630e31875f94ba237761193057e81f95e",
+        "sha256:d354b87fd47e640c37bb58c7dd06fa829b0961f6f0bca311f346c119a10dc5c1"
+      ],
+      "TargetLayerDigests": [
+        "sha256:9547374b229af2734c55dd58e66743c8aa914a2fde2c74250141f21bcc0c76ce",
+        "sha256:061295c021f575c34f244b7d9d71093aa7c2abb4f4004ca3bf196dc79ff19d7d",
+        "sha256:666ff9c86c6f96d9c757da22eaea81687af2d528b20c6f3135369d780f10502c",
+        "sha256:6e871f9f3d539756329b643902563b44500e63ab2c195f9f70ae7083dc83bc61",
+        "sha256:3a466bed8f466374083ff190c990d99630e31875f94ba237761193057e81f95e",
+        "sha256:d354b87fd47e640c37bb58c7dd06fa829b0961f6f0bca311f346c119a10dc5c1",
+        "sha256:20e4635ef9e2485aa01c58c6bd47b4b303f678e9aec106c23da3e611e6c18204"
+      ],
+      "BaseCompressedBytes": 198312,
+      "TargetCompressedBytes": 218086,
+      "OutputCharacters": 1962,
+      "FileDifferences": 2404
+    },
+    {
+      "Fixture": "large",
+      "Source": "mixed",
+      "Format": "text",
+      "Cache": "warm",
+      "Repeat": 1,
+      "ElapsedMs": 1302.3012,
+      "PeakWorkingSetBytes": 414597120,
+      "ManagedAllocatedBytes": 1280196168,
+      "PeakCacheBytes": 41542156,
+      "PeakDaemonScratchBytes": 35086336,
+      "PeakDiskBytes": 87870913,
+      "RetainedCacheBytes": 41542156,
+      "BaseLayerDigests": [
+        "sha256:9547374b229af2734c55dd58e66743c8aa914a2fde2c74250141f21bcc0c76ce",
+        "sha256:061295c021f575c34f244b7d9d71093aa7c2abb4f4004ca3bf196dc79ff19d7d",
+        "sha256:666ff9c86c6f96d9c757da22eaea81687af2d528b20c6f3135369d780f10502c",
+        "sha256:6e871f9f3d539756329b643902563b44500e63ab2c195f9f70ae7083dc83bc61",
+        "sha256:3a466bed8f466374083ff190c990d99630e31875f94ba237761193057e81f95e",
+        "sha256:d354b87fd47e640c37bb58c7dd06fa829b0961f6f0bca311f346c119a10dc5c1"
+      ],
+      "TargetLayerDigests": [
+        "sha256:9547374b229af2734c55dd58e66743c8aa914a2fde2c74250141f21bcc0c76ce",
+        "sha256:061295c021f575c34f244b7d9d71093aa7c2abb4f4004ca3bf196dc79ff19d7d",
+        "sha256:666ff9c86c6f96d9c757da22eaea81687af2d528b20c6f3135369d780f10502c",
+        "sha256:6e871f9f3d539756329b643902563b44500e63ab2c195f9f70ae7083dc83bc61",
+        "sha256:3a466bed8f466374083ff190c990d99630e31875f94ba237761193057e81f95e",
+        "sha256:d354b87fd47e640c37bb58c7dd06fa829b0961f6f0bca311f346c119a10dc5c1",
+        "sha256:20e4635ef9e2485aa01c58c6bd47b4b303f678e9aec106c23da3e611e6c18204"
+      ],
+      "BaseCompressedBytes": 198312,
+      "TargetCompressedBytes": 218086,
+      "OutputCharacters": 1962,
+      "FileDifferences": 2404
+    },
+    {
+      "Fixture": "large",
+      "Source": "mixed",
+      "Format": "text",
+      "Cache": "cold",
+      "Repeat": 2,
+      "ElapsedMs": 1310.5005,
+      "PeakWorkingSetBytes": 439021568,
+      "ManagedAllocatedBytes": 1062888112,
+      "PeakCacheBytes": 41542156,
+      "PeakDaemonScratchBytes": 35086336,
+      "PeakDiskBytes": 76628492,
+      "RetainedCacheBytes": 41542156,
+      "BaseLayerDigests": [
+        "sha256:9547374b229af2734c55dd58e66743c8aa914a2fde2c74250141f21bcc0c76ce",
+        "sha256:061295c021f575c34f244b7d9d71093aa7c2abb4f4004ca3bf196dc79ff19d7d",
+        "sha256:666ff9c86c6f96d9c757da22eaea81687af2d528b20c6f3135369d780f10502c",
+        "sha256:6e871f9f3d539756329b643902563b44500e63ab2c195f9f70ae7083dc83bc61",
+        "sha256:3a466bed8f466374083ff190c990d99630e31875f94ba237761193057e81f95e",
+        "sha256:d354b87fd47e640c37bb58c7dd06fa829b0961f6f0bca311f346c119a10dc5c1"
+      ],
+      "TargetLayerDigests": [
+        "sha256:9547374b229af2734c55dd58e66743c8aa914a2fde2c74250141f21bcc0c76ce",
+        "sha256:061295c021f575c34f244b7d9d71093aa7c2abb4f4004ca3bf196dc79ff19d7d",
+        "sha256:666ff9c86c6f96d9c757da22eaea81687af2d528b20c6f3135369d780f10502c",
+        "sha256:6e871f9f3d539756329b643902563b44500e63ab2c195f9f70ae7083dc83bc61",
+        "sha256:3a466bed8f466374083ff190c990d99630e31875f94ba237761193057e81f95e",
+        "sha256:d354b87fd47e640c37bb58c7dd06fa829b0961f6f0bca311f346c119a10dc5c1",
+        "sha256:20e4635ef9e2485aa01c58c6bd47b4b303f678e9aec106c23da3e611e6c18204"
+      ],
+      "BaseCompressedBytes": 198312,
+      "TargetCompressedBytes": 218086,
+      "OutputCharacters": 1962,
+      "FileDifferences": 2404
+    },
+    {
+      "Fixture": "large",
+      "Source": "mixed",
+      "Format": "text",
+      "Cache": "warm",
+      "Repeat": 2,
+      "ElapsedMs": 1366.1623,
+      "PeakWorkingSetBytes": 550199296,
+      "ManagedAllocatedBytes": 1279732840,
+      "PeakCacheBytes": 52784577,
+      "PeakDaemonScratchBytes": 35086336,
+      "PeakDiskBytes": 87493329,
+      "RetainedCacheBytes": 41542156,
+      "BaseLayerDigests": [
+        "sha256:9547374b229af2734c55dd58e66743c8aa914a2fde2c74250141f21bcc0c76ce",
+        "sha256:061295c021f575c34f244b7d9d71093aa7c2abb4f4004ca3bf196dc79ff19d7d",
+        "sha256:666ff9c86c6f96d9c757da22eaea81687af2d528b20c6f3135369d780f10502c",
+        "sha256:6e871f9f3d539756329b643902563b44500e63ab2c195f9f70ae7083dc83bc61",
+        "sha256:3a466bed8f466374083ff190c990d99630e31875f94ba237761193057e81f95e",
+        "sha256:d354b87fd47e640c37bb58c7dd06fa829b0961f6f0bca311f346c119a10dc5c1"
+      ],
+      "TargetLayerDigests": [
+        "sha256:9547374b229af2734c55dd58e66743c8aa914a2fde2c74250141f21bcc0c76ce",
+        "sha256:061295c021f575c34f244b7d9d71093aa7c2abb4f4004ca3bf196dc79ff19d7d",
+        "sha256:666ff9c86c6f96d9c757da22eaea81687af2d528b20c6f3135369d780f10502c",
+        "sha256:6e871f9f3d539756329b643902563b44500e63ab2c195f9f70ae7083dc83bc61",
+        "sha256:3a466bed8f466374083ff190c990d99630e31875f94ba237761193057e81f95e",
+        "sha256:d354b87fd47e640c37bb58c7dd06fa829b0961f6f0bca311f346c119a10dc5c1",
+        "sha256:20e4635ef9e2485aa01c58c6bd47b4b303f678e9aec106c23da3e611e6c18204"
+      ],
+      "BaseCompressedBytes": 198312,
+      "TargetCompressedBytes": 218086,
+      "OutputCharacters": 1962,
+      "FileDifferences": 2404
+    },
+    {
+      "Fixture": "large",
+      "Source": "mixed",
+      "Format": "json",
+      "Cache": "cold",
+      "Repeat": 0,
+      "ElapsedMs": 1572.1952,
+      "PeakWorkingSetBytes": 552079360,
+      "ManagedAllocatedBytes": 1159538448,
+      "PeakCacheBytes": 41542156,
+      "PeakDaemonScratchBytes": 35086336,
+      "PeakDiskBytes": 76628492,
+      "RetainedCacheBytes": 41542156,
+      "BaseLayerDigests": [
+        "sha256:9547374b229af2734c55dd58e66743c8aa914a2fde2c74250141f21bcc0c76ce",
+        "sha256:061295c021f575c34f244b7d9d71093aa7c2abb4f4004ca3bf196dc79ff19d7d",
+        "sha256:666ff9c86c6f96d9c757da22eaea81687af2d528b20c6f3135369d780f10502c",
+        "sha256:6e871f9f3d539756329b643902563b44500e63ab2c195f9f70ae7083dc83bc61",
+        "sha256:3a466bed8f466374083ff190c990d99630e31875f94ba237761193057e81f95e",
+        "sha256:d354b87fd47e640c37bb58c7dd06fa829b0961f6f0bca311f346c119a10dc5c1"
+      ],
+      "TargetLayerDigests": [
+        "sha256:9547374b229af2734c55dd58e66743c8aa914a2fde2c74250141f21bcc0c76ce",
+        "sha256:061295c021f575c34f244b7d9d71093aa7c2abb4f4004ca3bf196dc79ff19d7d",
+        "sha256:666ff9c86c6f96d9c757da22eaea81687af2d528b20c6f3135369d780f10502c",
+        "sha256:6e871f9f3d539756329b643902563b44500e63ab2c195f9f70ae7083dc83bc61",
+        "sha256:3a466bed8f466374083ff190c990d99630e31875f94ba237761193057e81f95e",
+        "sha256:d354b87fd47e640c37bb58c7dd06fa829b0961f6f0bca311f346c119a10dc5c1",
+        "sha256:20e4635ef9e2485aa01c58c6bd47b4b303f678e9aec106c23da3e611e6c18204"
+      ],
+      "BaseCompressedBytes": 198312,
+      "TargetCompressedBytes": 218086,
+      "OutputCharacters": 3486651,
+      "FileDifferences": 2404
+    },
+    {
+      "Fixture": "large",
+      "Source": "mixed",
+      "Format": "json",
+      "Cache": "warm",
+      "Repeat": 0,
+      "ElapsedMs": 1474.4386,
+      "PeakWorkingSetBytes": 547729408,
+      "ManagedAllocatedBytes": 1302639624,
+      "PeakCacheBytes": 52784577,
+      "PeakDaemonScratchBytes": 35086336,
+      "PeakDiskBytes": 76628492,
+      "RetainedCacheBytes": 41542156,
+      "BaseLayerDigests": [
+        "sha256:9547374b229af2734c55dd58e66743c8aa914a2fde2c74250141f21bcc0c76ce",
+        "sha256:061295c021f575c34f244b7d9d71093aa7c2abb4f4004ca3bf196dc79ff19d7d",
+        "sha256:666ff9c86c6f96d9c757da22eaea81687af2d528b20c6f3135369d780f10502c",
+        "sha256:6e871f9f3d539756329b643902563b44500e63ab2c195f9f70ae7083dc83bc61",
+        "sha256:3a466bed8f466374083ff190c990d99630e31875f94ba237761193057e81f95e",
+        "sha256:d354b87fd47e640c37bb58c7dd06fa829b0961f6f0bca311f346c119a10dc5c1"
+      ],
+      "TargetLayerDigests": [
+        "sha256:9547374b229af2734c55dd58e66743c8aa914a2fde2c74250141f21bcc0c76ce",
+        "sha256:061295c021f575c34f244b7d9d71093aa7c2abb4f4004ca3bf196dc79ff19d7d",
+        "sha256:666ff9c86c6f96d9c757da22eaea81687af2d528b20c6f3135369d780f10502c",
+        "sha256:6e871f9f3d539756329b643902563b44500e63ab2c195f9f70ae7083dc83bc61",
+        "sha256:3a466bed8f466374083ff190c990d99630e31875f94ba237761193057e81f95e",
+        "sha256:d354b87fd47e640c37bb58c7dd06fa829b0961f6f0bca311f346c119a10dc5c1",
+        "sha256:20e4635ef9e2485aa01c58c6bd47b4b303f678e9aec106c23da3e611e6c18204"
+      ],
+      "BaseCompressedBytes": 198312,
+      "TargetCompressedBytes": 218086,
+      "OutputCharacters": 3486651,
+      "FileDifferences": 2404
+    },
+    {
+      "Fixture": "large",
+      "Source": "mixed",
+      "Format": "json",
+      "Cache": "cold",
+      "Repeat": 1,
+      "ElapsedMs": 3885.0634,
+      "PeakWorkingSetBytes": 584425472,
+      "ManagedAllocatedBytes": 1198045096,
+      "PeakCacheBytes": 52784577,
+      "PeakDaemonScratchBytes": 35086336,
+      "PeakDiskBytes": 76628492,
+      "RetainedCacheBytes": 41542156,
+      "BaseLayerDigests": [
+        "sha256:9547374b229af2734c55dd58e66743c8aa914a2fde2c74250141f21bcc0c76ce",
+        "sha256:061295c021f575c34f244b7d9d71093aa7c2abb4f4004ca3bf196dc79ff19d7d",
+        "sha256:666ff9c86c6f96d9c757da22eaea81687af2d528b20c6f3135369d780f10502c",
+        "sha256:6e871f9f3d539756329b643902563b44500e63ab2c195f9f70ae7083dc83bc61",
+        "sha256:3a466bed8f466374083ff190c990d99630e31875f94ba237761193057e81f95e",
+        "sha256:d354b87fd47e640c37bb58c7dd06fa829b0961f6f0bca311f346c119a10dc5c1"
+      ],
+      "TargetLayerDigests": [
+        "sha256:9547374b229af2734c55dd58e66743c8aa914a2fde2c74250141f21bcc0c76ce",
+        "sha256:061295c021f575c34f244b7d9d71093aa7c2abb4f4004ca3bf196dc79ff19d7d",
+        "sha256:666ff9c86c6f96d9c757da22eaea81687af2d528b20c6f3135369d780f10502c",
+        "sha256:6e871f9f3d539756329b643902563b44500e63ab2c195f9f70ae7083dc83bc61",
+        "sha256:3a466bed8f466374083ff190c990d99630e31875f94ba237761193057e81f95e",
+        "sha256:d354b87fd47e640c37bb58c7dd06fa829b0961f6f0bca311f346c119a10dc5c1",
+        "sha256:20e4635ef9e2485aa01c58c6bd47b4b303f678e9aec106c23da3e611e6c18204"
+      ],
+      "BaseCompressedBytes": 198312,
+      "TargetCompressedBytes": 218086,
+      "OutputCharacters": 3486651,
+      "FileDifferences": 2404
+    },
+    {
+      "Fixture": "large",
+      "Source": "mixed",
+      "Format": "json",
+      "Cache": "warm",
+      "Repeat": 1,
+      "ElapsedMs": 2705.3687,
+      "PeakWorkingSetBytes": 576290816,
+      "ManagedAllocatedBytes": 1259018536,
+      "PeakCacheBytes": 41542156,
+      "PeakDaemonScratchBytes": 35086336,
+      "PeakDiskBytes": 87870913,
+      "RetainedCacheBytes": 41542156,
+      "BaseLayerDigests": [
+        "sha256:9547374b229af2734c55dd58e66743c8aa914a2fde2c74250141f21bcc0c76ce",
+        "sha256:061295c021f575c34f244b7d9d71093aa7c2abb4f4004ca3bf196dc79ff19d7d",
+        "sha256:666ff9c86c6f96d9c757da22eaea81687af2d528b20c6f3135369d780f10502c",
+        "sha256:6e871f9f3d539756329b643902563b44500e63ab2c195f9f70ae7083dc83bc61",
+        "sha256:3a466bed8f466374083ff190c990d99630e31875f94ba237761193057e81f95e",
+        "sha256:d354b87fd47e640c37bb58c7dd06fa829b0961f6f0bca311f346c119a10dc5c1"
+      ],
+      "TargetLayerDigests": [
+        "sha256:9547374b229af2734c55dd58e66743c8aa914a2fde2c74250141f21bcc0c76ce",
+        "sha256:061295c021f575c34f244b7d9d71093aa7c2abb4f4004ca3bf196dc79ff19d7d",
+        "sha256:666ff9c86c6f96d9c757da22eaea81687af2d528b20c6f3135369d780f10502c",
+        "sha256:6e871f9f3d539756329b643902563b44500e63ab2c195f9f70ae7083dc83bc61",
+        "sha256:3a466bed8f466374083ff190c990d99630e31875f94ba237761193057e81f95e",
+        "sha256:d354b87fd47e640c37bb58c7dd06fa829b0961f6f0bca311f346c119a10dc5c1",
+        "sha256:20e4635ef9e2485aa01c58c6bd47b4b303f678e9aec106c23da3e611e6c18204"
+      ],
+      "BaseCompressedBytes": 198312,
+      "TargetCompressedBytes": 218086,
+      "OutputCharacters": 3486651,
+      "FileDifferences": 2404
+    },
+    {
+      "Fixture": "large",
+      "Source": "mixed",
+      "Format": "json",
+      "Cache": "cold",
+      "Repeat": 2,
+      "ElapsedMs": 2721.5858,
+      "PeakWorkingSetBytes": 560136192,
+      "ManagedAllocatedBytes": 1092573448,
+      "PeakCacheBytes": 41542156,
+      "PeakDaemonScratchBytes": 35086336,
+      "PeakDiskBytes": 87870913,
+      "RetainedCacheBytes": 41542156,
+      "BaseLayerDigests": [
+        "sha256:9547374b229af2734c55dd58e66743c8aa914a2fde2c74250141f21bcc0c76ce",
+        "sha256:061295c021f575c34f244b7d9d71093aa7c2abb4f4004ca3bf196dc79ff19d7d",
+        "sha256:666ff9c86c6f96d9c757da22eaea81687af2d528b20c6f3135369d780f10502c",
+        "sha256:6e871f9f3d539756329b643902563b44500e63ab2c195f9f70ae7083dc83bc61",
+        "sha256:3a466bed8f466374083ff190c990d99630e31875f94ba237761193057e81f95e",
+        "sha256:d354b87fd47e640c37bb58c7dd06fa829b0961f6f0bca311f346c119a10dc5c1"
+      ],
+      "TargetLayerDigests": [
+        "sha256:9547374b229af2734c55dd58e66743c8aa914a2fde2c74250141f21bcc0c76ce",
+        "sha256:061295c021f575c34f244b7d9d71093aa7c2abb4f4004ca3bf196dc79ff19d7d",
+        "sha256:666ff9c86c6f96d9c757da22eaea81687af2d528b20c6f3135369d780f10502c",
+        "sha256:6e871f9f3d539756329b643902563b44500e63ab2c195f9f70ae7083dc83bc61",
+        "sha256:3a466bed8f466374083ff190c990d99630e31875f94ba237761193057e81f95e",
+        "sha256:d354b87fd47e640c37bb58c7dd06fa829b0961f6f0bca311f346c119a10dc5c1",
+        "sha256:20e4635ef9e2485aa01c58c6bd47b4b303f678e9aec106c23da3e611e6c18204"
+      ],
+      "BaseCompressedBytes": 198312,
+      "TargetCompressedBytes": 218086,
+      "OutputCharacters": 3486651,
+      "FileDifferences": 2404
+    },
+    {
+      "Fixture": "large",
+      "Source": "mixed",
+      "Format": "json",
+      "Cache": "warm",
+      "Repeat": 2,
+      "ElapsedMs": 2501.6738,
+      "PeakWorkingSetBytes": 579137536,
+      "ManagedAllocatedBytes": 1315428488,
+      "PeakCacheBytes": 52406993,
+      "PeakDaemonScratchBytes": 35086336,
+      "PeakDiskBytes": 87870913,
+      "RetainedCacheBytes": 41542156,
+      "BaseLayerDigests": [
+        "sha256:9547374b229af2734c55dd58e66743c8aa914a2fde2c74250141f21bcc0c76ce",
+        "sha256:061295c021f575c34f244b7d9d71093aa7c2abb4f4004ca3bf196dc79ff19d7d",
+        "sha256:666ff9c86c6f96d9c757da22eaea81687af2d528b20c6f3135369d780f10502c",
+        "sha256:6e871f9f3d539756329b643902563b44500e63ab2c195f9f70ae7083dc83bc61",
+        "sha256:3a466bed8f466374083ff190c990d99630e31875f94ba237761193057e81f95e",
+        "sha256:d354b87fd47e640c37bb58c7dd06fa829b0961f6f0bca311f346c119a10dc5c1"
+      ],
+      "TargetLayerDigests": [
+        "sha256:9547374b229af2734c55dd58e66743c8aa914a2fde2c74250141f21bcc0c76ce",
+        "sha256:061295c021f575c34f244b7d9d71093aa7c2abb4f4004ca3bf196dc79ff19d7d",
+        "sha256:666ff9c86c6f96d9c757da22eaea81687af2d528b20c6f3135369d780f10502c",
+        "sha256:6e871f9f3d539756329b643902563b44500e63ab2c195f9f70ae7083dc83bc61",
+        "sha256:3a466bed8f466374083ff190c990d99630e31875f94ba237761193057e81f95e",
+        "sha256:d354b87fd47e640c37bb58c7dd06fa829b0961f6f0bca311f346c119a10dc5c1",
+        "sha256:20e4635ef9e2485aa01c58c6bd47b4b303f678e9aec106c23da3e611e6c18204"
+      ],
+      "BaseCompressedBytes": 198312,
+      "TargetCompressedBytes": 218086,
+      "OutputCharacters": 3486651,
+      "FileDifferences": 2404
+    }
+  ],
+  "budgets": [
+    {
+      "Fixture": "small",
+      "Source": "registry",
+      "Format": "text",
+      "Cache": "cold",
+      "ElapsedMs": 954.4744,
+      "PeakWorkingSetBytes": 98930688,
+      "ManagedAllocatedBytes": 6576544,
+      "PeakDiskBytes": 199501,
+      "RetainedCacheBytes": 199501
+    },
+    {
+      "Fixture": "small",
+      "Source": "registry",
+      "Format": "text",
+      "Cache": "warm",
+      "ElapsedMs": 84.64030000000001,
+      "PeakWorkingSetBytes": 98156544,
+      "ManagedAllocatedBytes": 6136912,
+      "PeakDiskBytes": 199501,
+      "RetainedCacheBytes": 199501
+    },
+    {
+      "Fixture": "small",
+      "Source": "registry",
+      "Format": "json",
+      "Cache": "cold",
+      "ElapsedMs": 461.6403,
+      "PeakWorkingSetBytes": 101339136,
+      "ManagedAllocatedBytes": 5806040,
+      "PeakDiskBytes": 199501,
+      "RetainedCacheBytes": 199501
+    },
+    {
+      "Fixture": "small",
+      "Source": "registry",
+      "Format": "json",
+      "Cache": "warm",
+      "ElapsedMs": 111.8323,
+      "PeakWorkingSetBytes": 101150720,
+      "ManagedAllocatedBytes": 6373008,
+      "PeakDiskBytes": 199501,
+      "RetainedCacheBytes": 199501
+    },
+    {
+      "Fixture": "small",
+      "Source": "mixed",
+      "Format": "text",
+      "Cache": "cold",
+      "ElapsedMs": 434.54510000000005,
+      "PeakWorkingSetBytes": 101814272,
+      "ManagedAllocatedBytes": 7160464,
+      "PeakDiskBytes": 484534,
+      "RetainedCacheBytes": 254751
+    },
+    {
+      "Fixture": "small",
+      "Source": "mixed",
+      "Format": "text",
+      "Cache": "warm",
+      "ElapsedMs": 128.73860000000002,
+      "PeakWorkingSetBytes": 102539264,
+      "ManagedAllocatedBytes": 7561864,
+      "PeakDiskBytes": 541037,
+      "RetainedCacheBytes": 254751
+    },
+    {
+      "Fixture": "small",
+      "Source": "mixed",
+      "Format": "json",
+      "Cache": "cold",
+      "ElapsedMs": 185.47639999999998,
+      "PeakWorkingSetBytes": 101314560,
+      "ManagedAllocatedBytes": 7342632,
+      "PeakDiskBytes": 477194,
+      "RetainedCacheBytes": 254751
+    },
+    {
+      "Fixture": "small",
+      "Source": "mixed",
+      "Format": "json",
+      "Cache": "warm",
+      "ElapsedMs": 133.655,
+      "PeakWorkingSetBytes": 102199296,
+      "ManagedAllocatedBytes": 6185728,
+      "PeakDiskBytes": 546037,
+      "RetainedCacheBytes": 254751
+    },
+    {
+      "Fixture": "dependencies",
+      "Source": "registry",
+      "Format": "text",
+      "Cache": "cold",
+      "ElapsedMs": 2194.2241,
+      "PeakWorkingSetBytes": 371728384,
+      "ManagedAllocatedBytes": 329146320,
+      "PeakDiskBytes": 8926158,
+      "RetainedCacheBytes": 8926158
+    },
+    {
+      "Fixture": "dependencies",
+      "Source": "registry",
+      "Format": "text",
+      "Cache": "warm",
+      "ElapsedMs": 1100.6218999999999,
+      "PeakWorkingSetBytes": 344252416,
+      "ManagedAllocatedBytes": 345497816,
+      "PeakDiskBytes": 15393452,
+      "RetainedCacheBytes": 8926158
+    },
+    {
+      "Fixture": "dependencies",
+      "Source": "registry",
+      "Format": "json",
+      "Cache": "cold",
+      "ElapsedMs": 703.7495000000001,
+      "PeakWorkingSetBytes": 314212352,
+      "ManagedAllocatedBytes": 274253336,
+      "PeakDiskBytes": 8926158,
+      "RetainedCacheBytes": 8926158
+    },
+    {
+      "Fixture": "dependencies",
+      "Source": "registry",
+      "Format": "json",
+      "Cache": "warm",
+      "ElapsedMs": 631.0145,
+      "PeakWorkingSetBytes": 358903808,
+      "ManagedAllocatedBytes": 354603640,
+      "PeakDiskBytes": 15393452,
+      "RetainedCacheBytes": 8926158
+    },
+    {
+      "Fixture": "dependencies",
+      "Source": "mixed",
+      "Format": "text",
+      "Cache": "cold",
+      "ElapsedMs": 726.6711,
+      "PeakWorkingSetBytes": 419041280,
+      "ManagedAllocatedBytes": 432383720,
+      "PeakDiskBytes": 16819293,
+      "RetainedCacheBytes": 11181149
+    },
+    {
+      "Fixture": "dependencies",
+      "Source": "mixed",
+      "Format": "text",
+      "Cache": "warm",
+      "ElapsedMs": 1137.6512,
+      "PeakWorkingSetBytes": 532877312,
+      "ManagedAllocatedBytes": 424046624,
+      "PeakDiskBytes": 23135463,
+      "RetainedCacheBytes": 11181149
+    },
+    {
+      "Fixture": "dependencies",
+      "Source": "mixed",
+      "Format": "json",
+      "Cache": "cold",
+      "ElapsedMs": 771.8800999999999,
+      "PeakWorkingSetBytes": 383746048,
+      "ManagedAllocatedBytes": 368933456,
+      "PeakDiskBytes": 16819293,
+      "RetainedCacheBytes": 11181149
+    },
+    {
+      "Fixture": "dependencies",
+      "Source": "mixed",
+      "Format": "json",
+      "Cache": "warm",
+      "ElapsedMs": 1152.0015,
+      "PeakWorkingSetBytes": 375689216,
+      "ManagedAllocatedBytes": 372053472,
+      "PeakDiskBytes": 23286587,
+      "RetainedCacheBytes": 11181149
+    },
+    {
+      "Fixture": "large",
+      "Source": "registry",
+      "Format": "text",
+      "Cache": "cold",
+      "ElapsedMs": 2568.4785,
+      "PeakWorkingSetBytes": 601399296,
+      "ManagedAllocatedBytes": 944856600,
+      "PeakDiskBytes": 32460902,
+      "RetainedCacheBytes": 32460902
+    },
+    {
+      "Fixture": "large",
+      "Source": "registry",
+      "Format": "text",
+      "Cache": "warm",
+      "ElapsedMs": 2485.3412999999996,
+      "PeakWorkingSetBytes": 611749888,
+      "ManagedAllocatedBytes": 1012185608,
+      "PeakDiskBytes": 32460902,
+      "RetainedCacheBytes": 32460902
+    },
+    {
+      "Fixture": "large",
+      "Source": "registry",
+      "Format": "json",
+      "Cache": "cold",
+      "ElapsedMs": 2657.7223000000004,
+      "PeakWorkingSetBytes": 495607808,
+      "ManagedAllocatedBytes": 875025072,
+      "PeakDiskBytes": 32460902,
+      "RetainedCacheBytes": 32460902
+    },
+    {
+      "Fixture": "large",
+      "Source": "registry",
+      "Format": "json",
+      "Cache": "warm",
+      "ElapsedMs": 2420.4809999999998,
+      "PeakWorkingSetBytes": 502951936,
+      "ManagedAllocatedBytes": 1064051992,
+      "PeakDiskBytes": 54945744,
+      "RetainedCacheBytes": 32460902
+    },
+    {
+      "Fixture": "large",
+      "Source": "mixed",
+      "Format": "text",
+      "Cache": "cold",
+      "ElapsedMs": 4172.9129,
+      "PeakWorkingSetBytes": 779177984,
+      "ManagedAllocatedBytes": 1275926304,
+      "PeakDiskBytes": 76628492,
+      "RetainedCacheBytes": 41542156
+    },
+    {
+      "Fixture": "large",
+      "Source": "mixed",
+      "Format": "text",
+      "Cache": "warm",
+      "ElapsedMs": 2978.7216,
+      "PeakWorkingSetBytes": 685801472,
+      "ManagedAllocatedBytes": 1310306952,
+      "PeakDiskBytes": 88248497,
+      "RetainedCacheBytes": 41542156
+    },
+    {
+      "Fixture": "large",
+      "Source": "mixed",
+      "Format": "json",
+      "Cache": "cold",
+      "ElapsedMs": 6197.9316,
+      "PeakWorkingSetBytes": 616771584,
+      "ManagedAllocatedBytes": 1303516744,
+      "PeakDiskBytes": 99113334,
+      "RetainedCacheBytes": 41542156
+    },
+    {
+      "Fixture": "large",
+      "Source": "mixed",
+      "Format": "json",
+      "Cache": "warm",
+      "ElapsedMs": 3936.2988,
+      "PeakWorkingSetBytes": 610545664,
+      "ManagedAllocatedBytes": 1371838440,
+      "PeakDiskBytes": 99113334,
+      "RetainedCacheBytes": 41542156
+    }
+  ]
+}

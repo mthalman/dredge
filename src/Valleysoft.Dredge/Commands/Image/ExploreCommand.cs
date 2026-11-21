@@ -30,7 +30,7 @@ public sealed class ExploreCommand : RegistryCommandBase<ExploreOptions>
             {
                 throw new InvalidOperationException(
                     "Image exploration requires an interactive terminal. Use 'dredge image ls' " +
-                    "or 'dredge image compare' for redirected output.");
+                    "or 'dredge image compare semantic' for redirected output.");
             }
 
             ExploreSettings settings = AppSettings.Load().Explore;

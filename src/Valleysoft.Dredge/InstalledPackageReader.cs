@@ -19,7 +19,20 @@ internal enum InstalledPackageMetadataAvailability
     Available
 }
 
-internal sealed record InstalledPackage(string Name, string Version);
+internal sealed record InstalledPackage(string Name, string Version)
+{
+    public string? Architecture { get; init; }
+    public string? RuntimeTarget { get; init; }
+}
+
+internal sealed record ScopedInstalledPackage(
+    InstalledPackageEcosystem Ecosystem, string Scope, string Name, string Version, string EvidencePath);
+
+internal sealed record PackageInventoryCoverage(int Candidates, int Parsed, int Failed)
+{
+    public int SkippedRecords { get; init; }
+}
+internal sealed record PackageMetadataSource(InstalledPackageEcosystem Ecosystem, string Path, string Scope, bool Parsed);
 
 internal sealed record InstalledPackageDiagnostic(string Path, string Message);
 
@@ -32,6 +45,10 @@ internal sealed record InstalledPackageMetadata(
 {
     public string? UnavailableReason { get; init; }
     public IReadOnlyList<InstalledPackageDiagnostic> Diagnostics { get; init; } = [];
+    public IReadOnlyList<ScopedInstalledPackage> ScopedPackages { get; init; } = [];
+    public IReadOnlyList<PackageMetadataSource> MetadataSources { get; init; } = [];
+    public IReadOnlyDictionary<InstalledPackageEcosystem, PackageInventoryCoverage> Coverage { get; init; } =
+        new Dictionary<InstalledPackageEcosystem, PackageInventoryCoverage>();
     public IReadOnlyDictionary<string, IReadOnlyList<string>> NpmPackageRoots { get; init; } =
         new Dictionary<string, IReadOnlyList<string>>(StringComparer.Ordinal);
 }
@@ -54,7 +71,11 @@ internal static class InstalledPackageReader
     }
 
     internal sealed record ParsedManifest(
-        IReadOnlyList<InstalledPackage>? Packages, InstalledPackageDiagnostic? Diagnostic);
+        IReadOnlyList<InstalledPackage>? Packages, InstalledPackageDiagnostic? Diagnostic)
+    {
+        public IReadOnlyList<InstalledPackageDiagnostic> SkippedDiagnostics { get; init; } = [];
+        public string? RuntimeTarget { get; init; }
+    }
 
     internal static async Task<InstalledPackageMetadata> ReadAsync(
         ImageFileSystem fileSystem,
@@ -77,20 +98,20 @@ internal static class InstalledPackageReader
         }
 
         IReadOnlyList<ImageFileSystemEntry> entries = fileSystem.List(null, true, false);
-        ImageFileSystemEntry[] npmManifests = [.. entries.Where(entry => IsReadableFile(entry) && IsNpmPackageManifestPath(entry.Path))];
-        ImageFileSystemEntry[] pipManifests = [.. entries.Where(entry => IsReadableFile(entry) && IsPipMetadataPath(entry.Path))];
+        ImageFileSystemEntry[] npmManifests = [.. entries.Where(entry => IsNpmPackageManifestPath(entry.Path))];
+        ImageFileSystemEntry[] pipManifests = [.. entries.Where(entry => IsPipMetadataPath(entry.Path))];
         HashSet<string> nugetCacheDirectories = entries
             .Where(entry => IsReadableFile(entry) &&
                 (entry.Path == ".nupkg.metadata" || entry.Path.EndsWith("/.nupkg.metadata", StringComparison.Ordinal)))
             .Select(entry => ImagePath.GetDirectoryName(entry.Path))
             .ToHashSet(StringComparer.Ordinal);
         ImageFileSystemEntry[] nugetManifests = [.. entries
-            .Where(entry => IsReadableFile(entry) && IsNuGetDepsPath(entry.Path) &&
+            .Where(entry => IsNuGetDepsPath(entry.Path) &&
                 !IsNuGetCachePath(entry.Path, nugetCacheDirectories))];
         ImageFileSystemEntry? dpkgStatus = entries.SingleOrDefault(
-            entry => IsReadableFile(entry) && entry.Path == DpkgStatusPath);
+            entry => entry.Path == DpkgStatusPath);
         ImageFileSystemEntry? apkInstalled = entries.SingleOrDefault(
-            entry => IsReadableFile(entry) && entry.Path == ApkInstalledPath);
+            entry => entry.Path == ApkInstalledPath);
 
         // Package metadata is advisory: a malformed per-package manifest is skipped,
         // and an unreadable database marks only its ecosystem unavailable.
@@ -100,6 +121,10 @@ internal static class InstalledPackageReader
         List<InstalledPackage> nugetPackages = [];
         bool nugetAvailable = false;
         List<InstalledPackageDiagnostic> diagnostics = [];
+        List<ScopedInstalledPackage> scoped = [];
+        Dictionary<string, PackageMetadataSource> sources = new(StringComparer.Ordinal);
+        Dictionary<InstalledPackageEcosystem, int> parsed = Enum.GetValues<InstalledPackageEcosystem>()
+            .ToDictionary(static ecosystem => ecosystem, static _ => 0);
         IReadOnlyList<InstalledPackage>? dpkgPackages = null;
         IReadOnlyList<InstalledPackage>? apkPackages = null;
         IEnumerable<(string Path, long MaximumBytes)> requests = npmManifests.Concat(pipManifests)
@@ -107,6 +132,14 @@ internal static class InstalledPackageReader
             .Concat(new[] { dpkgStatus, apkInstalled }.OfType<ImageFileSystemEntry>()
                 .Select(entry => (entry.Path, MaxDatabaseManifestBytes)))
             .Concat(nugetManifests.Select(entry => (entry.Path, MaxDatabaseManifestBytes)));
+        foreach (var request in requests)
+        {
+            InstalledPackageEcosystem ecosystem = request.Path == DpkgStatusPath ? InstalledPackageEcosystem.Dpkg :
+                request.Path == ApkInstalledPath ? InstalledPackageEcosystem.Apk :
+                IsNuGetDepsPath(request.Path) ? InstalledPackageEcosystem.NuGet :
+                IsNpmPackageManifestPath(request.Path) ? InstalledPackageEcosystem.Npm : InstalledPackageEcosystem.Pip;
+            sources[request.Path] = new(ecosystem, request.Path, Scope(ecosystem, request.Path), false);
+        }
         Dictionary<(string Path, ImageContentId Content), ParsedManifest> nextCache = [];
         await foreach (var result in fileSystem.ReadFilesWithCacheAsync(requests,
             cache is null ? null : (path, content) => cache.TryGet(path, content, out _),
@@ -117,48 +150,54 @@ internal static class InstalledPackageReader
                 diagnostics.Add(new(result.Path, result.Error.Message));
                 continue;
             }
-            ParsedManifest parsed;
+            ParsedManifest manifest;
             if (result.Cached)
             {
                 _ = cache!.TryGet(result.Path, result.ContentId!.Value, out ParsedManifest? existing);
-                parsed = existing!;
+                manifest = existing!;
             }
             else
             {
-                parsed = ParseManifest(result.Path, result.Content!);
+                manifest = ParseManifest(result.Path, result.Content!);
             }
             if (cache is not null)
             {
-                nextCache[(result.Path, result.ContentId!.Value)] = parsed;
+                nextCache[(result.Path, result.ContentId!.Value)] = manifest;
             }
-            if (parsed.Diagnostic is not null)
+            diagnostics.AddRange(manifest.SkippedDiagnostics);
+            if (manifest.Diagnostic is not null)
             {
-                diagnostics.Add(parsed.Diagnostic);
+                diagnostics.Add(manifest.Diagnostic);
                 continue;
             }
-            IReadOnlyList<InstalledPackage> parsedPackages = parsed.Packages!;
+            IReadOnlyList<InstalledPackage> parsedPackages = manifest.Packages!;
             if (result.Path == DpkgStatusPath)
             {
                 dpkgPackages = parsedPackages;
+                Record(InstalledPackageEcosystem.Dpkg, parsedPackages, result.Path);
             }
             else if (result.Path == ApkInstalledPath)
             {
                 apkPackages = parsedPackages;
+                Record(InstalledPackageEcosystem.Apk, parsedPackages, result.Path);
             }
             else if (IsNuGetDepsPath(result.Path))
             {
                 nugetAvailable = true;
                 nugetPackages.AddRange(parsedPackages);
+                Record(InstalledPackageEcosystem.NuGet, parsedPackages, result.Path, manifest.RuntimeTarget);
             }
             else if (IsNpmPackageManifestPath(result.Path))
             {
                 InstalledPackage package = parsedPackages[0];
                 npmPackages.Add(package);
                 npmRoots.Add((package.Name, ImagePath.GetDirectoryName(result.Path)));
+                Record(InstalledPackageEcosystem.Npm, parsedPackages, result.Path);
             }
             else
             {
                 pipPackages.AddRange(parsedPackages);
+                Record(InstalledPackageEcosystem.Pip, parsedPackages, result.Path);
             }
         }
         cancellationToken.ThrowIfCancellationRequested();
@@ -179,32 +218,76 @@ internal static class InstalledPackageReader
         return new InstalledPackageMetadata(ecosystems)
         {
             Diagnostics = diagnostics,
+            ScopedPackages = scoped.OrderBy(static p => p.Ecosystem).ThenBy(static p => p.Scope, StringComparer.Ordinal)
+                .ThenBy(static p => p.Name, StringComparer.Ordinal).ThenBy(static p => p.Version, StringComparer.Ordinal).ToArray(),
+            MetadataSources = sources.Values.OrderBy(static p => p.Ecosystem).ThenBy(static p => p.Path, StringComparer.Ordinal).ToArray(),
+            Coverage = new Dictionary<InstalledPackageEcosystem, int>
+            {
+                [InstalledPackageEcosystem.Npm] = npmManifests.Length,
+                [InstalledPackageEcosystem.Pip] = pipManifests.Length,
+                [InstalledPackageEcosystem.NuGet] = nugetManifests.Length,
+                [InstalledPackageEcosystem.Dpkg] = dpkgStatus is null ? 0 : 1,
+                [InstalledPackageEcosystem.Apk] = apkInstalled is null ? 0 : 1
+            }.ToDictionary(static p => p.Key, p => new PackageInventoryCoverage(p.Value, parsed[p.Key], p.Value - parsed[p.Key])
+            {
+                SkippedRecords = diagnostics.Count(d => sources.TryGetValue(d.Path, out var source) && source.Ecosystem == p.Key && source.Parsed)
+            }),
             NpmPackageRoots = npmRoots.GroupBy(item => item.Name, StringComparer.Ordinal)
                 .ToDictionary(group => group.Key,
                     group => (IReadOnlyList<string>)[.. group.Select(item => item.Root)
                         .Distinct(StringComparer.Ordinal).Order(StringComparer.Ordinal)],
                     StringComparer.Ordinal)
         };
+
+        void Record(InstalledPackageEcosystem ecosystem, IReadOnlyList<InstalledPackage> records, string path, string? runtimeTarget = null)
+        {
+            parsed[ecosystem]++;
+            string? runtime = runtimeTarget ?? records.FirstOrDefault()?.RuntimeTarget;
+            sources[path] = new(ecosystem, path, Scope(ecosystem, path) +
+                (ecosystem == InstalledPackageEcosystem.NuGet ? "#" + runtime : ""), true);
+            foreach (InstalledPackage package in records)
+            {
+                string scope = ecosystem switch
+                {
+                    InstalledPackageEcosystem.Npm => ImagePath.GetDirectoryName(path),
+                    InstalledPackageEcosystem.Pip => ImagePath.GetDirectoryName(ImagePath.GetDirectoryName(path)),
+                    InstalledPackageEcosystem.NuGet => path + "#" + package.RuntimeTarget,
+                    _ => "system" + (package.Architecture is null ? "" : "/" + package.Architecture)
+                };
+                scoped.Add(new(ecosystem, scope, package.Name, package.Version, path));
+            }
+
+        }
+
+        static string Scope(InstalledPackageEcosystem ecosystem, string path) => ecosystem switch
+        {
+            InstalledPackageEcosystem.Npm => ImagePath.GetDirectoryName(path),
+            InstalledPackageEcosystem.Pip => ImagePath.GetDirectoryName(ImagePath.GetDirectoryName(path)),
+            InstalledPackageEcosystem.NuGet => path,
+            _ => "system"
+        };
     }
 
     private static ParsedManifest ParseManifest(string path, byte[] bytes)
     {
+        List<InstalledPackageDiagnostic> skipped = [];
+        string? runtimeTarget = null;
         try
         {
             string content = StrictUtf8.GetString(bytes).TrimStart('\uFEFF');
             IReadOnlyList<InstalledPackage> packages = path switch
             {
-                DpkgStatusPath => ParseDpkgStatus(content),
+                DpkgStatusPath => ParseDpkgStatus(content, message => skipped.Add(new(path, message))),
                 ApkInstalledPath => ParseApkInstalled(content),
-                _ when IsNuGetDepsPath(path) => ParseNuGetDepsJson(content, path),
+                _ when IsNuGetDepsPath(path) => ParseNuGetDepsJson(content, path, target => runtimeTarget = target),
                 _ when IsNpmPackageManifestPath(path) => [ParseNpmPackageJson(content, path)],
                 _ => [ParsePipMetadata(content, path)]
             };
-            return new(packages, null);
+            return new(packages, null) { SkippedDiagnostics = skipped, RuntimeTarget = runtimeTarget };
         }
         catch (Exception exception) when (exception is InvalidDataException or DecoderFallbackException)
         {
-            return new(null, new(path, exception.Message));
+            return new(null, new(path, exception.Message)) { SkippedDiagnostics = skipped };
         }
     }
 
@@ -261,7 +344,7 @@ internal static class InstalledPackageReader
         }
     }
 
-    internal static IReadOnlyList<InstalledPackage> ParseNuGetDepsJson(string content, string sourcePath)
+    internal static IReadOnlyList<InstalledPackage> ParseNuGetDepsJson(string content, string sourcePath, Action<string>? onTarget = null)
     {
         try
         {
@@ -283,6 +366,7 @@ internal static class InstalledPackageReader
             {
                 throw new InvalidDataException($"NuGet metadata '{sourcePath}' is missing runtime target '{targetName}'.");
             }
+            onTarget?.Invoke(targetName);
             List<InstalledPackage> packages = [];
             foreach (JsonProperty dependency in target.EnumerateObject())
             {
@@ -309,7 +393,7 @@ internal static class InstalledPackageReader
                 {
                     throw new InvalidDataException($"NuGet metadata '{sourcePath}' has an invalid package identity '{dependency.Name}'.");
                 }
-                packages.Add(new(name.ToLowerInvariant(), version));
+                packages.Add(new(name.ToLowerInvariant(), version) { RuntimeTarget = targetName });
             }
             return packages;
         }
@@ -339,24 +423,40 @@ internal static class InstalledPackageReader
         }
     }
 
-    internal static IReadOnlyList<InstalledPackage> ParseDpkgStatus(string content)
+    internal static IReadOnlyList<InstalledPackage> ParseDpkgStatus(string content, Action<string>? onSkipped = null)
     {
         List<InstalledPackage> packages = [];
         foreach (Dictionary<string, string> paragraph in ParseParagraphs(content, "dpkg status"))
         {
             if (!paragraph.TryGetValue("Status", out string? status))
             {
+                onSkipped?.Invoke("dpkg paragraph is missing its installation status.");
                 continue;
             }
             string[] states = status.Split((char[]?)null, StringSplitOptions.RemoveEmptyEntries);
-            if (states.Length != 3 || states[2] != "installed")
+            if (states.Length != 3)
+            {
+                onSkipped?.Invoke("dpkg paragraph has an invalid installation status.");
+                continue;
+            }
+            if (states[2] != "installed")
             {
                 continue;
             }
 
-            packages.Add(new InstalledPackage(
-                GetRequiredField(paragraph, "Package", "installed dpkg paragraph"),
-                GetRequiredField(paragraph, "Version", "installed dpkg paragraph")));
+            try
+            {
+                packages.Add(new InstalledPackage(
+                    GetRequiredField(paragraph, "Package", "installed dpkg paragraph"),
+                    GetRequiredField(paragraph, "Version", "installed dpkg paragraph"))
+                {
+                    Architecture = paragraph.GetValueOrDefault("Architecture")
+                });
+            }
+            catch (InvalidDataException exception) when (onSkipped is not null)
+            {
+                onSkipped(exception.Message);
+            }
         }
 
         return packages;
@@ -369,6 +469,7 @@ internal static class InstalledPackageReader
         List<InstalledPackage> packages = [];
         string? name = null;
         string? version = null;
+        string? architecture = null;
         bool any = false;
         int lineNumber = 0;
 
@@ -382,9 +483,11 @@ internal static class InstalledPackageReader
                         : name,
                     string.IsNullOrWhiteSpace(version)
                         ? throw new InvalidDataException("apk installed paragraph is missing a nonempty 'V' field.")
-                        : version));
+                        : version)
+                { Architecture = architecture });
             }
             name = version = null;
+            architecture = null;
             any = false;
         }
 
@@ -409,6 +512,9 @@ internal static class InstalledPackageReader
                     break;
                 case 'V':
                     version ??= line[2..].Trim();
+                    break;
+                case 'A':
+                    architecture ??= line[2..].Trim();
                     break;
             }
         }
