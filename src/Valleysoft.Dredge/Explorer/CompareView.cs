@@ -803,6 +803,38 @@ internal sealed class CompareView
             : row?.Kind == CompareRowKind.Package ? "Show package files" : "Diff a file";
     }
 
+    internal static IEnumerable<(string Path, long? Before, long? After, bool Directory, int FileCount, string? Sharing,
+        string? LinkTarget, string Change, bool Link)> FilePathSizes(ExplorerComparison comparison)
+    {
+        FileTree root = FileTree.Build(comparison.Files, comparison.Baseline.Semantics.Comparer);
+        return Walk(root);
+
+        static IEnumerable<(string Path, long? Before, long? After, bool Directory, int FileCount, string? Sharing,
+            string? LinkTarget, string Change, bool Link)> Walk(FileTree node)
+        {
+            if (node.Path.Length > 0)
+            {
+                yield return (node.Path, node.Before, node.After, node.Dir, node.FileCount, node.Sharing,
+                    node.LinkTarget, node.Change switch
+                    {
+                        Change.Added => "Added",
+                        Change.Removed => "Deleted",
+                        Change.Identical => "Identical",
+                        Change.None => "",
+                        _ => "Modified"
+                    }, node.Baseline?.Type is ImageFileType.SymbolicLink or ImageFileType.HardLink or ImageFileType.Other ||
+                       node.Target?.Type is ImageFileType.SymbolicLink or ImageFileType.HardLink or ImageFileType.Other);
+            }
+            foreach (FileTree child in node.Children)
+            {
+                foreach (var size in Walk(child))
+                {
+                    yield return size;
+                }
+            }
+        }
+    }
+
     private sealed class FileTree
     {
         public string Name = "";

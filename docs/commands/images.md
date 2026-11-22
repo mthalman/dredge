@@ -177,17 +177,44 @@ dredge image explore docker://my-image:dev --output html > report.html
 dredge image explore docker://my-image:base --compare docker://my-image:dev --output html > comparison.html
 ```
 
-The report includes the image configuration and history, file sizes and
-filesystem tree, per-layer changes, and, when `--compare` is supplied, file
-differences. It does not include file contents or package inventories. It works
-offline and has no fixed size limit; large images can produce large reports.
-`--layer` selects the initial layer, and `--base-image` identifies base layers.
+The report includes the image history, file sizes, filesystem tree, per-layer
+changes, package inventories, and an Insights view with hidden-byte totals and
+findings. Press `i` to open Insights; use the arrow keys to select a finding and
+`Enter` to show its files. When `--compare` is supplied, the report also includes
+file and package differences. Comparison labels use each image's tag or short
+digest. Package comparisons cover ecosystems with readable
+metadata in both images. Package inventory and comparison are unavailable for
+Windows images. Reports embed package names and versions, but not file contents
+or package-owned file lists. They work offline and have no fixed size limit;
+reading package metadata for every layer can increase generation time and size.
+`--layer` selects the initial layer in single-image reports; comparison reports
+select the first differing layer. `--base-image` identifies base layers.
 `--no-mouse` applies only to the terminal explorer.
+
+In HTML reports, `a` switches between layer changes and the filesystem at
+the selected layer. `/` searches path history across layers; `Alt+L`, `Alt+D`,
+and `Alt+C` control the layer scope, deleted paths, and case sensitivity.
+Comparison reports open with an overview; `Esc` returns to it from the
+differences. Installed packages and files share one comparison tree, with
+collapsible sections and package ecosystems. npm scopes group related package
+changes. The overview opens the selected section and collapses the other; both
+can be expanded together. `/` searches package names and file paths in that
+tree. File comparisons show absolute path sizes for each image, folder
+file counts, sharing, and link targets; folder totals count hard-linked content
+once, as in the TUI.
+Package differences are leaf rows showing the version change, not expandable
+detail nodes. Comparison rows retain the TUI's tree order, without sort tabs.
+Search input appears in the footer when `/` is pressed. In comparison and package
+views, `Enter` or `Esc` closes the search input while retaining the filter;
+a subsequent `Esc` clears the filter.
+The report does not include file contents, previews, or diffs.
 
 Reports accept registry and `docker://` references, including mixed-source
 comparisons, and use the same platform options and filesystem limitations as
-the explorer. Because HTML generation is non-interactive, an ambiguous
-platform must be resolved using the platform options or saved settings.
+the explorer. Comparisons involving a Docker daemon image use layer content
+identities and cannot report download sizes. Because HTML generation is
+non-interactive, an ambiguous platform must be resolved using the platform
+options or saved settings.
 
 ### Browsing layers and files
 
