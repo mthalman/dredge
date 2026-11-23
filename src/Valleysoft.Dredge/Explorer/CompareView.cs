@@ -806,8 +806,7 @@ internal sealed class CompareView
     internal static IEnumerable<(string Path, long? Before, long? After, bool Directory, int FileCount, string? Sharing,
         string? LinkTarget, string Change, bool Link, bool HardLink, string? SwappedLinkTarget)> FilePathSizes(ExplorerComparison comparison)
     {
-        FileTree root = FileTree.Build(comparison.Files, comparison.Baseline.Entries, comparison.Target.Entries,
-            comparison.Baseline.Semantics.Comparer);
+        FileTree root = FileTree.Build(comparison.Files, comparison.Baseline.Semantics.Comparer);
         return Walk(root);
 
         static IEnumerable<(string Path, long? Before, long? After, bool Directory, int FileCount, string? Sharing,

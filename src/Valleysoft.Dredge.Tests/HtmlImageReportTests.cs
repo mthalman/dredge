@@ -114,8 +114,9 @@ public sealed class HtmlImageReportTests
             TextWriter.Null, Token, cache.Store));
 
         JsonNode folder = data["pathSizes"]!.AsArray().Single(item => item!["path"]!.GetValue<string>() == "app")!;
-        Assert.Equal(1003, folder["before"]!.GetValue<int>());
-        Assert.Equal(1005, folder["after"]!.GetValue<int>());
+        Assert.Equal(3, folder["before"]!.GetValue<int>());
+        Assert.Equal(5, folder["after"]!.GetValue<int>());
+        Assert.Equal(2, folder["fileCount"]!.GetValue<int>());
         Assert.Contains(data["pathSizes"]!.AsArray(), item => item!["path"]!.GetValue<string>() == "app/link" &&
             item["before"]!.GetValue<int>() == 3 && item["after"]!.GetValue<int>() == 5 &&
             !item["link"]!.GetValue<bool>() && item["hardLink"]!.GetValue<bool>());

@@ -1747,10 +1747,10 @@ function renderDifferences(box, scroller) {
   const pathSizes = comparisonPathSizes();
   setTitle("right-title", "Differences", pair()[0].label + " \u2192 " + pair()[1].label);
   const visible = diffs;
-  const search = state.filter.toLowerCase();
+  const search = foldCase(state.filter);
   const matchCount = search
-    ? packages.filter(item => item.name.toLowerCase().includes(search)).length +
-      diffs.filter(item => item.path.toLowerCase().includes(search)).length
+    ? packages.filter(item => foldCase(item.name).includes(search)).length +
+      diffs.filter(item => foldCase(item.path).includes(search)).length
     : null;
   box.append(renderComparisonSummary());
   if (search) box.append(el("div", "controls silt", "Filter: " + state.filter + " \u00b7 " + count(matchCount, "match")));
@@ -1774,8 +1774,8 @@ function renderDifferences(box, scroller) {
 }
 
 function renderComparisonSearch(scroller, packages, files, pathSizes, query) {
-  const packageMatches = packages.filter(item => item.name.toLowerCase().includes(query));
-  const fileMatches = files.filter(item => item.path.toLowerCase().includes(query));
+  const packageMatches = packages.filter(item => foldCase(item.name).includes(query));
+  const fileMatches = files.filter(item => foldCase(item.path).includes(query));
   const total = packageMatches.length + fileMatches.length;
   const limit = state.comparisonSearchLimit;
   let remaining = limit;
@@ -1934,6 +1934,7 @@ function packageDifferenceRow(item, level = 1, guide = "", query = "") {
   row.addEventListener("click", () => {
     state.selected = null;
     state.rightIndex = rightRows().indexOf(row);
+    $("right").querySelector(".info")?.replaceWith(comparisonSelectionInfo(comparisonPathSizes()));
     markRightSelection();
     $("right-pane").focus({ preventScroll: true });
   });
