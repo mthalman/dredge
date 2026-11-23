@@ -321,9 +321,17 @@ mark { background: var(--mark); color: inherit; }
     </section>
   </main>
 </div>
+<script type="application/octet-stream" id="report-data">/* DREDGE_REPORT_DATA */</script>
 <script>
 "use strict";
-const report = /* DREDGE_REPORT_DATA */;
+(async () => {
+// The report data is gzip-compressed JSON, encoded as base64, to keep the file small.
+const report = await (async () => {
+  const encoded = atob(document.getElementById("report-data").textContent.trim());
+  const bytes = Uint8Array.from(encoded, character => character.charCodeAt(0));
+  const stream = new Blob([bytes]).stream().pipeThrough(new DecompressionStream("gzip"));
+  return JSON.parse(await new Response(stream).text());
+})();
 const $ = id => document.getElementById(id);
 const BATCH = 100;
 const GLYPH = { Added: "+", Modified: "~", Identical: "=", Deleted: "\u2212" };
@@ -429,6 +437,12 @@ function warningsLabel() {
 function sides() { return state.swapped ? [1, 0] : [0, 1]; }
 function pair() { return sides().map(i => report.images[i]); }
 const FLIP = { Added: "Deleted", Deleted: "Added" };
+function comparisonPathKey(path) {
+  return path != null && pair()[0].platform.toLowerCase().startsWith("windows") ? foldCase(path) : path;
+}
+function comparisonPathSizes() {
+  return new Map((report.pathSizes || []).map(item => [comparisonPathKey(item.path), item]));
+}
 function differences() {
   return state.swapped
     ? report.differences.map(d => ({ path: d.path, change: FLIP[d.change] || d.change, before: d.after, after: d.before }))
@@ -858,7 +872,7 @@ function renderCompareDetails(box) {
 }
 
 /* ---------- Tree ---------- */
-function buildTree(entries, img = null, metadata = null) {
+function buildTree(entries, img = null, metadata = null, caseInsensitive = false) {
   const root = { name: "", path: "", children: new Map(), size: 0, dir: true, count: 0 };
   for (const entry of entries) {
     const parts = entry.path.split("/").filter(Boolean);
@@ -866,7 +880,7 @@ function buildTree(entries, img = null, metadata = null) {
     const chain = [root];
     parts.forEach((part, i) => {
       const path = parts.slice(0, i + 1).join("/");
-      const key = img ? pathKey(img, path) : part;
+      const key = caseInsensitive ? foldCase(part) : img ? pathKey(img, path) : part;
       let child = node.children.get(key);
       if (!child) {
         child = { name: part, path, children: new Map(), size: 0, dir: true, count: 0, note: null };
@@ -884,7 +898,7 @@ function buildTree(entries, img = null, metadata = null) {
   }
   if (metadata) {
     const applyMetadata = node => {
-      const item = metadata.get(img ? pathKey(img, node.path) : node.path);
+      const item = metadata.get(caseInsensitive ? foldCase(node.path) : img ? pathKey(img, node.path) : node.path);
       if (item) Object.assign(node, {
         dir: item.type === "Directory" || node.children.size > 0,
         type: item.type,
@@ -1000,8 +1014,7 @@ function renderTree(container, root, sizeText, metadata = false, levelOffset = 0
         if (child.sharing) detail.push(child.sharing.toLowerCase());
         if (child.hardLink) detail.push("hard link");
         if (detail.length) name.append(el("span", "tree-meta", detail.join("  ")));
-        const noSize = child.dir ? child.size === 0 : ["SymbolicLink", "HardLink", "Other"].includes(child.type);
-        add(row, noSize ? el("span", "size") : sizeText(child), name);
+        add(row, sizeText(child), name);
       }
       else {
         const noSize = child.dir ? child.size === 0 : child.entry?.type === "SymbolicLink" || child.hardLink;
@@ -1081,9 +1094,16 @@ function filterInput(packages = false) {
 }
 
 function renderRight() {
+  const previousScroller = $("right").querySelector(".pane-body");
+  const restoreScroll = previousScroller &&
+    document.body.dataset.view === state.view &&
+    document.body.dataset.mode === state.mode &&
+    (state.mode !== "image" || document.body.dataset.side === String(state.side));
+  const scrollTop = previousScroller?.scrollTop ?? 0;
   const restoreFocus = $("right").contains(document.activeElement);
   const focusId = restoreFocus ? document.activeElement.dataset.focusId : null;
   renderRightContent();
+  if (restoreScroll) $("right").querySelector(".pane-body").scrollTop = scrollTop;
   markRightSelection();
   if (restoreFocus && !$("right").contains(document.activeElement)) {
     const replacement = focusId && [...$("right").querySelectorAll("[data-focus-id]")]
@@ -1098,6 +1118,7 @@ function renderRightContent() {
   scroller.setAttribute("role", "tree");
   document.body.dataset.view = state.view;
   document.body.dataset.mode = state.mode;
+  document.body.dataset.side = state.side;
   if (state.view === "warnings") {
     setTitle("right-title", state.mode === "compare" ? "Warnings and limitations" : warningsLabel());
     scroller.removeAttribute("role");
@@ -1341,7 +1362,15 @@ function openImagePath(img, path, layer, whole, findingsOnly = false) {
   rows[state.rightIndex]?.scrollIntoView({ block: "nearest" });
 }
 function openFindingPath(img, finding, path) {
-  const layer = finding.layers.at(-1) ?? state.layer;
+  const normalize = value => img.platform.toLowerCase().startsWith("windows") ? foldCase(value) : value;
+  const selectedPath = normalize(path);
+  const layer = [...finding.layers].reverse().find(index => {
+    const snapshot = layerAt(img, index);
+    return snapshot?.changes.some(change => {
+      const changedPath = normalize(change.path);
+      return changedPath === selectedPath || changedPath.startsWith(selectedPath + "/");
+    });
+  }) ?? finding.layers.at(-1) ?? state.layer;
   if (!layerAt(img, layer)) return;
   state.investigation = captureInvestigation();
   state.layer = layer;
@@ -1609,7 +1638,7 @@ function selectionInfo(img, entries, metadata = new Map()) {
 function renderDifferences(box, scroller) {
   const diffs = differences();
   const packages = packageDifferences();
-  const pathSizes = new Map((report.pathSizes || []).map(item => [item.path, item]));
+  const pathSizes = comparisonPathSizes();
   setTitle("right-title", "Differences", pair()[0].label + " \u2192 " + pair()[1].label);
   const visible = diffs;
   const search = state.filter.toLowerCase();
@@ -1650,7 +1679,7 @@ function renderComparisonSearch(scroller, packages, files, pathSizes, query) {
     row.setAttribute("role", "treeitem");
     row.setAttribute("aria-level", "1");
     row.setAttribute("aria-selected", String(state.selected === item.path));
-    const sizes = pathSizes.get(item.path);
+    const sizes = pathSizes.get(comparisonPathKey(item.path));
     const before = sizes ? (state.swapped ? sizes.after : sizes.before) : item.before;
     const after = sizes ? (state.swapped ? sizes.before : sizes.after) : item.after;
     const name = el("span", "name");
@@ -1673,31 +1702,40 @@ function renderComparisonFiles(scroller, visible, diffs, pathSizes) {
     return;
   }
   const entries = visible.map(d => ({ path: d.path, type: "File", size: (d.after || 0) - (d.before || 0), change: d.change, diff: d }));
-  const compareMetadata = new Map([...pathSizes].map(([path, item]) => [path, {
+  const windows = pair()[0].platform.toLowerCase().startsWith("windows");
+  const keyForPath = comparisonPathKey;
+  const pathSizesByKey = new Map([...pathSizes].map(([path, item]) => [keyForPath(path), item]));
+  const compareMetadata = new Map([...pathSizesByKey].map(([path, item]) => [path, {
     type: item.directory ? "Directory" : item.link ? "SymbolicLink" : "File",
     size: state.swapped ? item.after || 0 : item.before || 0,
-    fileCount: item.fileCount, sharing: item.sharing, hardLink: false, linkTarget: item.linkTarget,
+    fileCount: item.fileCount, sharing: comparisonSharing(item.sharing), hardLink: false, linkTarget: item.linkTarget,
     change: state.swapped ? FLIP[item.change] || item.change : item.change
   }]));
   const sizeCells = node => {
-    const totals = pathSizes.get(node.path);
+    const totals = pathSizesByKey.get(keyForPath(node.path));
     const d = node.entry?.diff;
     const before = totals ? (state.swapped ? totals.after : totals.before) : d?.before;
     const after = totals ? (state.swapped ? totals.before : totals.after) : d?.after;
     return comparisonSizeCells(before, after, node.type === "SymbolicLink");
   };
-  if (!renderTree(scroller, buildTree(entries, null, compareMetadata), sizeCells, false, 1)) scroller.append(el("p", "empty", "No differences match these filters."));
+  if (!renderTree(scroller, buildTree(entries, null, compareMetadata, windows), sizeCells, false, 1)) scroller.append(el("p", "empty", "No differences match these filters."));
+}
+
+function comparisonSharing(sharing) {
+  if (!state.swapped || !sharing) return sharing;
+  return sharing.split("; ").map(part => part.replace(/^(Before|After):/i,
+    (_, side) => (side.toLowerCase() === "before" ? "After" : "Before") + ":")).join("; ");
 }
 
 function comparisonSelectionInfo(pathSizes) {
   const info = el("div", "info");
-  const item = pathSizes.get(state.selected);
+  const item = pathSizes.get(comparisonPathKey(state.selected));
   if (!item) { info.append(el("span", "silt", "Select a path to compare its sizes and sharing.")); return info; }
   const before = state.swapped ? item.after : item.before;
   const after = state.swapped ? item.before : item.after;
   add(info, el("span", "path", "/" + item.path));
   if (item.directory) info.append(el("span", "silt", count(item.fileCount, "file", "files")));
-  if (item.sharing) info.append(el("span", "silt", item.sharing.toLowerCase()));
+  if (item.sharing) info.append(el("span", "silt", comparisonSharing(item.sharing).toLowerCase()));
   if (item.linkTarget) info.append(el("span", "silt", "\u2192 " + item.linkTarget));
   if (!item.link) add(info, el("span", "push silt",
     (before == null ? "\u2014" : size(before)) + " \u2192 " + (after == null ? "\u2014" : size(after))));
@@ -1777,6 +1815,12 @@ function packageDifferenceRow(item, level = 1, guide = "", query = "") {
   const name = add(el("span", "name"), el("span", "tree-guide", guide), highlight(item.name, query));
   add(row, el("span", TONE[item.change], GLYPH[item.change]), name,
     el("span", "version", item.change === "Modified" ? item.before + " \u2192 " + item.after : item.after ?? item.before));
+  row.addEventListener("click", () => {
+    state.selected = null;
+    state.rightIndex = rightRows().indexOf(row);
+    markRightSelection();
+    $("right-pane").focus({ preventScroll: true });
+  });
   return row;
 }
 
@@ -2032,6 +2076,8 @@ function setMode(mode, side) {
   state.findingsOnly = false;
   state.investigation = null;
   state.filter = "";
+  state.searchQuery = "";
+  state.packageFilter = "";
   state.view = mode === "compare" ? "overview" : view;
   state.returnView = view;
   resetTree();
@@ -2041,7 +2087,7 @@ function setMode(mode, side) {
   render();
 }
 function navigateView(view) {
-  if (view === "files" && state.view === "search") state.searchQuery = "";
+  if (state.view === "search" && view !== "search") state.searchQuery = "";
   state.view = view;
   state.returnView = view;
   state.investigation = null;
@@ -2110,8 +2156,9 @@ $("layers").addEventListener("keydown", event => {
   if (state.mode === "compare") moveRow(map[event.key]); else moveLayer(map[event.key]);
   $("layers").focus();
 });
+const RIGHT_ROW_SELECTOR = ".trow, .package-diff-row, .comparison-section > summary, .comparison-unchanged, .package-group > summary, .package-scope > summary, .package-row > summary, .search-row, .overview-choice, .insight-group > summary";
 function rightRows() {
-  return [...$("right").querySelectorAll(".trow, .package-diff-row, .comparison-section > summary, .comparison-unchanged, .package-group > summary, .package-scope > summary, .package-row > summary, .search-row, .overview-choice, .insight-group > summary")]
+  return [...$("right").querySelectorAll(RIGHT_ROW_SELECTOR)]
     .filter(row => {
       for (let parent = row.parentElement; parent && parent !== $("right"); parent = parent.parentElement) {
         if (parent instanceof HTMLDetailsElement && !parent.open &&
@@ -2142,9 +2189,12 @@ function markRightSelection() {
   }
 }
 $("right-pane").addEventListener("keydown", event => {
-  if (event.target !== $("right-pane") && !(event.target instanceof Element && event.target.closest("summary"))) return;
   const rows = rightRows();
+  const focusedRow = event.target instanceof Element ? event.target.closest(RIGHT_ROW_SELECTOR) : null;
+  if (event.target !== $("right-pane") && !focusedRow) return;
   if (!rows.length) return;
+  const focusedIndex = focusedRow ? rows.indexOf(focusedRow) : -1;
+  if (focusedIndex >= 0) state.rightIndex = focusedIndex;
   const map = { ArrowUp: -1, ArrowDown: 1, PageUp: -10, PageDown: 10, Home: -1e6, End: 1e6 };
   if (event.key in map) {
     event.preventDefault();
@@ -2157,7 +2207,7 @@ $("right-pane").addEventListener("keydown", event => {
     }
     const info = $("right").querySelector(".info");
     if (info && state.view === "files" && state.mode === "compare")
-      info.replaceWith(comparisonSelectionInfo(new Map((report.pathSizes || []).map(item => [item.path, item]))));
+      info.replaceWith(comparisonSelectionInfo(comparisonPathSizes()));
     markRightSelection();
     updateSearchSelection();
     $("right-pane").focus({ preventScroll: true });
@@ -2183,8 +2233,12 @@ $("right-pane").addEventListener("keydown", event => {
         if (parent.getAttribute("aria-expanded") !== null &&
             Number(parent.getAttribute("aria-level") || 0) < depth) {
           state.rightIndex = i;
-          state.selected = null;
+          state.selected = parent.dataset.path || null;
           markRightSelection();
+          if (state.mode === "compare") {
+            const info = $("right").querySelector(".info");
+            info?.replaceWith(comparisonSelectionInfo(comparisonPathSizes()));
+          }
           parent.scrollIntoView({ block: "nearest" });
           break;
         }
@@ -2199,7 +2253,7 @@ $("right-pane").addEventListener("click", event => {
   state.rightIndex = Math.max(0, rightRows().indexOf(summary));
   if (state.mode === "compare") {
     const info = $("right").querySelector(".info");
-    info?.replaceWith(comparisonSelectionInfo(new Map((report.pathSizes || []).map(item => [item.path, item]))));
+    info?.replaceWith(comparisonSelectionInfo(comparisonPathSizes()));
   }
   markRightSelection();
 }, true);
@@ -2233,6 +2287,11 @@ document.addEventListener("keydown", event => {
   render();
   $("layers").focus({ preventScroll: true });
 })();
+})().catch(error => {
+  const message = document.createElement("p");
+  message.textContent = `The report could not be loaded: ${error.message}. Open it in a current version of Chrome, Edge, Firefox, or Safari.`;
+  document.body.replaceChildren(message);
+});
 </script>
 </body>
 </html>

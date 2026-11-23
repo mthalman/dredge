@@ -1,5 +1,5 @@
-using System.Text.Encodings.Web;
-using System.Text.Json;
+using System.IO.Compression;
+using System.Text;
 using Valleysoft.Dredge.Commands.Image;
 using Valleysoft.Dredge.Explorer;
 using Valleysoft.Dredge.Explorer.Tui;
@@ -51,10 +51,6 @@ internal sealed record HtmlReportData(
 internal static class HtmlImageReport
 {
     private const string DataPlaceholder = "/* DREDGE_REPORT_DATA */";
-    private static readonly JsonSerializerOptions SafeJson = new(JsonHelper.CompactSettings)
-    {
-        Encoder = JavaScriptEncoder.Default
-    };
 
     public static async Task<string> CreateAsync(
         IImageSourceFactory factory, IDockerRegistryClientFactory registryFactory,
@@ -288,6 +284,13 @@ internal static class HtmlImageReport
         {
             throw new InvalidOperationException("The HTML report template has no data placeholder.");
         }
-        return template.Replace(DataPlaceholder, JsonHelper.Serialize(data, SafeJson), StringComparison.Ordinal);
+        string json = JsonHelper.Serialize(data, JsonHelper.CompactSettings);
+        using MemoryStream compressed = new();
+        using (GZipStream gzip = new(compressed, CompressionLevel.SmallestSize, leaveOpen: true))
+        {
+            gzip.Write(Encoding.UTF8.GetBytes(json));
+        }
+        return template.Replace(DataPlaceholder, Convert.ToBase64String(compressed.GetBuffer(), 0, (int)compressed.Length),
+            StringComparison.Ordinal);
     }
 }

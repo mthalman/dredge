@@ -111,7 +111,8 @@ public sealed class HtmlImageReportTests
             }
             return result.ToArray();
         }
-        Sources sources = new(Tar(("common", "same")), LinkedLayer("old"), LinkedLayer("newer"));
+        Sources sources = new(Tar(("common", "same"), ("app/unchanged", new string('x', 1000))),
+            LinkedLayer("old"), LinkedLayer("newer"));
         await using LayerCacheTestContext cache = new();
         JsonNode data = Data(await HtmlImageReport.CreateAsync(
             sources, Mock.Of<IDockerRegistryClientFactory>(),
@@ -119,8 +120,8 @@ public sealed class HtmlImageReportTests
             TextWriter.Null, Token, cache.Store));
 
         JsonNode folder = data["pathSizes"]!.AsArray().Single(item => item!["path"]!.GetValue<string>() == "app")!;
-        Assert.Equal(3, folder["before"]!.GetValue<int>());
-        Assert.Equal(5, folder["after"]!.GetValue<int>());
+        Assert.Equal(1003, folder["before"]!.GetValue<int>());
+        Assert.Equal(1005, folder["after"]!.GetValue<int>());
         Assert.Contains(data["pathSizes"]!.AsArray(), item => item!["path"]!.GetValue<string>() == "app/link" &&
             item["before"]!.GetValue<int>() == 3 && item["after"]!.GetValue<int>() == 5 &&
             item["link"]!.GetValue<bool>());
@@ -434,6 +435,22 @@ public sealed class HtmlImageReportTests
     }
 
     [Fact]
+    public void ReportDataIsEmbeddedCompressed()
+    {
+        HtmlReportFile[] changes = [.. Enumerable.Range(0, 5000).Select(i => new HtmlReportFile($"usr/lib/package-{i}/file.txt", "File", i, "Added"))];
+        HtmlReportImage image = new("image", "image", "snapshot", "linux", "image", "download", [],
+            [new(0, "sha256:a", "sha256:a", 0, 1, 0, null, null, "COPY app", changes)], [], [], []);
+        HtmlReportData report = new([image], null, null, [], null, false, false);
+
+        string html = HtmlImageReport.Render(report);
+
+        Assert.DoesNotContain("usr/lib/package-", html);
+        Assert.Equal(4999, Data(html)["images"]![0]!["layers"]![0]!["changes"]![4999]!["size"]!.GetValue<int>());
+        Assert.True(html.Length - HtmlImageReport.Render(new([], null, null, [], null, false, false)).Length <
+            JsonSerializer.Serialize(report, DredgeJsonContext.Default.HtmlReportData).Length / 4);
+    }
+
+    [Fact]
     public void UntrustedReportStringsRemainData()
     {
         string path = Payload + "\u03b1";
@@ -491,12 +508,12 @@ public sealed class HtmlImageReportTests
 
     private static JsonNode Data(string html)
     {
-        html = html.Replace("\r\n", "\n", StringComparison.Ordinal);
-        const string prefix = "const report = ";
+        const string prefix = "<script type=\"application/octet-stream\" id=\"report-data\">";
         int start = html.IndexOf(prefix, StringComparison.Ordinal) + prefix.Length;
-        int end = html.IndexOf(";\n", start, StringComparison.Ordinal);
+        int end = html.IndexOf("</script>", start, StringComparison.Ordinal);
         Assert.True(start >= prefix.Length && end > start);
-        return JsonNode.Parse(html[start..end])!;
+        using GZipStream gzip = new(new MemoryStream(Convert.FromBase64String(html[start..end])), CompressionMode.Decompress);
+        return JsonNode.Parse(gzip)!;
     }
 
     private static byte[] Tar(params (string Path, string Content)[] entries)

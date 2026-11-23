@@ -168,6 +168,8 @@ dredge image explore <image> [--layer <n>] [--compare <image-or-tag>] [--base-im
 - `--no-mouse` turns off mouse support so you can select text in the terminal
   normally.
 - `--output html` writes a self-contained, interactive report to standard output.
+  The report data is embedded gzip-compressed in the single HTML file and is
+  decompressed by the browser, which must support `DecompressionStream`.
   The default, `tui`, opens the terminal explorer.
 
 ### HTML reports
