@@ -804,14 +804,14 @@ internal sealed class CompareView
     }
 
     internal static IEnumerable<(string Path, long? Before, long? After, bool Directory, int FileCount, string? Sharing,
-        string? LinkTarget, string Change, bool Link)> FilePathSizes(ExplorerComparison comparison)
+        string? LinkTarget, string Change, bool Link, bool HardLink)> FilePathSizes(ExplorerComparison comparison)
     {
         FileTree root = FileTree.Build(comparison.Files, comparison.Baseline.Entries, comparison.Target.Entries,
             comparison.Baseline.Semantics.Comparer);
         return Walk(root);
 
         static IEnumerable<(string Path, long? Before, long? After, bool Directory, int FileCount, string? Sharing,
-            string? LinkTarget, string Change, bool Link)> Walk(FileTree node)
+            string? LinkTarget, string Change, bool Link, bool HardLink)> Walk(FileTree node)
         {
             if (node.Path.Length > 0 && node.HasChanges)
             {
@@ -823,8 +823,9 @@ internal sealed class CompareView
                         Change.Identical => "Identical",
                         Change.None => "",
                         _ => "Modified"
-                    }, node.Baseline?.Type is ImageFileType.SymbolicLink or ImageFileType.HardLink or ImageFileType.Other ||
-                       node.Target?.Type is ImageFileType.SymbolicLink or ImageFileType.HardLink or ImageFileType.Other);
+                    }, node.Baseline?.Type is ImageFileType.SymbolicLink or ImageFileType.Other ||
+                       node.Target?.Type is ImageFileType.SymbolicLink or ImageFileType.Other,
+                    node.Baseline?.Type == ImageFileType.HardLink || node.Target?.Type == ImageFileType.HardLink);
             }
             foreach (FileTree child in node.Children)
             {

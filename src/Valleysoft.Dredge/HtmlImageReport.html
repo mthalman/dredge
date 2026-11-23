@@ -306,7 +306,6 @@ mark { background: var(--mark); color: inherit; }
   <main class="body">
     <section class="pane" id="layers-pane" aria-labelledby="layers-title">
       <h2 class="pane-title" id="layers-title"></h2>
-      <div class="toolbar" id="layer-controls"></div>
       <div class="pane-body" id="layers" role="listbox" tabindex="0" aria-labelledby="layers-title"></div>
     </section>
     <section class="pane" id="details-pane" aria-labelledby="details-title">
@@ -437,8 +436,9 @@ function warningsLabel() {
 function sides() { return state.swapped ? [1, 0] : [0, 1]; }
 function pair() { return sides().map(i => report.images[i]); }
 const FLIP = { Added: "Deleted", Deleted: "Added" };
+const comparisonIdentities = new Map((report.comparisonPathIdentities || []).map(item => [item.path, item.id]));
 function comparisonPathKey(path) {
-  return path != null && pair()[0].platform.toLowerCase().startsWith("windows") ? foldCase(path) : path;
+  return comparisonIdentities.get(path) ?? path;
 }
 function comparisonPathSizes() {
   return new Map((report.pathSizes || []).map(item => [comparisonPathKey(item.path), item]));
@@ -487,12 +487,92 @@ function wholeEntries(img, index) {
   return [...live.values()];
 }
 function treeMetadata(img, layer, whole) {
+  if (whole) return wholeSnapshot(img, layer).metadata;
   return new Map((img.fileTreeMetadata || [])
-    .filter(item => item.layer === layer && item.wholeFilesystem === whole)
+    .filter(item => item.layer === layer && !item.wholeFilesystem)
     .map(item => [pathKey(img, item.path), item]));
 }
 function fileTreeSummary(img, layer, whole) {
-  return (img.fileTreeSummaries || []).find(item => item.layer === layer && item.wholeFilesystem === whole) || null;
+  if (whole) return wholeSnapshot(img, layer).summary;
+  return (img.fileTreeSummaries || []).find(item => item.layer === layer && !item.wholeFilesystem) || null;
+}
+const wholeSnapshots = new WeakMap();
+function wholeSnapshot(img, layer) {
+  const cached = wholeSnapshots.get(img);
+  if (cached?.layer === layer) return cached;
+  const entries = wholeEntries(img, layer);
+  const root = buildTree(entries, img);
+  const metadata = new Map();
+  const notes = new Map();
+  for (const finding of img.findings || []) {
+    if (!finding.layers.includes(layer)) continue;
+    for (const path of finding.roots) {
+      const key = pathKey(img, path);
+      if (!notes.has(key)) notes.set(key, noteForFinding(finding, layer));
+    }
+  }
+  const totals = () => ({ contents: new Map(), linked: new Set(), untracked: 0, bytes: 0, hardLinks: 0 });
+  const addEntry = (total, entry) => {
+    if (entry.contentId != null) {
+      if (!total.contents.has(entry.contentId)) {
+        total.contents.set(entry.contentId, entry.size);
+        total.bytes += entry.size;
+      }
+      if (entry.hardLink) total.linked.add(entry.contentId);
+    } else {
+      total.untracked += entry.size;
+      total.bytes += entry.size;
+    }
+    if (entry.hardLink) total.hardLinks++;
+  };
+  const merge = (total, other) => {
+    for (const [id, bytes] of other.contents) {
+      if (!total.contents.has(id)) { total.contents.set(id, bytes); total.bytes += bytes; }
+    }
+    for (const id of other.linked) total.linked.add(id);
+    total.untracked += other.untracked;
+    total.bytes += other.untracked;
+    total.hardLinks += other.hardLinks;
+  };
+  const finish = node => {
+    const live = totals(), shipped = totals();
+    const entry = node.entry;
+    const children = [...node.children.values()];
+    let fileCount = node.path && (!node.dir || children.length === 0) ? 1 : 0;
+    if (!node.dir && entry) { addEntry(live, entry); addEntry(shipped, entry); }
+    for (const child of children) {
+      const result = finish(child);
+      fileCount += result.fileCount;
+      if (node.dir) {
+        if (child.entry?.change !== "Deleted") merge(live, result.live);
+        merge(shipped, result.shipped);
+      }
+    }
+    if (node.path) {
+      const sharing = entry?.change === "Deleted" ? shipped : live;
+      const label = sharing.hardLinks
+        ? count(sharing.hardLinks, "hard link") + (sharing.linked.size ? ", " + count(sharing.linked.size, "shared file") : "")
+        : null;
+      const item = {
+        path: node.path, size: live.bytes, shippedSize: shipped.bytes, fileCount,
+        sharing: label, hardLink: Boolean(entry?.hardLink), linkTarget: entry?.linkTarget,
+        type: node.dir ? "Directory" : entry?.type === "HardLink" ? "SymbolicLink" : entry?.type || "File",
+        change: entry?.change, note: entry?.note || notes.get(pathKey(img, node.path))
+      };
+      Object.assign(node, item);
+      metadata.set(pathKey(img, node.path), item);
+    }
+    return { live, shipped, fileCount };
+  };
+  const result = finish(root);
+  const changed = fileTreeSummary(img, layer, false);
+  const changes = [...(changed?.changes || [])];
+  const changedCount = sum(changes, item => item.count);
+  changes.push({ change: "None", count: Math.max(0, result.fileCount - changedCount) });
+  const snapshot = { layer, entries, root, metadata,
+    summary: { size: result.live.bytes, pathCount: result.fileCount, changes } };
+  wholeSnapshots.set(img, snapshot);
+  return snapshot;
 }
 function visibleFindings(img) {
   const findings = img.findings || [];
@@ -872,7 +952,7 @@ function renderCompareDetails(box) {
 }
 
 /* ---------- Tree ---------- */
-function buildTree(entries, img = null, metadata = null, caseInsensitive = false) {
+function buildTree(entries, img = null, metadata = null, keyForPath = img ? path => pathKey(img, path) : path => path) {
   const root = { name: "", path: "", children: new Map(), size: 0, dir: true, count: 0 };
   for (const entry of entries) {
     const parts = entry.path.split("/").filter(Boolean);
@@ -880,7 +960,7 @@ function buildTree(entries, img = null, metadata = null, caseInsensitive = false
     const chain = [root];
     parts.forEach((part, i) => {
       const path = parts.slice(0, i + 1).join("/");
-      const key = caseInsensitive ? foldCase(part) : img ? pathKey(img, path) : part;
+      const key = keyForPath(path);
       let child = node.children.get(key);
       if (!child) {
         child = { name: part, path, children: new Map(), size: 0, dir: true, count: 0, note: null };
@@ -889,7 +969,7 @@ function buildTree(entries, img = null, metadata = null, caseInsensitive = false
       node = child;
       chain.push(node);
     });
-    Object.assign(node, { entry, dir: entry.type === "Directory" || node.children.size > 0 });
+    Object.assign(node, { entry, dir: entry.type === "Directory" });
     const bytes = entry.type === "Directory" ? 0 : entry.size;
     for (const ancestor of chain) {
       if (ancestor !== node) { ancestor.size += bytes; ancestor.count++; }
@@ -898,9 +978,9 @@ function buildTree(entries, img = null, metadata = null, caseInsensitive = false
   }
   if (metadata) {
     const applyMetadata = node => {
-      const item = metadata.get(caseInsensitive ? foldCase(node.path) : img ? pathKey(img, node.path) : node.path);
+      const item = metadata.get(keyForPath(node.path));
       if (item) Object.assign(node, {
-        dir: item.type === "Directory" || node.children.size > 0,
+        dir: item.type === "Directory",
         type: item.type,
         size: item.size,
         shippedSize: item.shippedSize,
@@ -936,7 +1016,9 @@ function highlight(text, query, exactCase = false) {
   return span;
 }
 function visibleByChange(node) {
-  if (node.dir && node.children.size) return [...node.children.values()].some(visibleByChange);
+  if (state.mode === "compare") return true;
+  if (node.children.size) return Boolean(node.entry && !state.hidden.has(node.entry.change || node.change || "None")) ||
+    [...node.children.values()].some(visibleByChange);
   return !state.hidden.has(node.entry?.change || node.change || "None");
 }
 function matches(node, query, inFinding = false) {
@@ -1087,7 +1169,12 @@ function filterInput(packages = false) {
     state.selected = null;
     renderDetails();
     renderRight();
-    renderControls();
+    const counter = $("search-controls").querySelector(".search-count");
+    if (state[field] && state.view !== "search") {
+      const label = count(searchMatchCount(), "match", "matches");
+      if (counter) counter.textContent = label;
+      else $("search-controls").append(el("span", "search-count", label));
+    } else counter?.remove();
   });
   wrap.append(input);
   return wrap;
@@ -1164,7 +1251,8 @@ function renderRightContent() {
   const summary = fileTreeSummary(img, state.layer, state.whole);
   setTitle("right-title", layer ? (state.whole ? "Filesystem at layer " : "Changes in layer ") + layer.index
     : state.whole ? "Filesystem" : "Changes");
-  const entries = state.whole ? wholeEntries(img, state.layer) : layer ? layer.changes : [];
+  const snapshot = state.whole ? wholeSnapshot(img, state.layer) : null;
+  const entries = snapshot ? snapshot.entries : layer ? layer.changes : [];
   const controls = el("div", "controls");
   const toggle = el("span", "toggle");
   toggle.setAttribute("role", "group");
@@ -1189,7 +1277,7 @@ function renderRightContent() {
   box.append(add(el("div", "colhead metadata"), el("span", "file-mode", windows ? "attributes" : "mode"),
     el("span", "file-owner", windows ? "owner" : "uid:gid"), el("span", null, "size"), el("span", null, "name")));
   if (!entries.length) scroller.append(el("p", "empty", state.whole ? "This image has an empty filesystem." : "This layer changes no files."));
-  else if (!renderTree(scroller, buildTree(entries, img, metadata), null, true)) scroller.append(el("p", "empty", "Nothing matches the current filters."));
+  else if (!renderTree(scroller, snapshot?.root || buildTree(entries, img, metadata), null, true)) scroller.append(el("p", "empty", "Nothing matches the current filters."));
   box.append(scroller, selectionInfo(img, entries, metadata));
 }
 function entryTotalSize(entries) {
@@ -1256,6 +1344,7 @@ function renderInsights(box, scroller) {
     summary.setAttribute("role", "treeitem");
     summary.setAttribute("aria-level", "1");
     summary.setAttribute("aria-selected", String(state.findingSelected === baseIndex));
+    summary.dataset.findingSelection = String(baseIndex);
     summary.addEventListener("click", () => { state.findingSelected = baseIndex; });
     section.addEventListener("toggle", () => {
       if (section.open === state.showBaseFindings) return;
@@ -1289,6 +1378,7 @@ function insightRow(finding, img, index, visibleIndex) {
   summary.setAttribute("role", "treeitem");
   summary.setAttribute("aria-level", "1");
   summary.setAttribute("aria-selected", String(state.findingSelected === visibleIndex));
+  summary.dataset.findingSelection = String(visibleIndex);
   summary.addEventListener("click", () => {
     state.findingSelected = visibleIndex;
     for (const row of $("right").querySelectorAll(".insight-group > summary[aria-selected]"))
@@ -1702,13 +1792,12 @@ function renderComparisonFiles(scroller, visible, diffs, pathSizes) {
     return;
   }
   const entries = visible.map(d => ({ path: d.path, type: "File", size: (d.after || 0) - (d.before || 0), change: d.change, diff: d }));
-  const windows = pair()[0].platform.toLowerCase().startsWith("windows");
   const keyForPath = comparisonPathKey;
-  const pathSizesByKey = new Map([...pathSizes].map(([path, item]) => [keyForPath(path), item]));
+  const pathSizesByKey = pathSizes;
   const compareMetadata = new Map([...pathSizesByKey].map(([path, item]) => [path, {
     type: item.directory ? "Directory" : item.link ? "SymbolicLink" : "File",
     size: state.swapped ? item.after || 0 : item.before || 0,
-    fileCount: item.fileCount, sharing: comparisonSharing(item.sharing), hardLink: false, linkTarget: item.linkTarget,
+    fileCount: item.fileCount, sharing: comparisonSharing(item.sharing), hardLink: item.hardLink, linkTarget: item.linkTarget,
     change: state.swapped ? FLIP[item.change] || item.change : item.change
   }]));
   const sizeCells = node => {
@@ -1718,7 +1807,7 @@ function renderComparisonFiles(scroller, visible, diffs, pathSizes) {
     const after = totals ? (state.swapped ? totals.before : totals.after) : d?.after;
     return comparisonSizeCells(before, after, node.type === "SymbolicLink");
   };
-  if (!renderTree(scroller, buildTree(entries, null, compareMetadata, windows), sizeCells, false, 1)) scroller.append(el("p", "empty", "No differences match these filters."));
+  if (!renderTree(scroller, buildTree(entries, null, compareMetadata, keyForPath), sizeCells, false, 1)) scroller.append(el("p", "empty", "No differences match these filters."));
 }
 
 function comparisonSharing(sharing) {
@@ -1779,6 +1868,7 @@ function comparisonSection(key, label, summary) {
 function openComparisonSection(section) {
   state.view = "files";
   state.returnView = "files";
+  state.filter = "";
   state.selected = null;
   state.comparisonCollapsed.delete(section);
   state.comparisonCollapsed.add(section === "packages" ? "files" : "packages");
@@ -2006,14 +2096,12 @@ function renderControls() {
   const selectionStart = inputFocused ? active.selectionStart : null;
   const selectionEnd = inputFocused ? active.selectionEnd : null;
   const header = clear($("header-actions"));
-  const layers = clear($("layer-controls"));
   const views = clear($("view-controls"));
   const search = clear($("search-controls"));
-  const button = (parent, label, action, pressed, disabled = false) => {
+  const button = (parent, label, action, pressed) => {
     const item = el("button", null, label);
     if (pressed !== undefined) item.setAttribute("aria-pressed", String(pressed));
     item.dataset.controlKey = parent.id + ":" + label;
-    item.disabled = disabled;
     item.addEventListener("click", action);
     parent.append(item);
     return item;
@@ -2024,12 +2112,6 @@ function renderControls() {
     button(header, "Snapshot", () => openUtility("snapshot"), state.view === "snapshot");
   }
   button(header, "Help", () => openUtility("help"), state.view === "help");
-  if (state.mode === "compare") {
-    const positions = compareRows().filter(row => !row.shared).map(row => row.position);
-    button(layers, "Previous difference", () => stepDifference(-1), undefined, !positions.some(position => position < state.row));
-    button(layers, "Next difference", () => stepDifference(1), undefined, !positions.some(position => position > state.row));
-  }
-
   const utility = ["help", "warnings", "snapshot"].includes(state.view);
   const viewItems = state.mode === "compare"
     ? [["overview", "Overview"], ["files", "Differences"]]
@@ -2059,7 +2141,7 @@ function renderControls() {
   } else if (focusKey) {
     const replacement = [...document.querySelectorAll("[data-control-key]")]
       .find(node => node.dataset.controlKey === focusKey && !node.disabled);
-    (replacement || (focusKey.startsWith("layer-controls:") ? $("layers") : $("right-pane"))).focus({ preventScroll: true });
+    (replacement || $("right-pane")).focus({ preventScroll: true });
   }
 }
 
@@ -2112,11 +2194,6 @@ function selectLayer(index) {
   render();
 }
 function selectRow(position) { state.row = position; renderHeader(); renderLayers(); renderDetails(); renderControls(); }
-function stepDifference(delta) {
-  const differing = compareRows().filter(row => !row.shared).map(row => row.position);
-  const next = delta > 0 ? differing.find(p => p > state.row) : differing.reverse().find(p => p < state.row);
-  if (next !== undefined) selectRow(next);
-}
 function moveRow(delta) {
   selectRow(Math.max(0, Math.min(compareRows().length - 1, state.row + delta)));
 }
@@ -2137,7 +2214,7 @@ function back() {
   }
   if (state.investigation && restoreInvestigation()) return;
   if (state.view === "search") {
-    state.view = state.searchReturnView || "files"; resetTree(); renderDetails(); renderRight(); renderControls(); return;
+    state.view = state.searchReturnView || "files"; state.searchQuery = ""; resetTree(); renderDetails(); renderRight(); renderControls(); return;
   }
   if (state.mode === "compare" && state.view === "files") navigateView("overview");
 }
@@ -2204,6 +2281,10 @@ $("right-pane").addEventListener("keydown", event => {
     if (row.dataset.path) {
       state.selected = row.dataset.path;
       rows.forEach(item => { if (item.hasAttribute("aria-selected")) item.setAttribute("aria-selected", String(item === row)); });
+    }
+    if (state.view === "insights" && row.dataset.findingSelection !== undefined) {
+      state.findingSelected = Number(row.dataset.findingSelection);
+      renderDetails();
     }
     const info = $("right").querySelector(".info");
     if (info && state.view === "files" && state.mode === "compare")

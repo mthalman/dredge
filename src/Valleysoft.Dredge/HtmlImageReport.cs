@@ -8,11 +8,11 @@ namespace Valleysoft.Dredge;
 
 internal sealed record HtmlReportFile(
     string Path, string Type, long Size, string? Change = null, string? Mode = null, string? Owner = null,
-    string? LinkTarget = null, bool HardLink = false, string? ContentId = null);
+    string? LinkTarget = null, bool HardLink = false, string? ContentId = null, string? Note = null);
 internal sealed record HtmlReportDifference(string Path, string Change, long? Before, long? After);
 internal sealed record HtmlReportPathSize(
     string Path, long? Before, long? After, bool Directory, int FileCount, string? Sharing, string? LinkTarget, string Change,
-    bool Link);
+    bool Link, bool HardLink = false);
 internal sealed record HtmlReportFileTreeMetadata(
     int Layer, bool WholeFilesystem, string Path, long Size, long ShippedSize,
     int FileCount, string? Sharing, bool HardLink, string? LinkTarget, string Type, string? Change, string? Note);
@@ -46,7 +46,7 @@ internal sealed record HtmlReportImage(
 internal sealed record HtmlReportData(
     HtmlReportImage[] Images, HtmlReportDifference[]? Differences, HtmlReportPackageDifference[]? PackageDifferences,
     string[] Limitations, int? InitialLayer, bool UsesContentIdentity, bool DownloadSizeAvailable,
-    HtmlReportPathSize[]? PathSizes = null);
+    HtmlReportPathSize[]? PathSizes = null, HtmlReportPathIdentity[]? ComparisonPathIdentities = null);
 
 internal static class HtmlImageReport
 {
@@ -102,12 +102,16 @@ internal static class HtmlImageReport
         HtmlReportPackageDifference[] packages = [.. comparison.Packages.Select(static package =>
             new HtmlReportPackageDifference(CompareView.EcosystemName(package.Ecosystem), package.Name,
                 package.BaselineVersion, package.TargetVersion))];
+        HtmlReportPathSize[] pathSizes = [.. CompareView.FilePathSizes(comparison).Select(static size =>
+            new HtmlReportPathSize(size.Path, size.Before, size.After, size.Directory, size.FileCount,
+                size.Sharing, size.LinkTarget, size.Change, size.Link, size.HardLink))];
+        HtmlReportPathIdentity[]? comparisonPathIdentities = baseline.Semantics.IsWindows
+            ? PathIdentities(differences.Select(static difference => difference.Path)
+                .Concat(pathSizes.Select(static size => size.Path)), baseline.Semantics.Comparer)
+            : null;
         return Render(new(
             [baselineReport, targetReport], differences, packages, [.. comparison.Limitations], options.Layer,
-            comparison.UsesContentIdentity, comparison.DownloadSizeAvailable,
-            [.. CompareView.FilePathSizes(comparison).Select(static size =>
-                new HtmlReportPathSize(size.Path, size.Before, size.After, size.Directory, size.FileCount,
-                    size.Sharing, size.LinkTarget, size.Change, size.Link))]));
+            comparison.UsesContentIdentity, comparison.DownloadSizeAvailable, pathSizes, comparisonPathIdentities));
     }
 
     private static async Task<HtmlReportImage> CreateImageAsync(
@@ -117,34 +121,19 @@ internal static class HtmlImageReport
         ExplorerInsightsResult insights = ExplorerInsights.Build(
             session.Analysis, image.Instructions, image.BaseLayerCount, semantics: session.Semantics);
         image.SetSession(session, insights);
-        HtmlReportFileTreeMetadata[] treeMetadata = FileTreeMetadata(image);
-        Dictionary<string, int>? pathIdentities = session.Semantics.IsWindows ? new(StringComparer.Ordinal) : null;
-        Dictionary<string, int>? canonicalPaths = session.Semantics.IsWindows ? new(session.Semantics.Comparer) : null;
-        if (pathIdentities is not null && canonicalPaths is not null)
-        {
-            foreach (LayerFileChange change in session.Analysis.Layers.SelectMany(static layer => layer.Changes))
-            {
-                string path = change.Path;
-                for (int end = path.IndexOf('/'); ; end = path.IndexOf('/', end + 1))
-                {
-                    string prefix = end < 0 ? path : path[..end];
-                    if (!canonicalPaths.TryGetValue(prefix, out int id))
-                    {
-                        id = canonicalPaths.Count;
-                        canonicalPaths.Add(prefix, id);
-                    }
-                    pathIdentities.TryAdd(prefix, id);
-                    if (end < 0) break;
-                }
-            }
-        }
+        HtmlReportFileTreeMetadata[] treeMetadata = FileTreeMetadata(image, cancellationToken);
+        HtmlReportPathIdentity[]? pathIdentities = session.Semantics.IsWindows
+            ? PathIdentities(session.Analysis.Layers.SelectMany(static layer => layer.Changes)
+                .Select(static change => change.Path), session.Semantics.Comparer)
+            : null;
         HtmlReportLayer[] layers = [.. session.Analysis.Layers.Select(layer =>
         {
             HtmlReportFile[] changes = [.. layer.Changes.Select(change => new HtmlReportFile(
                 change.Path, change.Type.ToString(), change.Size, change.Kind.ToString(),
                 change.Entry is { } entry ? Mode(entry.Type, entry.Mode, entry.Windows) : null,
                 change.Entry is { } owner ? Owner(owner.UserId, owner.GroupId, owner.Windows) : null,
-                change.Entry?.LinkTarget, change.Type == ImageFileType.HardLink, ContentId(change.ContentId)))];
+                change.Entry?.LinkTarget, change.Type == ImageFileType.HardLink, ContentId(change.ContentId),
+                change.Entry?.Windows?.UnsupportedReason))];
             return new HtmlReportLayer(layer.Index, image.LayerDigests[layer.Index],
                 session.LayerIdentity(layer.Index, usesContentIdentity) ??
                     throw new InvalidDataException("Layer identity is missing."),
@@ -183,37 +172,55 @@ internal static class HtmlImageReport
             [.. image.History.Select(static row => new HtmlReportHistory(row.Layer, row.Instruction, row.Created))],
             layers, files,
             warnings, [.. inventories],
-            pathIdentities is null ? null : [.. pathIdentities.Select(static pair => new HtmlReportPathIdentity(pair.Key, pair.Value))],
+            pathIdentities,
             treeMetadata,
             [.. insights.Findings.Select(static finding => new HtmlReportFinding(
                 finding.Kind.ToString(), finding.Title, finding.Category, finding.Bytes, finding.FileCount,
                 [.. finding.Layers], [.. finding.Roots], finding.Where, finding.Why, finding.FixLabel,
                 finding.Fix, finding.FixIsDockerfile, [.. finding.Explain], finding.Certain, finding.FromBase))],
             insights.HiddenBytes, insights.BaseChurnBytes, insights.PotentialBytes,
-            session.SnapshotDetails, FileTreeSummaries(image), image.Digest, image.BaseLayerCount, image.IsDaemon);
+            session.SnapshotDetails, FileTreeSummaries(image, cancellationToken), image.Digest, image.BaseLayerCount, image.IsDaemon);
     }
 
-    private static HtmlReportFileTreeMetadata[] FileTreeMetadata(ExplorerImage image)
+    private static HtmlReportPathIdentity[] PathIdentities(IEnumerable<string> paths, StringComparer comparer)
+    {
+        Dictionary<string, int> identities = new(StringComparer.Ordinal);
+        Dictionary<string, int> canonicalPaths = new(comparer);
+        foreach (string path in paths)
+        {
+            for (int end = path.IndexOf('/'); ; end = path.IndexOf('/', end + 1))
+            {
+                string prefix = end < 0 ? path : path[..end];
+                if (!canonicalPaths.TryGetValue(prefix, out int id))
+                {
+                    id = canonicalPaths.Count;
+                    canonicalPaths.Add(prefix, id);
+                }
+                identities.TryAdd(prefix, id);
+                if (end < 0) break;
+            }
+        }
+        return [.. identities.Select(static pair => new HtmlReportPathIdentity(pair.Key, pair.Value))];
+    }
+
+    private static HtmlReportFileTreeMetadata[] FileTreeMetadata(ExplorerImage image, CancellationToken cancellationToken)
     {
         List<HtmlReportFileTreeMetadata> result = [];
         for (int layer = 0; layer < image.LayerCount; layer++)
         {
-            Add(image.LayerTree(layer), layer, wholeFilesystem: false);
-            if (image.WholeTree(layer) is { } whole)
-            {
-                Add(whole, layer, wholeFilesystem: true);
-            }
+            cancellationToken.ThrowIfCancellationRequested();
+            Add(image.LayerTree(layer), layer);
         }
         return [.. result];
 
-        void Add(IEnumerable<Explorer.Node> nodes, int layer, bool wholeFilesystem)
+        void Add(IEnumerable<Explorer.Node> nodes, int layer)
         {
             foreach (Explorer.Node node in nodes)
             {
                 if (node.FileCount > 0 || node.Sharing is not null || node.HardLink ||
                     node.Target is not null || node.Note is not null)
                 {
-                    result.Add(new(layer, wholeFilesystem, node.Path, node.Size, node.ShippedSize,
+                    result.Add(new(layer, false, node.Path, node.Size, node.ShippedSize,
                         node.FileCount, node.Sharing, node.HardLink, node.Target,
                         node.Kind switch { Explorer.Kind.Dir => "Directory", Explorer.Kind.Link => "SymbolicLink", _ => "File" },
                         node.Change switch
@@ -225,32 +232,26 @@ internal static class HtmlImageReport
                             _ => null
                         }, node.Note));
                 }
-                Add(node.Children, layer, wholeFilesystem);
+                Add(node.Children, layer);
             }
         }
     }
 
-    private static HtmlReportFileTreeSummary[] FileTreeSummaries(ExplorerImage image)
+    private static HtmlReportFileTreeSummary[] FileTreeSummaries(ExplorerImage image, CancellationToken cancellationToken)
     {
         List<HtmlReportFileTreeSummary> result = [];
         for (int layer = 0; layer < image.LayerCount; layer++)
         {
+            cancellationToken.ThrowIfCancellationRequested();
             List<Explorer.Node> changed = image.LayerTree(layer);
-            Add(changed, layer, wholeFilesystem: false);
-            if (image.WholeTree(layer) is { } whole)
-            {
-                Dictionary<Explorer.Change, int> counts = ExplorerPresenter.Count(changed);
-                counts[Explorer.Change.None] = Math.Max(0, ExplorerPresenter.Count(whole).Values.Sum() - counts.Values.Sum());
-                Add(whole, layer, wholeFilesystem: true, counts);
-            }
+            Add(changed, layer);
         }
         return [.. result];
 
-        void Add(IEnumerable<Explorer.Node> tree, int layer, bool wholeFilesystem,
-            Dictionary<Explorer.Change, int>? overrideCounts = null)
+        void Add(IEnumerable<Explorer.Node> tree, int layer)
         {
-            Dictionary<Explorer.Change, int> counts = overrideCounts ?? ExplorerPresenter.Count(tree);
-            result.Add(new(layer, wholeFilesystem, Explorer.Node.TotalSize(tree), counts.Values.Sum(),
+            Dictionary<Explorer.Change, int> counts = ExplorerPresenter.Count(tree);
+            result.Add(new(layer, false, Explorer.Node.TotalSize(tree), counts.Values.Sum(),
                 [.. counts.OrderBy(static pair => pair.Key).Select(static pair =>
                     new HtmlReportChangeCount(pair.Key switch
                     {

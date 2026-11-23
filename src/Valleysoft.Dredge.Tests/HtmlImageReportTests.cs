@@ -60,14 +60,8 @@ public sealed class HtmlImageReportTests
             item!["layer"]!.GetValue<int>() == 1 && !item["wholeFilesystem"]!.GetValue<bool>())!;
         Assert.Equal(8, changedTree["size"]!.GetValue<long>());
         Assert.Equal(2, changedTree["pathCount"]!.GetValue<int>());
-        JsonNode wholeTree = baseline["fileTreeSummaries"]!.AsArray().Single(item =>
-            item!["layer"]!.GetValue<int>() == 1 && item["wholeFilesystem"]!.GetValue<bool>())!;
-        Assert.Equal(8, wholeTree["size"]!.GetValue<long>());
-        Assert.Equal(2, wholeTree["pathCount"]!.GetValue<int>());
-        Assert.Contains(wholeTree["changes"]!.AsArray(), item =>
-            item!["change"]!.GetValue<string>() == "Deleted" && item["count"]!.GetValue<int>() == 1);
-        Assert.Contains(wholeTree["changes"]!.AsArray(), item =>
-            item!["change"]!.GetValue<string>() == "Modified" && item["count"]!.GetValue<int>() == 1);
+        Assert.DoesNotContain(baseline["fileTreeSummaries"]!.AsArray(), item =>
+            item!["wholeFilesystem"]!.GetValue<bool>());
         Assert.Contains("COPY", baseline["history"]![0]!["instruction"]!.GetValue<string>());
         Assert.Contains("COPY", baseline["layers"]![1]!["instruction"]!.GetValue<string>());
         Assert.Contains(baseline["layers"]![1]!["changes"]!.AsArray(), entry =>
@@ -124,7 +118,7 @@ public sealed class HtmlImageReportTests
         Assert.Equal(1005, folder["after"]!.GetValue<int>());
         Assert.Contains(data["pathSizes"]!.AsArray(), item => item!["path"]!.GetValue<string>() == "app/link" &&
             item["before"]!.GetValue<int>() == 3 && item["after"]!.GetValue<int>() == 5 &&
-            item["link"]!.GetValue<bool>());
+            !item["link"]!.GetValue<bool>() && item["hardLink"]!.GetValue<bool>());
     }
 
     [Fact]
@@ -432,6 +426,44 @@ public sealed class HtmlImageReportTests
             Assert.Contains("unavailable for Windows",
                 image!["packageInventories"]![0]!["unavailableReason"]!.GetValue<string>()));
         Assert.Empty(data["packageDifferences"]!.AsArray());
+    }
+
+    [Fact]
+    public async Task WindowsComparisonUsesSharedFilesystemPathIdentities()
+    {
+        Sources sources = new(
+            Tar(("Files/common", "same")),
+            Tar(("Files/ς/a", "old"), ("Files/Folder/one", "old")),
+            Tar(("Files/σ/b", "new"), ("Files/folder/two", "new"))) { Os = "windows" };
+        await using LayerCacheTestContext cache = new();
+
+        JsonNode data = Data(await HtmlImageReport.CreateAsync(
+            sources, Mock.Of<IDockerRegistryClientFactory>(),
+            Parse("docker://app:base", "--output", "html", "--compare", "docker://app:target"),
+            TextWriter.Null, Token, cache.Store));
+
+        Dictionary<string, int> identities = data["comparisonPathIdentities"]!.AsArray()
+            .ToDictionary(item => item!["path"]!.GetValue<string>(), item => item!["id"]!.GetValue<int>());
+        Assert.NotEqual(identities["ς"], identities["σ"]);
+        Assert.Equal(identities["Folder"], identities["folder"]);
+    }
+
+    [Fact]
+    public async Task WholeFilesystemMetadataIsNotRepeatedForUnchangedFiles()
+    {
+        byte[] common = Tar([.. Enumerable.Range(0, 300).Select(i => ($"app/file-{i}", "contents"))]);
+        Sources sources = new(common, Tar(("app/changed", "new")));
+        await using LayerCacheTestContext cache = new();
+
+        JsonNode image = Data(await HtmlImageReport.CreateAsync(
+            sources, Mock.Of<IDockerRegistryClientFactory>(), Parse("docker://app:base", "--output", "html"),
+            TextWriter.Null, Token, cache.Store))["images"]![0]!;
+
+        JsonArray metadata = image["fileTreeMetadata"]!.AsArray();
+        Assert.DoesNotContain(metadata, item => item!["wholeFilesystem"]!.GetValue<bool>());
+        Assert.Single(metadata, item => item!["layer"]!.GetValue<int>() == 1 &&
+            item["path"]!.GetValue<string>() == "app/changed");
+        Assert.True(metadata.Count < 400);
     }
 
     [Fact]
