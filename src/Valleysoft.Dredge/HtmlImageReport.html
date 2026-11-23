@@ -51,10 +51,10 @@ button { background: none; border: 0; padding: 0; cursor: pointer; }
 .channel { color: var(--channel); }
 
 /* Header */
-.title-row { display: flex; gap: 0 2ch; align-items: baseline; min-width: 0; }
+.title-row { display: flex; flex-wrap: wrap; gap: 0.3em 2ch; align-items: baseline; min-width: 0; }
 .brand { color: var(--channel); font-weight: 700; }
-.ref { font-weight: 700; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
-#meta { overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+.ref { flex: 1 1 25ch; min-width: 0; font-weight: 700; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+#meta { flex: 1 1 15ch; min-width: 0; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
 .stats { margin-left: auto; white-space: pre; flex-shrink: 0; }
 .modes { display: inline-flex; gap: 0; flex-shrink: 0; white-space: nowrap; }
 .modes button { padding: 0 1ch; color: var(--silt); }
@@ -70,13 +70,29 @@ button { background: none; border: 0; padding: 0; cursor: pointer; }
   border-radius: 0 0 3px 3px; position: relative;
 }
 .bracket span {
-  position: absolute; left: 50%; top: 1px; transform: translateX(-50%);
+  position: absolute; z-index: 1; left: 50%; top: 1px; transform: translateX(-50%);
   background: var(--ground); padding: 0 1ch; color: var(--silt); white-space: nowrap;
   max-width: calc(100% - 2ch); overflow: hidden; text-overflow: ellipsis;
 }
 .bracket .layer-indicator { position: absolute; bottom: -1px; height: 2px; background: var(--channel); }
 .cmp-bar { display: grid; grid-template-columns: minmax(8ch, 14ch) minmax(0, 1fr); align-items: center; margin-bottom: 3px; }
 .cmp-bar .bar { height: 14px; }
+.header-actions { display: flex; flex-shrink: 0; flex-wrap: wrap; gap: 0.4em 1ch; }
+.toolbar { display: flex; flex-wrap: wrap; align-items: center; gap: 0.4em 1ch; padding: 0.4em 1ch; }
+.toolbar:empty { display: none; }
+.toolbar button, .header-actions button, .insight-action {
+  border: 1px solid var(--shale); border-radius: 3px; padding: 0.15em 0.8ch;
+}
+.toolbar button:hover, .header-actions button:hover, .insight-action:hover { background: var(--graphite); }
+.toolbar button[aria-pressed="true"], .header-actions button[aria-pressed="true"] {
+  background: var(--channel-deep); border-color: var(--channel); color: var(--foam); font-weight: 700;
+}
+.toolbar button:disabled { opacity: 0.5; cursor: default; }
+.toolbar .filter input { width: min(28ch, 100%); }
+.toolbar .filter { min-width: 0; }
+.toolbar .search-count { color: var(--silt); }
+.tree-toggle { color: var(--silt); display: inline-block; width: 2ch; text-align: left; }
+.insight-action { display: inline-block; margin-top: 0.5em; }
 
 /* Panes */
 .body {
@@ -129,9 +145,12 @@ button { background: none; border: 0; padding: 0; cursor: pointer; }
 /* Right pane */
 .controls { display: flex; flex-wrap: wrap; gap: 0 1ch; align-items: center; padding: 0 1ch; }
 .toggle button { padding: 0 1ch; color: var(--silt); }
+.toggle button:hover { background: var(--graphite); }
 .toggle button[aria-pressed="true"] { background: var(--keycap); color: var(--foam); font-weight: 700; }
 .chips { display: flex; flex-wrap: wrap; gap: 1ch; }
 .chip { background: var(--graphite); padding: 0 1ch; }
+button.chip { border: 1px solid var(--shale); border-radius: 2px; }
+button.chip:hover { border-color: var(--channel); }
 .chip[aria-pressed="false"] { text-decoration: line-through; color: var(--silt); }
 .chip[aria-pressed="false"] b { color: var(--silt); }
 .chip.zero b { color: var(--shale); }
@@ -160,13 +179,13 @@ button { background: none; border: 0; padding: 0; cursor: pointer; }
 .trow.metadata .name { display: flex; min-width: 0; padding-left: 2ch; }
 .file-name-content { overflow: hidden; text-overflow: ellipsis; }
 .tree-note { color: var(--garnet); margin-left: auto; padding-left: 1ch; overflow: hidden; text-overflow: ellipsis; }
-.search-row { display: grid; width: 100%; grid-template-columns: 12ch 8ch minmax(0, 1fr); gap: 0 1ch; text-align: left; }
+.search-row { display: grid; width: 100%; grid-template-columns: 12ch 8ch minmax(0, 1fr) max-content; gap: 0 1ch; text-align: left; white-space: nowrap; }
 .search-row .path { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
 .search-row .path.deleted, .search-row .search-size.deleted { color: var(--garnet); text-decoration: line-through; }
 .search-history { white-space: nowrap; overflow: hidden; }
 .search-selection { border-top: 1px solid var(--shale); margin: 4px 1ch 0; padding: 4px 0; }
-.search-colhead { display: grid; grid-template-columns: 12ch 8ch minmax(0, 1fr); gap: 0 1ch; color: var(--silt); }
-.search-row .note { grid-column: 3; white-space: normal; color: var(--garnet); }
+.search-colhead { display: grid; grid-template-columns: 12ch 8ch minmax(0, 1fr) max-content; gap: 0 1ch; color: var(--silt); }
+.search-row .note { grid-column: 4; text-align: right; color: var(--garnet); }
 @container (max-width: 70ch) {
   .trow.metadata { grid-template-columns: 1ch 2ch 10ch minmax(0, 1fr); }
   .colhead.metadata { grid-template-columns: 10ch minmax(0, 1fr); padding-left: 3ch; }
@@ -203,7 +222,6 @@ mark { background: var(--mark); color: inherit; }
 }
 .info .path { overflow: hidden; text-overflow: ellipsis; }
 .info-right { margin-left: auto; display: flex; gap: 2ch; }
-.info kbd { background: var(--keycap); color: var(--foam); font: inherit; font-weight: 700; padding: 0 0.5ch; }
 .badge { background: var(--graphite); padding: 0 0.5ch; margin-right: 0.5ch; }
 .list { margin: 0; padding-left: 2ch; }
 .list li { margin: 0 0 4px; }
@@ -253,17 +271,8 @@ mark { background: var(--mark); color: inherit; }
 .overview-choice .choice-mark { display: inline-block; width: 2ch; color: var(--channel); }
 .overview-choice .silt { font-weight: 400; }
 .snapshot-block { white-space: pre-wrap; overflow-wrap: anywhere; padding-bottom: 1em; }
-dl.keys { display: grid; grid-template-columns: 16ch 1fr; gap: 2px 2ch; margin: 0 0 1em 2ch; }
-dl.keys dd { margin: 0; color: var(--silt); }
-dl.keys kbd { background: var(--keycap); color: var(--foam); font: inherit; font-weight: 700; padding: 0 0.5ch; }
-h3.key-group { font: inherit; margin: 0; }
 
-/* Footer */
-.ftr { display: flex; flex-wrap: wrap; align-items: center; row-gap: 0.25em; padding: 0.5em 0; white-space: nowrap; }
-.hint { color: var(--silt); padding: 0 1ch; }
-.hint kbd { background: var(--keycap); color: var(--foam); font: inherit; font-weight: 700; padding: 0 0.5ch; margin-right: 0.5ch; }
-.hint + .hint { border-left: 1px solid var(--shale); }
-.hint[aria-pressed="true"] { color: var(--foam); }
+.app { padding-bottom: 0.5em; }
 
 @media (max-width: 760px) {
   .body { grid-template-columns: minmax(0, 1fr); grid-template-rows: minmax(8em, 22vh) minmax(0, 1fr); }
@@ -290,12 +299,14 @@ h3.key-group { font: inherit; margin: 0; }
       <span class="silt" id="meta"></span>
       <span class="modes" id="modes" role="group" aria-label="View"></span>
       <span class="stats" id="stats"></span>
+      <div class="header-actions" id="header-actions"></div>
     </div>
     <div class="core" id="core" aria-label="Layers by size"></div>
   </header>
   <main class="body">
     <section class="pane" id="layers-pane" aria-labelledby="layers-title">
       <h2 class="pane-title" id="layers-title"></h2>
+      <div class="toolbar" id="layer-controls"></div>
       <div class="pane-body" id="layers" role="listbox" tabindex="0" aria-labelledby="layers-title"></div>
     </section>
     <section class="pane" id="details-pane" aria-labelledby="details-title">
@@ -304,10 +315,11 @@ h3.key-group { font: inherit; margin: 0; }
     </section>
     <section class="pane" id="right-pane" tabindex="0" aria-labelledby="right-title">
       <h2 class="pane-title" id="right-title"></h2>
+      <nav class="toolbar" id="view-controls" aria-label="Report views"></nav>
+      <div class="toolbar" id="search-controls"></div>
       <div id="right" class="pane-body" style="padding: 0; display: flex; flex-direction: column;"></div>
     </section>
   </main>
-  <footer class="ftr" id="footer"></footer>
 </div>
 <script>
 "use strict";
@@ -332,8 +344,6 @@ const state = {
   hidden: new Set(),
   packageCollapsed: new Set(),
   comparisonCollapsed: new Set(),
-  searching: false,
-  searchOverview: false,
   expanded: new Set(),
   limits: new Map(),
   selected: null,
@@ -542,6 +552,15 @@ function stratum(layer, color, widthPx, selected, onClick, label) {
 }
 
 function renderHeader() {
+  const active = document.activeElement;
+  const modeIndex = [...$("modes").querySelectorAll("button")].indexOf(active);
+  const stratumIndex = [...$("core").querySelectorAll("button")].indexOf(active);
+  const restoreFocus = () => {
+    const buttons = modeIndex >= 0 ? $("modes").querySelectorAll("button")
+      : stratumIndex >= 0 ? $("core").querySelectorAll("button") : null;
+    const index = modeIndex >= 0 ? modeIndex : stratumIndex;
+    buttons?.[index]?.focus({ preventScroll: true });
+  };
   const ref = clear($("ref"));
   const stats = clear($("stats"));
   const core = clear($("core"));
@@ -560,6 +579,8 @@ function renderHeader() {
     const [base, target] = images;
     add(ref, base.reference, el("span", "silt", " \u2192 "), target.reference);
     $("meta").textContent = target.platform;
+    ref.title = base.reference + " \u2192 " + target.reference;
+    $("meta").title = $("meta").textContent;
     const rows = compareRows();
     const shared = rows.filter(row => row.shared).length;
     const delta = sum(target.layers, l => l.fileSize) - sum(base.layers, l => l.fileSize);
@@ -588,12 +609,15 @@ function renderHeader() {
       add(row, el("span", side ? "foam" : "silt", img.label), bar);
       core.append(row);
     });
+    restoreFocus();
     return;
   }
   const img = image();
   ref.textContent = img.reference;
   $("meta").textContent = img.platform + "  " + (img.isDaemon ? "image ID " : "") +
     (img.digest || img.identity.split("@").at(-1));
+  ref.title = ref.textContent;
+  $("meta").title = $("meta").textContent;
   const payload = sum(img.layers, l => l.fileSize);
   const reclaimable = sum(img.layers, l => l.reclaimable);
   const efficiency = payload ? Math.floor((payload - reclaimable) / payload * 100) : 100;
@@ -644,6 +668,7 @@ function renderHeader() {
     bar.append(box);
   }
   core.append(bar);
+  restoreFocus();
 }
 
 /* ---------- Layers pane ---------- */
@@ -781,7 +806,9 @@ function renderDetails() {
     add(box, "\n", el("span", "garnet", "\u25b2 " + count(related.length, "finding involves this layer") +
       ", " + size(sum(related, finding => finding.bytes))));
     for (const finding of related.slice(0, 2)) add(box, "\n", el("span", "silt", "  " + finding.title + ", " + size(finding.bytes)));
-    add(box, "\n  ", el("span", "silt", "Press i to see insights."));
+    const insights = el("button", "more", "View insights");
+    insights.addEventListener("click", () => navigateView("insights"));
+    add(box, "\n  ", insights);
   }
   else if (layer.baseImage) add(box, "\n", el("span", "silt", "From the base image "), layer.baseImage);
 }
@@ -927,7 +954,19 @@ function renderTree(container, root, sizeText, metadata = false, levelOffset = 0
       const glyph = el("span", kind ? TONE[kind] : "silt", kind ? GLYPH[kind] : "");
       const name = el("span", "name");
       const nameContent = metadata ? el("span", "file-name-content") : name;
-      const twist = el("span", "tw", hasChildren ? (open ? "\u25be" : "\u25b8") : "");
+      const twist = hasChildren && !query ? el("button", "tree-toggle", open ? "\u25be" : "\u25b8") : el("span", "tw", hasChildren ? "\u25be" : "");
+      if (hasChildren && !query) {
+        twist.setAttribute("aria-label", (open ? "Collapse " : "Expand ") + "/" + child.path);
+        twist.dataset.focusId = "tree-" + child.path;
+        twist.addEventListener("click", event => {
+          event.stopPropagation();
+          state.rightIndex = Math.max(0, rightRows().indexOf(row));
+          state.selected = child.path;
+          if (state.expanded.has(child.path)) state.expanded.delete(child.path);
+          else state.expanded.add(child.path);
+          renderRight();
+        });
+      }
       const label = el("span", !change && child.dir ? "dirname" : null);
       label.append(highlight(child.name, query));
       const guide = depth || sizeText ? ancestors.map(parentLast => parentLast ? "   " : "\u2502  ").join("") +
@@ -977,10 +1016,6 @@ function renderTree(container, root, sizeText, metadata = false, levelOffset = 0
       row.addEventListener("click", () => {
         state.rightIndex = Math.max(0, rightRows().indexOf(row));
         state.selected = child.path;
-        if (hasChildren && !query) {
-          if (state.expanded.has(child.path)) state.expanded.delete(child.path);
-          else state.expanded.add(child.path);
-        }
         renderRight();
       });
       container.append(row);
@@ -1007,6 +1042,7 @@ function chip(kind, n, hiddenSet) {
   const glyph = kind === "None" ? "\u00b7" : GLYPH[kind];
   const tone = kind === "None" ? "foam" : TONE[kind];
   button.setAttribute("data-change-filter", kind);
+  button.dataset.focusId = "change-" + kind;
   button.setAttribute("aria-pressed", String(!hidden));
   button.title = (hidden ? "Show " : "Hide ") + label +
     (state.mode === "compare" ? " entries" : " paths");
@@ -1016,9 +1052,8 @@ function chip(kind, n, hiddenSet) {
   return button;
 }
 function filterInput(packages = false) {
-  const field = state.view === "search" ? "searchQuery" : packages ? "packageFilter" : "filter";
   const wrap = el("label", "filter search-editor");
-  wrap.append(el("kbd", null, "/"));
+  const field = state.mode === "compare" ? "filter" : packages ? "packageFilter" : "searchQuery";
   const input = el("input");
   input.id = "filter";
   input.type = "search";
@@ -1027,13 +1062,19 @@ function filterInput(packages = false) {
   input.value = state[field];
   input.addEventListener("input", () => {
     state[field] = input.value;
+    if (state.mode === "image" && !packages) {
+      if (input.value && state.view !== "search") {
+        state.searchReturnView = "files";
+        state.view = "search";
+      } else if (!input.value && state.view === "search") {
+        state.view = state.searchReturnView || "files";
+      }
+    }
     state.rightIndex = 0;
     state.selected = null;
+    renderDetails();
     renderRight();
-    renderFooter();
-    const again = $("filter");
-    again.focus();
-    again.setSelectionRange(again.value.length, again.value.length);
+    renderControls();
   });
   wrap.append(input);
   return wrap;
@@ -1041,9 +1082,14 @@ function filterInput(packages = false) {
 
 function renderRight() {
   const restoreFocus = $("right").contains(document.activeElement);
+  const focusId = restoreFocus ? document.activeElement.dataset.focusId : null;
   renderRightContent();
-  if (restoreFocus && !$("right").contains(document.activeElement)) $("right-pane").focus({ preventScroll: true });
   markRightSelection();
+  if (restoreFocus && !$("right").contains(document.activeElement)) {
+    const replacement = focusId && [...$("right").querySelectorAll("[data-focus-id]")]
+      .find(node => node.dataset.focusId === focusId);
+    (replacement || $("right-pane")).focus({ preventScroll: true });
+  }
 }
 
 function renderRightContent() {
@@ -1077,18 +1123,12 @@ function renderRightContent() {
     return;
   }
   if (state.view === "help") {
-    setTitle("right-title", "Keys");
+    setTitle("right-title", "Help");
     scroller.removeAttribute("role");
-    for (const [group, items] of keyList()) {
-      scroller.append(el("h3", "key-group foam bold", group));
-      const keys = el("dl", "keys");
-      for (const [key, text] of items) {
-        const dt = el("dt");
-        key.split(" ").forEach(part => add(dt, el("kbd", null, part), " "));
-        add(keys, dt, el("dd", null, text));
-      }
-      scroller.append(keys);
-    }
+    add(scroller, el("p", null, "Select a layer to explore its files and packages."),
+      el("p", null, "Use the view controls to switch between files, packages, and insights. Select a tree row to see its details and use its arrow to expand or collapse it."),
+      el("p", null, "Search paths across layers or filter packages and comparison differences. Clear the search field to remove a search."),
+      el("p", null, "Use Tab to move between controls, Enter or Space to activate them, and arrow keys to navigate the layer list or tree."));
     box.append(scroller);
     return;
   }
@@ -1111,6 +1151,7 @@ function renderRightContent() {
   for (const [whole, label] of [[false, "This layer"], [true, "Whole filesystem"]]) {
     const button = el("button", null, label);
     button.setAttribute("aria-pressed", String(state.whole === whole));
+    button.dataset.focusId = "scope-" + whole;
     button.addEventListener("click", () => { state.whole = whole; resetTree(); renderRight(); });
     toggle.append(button);
   }
@@ -1239,6 +1280,11 @@ function insightRow(finding, img, index, visibleIndex) {
     finding.where, el("br"), finding.why, el("br"),
     el("span", "silt", size(finding.bytes) + " across " + count(finding.fileCount, "file")));
   if (finding.fix) add(content, el("br"), el("span", "foam bold", finding.fixLabel), "  ", finding.fix);
+  if (finding.roots.length) {
+    const show = el("button", "insight-action", "Show files");
+    show.addEventListener("click", () => openFindingPath(img, finding, finding.roots[0]));
+    add(content, el("br"), show);
+  }
   if (finding.explain.length) {
     const explain = el("ul", "list");
     finding.explain.forEach(text => explain.append(el("li", null, text)));
@@ -1303,28 +1349,6 @@ function openFindingPath(img, finding, path) {
   openImagePath(img, path, layer, state.whole, true);
 }
 
-function moveFinding(delta) {
-  const findings = visibleFindings(image());
-  if (!findings.length) return;
-  state.findingSelected = Math.max(0, Math.min(findings.length - 1, state.findingSelected + delta));
-  renderRight();
-  renderDetails();
-  $("right").querySelectorAll(".insight-group > summary")[state.findingSelected]?.scrollIntoView({ block: "nearest" });
-}
-function activateFinding() {
-  const selected = selectedFinding(image());
-  if (!selected) return;
-  if (selected.baseGroup) {
-    state.showBaseFindings = !state.showBaseFindings;
-    renderRight();
-    renderDetails();
-    return;
-  }
-  const finding = selected.finding;
-  if (!finding?.roots.length) return;
-  openFindingPath(image(), finding, finding.roots[0]);
-}
-
 function renderOverview(box, scroller) {
   setTitle("right-title", "Comparison overview", pair()[0].label + " \u2192 " + pair()[1].label);
   scroller.removeAttribute("role");
@@ -1348,8 +1372,8 @@ function renderOverview(box, scroller) {
     scroller.append(button);
   }
   add(scroller, el("div", "overview-gap"), renderComparisonSummary());
-  if (warningsCount()) scroller.append(el("div", "ochre", count(warningsCount(), "metadata warning") + " - Alt+W for details"));
-  scroller.append(el("div", "silt", "Enter opens the selection. File differences compare the final filesystems."));
+  if (warningsCount()) scroller.append(el("div", "ochre", count(warningsCount(), "metadata warning")));
+  scroller.append(el("div", "silt", "File differences compare the final filesystems."));
   box.append(scroller);
 }
 
@@ -1480,20 +1504,23 @@ function renderSearch(box, scroller) {
   for (const [layerOnly, label] of [[false, "Whole image"], [true, "Layer " + state.layer]]) {
     const button = el("button", null, label);
     button.setAttribute("aria-pressed", String(state.searchLayerOnly === layerOnly));
+    button.dataset.focusId = "search-scope-" + layerOnly;
     button.addEventListener("click", () => {
       state.searchLayerOnly = layerOnly;
       state.rightIndex = 0;
       renderRight();
-      renderFooter();
+      renderControls();
     });
     controls.append(button);
   }
   for (const [key, label] of [["searchIncludeDeleted", "Include deleted"], ["searchExactCase", "Exact case"]]) {
     const button = el("button", null, label);
     button.setAttribute("aria-pressed", String(state[key]));
-    button.addEventListener("click", () => { state[key] = !state[key]; state.rightIndex = 0; renderRight(); renderFooter(); });
+    button.dataset.focusId = key;
+    button.addEventListener("click", () => { state[key] = !state[key]; state.rightIndex = 0; renderRight(); renderControls(); });
     controls.append(button);
   }
+  controls.classList.add("toggle");
   const { hits, total } = searchResults(image());
   const searched = countSearchedPaths(image());
   controls.append(el("span", "push silt", (total > hits.length
@@ -1521,7 +1548,7 @@ function renderSearch(box, scroller) {
     row.setAttribute("aria-selected", String(index === state.rightIndex));
     row.title = history.join("  ");
     row.addEventListener("click", () => openSearchHit(hit));
-    scroller.append(row, document.createElement("br"));
+    scroller.append(row);
   }
   if (!hits.length) scroller.append(el("p", "empty", state.searchQuery ? "No paths match this search." : "Type part of a path to search every layer."));
   box.append(scroller);
@@ -1542,7 +1569,7 @@ function updateSearchSelection() {
   add(box, el("div", "silt", "Selected"),
     el("strong", selected.directory ? "dirname" : null, "/" + selected.path + (selected.directory ? "/" : "")),
     el("div", "silt", "layers  " + selected.occurrences.map(item => item.layer + (GLYPH[item.change] || "")).join("  ")),
-    el("div", "silt", "Press Enter to open it in the last layer that wrote it." +
+    el("div", "silt", "Select the result to open it in the last layer that wrote it." +
       (selected.note ? "  \u25b2 " + selected.note : "")));
 }
 
@@ -1574,10 +1601,6 @@ function selectionInfo(img, entries, metadata = new Map()) {
     add(totals, size(bytes), directory ? el("span", "silt", " in " + count(item?.fileCount || 0, "file")) : null,
       item?.sharing ? el("span", "silt", " (shared)") : null);
     right.append(totals);
-  }
-  if (rightRows()[state.rightIndex]?.hasAttribute("aria-expanded")) {
-    const action = state.expanded.has(state.selected) ? "fold" : "unfold";
-    add(right, add(el("span", "silt"), el("kbd", null, "Enter"), " " + action));
   }
   info.append(right);
   return info;
@@ -1611,7 +1634,8 @@ function renderDifferences(box, scroller) {
     fileSection.append(fileBody);
     add(scroller, packageSection, fileSection);
   }
-  box.append(scroller, comparisonSelectionInfo(pathSizes));
+  box.append(scroller);
+  box.append(comparisonSelectionInfo(pathSizes));
 }
 
 function renderComparisonSearch(scroller, packages, files, pathSizes, query) {
@@ -1640,7 +1664,7 @@ function renderComparisonSearch(scroller, packages, files, pathSizes, query) {
     });
     scroller.append(row);
   }
-  if (!packageMatches.length && !fileMatches.length) scroller.append(el("p", "empty", "No matching packages or paths. Esc clears the filter."));
+  if (!packageMatches.length && !fileMatches.length) scroller.append(el("p", "empty", "No matching packages or paths."));
 }
 
 function renderComparisonFiles(scroller, visible, diffs, pathSizes) {
@@ -1717,13 +1741,11 @@ function comparisonSection(key, label, summary) {
 function openComparisonSection(section) {
   state.view = "files";
   state.returnView = "files";
-  state.searchOverview = false;
-  state.searching = false;
   state.selected = null;
   state.comparisonCollapsed.delete(section);
   state.comparisonCollapsed.add(section === "packages" ? "files" : "packages");
   renderRight();
-  renderFooter();
+  renderControls();
   const heading = $("right").querySelector('[data-section="' + section + '"] > summary');
   const rows = rightRows();
   state.rightIndex = Math.min(rows.length - 1, Math.max(0, rows.indexOf(heading) + 1));
@@ -1920,129 +1942,87 @@ function renderComparisonPackageItems(container, ecosystem, items, query, unchan
   }
 }
 
-/* ---------- Footer ---------- */
-function keyList() {
-  const groups = [
-    ["Move", [["\u2191 \u2193", "Move"], ["PgUp PgDn", "Page"], ["Home End", "First or last"], ["Tab", "Switch pane"]]],
-    ["Layers", [["[ ]", "Previous or next layer"], ["a", "Toggle whole filesystem"]]],
-    ["Files", [["\u2190 \u2192", "Fold or unfold"], ["+ ~ = \u2212", "Show or hide changes"]]],
-    ["Packages", [...(state.mode === "image" ? [["p", "Packages"]] : []), ["/", "Filter packages or paths"], ["Enter", "Package details or fold"]]]
-  ];
-  if (comparing) {
-    groups[1][1].push(["c", "Compare with the target"]);
-    groups.push(["Compare", [["Alt+I", "Snapshot"], ["/", "Search packages or paths"], ["[ ]", "Previous or next difference"], ["s", "Swap sides"], ["Esc", "Back to overview or leave compare"]]]);
-  }
-  groups.push(["Search", [["Alt+L", "Whole image or selected layer"], ["Alt+D", "Include deleted"], ["Alt+C", "Exact case"]]]);
-  groups.push(  ["Views", [["i", "Insights"], ["/", "Search"], ["Alt+W", "Warnings"], ["?", "Help"], ["Esc", "Back"]]]);
-  return groups;
-}
-function hint(key, label, action, pressed) {
-  const button = el(action ? "button" : "span", "hint");
-  add(button, el("kbd", null, key), label);
-  if (pressed !== undefined) button.setAttribute("aria-pressed", String(pressed));
-  if (action) button.addEventListener("click", action);
-  return button;
-}
-function searchActive() {
-  return !["help", "warnings", "snapshot"].includes(state.view) &&
-    (state.view === "search" || state.searching);
-}
+/* ---------- Controls ---------- */
 function searchMatchCount() {
   if (state.view === "search") return searchResults(image()).total;
   if (state.mode === "compare") {
-    if (!state.filter) return rightRows().length;
     const query = state.filter.toLowerCase();
     return packageDifferences().filter(item => item.name.toLowerCase().includes(query)).length +
       differences().filter(item => item.path.toLowerCase().includes(query)).length;
   }
   const query = state.packageFilter.toLowerCase();
   return sum(inventory(image(), state.layer).ecosystems.filter(group => group.available),
-    group => group.packages.filter(item => item.name.toLowerCase().includes(query)).length);
+    group => group.packages.filter(item =>
+      (group.ecosystem + " " + item.name + " " + item.versions.join(" ")).toLowerCase().includes(query)).length);
 }
-function closeSearch() {
-  state.searching = false;
-  if (state.mode === "compare" && state.searchOverview && !state.filter) state.view = "overview";
-  renderRight();
-  renderFooter();
-  $("right-pane").focus({ preventScroll: true });
-}
-function acceptSearch() {
-  closeSearch();
-  if (state.mode !== "compare") return;
-  const row = rightRows()[state.rightIndex];
-  if (state.view === "overview" || row?.hasAttribute("aria-expanded")) row?.click();
-}
-function renderFooter() {
-  const footer = clear($("footer"));
-  const comparingNow = state.mode === "compare";
-  if (searchActive()) {
-    footer.append(filterInput(state.view === "packages"), el("span", "silt", count(searchMatchCount(), "match")));
-    if (state.view === "search") {
-      footer.append(hint("Alt+L", "Scope"), hint("Alt+D", "Deleted"), hint("Alt+C", "Exact case"),
-        hint("Enter", "Open", () => rightRows()[state.rightIndex]?.click()), hint("Esc", "Back", back));
-    } else {
-      footer.append(hint("\u2191 \u2193", "Select"), hint("Enter", "Open", acceptSearch),
-        hint("Esc", "Close search", back));
-    }
-    return;
+function renderControls() {
+  const active = document.activeElement;
+  const focusKey = active?.dataset.controlKey;
+  const inputFocused = active?.id === "filter";
+  const selectionStart = inputFocused ? active.selectionStart : null;
+  const selectionEnd = inputFocused ? active.selectionEnd : null;
+  const header = clear($("header-actions"));
+  const layers = clear($("layer-controls"));
+  const views = clear($("view-controls"));
+  const search = clear($("search-controls"));
+  const button = (parent, label, action, pressed, disabled = false) => {
+    const item = el("button", null, label);
+    if (pressed !== undefined) item.setAttribute("aria-pressed", String(pressed));
+    item.dataset.controlKey = parent.id + ":" + label;
+    item.disabled = disabled;
+    item.addEventListener("click", action);
+    parent.append(item);
+    return item;
+  };
+  if (warningsCount()) button(header, warningsLabel() + " (" + warningsCount() + ")", () => openUtility("warnings"), state.view === "warnings");
+  if (state.mode === "compare") {
+    button(header, "Swap sides", swapSides);
+    button(header, "Snapshot", () => openUtility("snapshot"), state.view === "snapshot");
   }
-  if (warningsCount()) footer.append(hint("Alt+W", warningsLabel(), () => setView("warnings"), state.view === "warnings"));
-  if (state.view === "help" || state.view === "warnings" || state.view === "snapshot") {
-    footer.append(hint("Esc", "Back", back));
-    return;
+  button(header, "Help", () => openUtility("help"), state.view === "help");
+  if (state.mode === "compare") {
+    const positions = compareRows().filter(row => !row.shared).map(row => row.position);
+    button(layers, "Previous difference", () => stepDifference(-1), undefined, !positions.some(position => position < state.row));
+    button(layers, "Next difference", () => stepDifference(1), undefined, !positions.some(position => position > state.row));
   }
-  if (state.view === "overview") {
-    footer.append(hint("[ ]", "Next difference", () => step(1)), hint("s", "Swap sides", swapSides),
-      hint("Alt+I", "Snapshot", () => setView("snapshot")),
-      hint("/", "Search", focusFilter), hint("Esc", "Leave compare", back), hint("?", "Help", () => setView("help")));
-    return;
-  }
-  if (state.view === "insights") {
-    footer.append(hint("\u2191 \u2193", "Finding"), hint("Enter", "Show files", activateFinding),
-      hint("Esc", "Back", back), hint("?", "Help", () => setView("help")));
-    return;
-  }
-  if (state.view === "packages") {
-    footer.append(hint("[ ]", "Step layer", () => step(1)));
-    footer.append(hint("/", "Filter", focusFilter), hint("Esc", escapeLabel(), back),
-      hint("?", "Help", () => setView("help")));
-    return;
-  }
-  if (comparingNow) {
-    footer.append(
-      hint("[ ]", "Next difference", () => step(1)),
-      hint("s", "Swap sides", swapSides),
-      hint("Alt+I", "Snapshot", () => setView("snapshot")),
-      hint("Esc", escapeLabel(), back),
-      hint("/", "Search", focusFilter));
+
+  const utility = ["help", "warnings", "snapshot"].includes(state.view);
+  const viewItems = state.mode === "compare"
+    ? [["overview", "Overview"], ["files", "Differences"]]
+    : [["files", "Files"], ["packages", "Packages"], ["insights", "Insights"]];
+  if (utility) {
+    const returnLabel = viewItems.find(([view]) => view === state.returnView)?.[1].toLowerCase() || state.returnView;
+    button(views, "Back to " + returnLabel, back);
   } else {
-    const layersFocused = document.activeElement === $("layers");
-    footer.append(hint("Tab", layersFocused ? "Files" : "Layers",
-      () => (layersFocused ? $("right-pane") : $("layers")).focus()),
-      hint("p", "Packages", () => setView("packages")));
-    if (!layersFocused) footer.append(hint("[ ]", "Step layer", () => step(1)));
-    footer.append(hint("a", state.whole ? "This layer" : "Whole filesystem", toggleWhole));
-    if (!layersFocused) footer.append(hint("+ ~ = \u2212", "Filter"));
-    if (comparing) footer.append(hint("c", "Compare", () => setMode("compare", state.side)));
-    footer.append(hint("/", "Search", focusFilter));
-    footer.append(hint("i", "Insights", () => setView("insights")));
-    if (escapeLabel()) footer.append(hint("Esc", escapeLabel(), back));
+    for (const [view, label] of viewItems) {
+      button(views, label, () => navigateView(view),
+        state.view === view || (view === "files" && state.view === "search"));
+    }
+    if (state.investigation) {
+      button(search, "Back to " + (state.investigation.view === "search" ? "search" : "insights"), restoreInvestigation);
+    }
+    if (state.view === "files" || state.view === "search" || state.view === "packages") {
+      const packages = state.view === "packages";
+      const field = state.mode === "compare" ? "filter" : packages ? "packageFilter" : "searchQuery";
+      search.append(filterInput(packages));
+      if (state[field] && state.view !== "search")
+        search.append(el("span", "search-count", count(searchMatchCount(), "match", "matches")));
+    }
   }
-  footer.append(hint("?", "Help", () => setView("help")));
-}
-function escapeLabel() {
-  if (state.view === "packages") return state.packageFilter ? "Clear filter" : "Back";
-  if (state.view !== "files") return "Back";
-  if (state.investigation) return "Back";
-  if (state.findingsOnly) return "Clear filters";
-  if (state.mode === "compare") return state.filter ? "Clear filter" : "Overview";
-  return state.filter || state.hidden.size ? "Clear filters" : null;
+  if (inputFocused && $("filter")) {
+    $("filter").focus({ preventScroll: true });
+    $("filter").setSelectionRange(selectionStart, selectionEnd);
+  } else if (focusKey) {
+    const replacement = [...document.querySelectorAll("[data-control-key]")]
+      .find(node => node.dataset.controlKey === focusKey && !node.disabled);
+    (replacement || (focusKey.startsWith("layer-controls:") ? $("layers") : $("right-pane"))).focus({ preventScroll: true });
+  }
 }
 
 /* ---------- Actions ---------- */
 function resetTree() { state.expanded.clear(); state.limits.clear(); state.selected = null; state.rightIndex = 0; }
 function renderBody() { renderLayers(); renderDetails(); renderRight(); }
-function render() { renderHeader(); renderBody(); renderFooter(); }
+function render() { renderHeader(); renderBody(); renderControls(); }
 window.addEventListener("resize", renderHeader);
 function setMode(mode, side) {
   const view = packageContext() ? "packages" : "files";
@@ -2052,8 +2032,6 @@ function setMode(mode, side) {
   state.findingsOnly = false;
   state.investigation = null;
   state.filter = "";
-  state.searching = false;
-  state.searchOverview = false;
   state.view = mode === "compare" ? "overview" : view;
   state.returnView = view;
   resetTree();
@@ -2062,17 +2040,23 @@ function setMode(mode, side) {
   if (mode === "compare") state.row = compareRows().find(row => !row.shared)?.position ?? 0;
   render();
 }
-function setView(view) {
-  if (state.mode === "compare" && view === "packages") { openComparisonSection("packages"); return; }
-  if (view === "packages") state.view = view;
-  else if (state.view === view) state.view = state.returnView;
-  else {
-    if (state.view !== "warnings" && state.view !== "help") state.returnView = state.view;
-    state.view = view;
-  }
+function navigateView(view) {
+  if (view === "files" && state.view === "search") state.searchQuery = "";
+  state.view = view;
+  state.returnView = view;
+  state.investigation = null;
+  state.findingsOnly = false;
+  resetTree();
   renderDetails();
   renderRight();
-  renderFooter();
+  renderControls();
+}
+function openUtility(view) {
+  if (!["warnings", "help", "snapshot"].includes(state.view)) state.returnView = state.view;
+  state.view = view;
+  renderDetails();
+  renderRight();
+  renderControls();
 }
 function selectLayer(index) {
   state.layer = index;
@@ -2081,15 +2065,11 @@ function selectLayer(index) {
   state.rightIndex = 0;
   render();
 }
-function selectRow(position) { state.row = position; renderHeader(); renderLayers(); renderDetails(); }
-function step(delta) {
-  if (state.mode === "compare") {
-    const differing = compareRows().filter(row => !row.shared).map(row => row.position);
-    const next = delta > 0 ? differing.find(p => p > state.row) : differing.reverse().find(p => p < state.row);
-    if (next !== undefined) selectRow(next);
-    return;
-  }
-  moveLayer(delta);
+function selectRow(position) { state.row = position; renderHeader(); renderLayers(); renderDetails(); renderControls(); }
+function stepDifference(delta) {
+  const differing = compareRows().filter(row => !row.shared).map(row => row.position);
+  const next = delta > 0 ? differing.find(p => p > state.row) : differing.reverse().find(p => p < state.row);
+  if (next !== undefined) selectRow(next);
 }
 function moveRow(delta) {
   selectRow(Math.max(0, Math.min(compareRows().length - 1, state.row + delta)));
@@ -2105,77 +2085,23 @@ function swapSides() {
   resetTree();
   render();
 }
-function toggleWhole() {
-  state.whole = !state.whole;
-  resetTree();
-  renderRight();
-  renderFooter();
-}
 function back() {
   if (state.view === "help" || state.view === "warnings" || state.view === "snapshot") {
-    state.view = state.returnView; renderDetails(); renderRight(); renderFooter(); return;
-  }
-  if (state.view === "insights") {
-    state.view = state.returnView; renderDetails(); renderRight(); renderFooter(); return;
-  }
-  if (state.searching) { closeSearch(); return; }
-  if (state.view === "search") {
-    state.view = state.searchReturnView || "files"; resetTree(); renderDetails(); renderRight(); renderFooter(); return;
-  }
-  if (state.view === "overview" && state.mode === "compare") {
-    setMode("image", sides()[0]); return;
-  }
-  if (state.view === "packages") {
-    if (state.packageFilter) state.packageFilter = "";
-    else state.view = "files";
-    renderRight(); renderFooter(); return;
-  }
-  if (state.mode === "compare") {
-    if (state.filter) {
-      state.filter = "";
-      state.rightIndex = 0;
-      state.selected = null;
-      if (state.searchOverview) state.view = "overview";
-      renderRight(); renderFooter();
-    }
-    else { state.view = "overview"; resetTree(); renderRight(); renderFooter(); }
-    return;
+    state.view = state.returnView; renderDetails(); renderRight(); renderControls(); return;
   }
   if (state.investigation && restoreInvestigation()) return;
-  if (state.findingsOnly || state.hidden.size) {
-    state.findingsOnly = false; state.hidden.clear(); state.rightIndex = 0; renderRight(); renderFooter(); return;
+  if (state.view === "search") {
+    state.view = state.searchReturnView || "files"; resetTree(); renderDetails(); renderRight(); renderControls(); return;
   }
-  if (state.filter || state.hidden.size) { state.filter = ""; state.hidden.clear(); renderRight(); renderFooter(); }
+  if (state.mode === "compare" && state.view === "files") navigateView("overview");
 }
 function toggleKind(kind) {
   if (state.mode === "compare") return;
   const set = state.hidden;
   if (set.has(kind)) set.delete(kind); else set.add(kind);
   renderRight();
-  renderFooter();
+  renderControls();
 }
-function focusFilter() {
-  if (state.view === "warnings" || state.view === "help") {
-    state.view = state.returnView; renderRight(); renderFooter();
-  }
-  if (state.mode === "compare") {
-    state.searchOverview = state.view === "overview" || state.searchOverview;
-    state.view = "files";
-    state.searching = true;
-    state.rightIndex = 0;
-    state.selected = null;
-  } else if (state.view === "packages") {
-    state.searching = true;
-  } else if (state.mode === "image" && state.view !== "packages") {
-    if (state.view !== "search") state.searchReturnView = state.view;
-    state.view = "search";
-    state.rightIndex = 0;
-  }
-  renderRight();
-  renderFooter();
-  $("filter")?.focus();
-}
-
 $("layers").addEventListener("click", () => $("layers").focus({ preventScroll: true }), true);
 $("layers").addEventListener("keydown", event => {
   const map = { ArrowUp: -1, ArrowDown: 1, PageUp: -10, PageDown: 10, Home: -1e6, End: 1e6 };
@@ -2239,14 +2165,16 @@ $("right-pane").addEventListener("keydown", event => {
     return;
   }
   const row = rows[state.rightIndex];
-  if (event.key === "Enter" || event.key === "ArrowLeft" || event.key === "ArrowRight") {
+  if (event.key === "Enter" || event.key === " " || event.key === "ArrowLeft" || event.key === "ArrowRight") {
     const expanded = row.getAttribute("aria-expanded");
     const details = row.parentElement instanceof HTMLDetailsElement ? row.parentElement : null;
     const open = expanded === null ? details?.open : expanded === "true";
-    if (event.key === "Enter" || open !== undefined && open !== null &&
+    if (event.key === "Enter" || event.key === " " || open !== undefined && open !== null &&
         ((event.key === "ArrowLeft" && open) || (event.key === "ArrowRight" && !open))) {
       event.preventDefault();
-      row.click();
+      const toggle = row.querySelector(".tree-toggle");
+      if (toggle) toggle.click();
+      else if (event.key === "Enter" || event.key === " " || details) row.click();
       markRightSelection();
     } else if (event.key === "ArrowLeft" && expanded === null) {
       const depth = Number(row.getAttribute("aria-level") || 0);
@@ -2280,89 +2208,18 @@ $("right-pane").addEventListener("click", event => {
       event.target.closest("button, input, summary, select, textarea, a")) return;
   $("right-pane").focus({ preventScroll: true });
 });
-for (const pane of [$("layers"), $("right-pane")]) {
-  pane.addEventListener("focus", () => renderFooter());
-}
 document.addEventListener("keydown", event => {
-  if (event.key === "Tab" && (event.target === $("layers") || event.target === $("right-pane"))) {
-    event.preventDefault();
-    (event.target === $("layers") ? $("right-pane") : $("layers")).focus();
-    return;
-  }
-  if (state.view === "search" && event.altKey && !event.ctrlKey && !event.metaKey) {
-    const flags = { KeyL: "searchLayerOnly", KeyD: "searchIncludeDeleted", KeyC: "searchExactCase" };
-    if (event.code in flags) {
-      event.preventDefault();
-      state[flags[event.code]] = !state[flags[event.code]];
-      state.rightIndex = 0;
-      const typing = event.target instanceof HTMLInputElement;
-      renderRight();
-      renderFooter();
-      if (typing) $("filter").focus();
-      return;
-    }
-  }
-  if (event.altKey && !event.ctrlKey && !event.metaKey && event.code === "KeyI" && state.mode === "compare") {
-    event.preventDefault();
-    setView("snapshot");
-    return;
-  }
-  if (event.altKey && !event.ctrlKey && !event.metaKey && event.code === "KeyW") {
-    event.preventDefault();
-    setView("warnings");
-    return;
-  }
   if (event.ctrlKey || event.metaKey || event.altKey) return;
   const typing = event.target instanceof HTMLInputElement;
   if (event.key === "Escape") {
-    if (typing) event.target.blur();
-    back();
-    return;
-  }
-  if (typing && searchActive() && ["ArrowUp", "ArrowDown", "PageUp", "PageDown", "Home", "End", "Enter"].includes(event.key)) {
-    const rows = rightRows();
-    if (event.key === "Enter" && state.view !== "search") {
+    if (typing && event.target.value) {
       event.preventDefault();
-      acceptSearch();
-      return;
+      event.target.value = "";
+      event.target.dispatchEvent(new Event("input", { bubbles: true }));
+    } else {
+      if (typing) event.target.blur();
+      back();
     }
-    if (rows.length) {
-      event.preventDefault();
-      if (event.key === "Enter") rows[state.rightIndex]?.click();
-      else {
-        const moves = { ArrowUp: -1, ArrowDown: 1, PageUp: -10, PageDown: 10, Home: -1e6, End: 1e6 };
-        state.rightIndex = Math.max(0, Math.min(rows.length - 1, state.rightIndex + moves[event.key]));
-        markRightSelection();
-        updateSearchSelection();
-        rows[state.rightIndex].scrollIntoView({ block: "nearest" });
-      }
-    }
-    return;
-  }
-  if (typing) return;
-  const kinds = { "+": "Added", "~": "Modified", "=": "Identical", "-": "Deleted", "\u2212": "Deleted" };
-  const actions = {
-    "[": () => step(-1), "]": () => step(1), "/": focusFilter,
-    "i": () => { if (state.mode === "image") setView("insights"); },
-    "?": () => setView("help"),
-    "p": () => { if (state.mode === "image" && state.view === "files") setView("packages"); },
-    "a": () => { if (state.mode === "image") toggleWhole(); },
-    "c": () => { if (comparing && state.mode === "image") setMode("compare", state.side); },
-    "s": () => { if (state.mode === "compare") swapSides(); }
-  };
-  if (state.view === "insights" && ["ArrowUp", "ArrowDown", "Home", "End", "Enter"].includes(event.key)) {
-    event.preventDefault();
-    if (event.key === "Enter") activateFinding();
-    else moveFinding(event.key === "ArrowUp" ? -1 : event.key === "ArrowDown" ? 1 : event.key === "Home" ? -1e6 : 1e6);
-    return;
-  }
-  if (event.key in kinds) {
-    if (state.view !== "files") return;
-    const kind = kinds[event.key];
-    if (state.mode === "image" && LAYER_KINDS.includes(kind)) { event.preventDefault(); toggleKind(kind); }
-  } else if (event.key in actions) {
-    event.preventDefault();
-    actions[event.key]();
   }
 });
 
@@ -2375,7 +2232,6 @@ document.addEventListener("keydown", event => {
   if (comparing) state.row = compareRows().find(row => !row.shared)?.position ?? 0;
   render();
   $("layers").focus({ preventScroll: true });
-  renderFooter();
 })();
 </script>
 </body>

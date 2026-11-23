@@ -179,8 +179,8 @@ dredge image explore docker://my-image:base --compare docker://my-image:dev --ou
 
 The report includes the image history, file sizes, filesystem tree, per-layer
 changes, package inventories, and an Insights view with hidden-byte totals and
-findings. Press `i` to open Insights; use the arrow keys to select a finding and
-`Enter` to show its files. When `--compare` is supplied, the report also includes
+findings. Use the view controls to open Insights and select **Show files** on a
+finding to explore its paths. When `--compare` is supplied, the report also includes
 file and package differences. Comparison labels use each image's tag or short
 digest. Package comparisons cover ecosystems with readable
 metadata in both images. Package inventory and comparison are unavailable for
@@ -191,22 +191,22 @@ reading package metadata for every layer can increase generation time and size.
 select the first differing layer. `--base-image` identifies base layers.
 `--no-mouse` applies only to the terminal explorer.
 
-In HTML reports, `a` switches between layer changes and the filesystem at
-the selected layer. `/` searches path history across layers; `Alt+L`, `Alt+D`,
-and `Alt+C` control the layer scope, deleted paths, and case sensitivity.
-Comparison reports open with an overview; `Esc` returns to it from the
-differences. Installed packages and files share one comparison tree, with
+The **This layer / Whole filesystem** control switches the filesystem scope.
+Search paths across layers with the search field and choose the layer scope,
+deleted paths, and case sensitivity in the search results view. Comparison
+reports open with an overview; use **Overview / Differences** to switch views.
+Installed packages and files share one comparison tree, with
 collapsible sections and package ecosystems. npm scopes group related package
 changes. The overview opens the selected section and collapses the other; both
-can be expanded together. `/` searches package names and file paths in that
+can be expanded together. The search field filters package names and file paths in that
 tree. File comparisons show absolute path sizes for each image, folder
 file counts, sharing, and link targets; folder totals count hard-linked content
 once, as in the TUI.
 Package differences are leaf rows showing the version change, not expandable
 detail nodes. Comparison rows retain the TUI's tree order, without sort tabs.
-Search input appears in the footer when `/` is pressed. In comparison and package
-views, `Enter` or `Esc` closes the search input while retaining the filter;
-a subsequent `Esc` clears the filter.
+Clear the search field to remove a search or filter. Select tree rows to inspect
+them and use their arrows to expand or collapse directories. Controls also support
+normal keyboard navigation.
 The report does not include file contents, previews, or diffs.
 
 Reports accept registry and `docker://` references, including mixed-source
@@ -218,7 +218,7 @@ options or saved settings.
 
 ### Browsing layers and files
 
-The explorer opens with a list of layers on one side and the files they
+The terminal explorer opens with a list of layers on one side and the files they
 change on the other. Select a layer to see its files, press `Tab` to move
 between the two panes, and press `a` to see the whole filesystem instead of
 just that layer's changes. Press `Enter` to preview a file, `o` to open it in
