@@ -804,14 +804,14 @@ internal sealed class CompareView
     }
 
     internal static IEnumerable<(string Path, long? Before, long? After, bool Directory, int FileCount, string? Sharing,
-        string? LinkTarget, string Change, bool Link, bool HardLink)> FilePathSizes(ExplorerComparison comparison)
+        string? LinkTarget, string Change, bool Link, bool HardLink, string? SwappedLinkTarget)> FilePathSizes(ExplorerComparison comparison)
     {
         FileTree root = FileTree.Build(comparison.Files, comparison.Baseline.Entries, comparison.Target.Entries,
             comparison.Baseline.Semantics.Comparer);
         return Walk(root);
 
         static IEnumerable<(string Path, long? Before, long? After, bool Directory, int FileCount, string? Sharing,
-            string? LinkTarget, string Change, bool Link, bool HardLink)> Walk(FileTree node)
+            string? LinkTarget, string Change, bool Link, bool HardLink, string? SwappedLinkTarget)> Walk(FileTree node)
         {
             if (node.Path.Length > 0 && node.HasChanges)
             {
@@ -825,7 +825,8 @@ internal sealed class CompareView
                         _ => "Modified"
                     }, node.Baseline?.Type is ImageFileType.SymbolicLink or ImageFileType.Other ||
                        node.Target?.Type is ImageFileType.SymbolicLink or ImageFileType.Other,
-                    node.Baseline?.Type == ImageFileType.HardLink || node.Target?.Type == ImageFileType.HardLink);
+                    node.Baseline?.Type == ImageFileType.HardLink || node.Target?.Type == ImageFileType.HardLink,
+                    node.HasEntry ? FileTree.HardLinkTarget(node.Target, node.Baseline) : null);
             }
             foreach (FileTree child in node.Children)
             {
@@ -898,9 +899,7 @@ internal sealed class CompareView
                     (file.Target is null or { Type: ImageFileType.Directory });
                 node.Baseline = file.Baseline;
                 node.Target = file.Target;
-                node.LinkTarget = (file.Target is { Type: ImageFileType.HardLink } targetLink ? targetLink
-                    : file.Target is null && file.Baseline is { Type: ImageFileType.HardLink } baselineLink
-                        ? baselineLink : null)?.LinkTarget;
+                node.LinkTarget = HardLinkTarget(file.Baseline, file.Target);
             }
             Finish(root);
             return root;
@@ -908,6 +907,11 @@ internal sealed class CompareView
 
         public static FileTree Build(IReadOnlyList<ExplorerFileDifference> files, StringComparer comparer) =>
             Build(files, [], [], comparer);
+
+        public static string? HardLinkTarget(ImageFileSystemEntry? baseline, ImageFileSystemEntry? target) =>
+            (target is { Type: ImageFileType.HardLink } targetLink ? targetLink
+                : target is null && baseline is { Type: ImageFileType.HardLink } baselineLink
+                    ? baselineLink : null)?.LinkTarget;
 
         private static (ContentTotals Before, ContentTotals After) Finish(FileTree node)
         {

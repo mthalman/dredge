@@ -122,6 +122,87 @@ public sealed class HtmlImageReportTests
     }
 
     [Fact]
+    public async Task ComparisonPreservesHardLinkTargetsForBothOrientations()
+    {
+        static byte[] LinkedLayer(bool target, params (string Path, string Target)[] links)
+        {
+            using MemoryStream result = new();
+            using (TarWriter writer = new(result, leaveOpen: true))
+            {
+                foreach ((string path, string linkTarget) in links)
+                {
+                    writer.WriteEntry(new PaxTarEntry(TarEntryType.HardLink, path) { LinkName = linkTarget });
+                }
+                if (target)
+                {
+                    using MemoryStream content = new(Encoding.UTF8.GetBytes("replacement"));
+                    writer.WriteEntry(new PaxTarEntry(TarEntryType.RegularFile, "app/replaced") { DataStream = content });
+                }
+            }
+            return result.ToArray();
+        }
+
+        Sources sources = new(Tar(("app/old", "old"), ("app/new", "new")),
+            LinkedLayer(false, ("app/link", "app/old"), ("app/replaced", "app/old"),
+                ("app/removed", "app/old")),
+            LinkedLayer(true, ("app/link", "app/new"), ("app/added", "app/new")));
+        await using LayerCacheTestContext cache = new();
+        JsonNode data = Data(await HtmlImageReport.CreateAsync(
+            sources, Mock.Of<IDockerRegistryClientFactory>(),
+            Parse("docker://app:base", "--output", "html", "--compare", "docker://app:target"),
+            TextWriter.Null, Token, cache.Store));
+
+        JsonArray sizes = data["pathSizes"]!.AsArray();
+        JsonNode Find(string path) => sizes.Single(item => item!["path"]!.GetValue<string>() == path)!;
+        JsonNode link = Find("app/link");
+        Assert.Equal("app/new", link["linkTarget"]!.GetValue<string>());
+        Assert.Equal("app/old", link["swappedLinkTarget"]!.GetValue<string>());
+        Assert.Null(Find("app/replaced")["linkTarget"]);
+        Assert.Equal("app/old", Find("app/replaced")["swappedLinkTarget"]!.GetValue<string>());
+        Assert.Equal("app/old", Find("app/removed")["linkTarget"]!.GetValue<string>());
+        Assert.Equal("app/old", Find("app/removed")["swappedLinkTarget"]!.GetValue<string>());
+        Assert.Equal("app/new", Find("app/added")["linkTarget"]!.GetValue<string>());
+        Assert.Equal("app/new", Find("app/added")["swappedLinkTarget"]!.GetValue<string>());
+    }
+
+    [Fact]
+    public async Task ComparisonRetainsFileSizeWhenReplacedBySymbolicLink()
+    {
+        using MemoryStream target = new();
+        using (TarWriter writer = new(target, leaveOpen: true))
+        {
+            writer.WriteEntry(new PaxTarEntry(TarEntryType.SymbolicLink, "app/item") { LinkName = "other" });
+        }
+        Sources sources = new(Tar(("common", "same")), Tar(("app/item", "123456")), target.ToArray());
+        await using LayerCacheTestContext cache = new();
+        JsonNode data = Data(await HtmlImageReport.CreateAsync(
+            sources, Mock.Of<IDockerRegistryClientFactory>(),
+            Parse("docker://app:base", "--output", "html", "--compare", "docker://app:target"),
+            TextWriter.Null, Token, cache.Store));
+
+        JsonNode item = data["pathSizes"]!.AsArray()
+            .Single(value => value!["path"]!.GetValue<string>() == "app/item")!;
+        Assert.Equal(6, item["before"]!.GetValue<int>());
+        Assert.Equal(0, item["after"]!.GetValue<int>());
+    }
+
+    [Fact]
+    public async Task ReportIncludesImplicitDirectoryReplacementChanges()
+    {
+        Sources sources = new(Tar(("item", "12345")), Tar(("item/new", "123")), Tar());
+        await using LayerCacheTestContext cache = new();
+        JsonNode image = Data(await HtmlImageReport.CreateAsync(
+            sources, Mock.Of<IDockerRegistryClientFactory>(), Parse("docker://app:base", "--output", "html"),
+            TextWriter.Null, Token, cache.Store))["images"]![0]!;
+
+        JsonArray changes = image["layers"]![1]!["changes"]!.AsArray();
+        Assert.Contains(changes, item => item!["path"]!.GetValue<string>() == "item" &&
+            item["change"]!.GetValue<string>() == "Deleted");
+        Assert.Contains(changes, item => item!["path"]!.GetValue<string>() == "item/new" &&
+            item["change"]!.GetValue<string>() == "Added" && item["size"]!.GetValue<int>() == 3);
+    }
+
+    [Fact]
     public async Task LayerSummaryExcludesDirectoryChangesAndPreservesFileFindingNotes()
     {
         static byte[] Layer(string content)

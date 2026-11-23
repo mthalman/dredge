@@ -23,6 +23,32 @@ internal sealed class ErrorJsonPayload
 internal static class CommandHelper
 {
     private static readonly AsyncLocal<bool> jsonErrorOutput = new();
+    private static readonly object registryContextKey = new();
+
+    internal static async Task<T> WithRegistryAsync<T>(string? registry, Func<Task<T>> execute)
+    {
+        try
+        {
+            return await execute();
+        }
+        catch (RegistryException e)
+        {
+            if (!e.Data.Contains(registryContextKey))
+            {
+                e.Data[registryContextKey] = registry;
+            }
+            throw;
+        }
+    }
+
+    internal static async Task WithRegistryAsync(string? registry, Func<Task> execute)
+    {
+        await WithRegistryAsync(registry, async () =>
+        {
+            await execute();
+            return true;
+        });
+    }
 
     public static int InvokeRootCommand(
         ParseResult parseResult,
@@ -141,6 +167,10 @@ internal static class CommandHelper
             string? code = null;
             if (e is RegistryException dockerRegistryException)
             {
+                if (e.Data.Contains(registryContextKey))
+                {
+                    registry = (string?)e.Data[registryContextKey];
+                }
                 Error? error = dockerRegistryException.Errors.FirstOrDefault();
                 code = error?.Code;
                 if (error?.Code == "UNAUTHORIZED")

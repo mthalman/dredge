@@ -20,6 +20,8 @@ internal sealed class ImageFileSystem : IAsyncDisposable
     private readonly ImagePathResolver pathResolver;
     private readonly ExtractionPlanner extractionPlanner;
     private IReadOnlyList<LayerDiagnostic> restoredDiagnostics = [];
+    private ImageFileSystem? snapshotOwner;
+    private int snapshotLayer = -1;
 
     private ImageFileSystem(
         IImageContentSource content,
@@ -272,16 +274,30 @@ internal sealed class ImageFileSystem : IAsyncDisposable
 
     internal ImageFileSystem CreateLayerSnapshot(int layer, CancellationToken cancellationToken)
     {
-        ValidateLayerSnapshot(layer, cancellationToken);
         ImageFileSystem snapshot = new(content, imageName, manifest, store, ownsStore: false, Semantics);
-        for (int i = 0; i <= layer; i++)
+        snapshot.snapshotOwner = this;
+        AdvanceLayerSnapshot(snapshot, layer, cancellationToken);
+        return snapshot;
+    }
+
+    internal void AdvanceLayerSnapshot(ImageFileSystem snapshot, int layer, CancellationToken cancellationToken)
+    {
+        if (snapshot.snapshotOwner != this || layer < snapshot.snapshotLayer ||
+            layer < 0 || layer >= manifest.Layers.Length)
+        {
+            throw new ArgumentOutOfRangeException(nameof(layer));
+        }
+        for (int i = snapshot.snapshotLayer + 1; i <= layer; i++)
         {
             cancellationToken.ThrowIfCancellationRequested();
-            StoredLayerIndex index = indexes[i];
+            if (!indexes.TryGetValue(i, out StoredLayerIndex? index))
+            {
+                throw new InvalidOperationException($"Layer {i} must be indexed before reading its package inventory.");
+            }
             snapshot.indexes.Add(i, index);
             snapshot.builder.ApplyLayer(index.Changes, new(i, index.Digest), cancellationToken);
+            snapshot.snapshotLayer = i;
         }
-        return snapshot;
     }
 
     public async Task CopyFileToAsync(
@@ -302,7 +318,18 @@ internal sealed class ImageFileSystem : IAsyncDisposable
         IEnumerable<(string Path, long MaximumBytes)> requests,
         [EnumeratorCancellation] CancellationToken cancellationToken)
     {
-        List<(string Path, ImageFileSystemEntry Entry)> resolved = [];
+        await foreach (var result in ReadFilesWithCacheAsync(requests, null, cancellationToken))
+        {
+            yield return (result.Path, result.Content, result.Error);
+        }
+    }
+
+    internal async IAsyncEnumerable<(string Path, byte[]? Content, Exception? Error, ImageContentId? ContentId, bool Cached)> ReadFilesWithCacheAsync(
+        IEnumerable<(string Path, long MaximumBytes)> requests,
+        Func<string, ImageContentId, bool>? isCached,
+        [EnumeratorCancellation] CancellationToken cancellationToken)
+    {
+        List<(string Path, ImageFileSystemEntry Entry, bool Cached)> resolved = [];
         foreach ((string path, long maximumBytes) in requests)
         {
             cancellationToken.ThrowIfCancellationRequested();
@@ -314,7 +341,7 @@ internal sealed class ImageFileSystem : IAsyncDisposable
                 {
                     throw new InvalidDataException($"File '/{path}' exceeds the supported maximum of {maximumBytes} bytes.");
                 }
-                resolved.Add((path, entry));
+                resolved.Add((path, entry, isCached?.Invoke(path, entry.ContentId) == true));
             }
             catch (Exception exception) when (exception is IOException or InvalidDataException or InvalidOperationException or NotSupportedException)
             {
@@ -322,7 +349,7 @@ internal sealed class ImageFileSystem : IAsyncDisposable
             }
             if (error is not null)
             {
-                yield return (path, null, error);
+                yield return (path, null, error, null, false);
             }
         }
 
@@ -333,9 +360,13 @@ internal sealed class ImageFileSystem : IAsyncDisposable
             Exception? layerError = null;
             try
             {
-                index = await GetIndexAsync(layer.Key, cancellationToken);
-                blob = await store.OpenIndexedBlobAsync(content, index,
-                    layer.Select(static item => item.Entry.ContentEntryIndex), cancellationToken);
+                var uncached = layer.Where(static item => !item.Cached).ToArray();
+                if (uncached.Length > 0)
+                {
+                    index = await GetIndexAsync(layer.Key, cancellationToken);
+                    blob = await store.OpenIndexedBlobAsync(content, index,
+                        uncached.Select(static item => item.Entry.ContentEntryIndex), cancellationToken);
+                }
             }
             catch (Exception exception) when (exception is IOException or InvalidDataException or UnauthorizedAccessException or RegistryException or HttpRequestException)
             {
@@ -349,7 +380,7 @@ internal sealed class ImageFileSystem : IAsyncDisposable
                 {
                     cancellationToken.ThrowIfCancellationRequested();
                     byte[]? bytes = null;
-                    if (layerError is null)
+                    if (layerError is null && content.Any(static item => !item.Cached))
                     {
                         try
                         {
@@ -366,7 +397,9 @@ internal sealed class ImageFileSystem : IAsyncDisposable
                     }
                     foreach (var item in content)
                     {
-                        yield return (item.Path, bytes, layerError);
+                        yield return item.Cached && layerError is null
+                            ? (item.Path, null, null, item.Entry.ContentId, true)
+                            : (item.Path, bytes, layerError, item.Entry.ContentId, false);
                     }
                 }
             }

@@ -12,7 +12,7 @@ internal sealed record HtmlReportFile(
 internal sealed record HtmlReportDifference(string Path, string Change, long? Before, long? After);
 internal sealed record HtmlReportPathSize(
     string Path, long? Before, long? After, bool Directory, int FileCount, string? Sharing, string? LinkTarget, string Change,
-    bool Link, bool HardLink = false);
+    bool Link, bool HardLink = false, string? SwappedLinkTarget = null);
 internal sealed record HtmlReportFileTreeMetadata(
     int Layer, bool WholeFilesystem, string Path, long Size, long ShippedSize,
     int FileCount, string? Sharing, bool HardLink, string? LinkTarget, string Type, string? Change, string? Note);
@@ -77,25 +77,29 @@ internal static class HtmlImageReport
         }
 
         string targetReference = ExploreCommand.ResolveCompareReference(options.Image, options.Compare);
+        string? targetRegistry = ImageSourceReference.Parse(targetReference).Registry;
         await using LayerStore targetStore = store.CreateScope();
-        await using ExplorerSource targetSource = await ExplorerSource.OpenAsync(
-            factory, registryFactory, targetReference, options, null, cancellationToken,
-            exactPlatform: baselineSource.Platform, store: targetStore, comparing: true);
+        await using ExplorerSource targetSource = await CommandHelper.WithRegistryAsync(targetRegistry, () =>
+            ExplorerSource.OpenAsync(
+                factory, registryFactory, targetReference, options, null, cancellationToken,
+                exactPlatform: baselineSource.Platform, store: targetStore, comparing: true));
         targetSource.Source?.Report(error);
-        ExplorerSession target = await ExplorerSession.CreateAsync(
-            targetSource.RegistryClient, targetSource, targetStore, null, cancellationToken);
+        ExplorerSession target = await CommandHelper.WithRegistryAsync(targetRegistry, () =>
+            ExplorerSession.CreateAsync(
+                targetSource.RegistryClient, targetSource, targetStore, null, cancellationToken));
         await using ImageFileSystem targetFiles = target.Files;
         bool usesContentIdentity = baseline.IsDaemon || target.IsDaemon;
         if (usesContentIdentity)
         {
             await baseline.EnsureContentIdentitiesAsync(cancellationToken);
-            await target.EnsureContentIdentitiesAsync(cancellationToken);
+            await CommandHelper.WithRegistryAsync(targetRegistry, () =>
+                target.EnsureContentIdentitiesAsync(cancellationToken));
         }
         cancellationToken.ThrowIfCancellationRequested();
         HtmlReportImage baselineReport = await CreateImageAsync(
             baselineSource, baseline, usesContentIdentity, cancellationToken);
-        HtmlReportImage targetReport = await CreateImageAsync(
-            targetSource, target, usesContentIdentity, cancellationToken);
+        HtmlReportImage targetReport = await CommandHelper.WithRegistryAsync(targetRegistry, () =>
+            CreateImageAsync(targetSource, target, usesContentIdentity, cancellationToken));
         ExplorerComparison comparison = ExplorerSession.Compare(baseline, target);
         HtmlReportDifference[] differences = [.. comparison.Files.Select(static file =>
             new HtmlReportDifference(file.Path, file.Kind.ToString(), file.Baseline?.Size, file.Target?.Size))];
@@ -104,7 +108,7 @@ internal static class HtmlImageReport
                 package.BaselineVersion, package.TargetVersion))];
         HtmlReportPathSize[] pathSizes = [.. CompareView.FilePathSizes(comparison).Select(static size =>
             new HtmlReportPathSize(size.Path, size.Before, size.After, size.Directory, size.FileCount,
-                size.Sharing, size.LinkTarget, size.Change, size.Link, size.HardLink))];
+                size.Sharing, size.LinkTarget, size.Change, size.Link, size.HardLink, size.SwappedLinkTarget))];
         HtmlReportPathIdentity[]? comparisonPathIdentities = baseline.Semantics.IsWindows
             ? PathIdentities(differences.Select(static difference => difference.Path)
                 .Concat(pathSizes.Select(static size => size.Path)), baseline.Semantics.Comparer)

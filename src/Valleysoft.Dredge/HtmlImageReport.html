@@ -353,6 +353,7 @@ const state = {
   comparisonCollapsed: new Set(),
   expanded: new Set(),
   limits: new Map(),
+  comparisonSearchLimit: BATCH,
   selected: null,
   rightIndex: 0,
   searchQuery: "",
@@ -965,6 +966,9 @@ function buildTree(entries, img = null, metadata = null, keyForPath = img ? path
       if (!child) {
         child = { name: part, path, children: new Map(), size: 0, dir: true, count: 0, note: null };
         node.children.set(key, child);
+      } else if (img && i < parts.length - 1 && !child.dir && entry.change !== "Deleted") {
+        child = { name: part, path, children: child.children, size: 0, dir: true, count: 0, note: null };
+        node.children.set(key, child);
       }
       node = child;
       chain.push(node);
@@ -1157,6 +1161,7 @@ function filterInput(packages = false) {
   input.value = state[field];
   input.addEventListener("input", () => {
     state[field] = input.value;
+    if (state.mode === "compare") state.comparisonSearchLimit = BATCH;
     if (state.mode === "image" && !packages) {
       if (input.value && state.view !== "search") {
         state.searchReturnView = "files";
@@ -1432,7 +1437,7 @@ function openImagePath(img, path, layer, whole, findingsOnly = false) {
   state.view = "files";
   resetTree();
   const metadata = treeMetadata(img, layer, whole);
-  let node = buildTree(whole ? wholeEntries(img, layer) : layerAt(img, layer).changes, img, metadata);
+  let node = whole ? wholeSnapshot(img, layer).root : buildTree(layerAt(img, layer).changes, img, metadata);
   const parts = path.split("/");
   for (let i = 0; i < parts.length; i++) {
     const key = pathKey(img, parts.slice(0, i + 1).join("/"));
@@ -1536,24 +1541,34 @@ function foldCase(text) {
 }
 
 const searchIndexes = new WeakMap();
-function searchResults(img) {
-  if (!searchIndexes.has(img)) {
-    const index = new Map();
-    for (const layer of img.layers) for (const change of layer.changes) {
-      const key = pathKey(img, change.path);
-      if (!index.has(key)) index.set(key, []);
-      const occurrences = index.get(key);
-      if (occurrences.length && occurrences[occurrences.length - 1].layer === layer.index) occurrences.pop();
-      occurrences.push({ ...change, layer: layer.index });
-    }
-    searchIndexes.set(img, index);
+const searchResultsCache = new WeakMap();
+function searchIndex(img) {
+  let index = searchIndexes.get(img);
+  if (index) return index;
+  index = new Map();
+  for (const layer of img.layers) for (const change of layer.changes) {
+    const key = pathKey(img, change.path);
+    if (!index.has(key)) index.set(key, []);
+    const occurrences = index.get(key);
+    const previous = occurrences[occurrences.length - 1];
+    if (previous?.layer === layer.index) occurrences.pop();
+    occurrences.push({ ...change, layer: layer.index });
   }
+  searchIndexes.set(img, index);
+  return index;
+}
+function searchResults(img) {
+  const index = searchIndex(img);
   if (!state.searchQuery) return { hits: [], total: 0 };
+  const cached = searchResultsCache.get(img);
+  if (cached && cached.query === state.searchQuery && cached.layer === state.layer &&
+      cached.layerOnly === state.searchLayerOnly && cached.includeDeleted === state.searchIncludeDeleted &&
+      cached.exactCase === state.searchExactCase) return cached.result;
   const query = state.searchExactCase ? state.searchQuery : foldCase(state.searchQuery);
   const contains = path => (state.searchExactCase ? path : foldCase(path)).includes(query);
   const live = new Map((img.files || []).map(entry => [pathKey(img, entry.path), entry]));
   const hits = [];
-  for (const occurrences of searchIndexes.get(img).values()) {
+  for (const occurrences of index.values()) {
     const last = occurrences[occurrences.length - 1];
     if (!state.searchIncludeDeleted && last.change === "Deleted") continue;
     let match;
@@ -1572,7 +1587,10 @@ function searchResults(img) {
     }
   }
   hits.sort((a, b) => a.path < b.path ? -1 : a.path > b.path ? 1 : 0);
-  return { hits: hits.slice(0, 1000), total: hits.length };
+  const result = { hits: hits.slice(0, 1000), total: hits.length };
+  searchResultsCache.set(img, { query: state.searchQuery, layer: state.layer, layerOnly: state.searchLayerOnly,
+    includeDeleted: state.searchIncludeDeleted, exactCase: state.searchExactCase, result });
+  return result;
 }
 
 function openSearchHit(hit) {
@@ -1696,15 +1714,13 @@ function selectionInfo(img, entries, metadata = new Map()) {
   const info = el("div", "info");
   if (!state.selected) return info;
   const key = pathKey(img, state.selected);
-  const entry = entries.find(e => pathKey(img, e.path) === key);
   const item = metadata.get(key);
+  const entry = item ? null : entries.find(e => pathKey(img, e.path) === key);
   const directory = item?.type === "Directory" || entry?.type === "Directory";
   info.append(el("span", "path bold" + (directory ? " dirname" : ""), "/" + state.selected + (directory ? "/" : "")));
   const badges = el("span");
-  const history = img.layers.flatMap(layer => {
-    const change = layer.changes.find(c => pathKey(img, c.path) === key);
-    return change ? [{ layer: layer.index, change: change.change }] : [];
-  }).slice(-8);
+  const history = (searchIndex(img).get(key) || []).slice(-8)
+    .map(occurrence => ({ layer: occurrence.layer, change: occurrence.change }));
   for (const item of history) {
     const badge = el("button");
     add(badge, el("span", "silt", item.layer), el("span", TONE[item.change], GLYPH[item.change]));
@@ -1760,10 +1776,14 @@ function renderDifferences(box, scroller) {
 function renderComparisonSearch(scroller, packages, files, pathSizes, query) {
   const packageMatches = packages.filter(item => item.name.toLowerCase().includes(query));
   const fileMatches = files.filter(item => item.path.toLowerCase().includes(query));
-  for (const item of packageMatches) {
+  const total = packageMatches.length + fileMatches.length;
+  const limit = state.comparisonSearchLimit;
+  let remaining = limit;
+  for (const item of packageMatches.slice(0, remaining)) {
     scroller.append(packageDifferenceRow(item, 1, "", query));
   }
-  for (const item of fileMatches) {
+  remaining -= Math.min(packageMatches.length, remaining);
+  for (const item of fileMatches.slice(0, remaining)) {
     const row = el("div", "trow comparison comparison-search has-sizes " + item.change);
     row.dataset.path = item.path;
     row.setAttribute("role", "treeitem");
@@ -1775,7 +1795,7 @@ function renderComparisonSearch(scroller, packages, files, pathSizes, query) {
     const name = el("span", "name");
     name.append(highlight("/" + item.path, query));
     add(row, el("span", TONE[item.change], GLYPH[item.change]),
-      comparisonSizeCells(before, after, sizes?.link), name);
+      comparisonSizeCells(before, after), name);
     row.addEventListener("click", () => {
       state.selected = item.path;
       state.rightIndex = rightRows().indexOf(row);
@@ -1783,7 +1803,15 @@ function renderComparisonSearch(scroller, packages, files, pathSizes, query) {
     });
     scroller.append(row);
   }
-  if (!packageMatches.length && !fileMatches.length) scroller.append(el("p", "empty", "No matching packages or paths."));
+  if (total > limit) {
+    const more = el("button", "more", "Show " + Math.min(BATCH, total - limit) + " more");
+    more.addEventListener("click", () => {
+      state.comparisonSearchLimit += BATCH;
+      renderRight();
+    });
+    scroller.append(more);
+  }
+  if (!total) scroller.append(el("p", "empty", "No matching packages or paths."));
 }
 
 function renderComparisonFiles(scroller, visible, diffs, pathSizes) {
@@ -1797,7 +1825,8 @@ function renderComparisonFiles(scroller, visible, diffs, pathSizes) {
   const compareMetadata = new Map([...pathSizesByKey].map(([path, item]) => [path, {
     type: item.directory ? "Directory" : item.link ? "SymbolicLink" : "File",
     size: state.swapped ? item.after || 0 : item.before || 0,
-    fileCount: item.fileCount, sharing: comparisonSharing(item.sharing), hardLink: item.hardLink, linkTarget: item.linkTarget,
+    fileCount: item.fileCount, sharing: comparisonSharing(item.sharing), hardLink: item.hardLink,
+    linkTarget: state.swapped ? item.swappedLinkTarget : item.linkTarget,
     change: state.swapped ? FLIP[item.change] || item.change : item.change
   }]));
   const sizeCells = node => {
@@ -1805,7 +1834,7 @@ function renderComparisonFiles(scroller, visible, diffs, pathSizes) {
     const d = node.entry?.diff;
     const before = totals ? (state.swapped ? totals.after : totals.before) : d?.before;
     const after = totals ? (state.swapped ? totals.before : totals.after) : d?.after;
-    return comparisonSizeCells(before, after, node.type === "SymbolicLink");
+    return comparisonSizeCells(before, after);
   };
   if (!renderTree(scroller, buildTree(entries, null, compareMetadata, keyForPath), sizeCells, false, 1)) scroller.append(el("p", "empty", "No differences match these filters."));
 }
@@ -1825,18 +1854,15 @@ function comparisonSelectionInfo(pathSizes) {
   add(info, el("span", "path", "/" + item.path));
   if (item.directory) info.append(el("span", "silt", count(item.fileCount, "file", "files")));
   if (item.sharing) info.append(el("span", "silt", comparisonSharing(item.sharing).toLowerCase()));
-  if (item.linkTarget) info.append(el("span", "silt", "\u2192 " + item.linkTarget));
-  if (!item.link) add(info, el("span", "push silt",
+  const linkTarget = state.swapped ? item.swappedLinkTarget : item.linkTarget;
+  if (linkTarget) info.append(el("span", "silt", "\u2192 " + linkTarget));
+  add(info, el("span", "push silt",
     (before == null ? "\u2014" : size(before)) + " \u2192 " + (after == null ? "\u2014" : size(after))));
   return info;
 }
 
-function comparisonSizeCells(before, after, noSize = false) {
+function comparisonSizeCells(before, after) {
   const cells = document.createDocumentFragment();
-  if (noSize) {
-    add(cells, el("span", "size"), el("span"), el("span", "size"), el("span", "size"));
-    return cells;
-  }
   const delta = (after ?? 0) - (before ?? 0);
   add(cells, el("span", "size silt", before == null ? "\u2014" : size(before)),
     el("span", "silt", "\u2192"), el("span", "size foam", after == null ? "\u2014" : size(after)),
@@ -2261,7 +2287,7 @@ function markRightSelection() {
     state.selected = rows[state.rightIndex]?.dataset.path || null;
     const img = image(), layer = layerAt(img, state.layer);
     $("right").querySelector(".info")?.replaceWith(selectionInfo(img,
-      state.whole ? wholeEntries(img, state.layer) : layer ? layer.changes : [],
+      state.whole ? wholeSnapshot(img, state.layer).entries : layer ? layer.changes : [],
       treeMetadata(img, state.layer, state.whole)));
   }
 }
@@ -2307,7 +2333,7 @@ $("right-pane").addEventListener("keydown", event => {
       if (toggle) toggle.click();
       else if (event.key === "Enter" || event.key === " " || details) row.click();
       markRightSelection();
-    } else if (event.key === "ArrowLeft" && expanded === null) {
+    } else if (event.key === "ArrowLeft" && (expanded === null || expanded === "false")) {
       const depth = Number(row.getAttribute("aria-level") || 0);
       for (let i = state.rightIndex - 1; i >= 0; i--) {
         const parent = rows[i];
