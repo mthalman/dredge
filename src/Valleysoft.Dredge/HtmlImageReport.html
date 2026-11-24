@@ -251,18 +251,19 @@ mark { background: var(--mark); color: inherit; }
 .comparison-section > summary { padding: 4px 0; cursor: pointer; font-weight: 700; }
 .comparison-section > summary .silt { font-weight: 400; margin-left: 2ch; }
 .comparison-section-body { padding-left: 2ch; }
+.comparison-file-body { padding-left: 0; }
 .comparison-section + .comparison-section { border-top: 1px solid var(--shale); margin-top: 6px; }
 .package-scope { margin-left: 2ch; }
 .package-scope > summary { cursor: pointer; font-weight: 700; }
 .package-scope > summary .silt { font-weight: 400; margin-left: 2ch; }
 .comparison-unchanged { margin-left: 2ch; }
-.comparison-summary { gap: 1ch; padding: 0 0 6px; }
+.comparison-summary { gap: 1ch; padding: 0 1ch 6px; }
 .comparison-summary span { white-space: nowrap; }
 .comparison-search { grid-template-columns: 2ch minmax(0, 1fr) max-content; }
 .comparison-search.has-sizes { grid-template-columns: 2ch 12ch 2ch 12ch 10ch minmax(0, 1fr); }
 .comparison-search .name { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
 .comparison-search .package-version { color: var(--silt); text-align: right; }
-.package-diff-row { display: grid; grid-template-columns: 2ch minmax(0, 1fr) minmax(10ch, 40%); gap: 0 1ch; }
+.package-diff-row { display: grid; grid-template-columns: 2ch minmax(0, 1fr) minmax(10ch, 40%); gap: 0 1ch; white-space: nowrap; }
 .package-diff-row .version { color: var(--silt); overflow: hidden; text-overflow: ellipsis; }
 .package-diff-row .name { overflow: hidden; text-overflow: ellipsis; }
 .search-editor { display: flex; align-items: center; gap: 1ch; }
@@ -273,6 +274,32 @@ mark { background: var(--mark); color: inherit; }
 .snapshot-block { white-space: pre-wrap; overflow-wrap: anywhere; padding-bottom: 1em; }
 
 .app { padding-bottom: 0.5em; }
+
+@container (max-width: 65ch) {
+  .colhead.comparison, .trow.comparison {
+    grid-template-columns: 2ch minmax(0, 1fr) 2ch minmax(0, 1fr) minmax(0, 1fr);
+    grid-template-areas: "change name name name name" ". before arrow after delta";
+  }
+  .colhead.comparison { margin: 0 1ch; padding: 0; }
+  .colhead.comparison > span { overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+  .colhead.comparison > span:nth-child(1) { grid-area: before; }
+  .colhead.comparison > span:nth-child(2) { grid-area: arrow; }
+  .colhead.comparison > span:nth-child(3) { grid-area: after; }
+  .colhead.comparison > span:nth-child(4) { grid-area: delta; }
+  .colhead.comparison > span:nth-child(5) { grid-area: name; }
+  .trow.comparison > span:nth-child(1) { grid-area: change; }
+  .trow.comparison > span:nth-child(2) { grid-area: before; }
+  .trow.comparison > span:nth-child(3) { grid-area: arrow; }
+  .trow.comparison > span:nth-child(4) { grid-area: after; }
+  .trow.comparison > span:nth-child(5) { grid-area: delta; }
+  .trow.comparison > span:nth-child(6) { grid-area: name; }
+}
+@container (max-width: 60ch) {
+  .search-row, .search-colhead {
+    grid-template-columns: 6ch 7ch minmax(14ch, 1fr) fit-content(10ch);
+  }
+  .search-row .note { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+}
 
 @media (max-width: 760px) {
   .body { grid-template-columns: minmax(0, 1fr); grid-template-rows: minmax(8em, 22vh) minmax(0, 1fr); }
@@ -285,7 +312,8 @@ mark { background: var(--mark); color: inherit; }
   body[data-view="search"] #right-pane, body[data-view="insights"] #right-pane,
   body[data-view="help"] #right-pane, body[data-view="warnings"] #right-pane,
   body[data-view="snapshot"] #right-pane { grid-row: 1 / span 2; }
-  .stats { margin-left: 0; white-space: normal; }
+  .stats { margin-left: 0; min-width: 0; max-width: 100%; flex: 0 1 auto; white-space: normal; overflow-wrap: anywhere; }
+  .modes { max-width: 100%; overflow-x: auto; }
 }
 @media (prefers-reduced-motion: reduce) { * { transition: none !important; scroll-behavior: auto !important; } }
 </style>
@@ -1683,7 +1711,8 @@ function renderSearch(box, scroller) {
     if (hit.note) row.append(el("span", "note", "\u25b2 " + hit.note));
     else if (deleted) row.append(el("span", "note", "deleted in layer " + last.layer));
     row.setAttribute("aria-selected", String(index === state.rightIndex));
-    row.title = history.join("  ");
+    row.title = [history.join("  "), hit.note || (deleted ? "deleted in layer " + last.layer : "")]
+      .filter(Boolean).join(" \u00b7 ");
     row.addEventListener("click", () => openSearchHit(hit));
     scroller.append(row);
   }
@@ -1763,7 +1792,7 @@ function renderDifferences(box, scroller) {
     const packageSection = comparisonSection("packages", "Installed packages", count(packages.length, "changed package"));
     renderPackages(packageSection, el("div", "comparison-section-body"), true);
     const fileSection = comparisonSection("files", "Files", count(diffs.length, "different path"));
-    const fileBody = el("div", "comparison-section-body");
+    const fileBody = el("div", "comparison-section-body comparison-file-body");
     fileBody.setAttribute("role", "group");
     renderComparisonFiles(fileBody, visible, diffs, pathSizes);
     fileSection.append(fileBody);
@@ -1929,8 +1958,10 @@ function packageDifferenceRow(item, level = 1, guide = "", query = "") {
   row.setAttribute("role", "treeitem");
   row.setAttribute("aria-level", String(level));
   const name = add(el("span", "name"), el("span", "tree-guide", guide), highlight(item.name, query));
-  add(row, el("span", TONE[item.change], GLYPH[item.change]), name,
-    el("span", "version", item.change === "Modified" ? item.before + " \u2192 " + item.after : item.after ?? item.before));
+  name.title = item.name;
+  const version = el("span", "version", item.change === "Modified" ? item.before + " \u2192 " + item.after : item.after ?? item.before);
+  version.title = version.textContent;
+  add(row, el("span", TONE[item.change], GLYPH[item.change]), name, version);
   row.addEventListener("click", () => {
     state.selected = null;
     state.rightIndex = rightRows().indexOf(row);
