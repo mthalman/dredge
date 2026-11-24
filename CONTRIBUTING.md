@@ -39,6 +39,18 @@ To run one test by its fully qualified method name:
 dotnet test --project Valleysoft.Dredge.Tests/Valleysoft.Dredge.Tests.csproj --no-restore --filter-method Valleysoft.Dredge.Tests.CompareLayersCommandTests.DifferentImages_ExitTwo
 ```
 
+The HTML report browser tests also require Python and Chromium. From `src`,
+install the browser-test dependencies and run:
+
+```shell
+python -m pip install -r Valleysoft.Dredge.Tests/requirements-html-browser.txt
+python -m playwright install chromium
+python Valleysoft.Dredge.Tests/html_report_browser_tests.py
+```
+
+Alternatively, set `DREDGE_BROWSER_EXECUTABLE` to an existing Chromium-based
+browser executable instead of installing Playwright's Chromium.
+
 ## Build versions
 
 [MinVer](https://github.com/adamralph/minver) derives the application and NuGet

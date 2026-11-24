@@ -1775,26 +1775,23 @@ function renderDifferences(box, scroller) {
   const packages = packageDifferences();
   const pathSizes = comparisonPathSizes();
   setTitle("right-title", "Differences", pair()[0].label + " \u2192 " + pair()[1].label);
-  const visible = diffs;
-  const search = foldCase(state.filter);
-  const matchCount = search
-    ? packages.filter(item => foldCase(item.name).includes(search)).length +
-      diffs.filter(item => foldCase(item.path).includes(search)).length
-    : null;
+  const search = state.filter;
+  const matches = search ? comparisonMatches(packages, diffs, search) : null;
   box.append(renderComparisonSummary());
-  if (search) box.append(el("div", "controls silt", "Filter: " + state.filter + " \u00b7 " + count(matchCount, "match")));
+  if (matches) box.append(el("div", "controls silt", "Filter: " + state.filter + " \u00b7 " +
+    count(matches.packages.length + matches.files.length, "match")));
   const head = add(el("div", "colhead comparison"),
     el("span", null, pair()[0].label), el("span"), el("span", null, pair()[1].label),
     el("span", null, "change"), el("span", null, "name / version"));
   box.append(head);
-  if (search) renderComparisonSearch(scroller, packages, visible, pathSizes, search);
+  if (matches) renderComparisonSearch(scroller, matches, pathSizes, search);
   else {
     const packageSection = comparisonSection("packages", "Installed packages", count(packages.length, "changed package"));
     renderPackages(packageSection, el("div", "comparison-section-body"), true);
     const fileSection = comparisonSection("files", "Files", count(diffs.length, "different path"));
     const fileBody = el("div", "comparison-section-body comparison-file-body");
     fileBody.setAttribute("role", "group");
-    renderComparisonFiles(fileBody, visible, diffs, pathSizes);
+    renderComparisonFiles(fileBody, diffs, pathSizes);
     fileSection.append(fileBody);
     add(scroller, packageSection, fileSection);
   }
@@ -1802,9 +1799,17 @@ function renderDifferences(box, scroller) {
   box.append(comparisonSelectionInfo(pathSizes));
 }
 
-function renderComparisonSearch(scroller, packages, files, pathSizes, query) {
-  const packageMatches = packages.filter(item => foldCase(item.name).includes(query));
-  const fileMatches = files.filter(item => foldCase(item.path).includes(query));
+function comparisonMatches(packages, files, query) {
+  const folded = foldCase(query);
+  return {
+    packages: packages.filter(item => foldCase(item.name).includes(folded)),
+    files: files.filter(item => foldCase(item.path).includes(folded))
+  };
+}
+
+function renderComparisonSearch(scroller, matches, pathSizes, query) {
+  const packageMatches = matches.packages;
+  const fileMatches = matches.files;
   const total = packageMatches.length + fileMatches.length;
   const limit = state.comparisonSearchLimit;
   let remaining = limit;
@@ -1843,12 +1848,12 @@ function renderComparisonSearch(scroller, packages, files, pathSizes, query) {
   if (!total) scroller.append(el("p", "empty", "No matching packages or paths."));
 }
 
-function renderComparisonFiles(scroller, visible, diffs, pathSizes) {
+function renderComparisonFiles(scroller, diffs, pathSizes) {
   if (!diffs.length) {
     scroller.append(el("p", "empty", "These images have the same files."));
     return;
   }
-  const entries = visible.map(d => ({ path: d.path, type: "File", size: (d.after || 0) - (d.before || 0), change: d.change, diff: d }));
+  const entries = diffs.map(d => ({ path: d.path, type: "File", size: (d.after || 0) - (d.before || 0), change: d.change, diff: d }));
   const keyForPath = comparisonPathKey;
   const pathSizesByKey = pathSizes;
   const compareMetadata = new Map([...pathSizesByKey].map(([path, item]) => [path, {
@@ -2138,9 +2143,8 @@ function renderComparisonPackageItems(container, ecosystem, items, query, unchan
 function searchMatchCount() {
   if (state.view === "search") return searchResults(image()).total;
   if (state.mode === "compare") {
-    const query = state.filter.toLowerCase();
-    return packageDifferences().filter(item => item.name.toLowerCase().includes(query)).length +
-      differences().filter(item => item.path.toLowerCase().includes(query)).length;
+    const matches = comparisonMatches(packageDifferences(), differences(), state.filter);
+    return matches.packages.length + matches.files.length;
   }
   const query = state.packageFilter.toLowerCase();
   return sum(inventory(image(), state.layer).ecosystems.filter(group => group.available),

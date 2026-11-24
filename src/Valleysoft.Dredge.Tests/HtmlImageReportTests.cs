@@ -10,6 +10,7 @@ using Valleysoft.DockerRegistryClient.Models.Manifests;
 using Valleysoft.DockerRegistryClient.Models.Manifests.Docker;
 using Valleysoft.Dredge.Commands;
 using Valleysoft.Dredge.Commands.Image;
+using Valleysoft.Dredge.Explorer;
 
 namespace Valleysoft.Dredge.Tests;
 
@@ -120,6 +121,70 @@ public sealed class HtmlImageReportTests
         Assert.Contains(data["pathSizes"]!.AsArray(), item => item!["path"]!.GetValue<string>() == "app/link" &&
             item["before"]!.GetValue<int>() == 3 && item["after"]!.GetValue<int>() == 5 &&
             !item["link"]!.GetValue<bool>() && item["hardLink"]!.GetValue<bool>());
+    }
+
+    [Fact]
+    public async Task BrowserFixtureMatchesExplorerWholeFilesystem()
+    {
+        using MemoryStream common = new();
+        using (TarWriter writer = new(common, leaveOpen: true))
+        {
+            foreach ((string path, string value) in new[]
+            {
+                ("app/shared", "shared"), ("app/gone", "removed"), ("app/edit", "original")
+            })
+            {
+                using MemoryStream contents = new(Encoding.UTF8.GetBytes(value));
+                writer.WriteEntry(new PaxTarEntry(TarEntryType.RegularFile, path) { DataStream = contents });
+            }
+            writer.WriteEntry(new PaxTarEntry(TarEntryType.HardLink, "app/link") { LinkName = "app/shared" });
+        }
+        Sources sources = new(common.ToArray(),
+            Tar(("app/.wh.gone", ""), ("app/edit", "changed"), ("app/ς-unicodeprobe", "added"),
+                ("node_modules/probe/package.json", """{"name":"ς-unicodepkg","version":"1"}""")),
+            Tar(("app/edit", "target"), ("app/target", "added"),
+                ("node_modules/probe/package.json", """{"name":"ς-unicodepkg","version":"2"}""")));
+        ExploreOptions options = Parse("docker://app:base", "--output", "html", "--compare", "docker://app:target");
+        IDockerRegistryClientFactory registry = Mock.Of<IDockerRegistryClientFactory>();
+        await using LayerCacheTestContext cache = new();
+        string html = await HtmlImageReport.CreateAsync(sources, registry, options, TextWriter.Null, Token, cache.Store);
+
+        await using ExplorerSource source = await ExplorerSource.OpenAsync(
+            sources, registry, options.Image, options, options.BaseImages, Token, store: cache.Store);
+        ExplorerSession session = await ExplorerSession.CreateAsync(source.RegistryClient, source, cache.Store, null, Token);
+        await using ImageFileSystem files = session.Files;
+        ExplorerImage image = ExplorerImage.FromSource(source);
+        image.SetSession(session, ExplorerInsights.Build(
+            session.Analysis, image.Instructions, image.BaseLayerCount, semantics: session.Semantics));
+        List<Node> tree = Assert.IsType<List<Node>>(image.WholeTree(1));
+        Node app = Assert.Single(tree, node => node.Path == "app");
+        Assert.NotNull(app.Sharing);
+        Assert.NotNull(app.Note);
+        Assert.Contains(app.Children, node => node.Change == Change.Removed);
+        Assert.Contains(app.Children, node => node.HardLink);
+
+        string? directory = Environment.GetEnvironmentVariable("DREDGE_HTML_BROWSER_FIXTURE_DIR");
+        if (directory is not null)
+        {
+            var expected = new
+            {
+                Summary = $"{Fmt.Size(Node.TotalSize(tree))} in {Fmt.Count(ExplorerPresenter.Count(tree).Values.Sum(), "file")}",
+                FolderSize = Fmt.Size(app.Size),
+                app.FileCount,
+                Sharing = app.Sharing.ToLowerInvariant(),
+                app.Note,
+                Entries = app.Children.Select(node => new
+                {
+                    node.Path,
+                    Change = node.Change == Change.Removed ? "Deleted" : node.Change.ToString(),
+                    Size = Fmt.Size(node.Change == Change.Removed ? node.ShippedSize : node.Size),
+                    node.Note
+                })
+            };
+            await File.WriteAllTextAsync(Path.Combine(directory, "report.html"), html, Token);
+            await File.WriteAllTextAsync(Path.Combine(directory, "expected.json"),
+                JsonSerializer.Serialize(expected), Token);
+        }
     }
 
     [Fact]

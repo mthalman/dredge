@@ -44,6 +44,15 @@ jobs:
       - name: Test non-container coverage
         run: dotnet test --no-restore -v normal -c Release --results-directory test-results/linux --filter "Category!=Integration" -- --report-xunit-trx
 
+      - name: Install HTML report browser test dependencies
+        run: |
+          python3 -m venv "$RUNNER_TEMP/dredge-html-browser"
+          "$RUNNER_TEMP/dredge-html-browser/bin/python" -m pip install -r Valleysoft.Dredge.Tests/requirements-html-browser.txt
+          "$RUNNER_TEMP/dredge-html-browser/bin/python" -m playwright install --with-deps chromium
+
+      - name: Test HTML report in Chromium
+        run: '"$RUNNER_TEMP/dredge-html-browser/bin/python" Valleysoft.Dredge.Tests/html_report_browser_tests.py'
+
       - name: Upload Test Results
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
         if: always()
