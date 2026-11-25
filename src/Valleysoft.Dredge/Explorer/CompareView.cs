@@ -803,6 +803,40 @@ internal sealed class CompareView
             : row?.Kind == CompareRowKind.Package ? "Show package files" : "Diff a file";
     }
 
+    internal static IEnumerable<(string Path, long? Before, long? After, bool Directory, int FileCount, string? Sharing,
+        string? LinkTarget, string Change, bool Link, bool HardLink, string? SwappedLinkTarget)> FilePathSizes(ExplorerComparison comparison)
+    {
+        FileTree root = FileTree.Build(comparison.Files, comparison.Baseline.Semantics.Comparer);
+        return Walk(root);
+
+        static IEnumerable<(string Path, long? Before, long? After, bool Directory, int FileCount, string? Sharing,
+            string? LinkTarget, string Change, bool Link, bool HardLink, string? SwappedLinkTarget)> Walk(FileTree node)
+        {
+            if (node.Path.Length > 0)
+            {
+                yield return (node.Path, node.Before, node.After, node.Dir, node.FileCount, node.Sharing,
+                    node.LinkTarget, node.Change switch
+                    {
+                        Change.Added => "Added",
+                        Change.Removed => "Deleted",
+                        Change.Identical => "Identical",
+                        Change.None => "",
+                        _ => "Modified"
+                    }, node.Baseline?.Type is ImageFileType.SymbolicLink or ImageFileType.Other ||
+                       node.Target?.Type is ImageFileType.SymbolicLink or ImageFileType.Other,
+                    node.Baseline?.Type == ImageFileType.HardLink || node.Target?.Type == ImageFileType.HardLink,
+                    node.HasEntry ? FileTree.HardLinkTarget(node.Target, node.Baseline) : null);
+            }
+            foreach (FileTree child in node.Children)
+            {
+                foreach (var size in Walk(child))
+                {
+                    yield return size;
+                }
+            }
+        }
+    }
+
     private sealed class FileTree
     {
         public string Name = "";
@@ -839,21 +873,23 @@ internal sealed class CompareView
             foreach (ExplorerFileDifference file in files)
             {
                 FileTree node = Get(file.Path);
+                node.Path = file.Path;
                 node.HasEntry = true;
                 node.Change = ExplorerImage.ToChange(file.Kind);
                 node.Dir = (file.Baseline is null or { Type: ImageFileType.Directory }) &&
                     (file.Target is null or { Type: ImageFileType.Directory });
-                node.Before = file.Baseline is { Type: not ImageFileType.Directory } before ? before.Size : null;
-                node.After = file.Target is { Type: not ImageFileType.Directory } after ? after.Size : null;
                 node.Baseline = file.Baseline;
                 node.Target = file.Target;
-                node.LinkTarget = (file.Target is { Type: ImageFileType.HardLink } targetLink ? targetLink
-                    : file.Target is null && file.Baseline is { Type: ImageFileType.HardLink } baselineLink
-                        ? baselineLink : null)?.LinkTarget;
+                node.LinkTarget = HardLinkTarget(file.Baseline, file.Target);
             }
             Finish(root);
             return root;
         }
+
+        public static string? HardLinkTarget(ImageFileSystemEntry? baseline, ImageFileSystemEntry? target) =>
+            (target is { Type: ImageFileType.HardLink } targetLink ? targetLink
+                : target is null && baseline is { Type: ImageFileType.HardLink } baselineLink
+                    ? baselineLink : null)?.LinkTarget;
 
         private static (ContentTotals Before, ContentTotals After) Finish(FileTree node)
         {
@@ -874,6 +910,11 @@ internal sealed class CompareView
                 node.Before = before.HasEntries ? before.Bytes : null;
                 node.After = after.HasEntries ? after.Bytes : null;
             }
+            else
+            {
+                node.Before = node.Baseline is { Type: not ImageFileType.Directory } baseline ? baseline.Size : null;
+                node.After = node.Target is { Type: not ImageFileType.Directory } target ? target.Size : null;
+            }
             node.Sharing = before.Sharing == after.Sharing ? before.Sharing
                 : before.Sharing is null ? after.Sharing is null ? null : "After: " + after.Sharing
                 : after.Sharing is null ? "Before: " + before.Sharing
@@ -885,6 +926,10 @@ internal sealed class CompareView
             else if (!node.HasEntry && node.Children.Count > 0 && node.Children.All(static child => child.Change == Change.Removed))
             {
                 node.Change = Change.Removed;
+            }
+            else if (!node.HasEntry && node.Children.Count > 0)
+            {
+                node.Change = Change.Modified;
             }
             return (before, after);
         }

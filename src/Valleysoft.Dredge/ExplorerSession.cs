@@ -36,6 +36,9 @@ internal sealed class ExplorerSession
     private readonly SemaphoreSlim packageGate = new(1, 1);
     private InstalledPackageMetadata? packages;
     private readonly Dictionary<int, InstalledPackageMetadata> layerPackages = [];
+    private readonly InstalledPackageReader.ManifestCache packageManifestCache = new();
+    private ImageFileSystem? packageSnapshot;
+    private int packageSnapshotLayer = -1;
     private IImageContentSource? content;
     private LayerStore? store;
     private string[]? verifiedContentDigests;
@@ -148,7 +151,8 @@ internal sealed class ExplorerSession
             {
                 if (packages is null)
                 {
-                    InstalledPackageMetadata metadata = await InstalledPackageReader.ReadAsync(Files, cancellationToken);
+                    InstalledPackageMetadata metadata = await InstalledPackageReader.ReadAsync(
+                        Files, cancellationToken, packageManifestCache);
                     cancellationToken.ThrowIfCancellationRequested();
                     packages = metadata;
                 }
@@ -158,8 +162,29 @@ internal sealed class ExplorerSession
             {
                 return cached;
             }
-            await using ImageFileSystem snapshot = Files.CreateLayerSnapshot(layer, cancellationToken);
-            InstalledPackageMetadata historical = await InstalledPackageReader.ReadAsync(snapshot, cancellationToken);
+            if (packageSnapshot is null || layer < packageSnapshotLayer)
+            {
+                packageSnapshot = null;
+                packageSnapshotLayer = -1;
+                packageSnapshot = Files.CreateLayerSnapshot(layer, cancellationToken);
+                packageSnapshotLayer = layer;
+            }
+            else if (layer > packageSnapshotLayer)
+            {
+                try
+                {
+                    Files.AdvanceLayerSnapshot(packageSnapshot, layer, cancellationToken);
+                    packageSnapshotLayer = layer;
+                }
+                catch
+                {
+                    packageSnapshot = null;
+                    packageSnapshotLayer = -1;
+                    throw;
+                }
+            }
+            InstalledPackageMetadata historical = await InstalledPackageReader.ReadAsync(
+                packageSnapshot, cancellationToken, packageManifestCache);
             cancellationToken.ThrowIfCancellationRequested();
             layerPackages.Add(layer, historical);
             return historical;
@@ -170,7 +195,7 @@ internal sealed class ExplorerSession
         }
     }
 
-    internal static ExplorerComparison Compare(ExplorerSession baseline, ExplorerSession target)
+    internal static ExplorerComparison Compare(ExplorerSession baseline, ExplorerSession target, bool includePackages = true)
     {
         ImageFileSystemSemantics semantics = baseline.Semantics;
         bool samePlatform = baseline.IsDaemon || target.IsDaemon
@@ -233,7 +258,8 @@ internal sealed class ExplorerSession
         }
 
         List<ExplorerPackageDifference> packages = [];
-        foreach (InstalledPackageEcosystem ecosystem in Enum.GetValues<InstalledPackageEcosystem>())
+        foreach (InstalledPackageEcosystem ecosystem in includePackages
+            ? Enum.GetValues<InstalledPackageEcosystem>() : [])
         {
             InstalledPackageEcosystemMetadata old = baseline.Packages.Ecosystems[ecosystem];
             InstalledPackageEcosystemMetadata current = target.Packages.Ecosystems[ecosystem];

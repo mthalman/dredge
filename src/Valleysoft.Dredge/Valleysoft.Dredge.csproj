@@ -58,6 +58,10 @@
   </ItemGroup>
 
   <ItemGroup>
+    <EmbeddedResource Include="HtmlImageReport.html" LogicalName="Valleysoft.Dredge.HtmlImageReport.html" />
+  </ItemGroup>
+
+  <ItemGroup>
     <PackageReference Include="Docker.DotNet.Enhanced" Version="4.4.1" />
     <PackageReference Include="MinVer" Version="8.0.0" PrivateAssets="all" />
     <PackageReference Include="Spectre.Console" Version="0.57.2" />

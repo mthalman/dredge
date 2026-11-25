@@ -43,6 +43,7 @@ namespace Valleysoft.Dredge;
 [JsonSerializable(typeof(ImageFileSystemEntry))]
 [JsonSerializable(typeof(ImageFileSystem.StoredFileSystem))]
 [JsonSerializable(typeof(ImageFileSystem.StoredEntry))]
+[JsonSerializable(typeof(HtmlReportData))]
 internal partial class DredgeJsonContext : JsonSerializerContext
 {
 }

@@ -155,7 +155,7 @@ its layers, see which files each layer adds, changes, or deletes, find wasted
 space, and compare it with another version of the image.
 
 ```console
-dredge image explore <image> [--layer <n>] [--compare <image-or-tag>] [--base-image <image> ...] [--no-mouse] [--os <os>] [--arch <arch>] [--os-version <version>]
+dredge image explore <image> [--layer <n>] [--compare <image-or-tag>] [--base-image <image> ...] [--output <tui|html>] [--no-mouse] [--os <os>] [--arch <arch>] [--os-version <version>]
 ```
 
 - `--layer <n>` starts with layer `n` selected.
@@ -165,12 +165,24 @@ dredge image explore <image> [--layer <n>] [--compare <image-or-tag>] [--base-im
   to indicate several images comprising an image hierarchy.
   If you leave it out, the explorer uses the base image recorded in the
   image's annotations, when there is one.
-- `--no-mouse` turns off mouse support so you can select text in the terminal
-  normally.
+- `--no-mouse` turns off mouse support in the terminal explorer so you can
+  select text normally.
+- `--output html` writes a self-contained, interactive report to standard output.
+  The default, `tui`, opens the terminal explorer. See [HTML reports](#html-reports).
+
+### HTML reports
+
+HTML reports provide essentially the same interface as the
+[`image explore`](#explore) terminal explorer.
+
+```console
+dredge image explore my-image:dev --output html > report.html
+dredge image explore my-image:base --compare my-image:dev --output html > comparison.html
+```
 
 ### Browsing layers and files
 
-The explorer opens with a list of layers on one side and the files they
+The terminal explorer opens with a list of layers on one side and the files they
 change on the other. Select a layer to see its files, press `Tab` to move
 between the two panes, and press `a` to see the whole filesystem instead of
 just that layer's changes. Press `Enter` to preview a file, `o` to open it in

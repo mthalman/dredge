@@ -1,0 +1,2487 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; img-src data:">
+<title>Dredge image report</title>
+<link rel="icon" type="image/svg+xml" href="data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAzMiAzMiIgd2lkdGg9IjMyIiBoZWlnaHQ9IjMyIiByb2xlPSJpbWciIGFyaWEtbGFiZWxsZWRieT0idGl0bGUiPgogIDx0aXRsZSBpZD0idGl0bGUiPkRyZWRnZTwvdGl0bGU+CiAgPCEtLSBTaW1wbGlmaWVkIGZvciBmYXZpY29uIHNpemVzOyBzZWUgZHJlZGdlLWxvZ28uc3ZnIGZvciB0aGUgZnVsbCBsb2dvLiAtLT4KICA8Y2xpcFBhdGggaWQ9ImRpc2MiPjxjaXJjbGUgY3g9IjE2IiBjeT0iMTYiIHI9IjE0Ii8+PC9jbGlwUGF0aD4KICA8Y2lyY2xlIGN4PSIxNiIgY3k9IjE2IiByPSIxNC41IiBmaWxsPSIjRkZGRkZGIi8+CiAgPGcgY2xpcC1wYXRoPSJ1cmwoI2Rpc2MpIiBmaWxsPSIjMkY1ODc4Ij4KICAgIDxwYXRoIGQ9Ik0xOCAxNyBMMjIgOC41IFYxNyIgZmlsbD0ibm9uZSIgc3Ryb2tlPSIjMkY1ODc4IiBzdHJva2Utd2lkdGg9IjIuMiIgc3Ryb2tlLWxpbmVqb2luPSJyb3VuZCIgc3Ryb2tlLWxpbmVjYXA9InJvdW5kIi8+CiAgICA8Y2lyY2xlIGN4PSIyMiIgY3k9IjguNSIgcj0iMi4yIi8+CiAgICA8cmVjdCB4PSI4IiB5PSIxMyIgd2lkdGg9IjMuNSIgaGVpZ2h0PSI1IiBmaWxsPSIjODFDMkQ2Ii8+CiAgICA8cmVjdCB4PSIxMSIgeT0iOS41IiB3aWR0aD0iNiIgaGVpZ2h0PSI4LjUiIHJ4PSIwLjc1Ii8+CiAgICA8cmVjdCB4PSIxMi43NSIgeT0iMTEuNSIgd2lkdGg9IjIuNSIgaGVpZ2h0PSIyLjUiIGZpbGw9IiM4MUMyRDYiLz4KICAgIDxwYXRoIGQ9Ik01LjUgMTcgSDI2LjUgTDI1IDIyIEg3IFoiLz4KICAgIDxwYXRoIGQ9Ik0wIDIxLjUgQzIgMjAuNSAzIDIwLjUgNSAyMS41IFM4IDIyLjUgMTAgMjEuNSBTMTMgMjAuNSAxNSAyMS41IFMxOCAyMi41IDIwIDIxLjUgUzIzIDIwLjUgMjUgMjEuNSBTMjggMjIuNSAzMCAyMS41IFMzMyAyMC41IDM1IDIxLjUgVjMyIEgwIFoiIGZpbGw9IiM4MUMyRDYiLz4KICAgIDxyZWN0IHg9IjAiIHk9IjI1IiB3aWR0aD0iMzIiIGhlaWdodD0iNyIvPgogIDwvZz4KICA8Y2lyY2xlIGN4PSIxNiIgY3k9IjE2IiByPSIxNC41IiBmaWxsPSJub25lIiBzdHJva2U9IiMyRjU4NzgiIHN0cm9rZS13aWR0aD0iMyIvPgo8L3N2Zz4K">
+<script>
+  (() => {
+    const param = new URLSearchParams(window.location.search).get("scoutTheme");
+    const theme =
+      param || (window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light");
+    document.documentElement.setAttribute("data-theme", theme);
+  })();
+</script>
+<style>
+:root {
+  color-scheme: light;
+  --ground: #FAFAF7; --channel: #0B7A76; --channel-deep: #CFEDEB; --graphite: #ECEFF3;
+  --foam: #1F2328; --silt: #57606A; --shale: #9AA3AD; --keycap: #D6DCE3;
+  --kelp: #2E7D32; --kelp-deep: #DDF2D8; --ochre: #946200; --ochre-deep: #B98A1E;
+  --garnet: #C0283B; --garnet-deep: #FBE1E5; --bedrock1: #91AABB; --bedrock2: #BDCDD7;
+  --sand1: #BC875B; --sand2: #D7B287; --waste: #D9818A; --shared2: #B4BBC4;
+  --dir: #0550AE; --keyword: #8250DF; --mark: #F6E7A8;
+  --df-literal: #0550AE; --df-string: #953800; --df-symbol: #9A6700;
+}
+:root[data-theme="dark"] {
+  color-scheme: dark;
+  --ground: #1B1F27; --channel: #3FB6B2; --channel-deep: #153A3B; --graphite: #262B33;
+  --foam: #E3E7ED; --silt: #8B93A1; --shale: #4A5260; --keycap: #39404B;
+  --kelp: #8CC46E; --kelp-deep: #1E3A22; --ochre: #EFBF3F; --ochre-deep: #C99E2E;
+  --garnet: #E5566E; --garnet-deep: #4A1E27; --bedrock1: #324451; --bedrock2: #4C6371;
+  --sand1: #684728; --sand2: #825A34; --waste: #963C4F; --shared2: #5A6270;
+  --dir: #9FC4E8; --keyword: rgb(194, 133, 191); --mark: #5C4A12;
+  --df-literal: #96DCFE; --df-string: #CA9178; --df-symbol: #FAC81F;
+}
+* { box-sizing: border-box; }
+html, body { margin: 0; height: 100%; }
+body {
+  background: var(--ground); color: var(--foam);
+  font: 13px/1.5 "Cascadia Mono", Consolas, "Courier New", monospace;
+}
+button, input { font: inherit; color: inherit; }
+button { background: none; border: 0; padding: 0; cursor: pointer; }
+:focus-visible { outline: 2px solid var(--channel); outline-offset: 1px; }
+.app { display: flex; flex-direction: column; height: 100vh; padding: 0 1ch; }
+.silt { color: var(--silt); }
+.foam { color: var(--foam); }
+.bold { font-weight: 700; }
+.kelp { color: var(--kelp); } .ochre { color: var(--ochre); } .garnet { color: var(--garnet); }
+.channel { color: var(--channel); }
+
+/* Header */
+.title-row { display: flex; flex-wrap: wrap; gap: 0.3em 2ch; align-items: baseline; min-width: 0; }
+.brand { color: var(--channel); font-weight: 700; }
+.ref { flex: 1 1 25ch; min-width: 0; font-weight: 700; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+#meta { flex: 1 1 15ch; min-width: 0; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+.stats { margin-left: auto; white-space: pre; flex-shrink: 0; }
+.modes { display: inline-flex; gap: 0; flex-shrink: 0; white-space: nowrap; }
+.modes button { padding: 0 1ch; color: var(--silt); }
+.modes button[aria-pressed="true"] { background: var(--keycap); color: var(--foam); font-weight: 700; }
+.core { margin-top: 0; }
+.bar { display: flex; height: 1.25em; width: 100%; }
+.group { display: flex; flex-direction: column; min-width: 0; }
+.group .strata { display: flex; height: 1.25em; }
+.stratum { height: 100%; min-width: 0; position: relative; flex: 0 0 auto; }
+.stratum:hover { filter: brightness(1.15); }
+.bracket {
+  margin: 0 1px 1.5em; height: 0.8em; border: 1px solid var(--shale); border-top: 0;
+  border-radius: 0 0 3px 3px; position: relative;
+}
+.bracket span {
+  position: absolute; z-index: 1; left: 50%; top: 1px; transform: translateX(-50%);
+  background: var(--ground); padding: 0 1ch; color: var(--silt); white-space: nowrap;
+  max-width: calc(100% - 2ch); overflow: hidden; text-overflow: ellipsis;
+}
+.bracket .layer-indicator { position: absolute; bottom: -1px; height: 2px; background: var(--channel); }
+.cmp-bar { display: grid; grid-template-columns: minmax(8ch, 14ch) minmax(0, 1fr); align-items: center; margin-bottom: 3px; }
+.cmp-bar .bar { height: 14px; }
+.header-actions { display: flex; flex-shrink: 0; flex-wrap: wrap; gap: 0.4em 1ch; }
+.mobile-pane-toggle { display: none; }
+.toolbar { display: flex; flex-wrap: wrap; align-items: center; gap: 0.4em 1ch; padding: 0.4em 1ch; }
+.toolbar:empty { display: none; }
+.toolbar button, .header-actions button, .insight-action {
+  border: 1px solid var(--shale); border-radius: 3px; padding: 0.15em 0.8ch;
+}
+.toolbar button:hover, .header-actions button:hover, .insight-action:hover { background: var(--graphite); }
+.toolbar button[aria-pressed="true"], .header-actions button[aria-pressed="true"] {
+  background: var(--channel-deep); border-color: var(--channel); color: var(--foam); font-weight: 700;
+}
+.toolbar button:disabled { opacity: 0.5; cursor: default; }
+.toolbar .filter { width: min(28ch, 100%); min-width: 0; }
+.toolbar .filter input { width: 100%; min-width: 0; }
+.toolbar .search-count { color: var(--silt); }
+.tree-toggle { color: var(--silt); display: inline-block; width: 2ch; text-align: left; }
+.insight-action { display: inline-block; margin-top: 0.5em; }
+
+/* Panes */
+.body {
+  flex: 1; min-height: 0; display: grid; gap: 1.5em 1ch; padding-top: 0.5em;
+  grid-template-columns: minmax(0, 60ch) minmax(0, 1fr); grid-template-rows: minmax(0, 1fr) calc(13 * 1.2em);
+}
+.pane {
+  position: relative; border: 1px solid var(--shale); border-radius: 3px;
+  padding: 0.5em 0 0; min-height: 0; display: flex; flex-direction: column;
+}
+.pane:focus-within { border-color: var(--channel); box-shadow: inset 0 0 0 1px var(--channel); }
+.pane:focus-visible { outline: none; }
+.pane-title {
+  position: absolute; top: -0.8em; left: 1ch; margin: 0; padding: 0 1ch;
+  background: var(--ground); font-size: inherit; font-weight: 700; white-space: nowrap;
+  max-width: calc(100% - 2ch); overflow: hidden; text-overflow: ellipsis;
+}
+.pane-title .sub { color: var(--silt); font-weight: 400; margin-left: 1ch; }
+.pane-body { overflow: auto; min-height: 0; flex: 1; padding: 0 1ch; scrollbar-color: var(--shale) transparent; }
+#layers-pane { grid-column: 1; grid-row: 1; }
+#details-pane { grid-column: 1; grid-row: 2; }
+#details { white-space: pre-wrap; overflow-wrap: anywhere; }
+#right-pane { grid-column: 2; grid-row: 1 / span 2; }
+
+/* Layers */
+.lrow {
+  display: grid; grid-template-columns: 1ch var(--index-width, 2ch) 9ch minmax(0, 1fr); align-items: center;
+  white-space: nowrap; cursor: pointer;
+}
+.lrow.cmp { grid-template-columns: 1ch 3ch 8ch 2ch 8ch 8ch minmax(0, 1fr); gap: 0 1ch; }
+.lrow .mark { color: var(--channel); }
+.lrow .idx { color: var(--silt); text-align: right; padding-right: 1ch; }
+.lrow .ins { overflow: hidden; text-overflow: ellipsis; }
+.lrow.config { color: var(--silt); cursor: default; }
+.lrow.config .kw { color: var(--silt); font-weight: 400; }
+.lrow.config .flag, .lrow.config .syntax-string, .lrow.config .syntax-symbol { color: var(--silt); }
+.lrow.dim { color: var(--silt); }
+.lrow[aria-selected="true"] { background: var(--graphite); }
+#layers:focus .lrow[aria-selected="true"], #layers:focus-within .lrow[aria-selected="true"] { background: var(--channel-deep); }
+.lrow[aria-selected="true"] .idx { color: var(--foam); font-weight: 700; }
+#layers:focus { outline: none; }
+.gauge { text-align: right; margin-right: 1ch; }
+.num { text-align: right; }
+.divider { color: var(--silt); white-space: nowrap; overflow: hidden; }
+.kw { color: var(--keyword); }
+.flag { color: var(--df-literal); }
+.syntax-string { color: var(--df-string); }
+.syntax-symbol { color: var(--df-symbol); }
+
+/* Right pane */
+.controls { display: flex; flex-wrap: wrap; gap: 0 1ch; align-items: center; padding: 0 1ch; }
+.toggle button { padding: 0 1ch; color: var(--silt); }
+.toggle button:hover { background: var(--graphite); }
+.toggle button[aria-pressed="true"] { background: var(--keycap); color: var(--foam); font-weight: 700; }
+.chips { display: flex; flex-wrap: wrap; gap: 1ch; }
+.chip { background: var(--graphite); padding: 0 1ch; }
+button.chip { border: 1px solid var(--shale); border-radius: 2px; }
+button.chip:hover { border-color: var(--channel); }
+.chip[aria-pressed="false"] { text-decoration: line-through; color: var(--silt); }
+.chip[aria-pressed="false"] b { color: var(--silt); }
+.chip.zero b { color: var(--shale); }
+.filter { display: flex; align-items: center; gap: 1ch; }
+.filter input {
+  width: 26ch; background: var(--graphite); border: 1px solid transparent; padding: 0 1ch; border-radius: 2px;
+}
+.filter input:focus { border-color: var(--channel); outline: none; }
+.push { margin-left: auto; }
+.colhead {
+  display: grid; grid-template-columns: 1fr 10ch; color: var(--silt); padding: 0 1ch;
+  margin: 0 1ch;
+}
+.colhead span:last-child, .trow .size { text-align: right; }
+.trow {
+  display: grid; grid-template-columns: 2ch 1fr 10ch; white-space: nowrap; cursor: pointer;
+  align-items: center; border-radius: 2px;
+}
+.trow.metadata { grid-template-columns: 1ch 2ch 12ch 11ch 10ch minmax(0, 1fr); }
+.colhead.metadata { grid-template-columns: 12ch 11ch 10ch minmax(0, 1fr); padding-left: 3ch; }
+.colhead.metadata span:nth-child(2), .colhead.metadata span:nth-child(3) { text-align: right; }
+.colhead.metadata span:last-child { text-align: left; padding-left: 2ch; }
+.file-mode, .file-owner { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.file-owner { text-align: right; padding-right: 2ch; }
+.selection-mark { color: var(--channel); }
+.trow.metadata .name { display: flex; min-width: 0; padding-left: 2ch; }
+.file-name-content { overflow: hidden; text-overflow: ellipsis; }
+.tree-note { color: var(--garnet); margin-left: auto; padding-left: 1ch; overflow: hidden; text-overflow: ellipsis; }
+.search-row { display: grid; width: 100%; grid-template-columns: 12ch 8ch minmax(0, 1fr) max-content; gap: 0 1ch; text-align: left; white-space: nowrap; }
+.search-row .path { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+.search-row .path.deleted, .search-row .search-size.deleted { color: var(--garnet); text-decoration: line-through; }
+.search-history { white-space: nowrap; overflow: hidden; }
+.search-selection { border-top: 1px solid var(--shale); margin: 4px 1ch 0; padding: 4px 0; }
+.search-colhead { display: grid; grid-template-columns: 12ch 8ch minmax(0, 1fr) max-content; gap: 0 1ch; color: var(--silt); }
+.search-row .note { grid-column: 4; text-align: right; color: var(--garnet); }
+@container (max-width: 70ch) {
+  .trow.metadata { grid-template-columns: 1ch 2ch 10ch minmax(0, 1fr); }
+  .colhead.metadata { grid-template-columns: 10ch minmax(0, 1fr); padding-left: 3ch; }
+  .metadata .file-mode, .metadata .file-owner { display: none; }
+}
+#right-pane { container-type: inline-size; }
+.trow.comparison { grid-template-columns: 2ch 12ch 2ch 12ch 10ch minmax(0, 1fr); gap: 0 1ch; }
+.colhead.comparison { grid-template-columns: 12ch 2ch 12ch 10ch minmax(0, 1fr); gap: 0 1ch; padding-left: 3ch; }
+.colhead.comparison span { text-align: right; }
+.colhead.comparison span:last-child { text-align: left; }
+.trow:hover { background: var(--graphite); }
+.trow[aria-selected="true"] { background: var(--channel-deep); }
+.right-selected { background: var(--channel-deep); }
+#right-pane:not(:focus-within) .right-selected,
+#right-pane:not(:focus-within) .trow[aria-selected="true"] { background: var(--graphite); }
+.trow .name { overflow: hidden; text-overflow: ellipsis; }
+.tree-meta { color: var(--silt); padding-left: 1ch; }
+.tree-guide { color: var(--silt); white-space: pre; }
+.tw { color: var(--silt); display: inline-block; width: 2ch; }
+.dirname { color: var(--dir); }
+.trow.Added .name { color: var(--kelp); }
+.trow.Modified .name { color: var(--ochre); }
+.trow.Identical .name { color: var(--silt); }
+.trow.Deleted .name, .trow.Removed .name { text-decoration: line-through; color: var(--garnet); }
+.trow.Deleted .size, .trow.Removed .size { text-decoration: line-through; color: var(--garnet); }
+.file-size { text-align: right; overflow: hidden; white-space: nowrap; }
+.finding-marker { color: var(--garnet); }
+mark { background: var(--mark); color: inherit; }
+.more { color: var(--channel); padding: 0 1ch; text-decoration: underline; }
+.empty { color: var(--silt); padding: 1em 0; }
+.info {
+  border-top: 1px solid var(--shale); margin: 0 1ch; padding: 0.5em 0;
+  display: flex; gap: 2ch; white-space: nowrap; overflow: hidden; min-height: 1.2em;
+}
+.info .path { overflow: hidden; text-overflow: ellipsis; }
+.info-right { margin-left: auto; display: flex; gap: 2ch; }
+.badge { background: var(--graphite); padding: 0 0.5ch; margin-right: 0.5ch; }
+.list { margin: 0; padding-left: 2ch; }
+.list li { margin: 0 0 4px; }
+.package-note { margin: 0 1ch 6px; white-space: normal; }
+.insight-group { border-bottom: 1px solid var(--shale); }
+.insight-breakdown { display: flex; height: 8px; margin: 8px 0 2px; }
+.insight-breakdown span { min-width: 1px; }
+.insight-legend { display: flex; flex-wrap: wrap; gap: 2px 2ch; color: var(--silt); margin-bottom: 8px; }
+.insight-group > summary { cursor: pointer; font-weight: 700; padding: 4px 0; }
+.insight-group.finding-selected > summary { background: var(--channel-deep); }
+.insight-detail { padding: 2px 2ch 10px; white-space: normal; }
+.insight-roots, .insight-layers { display: flex; flex-wrap: wrap; gap: 0 1ch; margin-top: 4px; }
+.package-group { border-bottom: 1px solid var(--shale); }
+.package-group > summary { cursor: pointer; font-weight: 700; padding: 3px 0; }
+.package-row { margin-left: 2ch; }
+.package-row > summary {
+  display: grid; grid-template-columns: 2ch minmax(0, 1fr) minmax(10ch, 35%); gap: 0 1ch;
+  cursor: pointer; list-style: none; white-space: nowrap;
+}
+.package-row > summary::-webkit-details-marker { display: none; }
+.package-row > summary::before { content: "\25b8"; color: var(--silt); }
+.package-row[open] > summary::before { content: "\25be"; }
+.package-row > summary:hover, .package-row[open] > summary { background: var(--graphite); }
+.package-row .name, .package-row .version { overflow: hidden; text-overflow: ellipsis; }
+.package-detail { padding: 4px 3ch 8px; overflow-wrap: anywhere; white-space: normal; }
+.package-group .empty { margin: 0 0 0 2ch; padding: 2px 0 6px; }
+.comparison-section > summary { padding: 4px 0; cursor: pointer; font-weight: 700; }
+.comparison-section > summary .silt { font-weight: 400; margin-left: 2ch; }
+.comparison-section-body { padding-left: 2ch; }
+.comparison-file-body { padding-left: 0; }
+.comparison-section + .comparison-section { border-top: 1px solid var(--shale); margin-top: 6px; }
+.package-scope { margin-left: 2ch; }
+.package-scope > summary { cursor: pointer; font-weight: 700; }
+.package-scope > summary .silt { font-weight: 400; margin-left: 2ch; }
+.comparison-unchanged { margin-left: 2ch; }
+.comparison-summary { gap: 1ch; padding: 0 1ch 6px; }
+.comparison-summary span { white-space: nowrap; }
+.comparison-search { grid-template-columns: 2ch minmax(0, 1fr) max-content; }
+.comparison-search.has-sizes { grid-template-columns: 2ch 12ch 2ch 12ch 10ch minmax(0, 1fr); }
+.comparison-search .name { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+.comparison-search .package-version { color: var(--silt); text-align: right; }
+.package-diff-row { display: grid; grid-template-columns: 2ch minmax(0, 1fr) minmax(10ch, 40%); gap: 0 1ch; white-space: nowrap; }
+.package-diff-row .version { color: var(--silt); overflow: hidden; text-overflow: ellipsis; }
+.package-diff-row .name { overflow: hidden; text-overflow: ellipsis; }
+.search-editor { display: flex; align-items: center; gap: 1ch; }
+.overview-gap { height: 1.2em; }
+.overview-choice { display: block; width: 100%; text-align: left; }
+.overview-choice .choice-mark { display: inline-block; width: 2ch; color: var(--channel); }
+.overview-choice .silt { font-weight: 400; }
+.snapshot-block { white-space: pre-wrap; overflow-wrap: anywhere; padding-bottom: 1em; }
+
+.app { padding-bottom: 0.5em; }
+
+@container (max-width: 65ch) {
+  .colhead.comparison, .trow.comparison {
+    grid-template-columns: 2ch minmax(0, 1fr) 2ch minmax(0, 1fr) minmax(0, 1fr);
+    grid-template-areas: "change name name name name" ". before arrow after delta";
+  }
+  .colhead.comparison { margin: 0 1ch; padding: 0; }
+  .colhead.comparison > span { overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+  .colhead.comparison > span:nth-child(1) { grid-area: before; }
+  .colhead.comparison > span:nth-child(2) { grid-area: arrow; }
+  .colhead.comparison > span:nth-child(3) { grid-area: after; }
+  .colhead.comparison > span:nth-child(4) { grid-area: delta; }
+  .colhead.comparison > span:nth-child(5) { grid-area: name; }
+  .trow.comparison > span:nth-child(1) { grid-area: change; }
+  .trow.comparison > span:nth-child(2) { grid-area: before; }
+  .trow.comparison > span:nth-child(3) { grid-area: arrow; }
+  .trow.comparison > span:nth-child(4) { grid-area: after; }
+  .trow.comparison > span:nth-child(5) { grid-area: delta; }
+  .trow.comparison > span:nth-child(6) { grid-area: name; }
+}
+@container (max-width: 60ch) {
+  .search-row, .search-colhead {
+    grid-template-columns: 6ch 7ch minmax(14ch, 1fr) fit-content(10ch);
+  }
+  .search-row .note { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+}
+
+@media (max-width: 760px) {
+  .body { grid-template-columns: minmax(0, 1fr); grid-template-rows: minmax(8em, 22vh) minmax(0, 1fr); }
+  #layers-pane { grid-column: 1; grid-row: 1; }
+  #details-pane { display: none; grid-column: 1; grid-row: 2; }
+  #right-pane { grid-column: 1; grid-row: 2; }
+  body[data-mobile-details="true"] #details-pane { display: flex; }
+  body[data-mobile-details="true"] #right-pane { display: none; }
+  .mobile-pane-toggle { display: inline-block; }
+  body[data-view="search"] #layers-pane, body[data-view="insights"] #layers-pane,
+  body[data-view="help"] #layers-pane, body[data-view="warnings"] #layers-pane,
+  body[data-view="snapshot"] #layers-pane { display: none; }
+  body[data-view="search"] #right-pane, body[data-view="insights"] #right-pane,
+  body[data-view="help"] #right-pane, body[data-view="warnings"] #right-pane,
+  body[data-view="snapshot"] #right-pane { grid-row: 1 / span 2; }
+  .stats { margin-left: 0; min-width: 0; max-width: 100%; flex: 0 1 auto; white-space: normal; overflow-wrap: anywhere; }
+  .modes { max-width: 100%; overflow-x: auto; }
+}
+@media (prefers-reduced-motion: reduce) { * { transition: none !important; scroll-behavior: auto !important; } }
+</style>
+</head>
+<body>
+<div class="app">
+  <header>
+    <div class="title-row">
+      <span class="brand">dredge</span>
+      <span class="ref" id="ref"></span>
+      <span class="silt" id="meta"></span>
+      <span class="modes" id="modes" role="group" aria-label="View"></span>
+      <span class="stats" id="stats"></span>
+      <div class="header-actions" id="header-actions"></div>
+    </div>
+    <div class="core" id="core" aria-label="Layers by size"></div>
+  </header>
+  <main class="body">
+    <section class="pane" id="layers-pane" aria-labelledby="layers-title">
+      <h2 class="pane-title" id="layers-title"></h2>
+      <div class="pane-body" id="layers" role="listbox" tabindex="0" aria-labelledby="layers-title"></div>
+    </section>
+    <section class="pane" id="details-pane" aria-labelledby="details-title">
+      <h2 class="pane-title" id="details-title"></h2>
+      <div class="pane-body" id="details" aria-live="polite"></div>
+    </section>
+    <section class="pane" id="right-pane" tabindex="0" aria-labelledby="right-title">
+      <h2 class="pane-title" id="right-title"></h2>
+      <nav class="toolbar" id="view-controls" aria-label="Report views"></nav>
+      <div class="toolbar" id="search-controls"></div>
+      <div id="right" class="pane-body" style="padding: 0; display: flex; flex-direction: column;"></div>
+    </section>
+  </main>
+</div>
+<script type="application/octet-stream" id="report-data">/* DREDGE_REPORT_DATA */</script>
+<script>
+"use strict";
+(async () => {
+// The report data is gzip-compressed JSON, encoded as base64, to keep the file small.
+const report = await (async () => {
+  const encoded = atob(document.getElementById("report-data").textContent.trim());
+  const bytes = Uint8Array.from(encoded, character => character.charCodeAt(0));
+  const stream = new Blob([bytes]).stream().pipeThrough(new DecompressionStream("gzip"));
+  return JSON.parse(await new Response(stream).text());
+})();
+const $ = id => document.getElementById(id);
+const BATCH = 100;
+const GLYPH = { Added: "+", Modified: "~", Identical: "=", Deleted: "\u2212" };
+const TONE = { Added: "kelp", Modified: "ochre", Identical: "silt", Deleted: "garnet" };
+const LAYER_KINDS = ["Added", "Modified", "Identical", "Deleted"];
+const comparing = Array.isArray(report.differences) && report.images.length > 1;
+const state = {
+  mode: comparing ? "compare" : "image",
+  side: 0,
+  swapped: false,
+  layer: null,
+  row: 0,
+  whole: false,
+  view: comparing ? "overview" : "files",
+  returnView: "files",
+  filter: "",
+  packageFilter: "",
+  hidden: new Set(),
+  packageCollapsed: new Set(),
+  comparisonCollapsed: new Set(),
+  expanded: new Set(),
+  limits: new Map(),
+  comparisonSearchLimit: BATCH,
+  selected: null,
+  rightIndex: 0,
+  searchQuery: "",
+  searchLayerOnly: false,
+  searchIncludeDeleted: true,
+  searchExactCase: false,
+  searchReturnView: "files",
+  findingsOnly: false,
+  investigation: null,
+  findingSelected: 0,
+  showBaseFindings: false,
+  mobileDetails: false
+};
+
+function el(tag, cls, text) {
+  const node = document.createElement(tag);
+  if (cls) node.className = cls;
+  if (text !== undefined && text !== null) node.textContent = String(text);
+  return node;
+}
+function add(parent, ...children) {
+  for (const child of children) {
+    if (child === null || child === undefined || child === false) continue;
+    parent.append(typeof child === "string" ? document.createTextNode(child) : child);
+  }
+  return parent;
+}
+function clear(node) { node.replaceChildren(); return node; }
+function size(bytes) {
+  if (bytes < 1000) return bytes + " B";
+  const kb = bytes / 1000;
+  if (kb < 1000) return (kb < 10 ? kb.toFixed(1) : kb.toFixed(0)) + " KB";
+  const mb = kb / 1000;
+  if (mb < 1000) return mb.toFixed(1) + " MB";
+  return (mb / 1000).toFixed(2) + " GB";
+}
+function sizeShort(bytes) { return bytes >= 10e6 ? Math.round(bytes / 1e6) + " MB" : size(bytes); }
+function signed(delta) { return delta === 0 ? "\u00b10" : (delta > 0 ? "+" : "\u2212") + size(Math.abs(delta)); }
+function count(n, one, many) { return n.toLocaleString("en-US") + " " + (n === 1 ? one : many || one + "s"); }
+function shortDigest(digest) { return digest.length > 24 ? digest.slice(0, 19) + "\u2026" + digest.slice(-4) : digest; }
+function sum(items, pick) { return items.reduce((total, item) => total + pick(item), 0); }
+function allocateLayerWidths(sizes, width) {
+  const nonzero = sizes.filter(size => size > 0).length;
+  const total = sum(sizes, size => size);
+  if (!total || width <= 0) return sizes.map(() => 0);
+  if (nonzero > width) {
+    const result = sizes.map(() => 0);
+    sizes.map((size, index) => ({ size, index })).filter(item => item.size > 0)
+      .sort((a, b) => b.size - a.size).slice(0, width).forEach(item => result[item.index] = 1);
+    return result;
+  }
+  const remaining = width - nonzero;
+  const exact = sizes.map(size => size > 0 ? size / total * remaining : 0);
+  const result = sizes.map(size => size > 0 ? 1 + Math.floor(size / total * remaining) : 0);
+  let left = width - sum(result, value => value);
+  exact.map((value, index) => ({ remainder: value - Math.floor(value), index }))
+    .filter(item => sizes[item.index] > 0).sort((a, b) => b.remainder - a.remainder)
+    .slice(0, left).forEach(item => result[item.index]++);
+  return result;
+}
+function image() { return report.images[state.side]; }
+function inventory(img, layer) { return img.packageInventories.find(item => item.layers.includes(layer ?? -1)); }
+function finalInventory(img) {
+  const layer = img.layers.length ? img.layers[img.layers.length - 1].index : -1;
+  return inventory(img, layer);
+}
+function packageContext() {
+  return state.view === "packages" ||
+    ((state.view === "warnings" || state.view === "help") && state.returnView === "packages");
+}
+function warningItems() {
+  if (state.mode !== "compare") {
+    return [...image().warnings, ...(packageContext() ? inventory(image(), state.layer).warnings : [])];
+  }
+  return [
+    ...report.images.flatMap(img => [...img.warnings, ...finalInventory(img).warnings].map(text => img.reference + ": " + text)),
+    ...report.limitations
+  ];
+}
+function warningsCount() { return warningItems().length; }
+function warningsLabel() {
+  if (state.mode === "compare" || (packageContext() && inventory(image(), state.layer).warnings.length)) return "Warnings";
+  return image().platform.toLowerCase().startsWith("windows") ? "Limitations" : "Base warning";
+}
+function sides() { return state.swapped ? [1, 0] : [0, 1]; }
+function pair() { return sides().map(i => report.images[i]); }
+const FLIP = { Added: "Deleted", Deleted: "Added" };
+const comparisonIdentities = new Map((report.comparisonPathIdentities || []).map(item => [item.path, item.id]));
+function comparisonPathKey(path) {
+  return comparisonIdentities.get(path) ?? path;
+}
+function comparisonPathSizes() {
+  return new Map((report.pathSizes || []).map(item => [comparisonPathKey(item.path), item]));
+}
+function differences() {
+  return state.swapped
+    ? report.differences.map(d => ({ path: d.path, change: FLIP[d.change] || d.change, before: d.after, after: d.before }))
+    : report.differences;
+}
+function packageDifferences() {
+  return report.packageDifferences.map(item => {
+    const before = state.swapped ? item.after : item.before;
+    const after = state.swapped ? item.before : item.after;
+    return { ...item, before, after, change: before == null ? "Added" : after == null ? "Deleted" : "Modified" };
+  });
+}
+function additionalDownload(base, target) {
+  if (!report.downloadSizeAvailable) return null;
+  const seen = new Set(base.layers.map(layer => layer.digest));
+  let total = 0;
+  for (const layer of target.layers) {
+    if (!seen.has(layer.digest)) { seen.add(layer.digest); total += layer.size; }
+  }
+  return total;
+}
+function layerAt(img, index) { return img.layers.find(layer => layer.index === index) || null; }
+function groupOf(img, layer) { return layer.baseLabel || img.repoName; }
+const pathIdentities = new WeakMap();
+function pathKey(img, path) {
+  if (!img.pathIdentities) return path;
+  if (!pathIdentities.has(img)) pathIdentities.set(img, new Map(img.pathIdentities.map(item => [item.path, item.id])));
+  return pathIdentities.get(img).get(path) ?? path;
+}
+function wholeEntries(img, index) {
+  const live = new Map();
+  for (const layer of img.layers) {
+    if (layer.index > index) break;
+    for (const change of layer.changes) {
+      const key = pathKey(img, change.path);
+      if (change.change === "Deleted" && layer.index < index) live.delete(key);
+      else if (change.change !== "Deleted" || !live.has(key))
+        live.set(key, layer.index === index ? change : { ...change, change: null });
+      else live.set(key, { ...live.get(key), change: "Deleted" });
+    }
+  }
+  return [...live.values()];
+}
+function treeMetadata(img, layer, whole) {
+  if (whole) return wholeSnapshot(img, layer).metadata;
+  return new Map((img.fileTreeMetadata || [])
+    .filter(item => item.layer === layer && !item.wholeFilesystem)
+    .map(item => [pathKey(img, item.path), item]));
+}
+function fileTreeSummary(img, layer, whole) {
+  if (whole) return wholeSnapshot(img, layer).summary;
+  return (img.fileTreeSummaries || []).find(item => item.layer === layer && !item.wholeFilesystem) || null;
+}
+const wholeSnapshots = new WeakMap();
+function wholeSnapshot(img, layer) {
+  const cached = wholeSnapshots.get(img);
+  if (cached?.layer === layer) return cached;
+  const entries = wholeEntries(img, layer);
+  const root = buildTree(entries, img);
+  const metadata = new Map();
+  const notes = new Map();
+  for (const finding of img.findings || []) {
+    if (!finding.layers.includes(layer)) continue;
+    for (const path of finding.roots) {
+      const key = pathKey(img, path);
+      if (!notes.has(key)) notes.set(key, noteForFinding(finding, layer));
+    }
+  }
+  const totals = () => ({ contents: new Map(), linked: new Set(), untracked: 0, bytes: 0, hardLinks: 0 });
+  const addEntry = (total, entry) => {
+    if (entry.contentId != null) {
+      if (!total.contents.has(entry.contentId)) {
+        total.contents.set(entry.contentId, entry.size);
+        total.bytes += entry.size;
+      }
+      if (entry.hardLink) total.linked.add(entry.contentId);
+    } else {
+      total.untracked += entry.size;
+      total.bytes += entry.size;
+    }
+    if (entry.hardLink) total.hardLinks++;
+  };
+  const merge = (total, other) => {
+    for (const [id, bytes] of other.contents) {
+      if (!total.contents.has(id)) { total.contents.set(id, bytes); total.bytes += bytes; }
+    }
+    for (const id of other.linked) total.linked.add(id);
+    total.untracked += other.untracked;
+    total.bytes += other.untracked;
+    total.hardLinks += other.hardLinks;
+  };
+  const finish = node => {
+    const live = totals(), shipped = totals();
+    const entry = node.entry;
+    const children = [...node.children.values()];
+    let fileCount = node.path && (!node.dir || children.length === 0) ? 1 : 0;
+    if (!node.dir && entry) { addEntry(live, entry); addEntry(shipped, entry); }
+    for (const child of children) {
+      const result = finish(child);
+      fileCount += result.fileCount;
+      if (node.dir) {
+        if (child.entry?.change !== "Deleted") merge(live, result.live);
+        merge(shipped, result.shipped);
+      }
+    }
+    if (node.path) {
+      const sharing = entry?.change === "Deleted" ? shipped : live;
+      const label = sharing.hardLinks
+        ? count(sharing.hardLinks, "hard link") + (sharing.linked.size ? ", " + count(sharing.linked.size, "shared file") : "")
+        : null;
+      const item = {
+        path: node.path, size: live.bytes, shippedSize: shipped.bytes, fileCount,
+        sharing: label, hardLink: Boolean(entry?.hardLink), linkTarget: entry?.linkTarget,
+        type: node.dir ? "Directory" : entry?.type === "HardLink" ? "SymbolicLink" : entry?.type || "File",
+        change: entry?.change, note: entry?.note || notes.get(pathKey(img, node.path))
+      };
+      Object.assign(node, item);
+      metadata.set(pathKey(img, node.path), item);
+    }
+    return { live, shipped, fileCount };
+  };
+  const result = finish(root);
+  const changed = fileTreeSummary(img, layer, false);
+  const changes = [...(changed?.changes || [])];
+  const changedCount = sum(changes, item => item.count);
+  changes.push({ change: "None", count: Math.max(0, result.fileCount - changedCount) });
+  const snapshot = { layer, entries, root, metadata,
+    summary: { size: result.live.bytes, pathCount: result.fileCount, changes } };
+  wholeSnapshots.set(img, snapshot);
+  return snapshot;
+}
+function visibleFindings(img) {
+  const findings = img.findings || [];
+  const actionable = findings.map((finding, index) => ({ finding, index }))
+    .filter(item => !item.finding.fromBase);
+  const base = findings.map((finding, index) => ({ finding, index }))
+    .filter(item => item.finding.fromBase);
+  return [...actionable, ...(base.length ? [{ baseGroup: true }, ...(state.showBaseFindings ? base : [])] : [])];
+}
+function selectedFinding(img) {
+  const visible = visibleFindings(img);
+  if (!visible.length) return null;
+  state.findingSelected = Math.max(0, Math.min(state.findingSelected, visible.length - 1));
+  return visible[state.findingSelected];
+}
+function noteForFinding(finding, layer) {
+  if (finding.kind === "Potential") {
+    return /cache/i.test(finding.title) || finding.title.includes("lists") ? "left behind" : "likely unintended";
+  }
+  if (finding.kind === "Deleted" && layer === finding.layers[0]) return "deleted in layer " + finding.layers.at(-1);
+  if (finding.kind === "Deleted") return "deletes layer " + finding.layers[0];
+  if (layer === finding.layers[0]) return "hidden by layer " + finding.layers.at(-1);
+  return "replaces layer " + finding.layers[0];
+}
+function findingForPath(img, path) {
+  return (img.findings || []).find(finding => !finding.fromBase && finding.roots.some(root =>
+    path === root || path.startsWith(root + "/"))) || null;
+}
+function countSearchedPaths(img) {
+  const index = searchIndexes.get(img);
+  if (!index) return 0;
+  return state.searchLayerOnly
+    ? [...index.values()].filter(items => items.some(item => item.layer === state.layer)).length
+    : index.size;
+}
+
+function instruction(text) {
+  const span = el("span", "ins");
+  const match = /^(\s*)([A-Z]+)(\s|$)/.exec(text);
+  if (!match) { span.textContent = text; return span; }
+  add(span, match[1], el("span", "kw", match[2]));
+  const args = text.slice(match[1].length + match[2].length);
+  for (const token of args.matchAll(/("[^"]*"|'[^']*')|(--[\w-]+(?:=\S+)?)|(&&|\|\||[\[\],;\\|])|(\s+)|([^\s"'\[\],;\\|&]+|&)|./g)) {
+    const cls = token[1] ? "syntax-string" : token[2] ? "flag" : token[3] ? "syntax-symbol" : null;
+    add(span, cls ? el("span", cls, token[0]) : token[0]);
+  }
+  span.title = text;
+  return span;
+}
+
+/* ---------- Header ---------- */
+function stratumColor(kind, ordinal) {
+  if (kind === "base") return ordinal % 2 ? "var(--bedrock2)" : "var(--bedrock1)";
+  if (kind === "app") return ordinal % 2 ? "var(--sand2)" : "var(--sand1)";
+  if (kind === "shared") return ordinal % 2 ? "var(--shared2)" : "var(--shale)";
+  return ordinal % 2 ? "var(--ochre-deep)" : "var(--ochre)";
+}
+function stratum(layer, color, widthPx, selected, onClick, label) {
+  const button = el("button", "stratum");
+  button.style.width = widthPx + "px";
+  const waste = layer && layer.fileSize ? Math.min(1, layer.reclaimable / layer.fileSize) : 0;
+  const fill = selected && !layer ? "var(--channel)" : color;
+  button.style.background = waste > 0
+    ? "linear-gradient(to right, " + fill + " 0 " + ((1 - waste) * 100) + "%, var(--waste) 0)"
+    : fill;
+  if (selected) button.setAttribute("aria-current", "true");
+  button.title = label;
+  button.setAttribute("aria-label", label);
+  button.addEventListener("click", onClick);
+  return button;
+}
+
+function renderHeader() {
+  const active = document.activeElement;
+  const modeIndex = [...$("modes").querySelectorAll("button")].indexOf(active);
+  const stratumIndex = [...$("core").querySelectorAll("button")].indexOf(active);
+  const restoreFocus = () => {
+    const buttons = modeIndex >= 0 ? $("modes").querySelectorAll("button")
+      : stratumIndex >= 0 ? $("core").querySelectorAll("button") : null;
+    const index = modeIndex >= 0 ? modeIndex : stratumIndex;
+    buttons?.[index]?.focus({ preventScroll: true });
+  };
+  const ref = clear($("ref"));
+  const stats = clear($("stats"));
+  const core = clear($("core"));
+  const modes = clear($("modes"));
+  if (comparing) {
+    const [baseSide, targetSide] = sides();
+    for (const [mode, side, label] of [["compare", 0, "Compare"], ["image", baseSide, report.images[baseSide].label], ["image", targetSide, report.images[targetSide].label]]) {
+      const button = el("button", null, label);
+      button.setAttribute("aria-pressed", String(state.mode === mode && (mode === "compare" || state.side === side)));
+      button.addEventListener("click", () => setMode(mode, side));
+      modes.append(button);
+    }
+  }
+  if (state.mode === "compare") {
+    const images = pair();
+    const [base, target] = images;
+    add(ref, base.reference, el("span", "silt", " \u2192 "), target.reference);
+    $("meta").textContent = target.platform;
+    ref.title = base.reference + " \u2192 " + target.reference;
+    $("meta").title = $("meta").textContent;
+    const rows = compareRows();
+    const shared = rows.filter(row => row.shared).length;
+    const delta = sum(target.layers, l => l.fileSize) - sum(base.layers, l => l.fileSize);
+    const download = additionalDownload(base, target);
+    add(stats,
+      el("span", "foam", shared + " of " + rows.length), " layers shared   ",
+      el("span", delta > 0 ? "ochre" : delta < 0 ? "kelp" : "foam", signed(delta)), " file payload   ");
+    if (download === null) stats.append(el("span", "silt", "download size unavailable"));
+    else add(stats, el("span", "foam", size(download)), " to download");
+    const max = Math.max(sum(base.layers, l => l.size), sum(target.layers, l => l.size), 1);
+    images.forEach((img, side) => {
+      const row = el("div", "cmp-bar");
+      const bar = el("div", "bar");
+      const availableWidth = Math.floor(core.clientWidth - 14 * parseFloat(getComputedStyle(document.body).fontSize) * 0.6);
+      const total = sum(img.layers, layer => layer.size);
+      const widths = allocateLayerWidths(img.layers.map(layer => layer.size),
+        Math.round(availableWidth * total / max));
+      let sharedOrdinal = 0, diffOrdinal = 0;
+      img.layers.forEach((layer, position) => {
+        if (!widths[position]) return;
+        const isShared = rows[position].shared;
+        const color = stratumColor(isShared ? "shared" : "diff", isShared ? sharedOrdinal++ : diffOrdinal++);
+        bar.append(stratum(null, color, widths[position], state.row === position,
+          () => selectRow(position), "Layer " + layer.index + ", " + size(layer.size) + (isShared ? ", shared" : "")));
+      });
+      add(row, el("span", side ? "foam" : "silt", img.label), bar);
+      core.append(row);
+    });
+    restoreFocus();
+    return;
+  }
+  const img = image();
+  ref.textContent = img.reference;
+  $("meta").textContent = img.platform + "  " + (img.isDaemon ? "image ID " : "") +
+    (img.digest || img.identity.split("@").at(-1));
+  ref.title = ref.textContent;
+  $("meta").title = $("meta").textContent;
+  const payload = sum(img.layers, l => l.fileSize);
+  const reclaimable = sum(img.layers, l => l.reclaimable);
+  const efficiency = payload ? Math.floor((payload - reclaimable) / payload * 100) : 100;
+  add(stats,
+    el("span", "foam", sizeShort(payload)), " file payload   ",
+    el("span", "foam", sizeShort(sum(img.layers, l => l.size))), " " + img.transferLabel + "   ",
+    el("span", efficiency >= 90 ? "kelp" : efficiency >= 75 ? "ochre" : "garnet", efficiency + "%"), " efficient");
+  const widths = allocateLayerWidths(img.layers.map(layer => layer.fileSize), Math.floor(core.clientWidth));
+  const groups = [];
+  for (const layer of img.layers) {
+    const name = groupOf(img, layer);
+    const last = groups[groups.length - 1];
+    if (last && last.name === name) last.layers.push(layer);
+    else groups.push({ name, base: Boolean(layer.baseLabel), layers: [layer] });
+  }
+  const bar = el("div", "bar");
+  bar.style.height = "auto";
+  const ordinals = { base: 0, app: 0 };
+  for (const group of groups) {
+    const groupWidth = sum(group.layers, layer => widths[layer.index] || 0);
+    if (!groupWidth) continue;
+    const box = el("div", "group");
+    box.style.width = groupWidth + "px";
+    const strata = el("div", "strata");
+    const kind = group.base ? "base" : "app";
+    let offset = 0, selectedOffset = null, selectedWidth = 0;
+    for (const layer of group.layers) {
+      if (!widths[layer.index]) continue;
+      if (layer.index === state.layer) {
+        selectedOffset = offset;
+        selectedWidth = widths[layer.index];
+      }
+      strata.append(stratum(layer, stratumColor(kind, ordinals[kind]++), widths[layer.index],
+        layer.index === state.layer, () => selectLayer(layer.index),
+        "Layer " + layer.index + ", " + size(layer.fileSize) + (layer.reclaimable ? ", " + size(layer.reclaimable) + " reclaimable" : "")));
+      offset += widths[layer.index];
+    }
+    const bracket = el("div", "bracket");
+    bracket.append(el("span", null, group.name));
+    if (selectedOffset !== null) {
+      const indicator = el("div", "layer-indicator");
+      indicator.style.left = selectedOffset + "px";
+      indicator.style.width = selectedWidth + "px";
+      bracket.append(indicator);
+    }
+    bracket.title = group.name;
+    add(box, strata, bracket);
+    bar.append(box);
+  }
+  core.append(bar);
+  restoreFocus();
+}
+
+/* ---------- Layers pane ---------- */
+function setTitle(id, title, sub) {
+  const node = clear($(id));
+  add(node, title, sub ? el("span", "sub", sub) : null);
+}
+
+function renderLayers() {
+  const list = clear($("layers"));
+  if (state.mode === "compare") return renderCompareLayers(list);
+  const img = image();
+  setTitle("layers-title", "Layers", img.layers.length + " with files");
+  list.style.setProperty("--index-width", (String(Math.max(0, img.layers.length - 1)).length + 1) + "ch");
+  const max = Math.max(1, ...img.layers.map(l => l.fileSize));
+  let group = null;
+  let pendingConfig = [];
+  const flush = name => {
+    if (name !== group) {
+      group = name;
+      if (img.baseLayerCount != null)
+        list.append(el("div", "divider", "\u2500\u2500 " + name + " " + "\u2500".repeat(60)));
+    }
+    for (const row of pendingConfig) list.append(row);
+    pendingConfig = [];
+  };
+  for (const row of img.history) {
+    if (row.layer === null || row.layer === undefined) {
+      const item = el("div", "lrow config");
+      add(item, el("span"), el("span"), el("span"), instruction(row.instruction));
+      pendingConfig.push(item);
+      continue;
+    }
+    const layer = layerAt(img, row.layer);
+    if (!layer) continue;
+    flush(layer.baseImage || img.reference);
+    const selected = layer.index === state.layer;
+    const item = el("div", "lrow");
+    item.setAttribute("role", "option");
+    item.setAttribute("aria-selected", String(selected));
+    item.id = "layer-" + layer.index;
+    const fill = layer.fileSize ? Math.max(0.35 / 8, Math.sqrt(layer.fileSize / max)) * 100 : 0;
+    const waste = layer.fileSize ? layer.reclaimable / layer.fileSize * fill : 0;
+    const gauge = el("span", "gauge", size(layer.fileSize));
+    const color = layer.baseLabel ? "var(--bedrock1)" : "var(--sand1)";
+    gauge.style.background = "linear-gradient(to right, " + color + " 0 " + (fill - waste) + "%, var(--waste) 0 " + fill + "%, transparent 0)";
+    const related = relatedFindings(img, layer.index);
+    if (related.length) {
+      item.classList.add("has-findings");
+      item.title = count(related.length, "finding involves this layer", "findings involve this layer");
+    }
+    add(item, el("span", "mark", selected ? "\u258c" : ""), el("span", "idx", layer.index), gauge,
+      instruction(layer.instruction));
+    item.addEventListener("click", () => selectLayer(layer.index));
+    list.append(item);
+  }
+  if (pendingConfig.length) flush(img.reference);
+  list.setAttribute("aria-activedescendant", "layer-" + state.layer);
+  $("layer-" + state.layer)?.scrollIntoView({ block: "nearest" });
+}
+function relatedFindings(img, layer) {
+  return (img.findings || []).filter(finding => !finding.fromBase && finding.layers.includes(layer));
+}
+
+function compareRows() {
+  const [base, target] = pair();
+  const rows = [];
+  for (let i = 0; i < Math.max(base.layers.length, target.layers.length); i++) {
+    const b = base.layers[i] || null, t = target.layers[i] || null;
+    rows.push({ position: i, base: b, target: t, shared: Boolean(b && t && b.comparisonIdentity === t.comparisonIdentity) });
+  }
+  return rows;
+}
+
+function renderCompareLayers(list) {
+  const [base, target] = pair();
+  setTitle("layers-title", "Layers", base.label + " \u2192 " + target.label + "  change");
+  for (const row of compareRows()) {
+    const selected = row.position === state.row;
+    const item = el("div", "lrow cmp" + (row.shared ? " dim" : ""));
+    item.setAttribute("role", "option");
+    item.setAttribute("aria-selected", String(selected));
+    item.id = "row-" + row.position;
+    let change, tone;
+    if (row.shared) { change = "same"; tone = "silt"; }
+    else if (!row.base) { change = "new"; tone = "ochre"; }
+    else if (!row.target) { change = "gone"; tone = "kelp"; }
+    else {
+      const delta = row.target.size - row.base.size;
+      change = signed(delta); tone = delta > 0 ? "ochre" : delta < 0 ? "kelp" : "silt";
+    }
+    const layer = row.target || row.base;
+    add(item,
+      el("span", "mark", selected ? "\u258c" : ""),
+      el("span", "idx", row.position),
+      el("span", "num", row.base ? sizeShort(row.base.size) : "\u2014"),
+      el("span", "silt", "\u2192"),
+      el("span", "num", row.target ? sizeShort(row.target.size) : "\u2014"),
+      el("span", "num " + tone, change),
+      instruction(layer.instruction));
+    item.addEventListener("click", () => selectRow(row.position));
+    list.append(item);
+  }
+  list.setAttribute("aria-activedescendant", "row-" + state.row);
+  $("row-" + state.row)?.scrollIntoView({ block: "nearest" });
+}
+
+/* ---------- Details pane ---------- */
+function renderDetails() {
+  const box = clear($("details"));
+  if (state.mode === "compare") return renderCompareDetails(box);
+  const img = image();
+  if (state.view === "insights") {
+    const selected = selectedFinding(img);
+    if (selected?.finding) return renderFindingDetails(box, selected.finding);
+  }
+  const layer = layerAt(img, state.layer);
+  setTitle("details-title", layer ? "Layer " + layer.index : "Layer");
+  if (!layer) { box.append(el("span", "silt", "This image has no layers.")); return; }
+  const history = img.history.find(row => row.layer === layer.index);
+  const counts = Object.fromEntries((fileTreeSummary(img, layer.index, false)?.changes || [])
+    .map(item => [item.change, item.count]));
+  const summary = LAYER_KINDS.filter(kind => counts[kind]).map(kind => add(el("span"),
+    el("b", TONE[kind], GLYPH[kind]), " " + counts[kind].toLocaleString("en-US"),
+    el("span", "silt", " " + kind.toLowerCase())));
+  add(box, instruction(layer.instruction), "\n\n",
+    el("span", "foam", size(layer.fileSize)), el("span", "silt", " file payload   "),
+    el("span", "foam", size(layer.size)), el("span", "silt", " " + img.transferLabel),
+    history && history.created ? el("span", "silt", "   " + history.created) : null, "\n");
+  if (summary.length) summary.forEach((part, i) => add(box, i ? "   " : "", part));
+  else box.append(el("span", "silt", "no file changes"));
+  add(box, "\n", el("span", "silt", shortDigest(layer.digest)), "\n");
+  const related = relatedFindings(img, layer.index);
+  if (related.length) {
+    add(box, "\n", el("span", "garnet", "\u25b2 " + count(related.length, "finding involves this layer", "findings involve this layer") +
+      ", " + size(sum(related, finding => finding.bytes))));
+    for (const finding of related.slice(0, 2)) add(box, "\n", el("span", "silt", "  " + finding.title + ", " + size(finding.bytes)));
+    const insights = el("button", "more", "View insights");
+    insights.addEventListener("click", () => navigateView("insights"));
+    add(box, "\n  ", insights);
+  }
+  else if (layer.baseImage) add(box, "\n", el("span", "silt", "From the base image "), layer.baseImage);
+}
+function renderFindingDetails(box, finding) {
+  setTitle("details-title", finding.certain ? "Why this is reclaimable" : "Why this may be reclaimable");
+  for (const text of finding.explain || []) add(box, text || "\n", "\n");
+  add(box, "\n", el("span", "silt", "Layers  "), el("span", "foam", finding.layers.join(", ")), "\n",
+    el("span", "silt", "Paths   "), el("span", "dirname", finding.where), "\n",
+    el("span", "silt", "Files   "), el("span", "foam", count(finding.fileCount, "file")), "\n");
+}
+
+function renderCompareDetails(box) {
+  const rows = compareRows();
+  const row = rows[state.row];
+  if (!row) {
+    setTitle("details-title", "Layer");
+    box.append(el("span", "silt", "Neither image has layers."));
+    return;
+  }
+  setTitle("details-title", "Layer " + state.row);
+  const layer = row.target || row.base;
+  const [base, target] = pair();
+  add(box, instruction(layer.instruction), "\n\n");
+  [row.base, row.target].forEach((l, side) => {
+    add(box, el("span", side ? "foam" : "silt", (side ? target.label + "  " : base.label + "  ")), "  ",
+      l ? el("span", "silt", shortDigest(l.comparisonIdentity)) : el("span", "silt", "no layer at this position"),
+      l ? "  " + size(l.size) + " " + (side ? target.transferLabel : base.transferLabel) : "", "\n");
+  });
+  const baseDigests = new Set(base.layers.map(l => l.digest));
+  box.append("\n");
+  if (row.shared) box.append(el("span", "kelp", report.usesContentIdentity
+    ? "Same verified diff ID in both images; layer content is shared."
+    : "Same digest in both images, so this layer is shared."));
+  else if (row.target && !report.downloadSizeAvailable) box.append(el("span", "silt", "Original compressed layer size and download cost are unavailable for daemon snapshots."));
+  else if (row.target && baseDigests.has(row.target.digest)) box.append(el("span", "kelp", "This layer exists elsewhere in " + base.label + ", so it is not downloaded again."));
+  else if (row.target) add(box, el("span", "silt", "Additional download "), el("span", "ochre", size(row.target.size)), el("span", "silt", " for this layer"));
+  else box.append(el("span", "silt", target.label + " has no layer at this position."));
+  let prefix = 0;
+  while (prefix < rows.length && rows[prefix].shared) prefix++;
+  box.append("\n");
+  if (prefix) box.append(el("span", "silt", prefix === 1 ? "Layer 0 is shared." : "Layers 0 to " + (prefix - 1) + " are shared."));
+  else box.append(el("span", "silt", "No leading layers are shared."));
+  const download = additionalDownload(base, target);
+  if (download === null) add(box, "\n", el("span", "silt", "Download size unavailable for daemon snapshots."));
+  else add(box, "\n", el("span", "silt", "Pulling " + target.label + " where " + base.label + " exists downloads "),
+    el("span", "foam", size(download)), el("span", "silt", " of unshared layers."));
+}
+
+/* ---------- Tree ---------- */
+function buildTree(entries, img = null, metadata = null, keyForPath = img ? path => pathKey(img, path) : path => path) {
+  const root = { name: "", path: "", children: new Map(), size: 0, dir: true, count: 0 };
+  for (const entry of entries) {
+    const parts = entry.path.split("/").filter(Boolean);
+    let node = root;
+    const chain = [root];
+    parts.forEach((part, i) => {
+      const path = parts.slice(0, i + 1).join("/");
+      const key = keyForPath(path);
+      let child = node.children.get(key);
+      if (!child) {
+        child = { name: part, path, children: new Map(), size: 0, dir: true, count: 0, note: null };
+        node.children.set(key, child);
+      } else if (img && i < parts.length - 1 && !child.dir && entry.change !== "Deleted") {
+        child = { name: part, path, children: child.children, size: 0, dir: true, count: 0, note: null };
+        node.children.set(key, child);
+      }
+      node = child;
+      chain.push(node);
+    });
+    Object.assign(node, { entry, dir: entry.type === "Directory" });
+    const bytes = entry.type === "Directory" ? 0 : entry.size;
+    for (const ancestor of chain) {
+      if (ancestor !== node) { ancestor.size += bytes; ancestor.count++; }
+    }
+    if (entry.type !== "Directory") node.size = entry.size;
+  }
+  if (metadata) {
+    const applyMetadata = node => {
+      const item = metadata.get(keyForPath(node.path));
+      if (item) Object.assign(node, {
+        dir: item.type === "Directory",
+        type: item.type,
+        size: item.size,
+        shippedSize: item.shippedSize,
+        fileCount: item.fileCount,
+        sharing: item.sharing,
+        hardLink: item.hardLink,
+        linkTarget: item.linkTarget,
+        change: item.change,
+        note: item.note
+      });
+      for (const child of node.children.values()) applyMetadata(child);
+    };
+    applyMetadata(root);
+  }
+  return root;
+}
+function sortedChildren(node) {
+  return [...node.children.values()].sort((a, b) =>
+    Number(b.dir) - Number(a.dir) || (a.name < b.name ? -1 : a.name > b.name ? 1 : 0));
+}
+function highlight(text, query, exactCase = false) {
+  const span = document.createDocumentFragment();
+  if (!query) { span.append(text); return span; }
+  const fold = value => exactCase ? value : foldCase(value);
+  const lower = fold(text);
+  const needle = fold(query);
+  let at = 0;
+  for (let i = lower.indexOf(needle); i >= 0; i = lower.indexOf(needle, at)) {
+    span.append(text.slice(at, i), el("mark", null, text.slice(i, i + needle.length)));
+    at = i + needle.length;
+  }
+  span.append(text.slice(at));
+  return span;
+}
+function visibleByChange(node) {
+  if (state.mode === "compare") return true;
+  if (node.children.size) return Boolean(node.entry && !state.hidden.has(node.entry.change || node.change || "None")) ||
+    [...node.children.values()].some(visibleByChange);
+  return !state.hidden.has(node.entry?.change || node.change || "None");
+}
+function matches(node, query, inFinding = false) {
+  if (!visibleByChange(node)) return false;
+  const inside = inFinding || Boolean(node.note);
+  const eligible = !state.findingsOnly || inside;
+  if (eligible && (!query || foldCase(node.path).includes(foldCase(query)))) return true;
+  for (const child of node.children.values()) if (matches(child, query, inside)) return true;
+  return false;
+}
+function renderTree(container, root, sizeText, metadata = false, levelOffset = 0) {
+  const query = state.filter.toLowerCase();
+  let rendered = 0;
+  const walk = (node, depth, ancestors = [], inFinding = false) => {
+    const children = sortedChildren(node).filter(child => matches(child, query, inFinding));
+    const limit = state.limits.get(node.path) || BATCH;
+    for (const [index, child] of children.slice(0, limit).entries()) {
+      const last = index === children.length - 1;
+      const hasChildren = child.children.size > 0;
+      const open = hasChildren && (Boolean(query) || state.expanded.has(child.path));
+      const change = child.entry?.change || child.change;
+      const row = el("div", "trow" + (sizeText ? " comparison" : metadata ? " metadata" : "") + (change ? " " + change : ""));
+      row.dataset.path = child.path;
+      row.setAttribute("role", "treeitem");
+      row.setAttribute("aria-level", String(depth + 1 + levelOffset));
+      row.setAttribute("aria-selected", String(state.selected === child.path));
+      if (hasChildren) row.setAttribute("aria-expanded", String(open));
+      const kind = change;
+      const glyph = el("span", kind ? TONE[kind] : "silt", kind ? GLYPH[kind] : "");
+      const name = el("span", "name");
+      const nameContent = metadata ? el("span", "file-name-content") : name;
+      const twist = hasChildren && !query ? el("button", "tree-toggle", open ? "\u25be" : "\u25b8") : el("span", "tw", hasChildren ? "\u25be" : "");
+      if (hasChildren && !query) {
+        twist.setAttribute("aria-label", (open ? "Collapse " : "Expand ") + "/" + child.path);
+        twist.dataset.focusId = "tree-" + child.path;
+        twist.addEventListener("click", event => {
+          event.stopPropagation();
+          state.rightIndex = Math.max(0, rightRows().indexOf(row));
+          state.selected = child.path;
+          if (state.expanded.has(child.path)) state.expanded.delete(child.path);
+          else state.expanded.add(child.path);
+          renderRight();
+        });
+      }
+      const label = el("span", !change && child.dir ? "dirname" : null);
+      label.append(highlight(child.name, query));
+      const guide = depth || sizeText ? ancestors.map(parentLast => parentLast ? "   " : "\u2502  ").join("") +
+        (last ? "\u2514\u2500 " : "\u251c\u2500 ") : "";
+      add(nameContent, el("span", "tree-guide", guide), twist, label, child.dir ? el("span", "silt", "/") : null);
+      if (child.linkTarget) nameContent.append(el("span", "tree-meta", (child.hardLink ? "(shared) \u21d2 " : "\u2192 ") + child.linkTarget));
+      if (metadata) row.append(el("span", "mark selection-mark"));
+      row.append(glyph);
+      if (metadata) {
+        const mode = el("span", "file-mode silt", child.entry?.mode || "\u2014");
+        const owner = el("span", "file-owner silt", child.entry?.owner || "\u2014");
+        mode.title = mode.textContent;
+        owner.title = owner.textContent;
+        const noSize = child.dir ? child.size === 0 : child.entry?.type === "SymbolicLink" && !child.hardLink;
+        const displayedSize = change === "Deleted" ? child.shippedSize : child.size;
+        const sizeCell = el("span", "file-size" + (change === "Deleted" ? " size" : ""), noSize ? "" : size(displayedSize));
+        sizeCell.title = noSize ? "" : size(displayedSize);
+        add(row, mode, owner, sizeCell);
+      }
+      if (metadata) {
+        const detail = [];
+        if (child.dir && hasChildren && !open && child.fileCount != null) detail.push(count(child.fileCount, "file", "files"));
+        if (child.sharing) detail.push(child.sharing.toLowerCase());
+        if (detail.length) nameContent.append(el("span", "tree-meta", detail.join("  ")));
+        name.append(nameContent);
+        if (child.note) name.append(el("span", "tree-note", "\u25b2 " + child.note));
+        row.append(name);
+      } else if (sizeText) {
+        const detail = [];
+        if (child.dir && hasChildren && !open && child.fileCount != null) detail.push(count(child.fileCount, "file", "files"));
+        if (child.sharing) detail.push(child.sharing.toLowerCase());
+        if (child.hardLink) detail.push("hard link");
+        if (detail.length) name.append(el("span", "tree-meta", detail.join("  ")));
+        add(row, sizeText(child), name);
+      }
+      else {
+        const noSize = child.dir ? child.size === 0 : child.entry?.type === "SymbolicLink" || child.hardLink;
+        const displayedSize = change === "Deleted" ? child.shippedSize : child.size;
+        add(row, el("span", "file-size" + (change === "Deleted" ? " size" : ""), noSize ? "" : size(displayedSize)), name);
+        const detail = [];
+        if (child.dir && hasChildren && !open && child.fileCount != null) detail.push(count(child.fileCount, "file", "files"));
+        if (child.sharing) detail.push(child.sharing.toLowerCase());
+        if (child.hardLink) detail.push("hard link");
+        if (detail.length) row.append(el("span", "tree-meta", detail.join("  ")));
+      }
+      row.addEventListener("click", () => {
+        state.rightIndex = Math.max(0, rightRows().indexOf(row));
+        state.selected = child.path;
+        renderRight();
+      });
+      container.append(row);
+      rendered++;
+      if (open) walk(child, depth + 1, [...ancestors, last], inFinding || Boolean(child.note));
+    }
+    if (children.length > limit) {
+      const more = el("button", "more", "Show " + Math.min(BATCH, children.length - limit) + " more");
+      more.style.marginLeft = (depth * 2 + 4) + "ch";
+      more.title = count(children.length - limit, "more entry", "more entries") + " in /" + node.path;
+      more.addEventListener("click", () => { state.limits.set(node.path, limit + BATCH); renderRight(); });
+      container.append(more, document.createElement("br"));
+    }
+  };
+  walk(root, 0);
+  return rendered;
+}
+
+/* ---------- Right pane ---------- */
+function chip(kind, n, hiddenSet) {
+  const hidden = hiddenSet.has(kind);
+  const button = el("button", "chip" + (!hidden && n === 0 ? " zero" : ""));
+  const label = kind === "None" ? "unchanged" : kind.toLowerCase();
+  const glyph = kind === "None" ? "\u00b7" : GLYPH[kind];
+  const tone = kind === "None" ? "foam" : TONE[kind];
+  button.setAttribute("data-change-filter", kind);
+  button.dataset.focusId = "change-" + kind;
+  button.setAttribute("aria-pressed", String(!hidden));
+  button.title = (hidden ? "Show " : "Hide ") + label +
+    (state.mode === "compare" ? " entries" : " paths");
+  add(button, el("b", tone, glyph), hidden ? " " : " " + n.toLocaleString("en-US") + " ",
+    el("span", "silt", label));
+  button.addEventListener("click", () => toggleKind(kind));
+  return button;
+}
+function filterInput(packages = false) {
+  const wrap = el("label", "filter search-editor");
+  const field = state.mode === "compare" ? "filter" : packages ? "packageFilter" : "searchQuery";
+  const input = el("input");
+  input.id = "filter";
+  input.type = "search";
+  input.placeholder = packages ? "Search packages" : state.mode === "compare" ? "Search packages or paths" : "Search paths";
+  input.setAttribute("aria-label", packages ? "Filter packages" : state.mode === "compare" ? "Search packages or paths" : "Search paths");
+  input.value = state[field];
+  input.addEventListener("input", () => {
+    state[field] = input.value;
+    if (state.mode === "compare") state.comparisonSearchLimit = BATCH;
+    if (state.mode === "image" && !packages) {
+      if (input.value && state.view !== "search") {
+        state.searchReturnView = "files";
+        state.view = "search";
+      } else if (!input.value && state.view === "search") {
+        state.view = state.searchReturnView || "files";
+      }
+    }
+    state.rightIndex = 0;
+    state.selected = null;
+    renderDetails();
+    renderRight();
+    const counter = $("search-controls").querySelector(".search-count");
+    if (state[field] && state.view !== "search") {
+      const label = count(searchMatchCount(), "match", "matches");
+      if (counter) counter.textContent = label;
+      else $("search-controls").append(el("span", "search-count", label));
+    } else counter?.remove();
+  });
+  wrap.append(input);
+  return wrap;
+}
+
+function renderRight() {
+  const previousScroller = $("right").querySelector(".pane-body");
+  const restoreScroll = previousScroller &&
+    document.body.dataset.view === state.view &&
+    document.body.dataset.mode === state.mode &&
+    (state.mode !== "image" || document.body.dataset.side === String(state.side));
+  const scrollTop = previousScroller?.scrollTop ?? 0;
+  const restoreFocus = $("right").contains(document.activeElement);
+  const focusId = restoreFocus ? document.activeElement.dataset.focusId : null;
+  renderRightContent();
+  if (restoreScroll) $("right").querySelector(".pane-body").scrollTop = scrollTop;
+  markRightSelection();
+  if (restoreFocus && !$("right").contains(document.activeElement)) {
+    const replacement = focusId && [...$("right").querySelectorAll("[data-focus-id]")]
+      .find(node => node.dataset.focusId === focusId);
+    (replacement || $("right-pane")).focus({ preventScroll: true });
+  }
+}
+
+function renderRightContent() {
+  const box = clear($("right"));
+  const scroller = el("div", "pane-body");
+  scroller.setAttribute("role", "tree");
+  document.body.dataset.view = state.view;
+  document.body.dataset.mode = state.mode;
+  document.body.dataset.side = state.side;
+  document.body.dataset.mobileDetails = String(state.mobileDetails);
+  if (state.view === "warnings") {
+    setTitle("right-title", state.mode === "compare" ? "Warnings and limitations" : warningsLabel());
+    scroller.removeAttribute("role");
+    const items = warningItems();
+    if (!items.length) scroller.append(el("p", "empty", state.mode === "compare"
+      ? "Dredge reported no warnings for this comparison." : "Dredge reported no warnings for this image."));
+    else {
+      const list = el("ul", "list");
+      for (const text of items) list.append(el("li", null, text));
+      scroller.append(list);
+    }
+    box.append(scroller);
+    return;
+  }
+  if (state.view === "snapshot" && state.mode === "compare") {
+    setTitle("right-title", "Comparison snapshot");
+    scroller.removeAttribute("role");
+    const [base, target] = pair();
+    add(scroller, el("div", "snapshot-block", "Baseline (" + base.label + ")\n" + base.snapshotDetails),
+      el("div", "snapshot-block", "Target (" + target.label + ")\n" + target.snapshotDetails),
+      el("p", "silt", "This comparison uses session snapshots. Reopen explorer to refresh tags."));
+    box.append(scroller);
+    return;
+  }
+  if (state.view === "help") {
+    setTitle("right-title", "Help");
+    scroller.removeAttribute("role");
+    add(scroller, el("p", null, "Select a layer to explore its files and packages."),
+      el("p", null, "Use the view controls to switch between files, packages, and insights. Select a tree row to see its details and use its arrow to expand or collapse it."),
+      el("p", null, "Search paths across layers or filter packages and comparison differences. Clear the search field to remove a search."),
+      el("p", null, "Use Tab to move between controls, Enter or Space to activate them, and arrow keys to navigate the layer list or tree."));
+    box.append(scroller);
+    return;
+  }
+  if (state.view === "overview" && state.mode === "compare") return renderOverview(box, scroller);
+  if (state.view === "insights" && state.mode === "image") return renderInsights(box, scroller);
+  if (state.view === "search") return renderSearch(box, scroller);
+  if (state.mode === "compare") return renderDifferences(box, scroller);
+  if (state.view === "packages") return renderPackages(box, scroller);
+  const img = image();
+  const layer = layerAt(img, state.layer);
+  const metadata = treeMetadata(img, state.layer, state.whole);
+  const summary = fileTreeSummary(img, state.layer, state.whole);
+  setTitle("right-title", layer ? (state.whole ? "Filesystem at layer " : "Changes in layer ") + layer.index
+    : state.whole ? "Filesystem" : "Changes", state.findingsOnly ? "only paths with findings" : null);
+  const snapshot = state.whole ? wholeSnapshot(img, state.layer) : null;
+  const entries = snapshot ? snapshot.entries : layer ? layer.changes : [];
+  const controls = el("div", "controls");
+  const toggle = el("span", "toggle");
+  toggle.setAttribute("role", "group");
+  toggle.setAttribute("aria-label", "Scope");
+  for (const [whole, label] of [[false, "This layer"], [true, "Whole filesystem"]]) {
+    const button = el("button", null, label);
+    button.setAttribute("aria-pressed", String(state.whole === whole));
+    button.dataset.focusId = "scope-" + whole;
+    button.addEventListener("click", () => { state.whole = whole; resetTree(); renderRight(); });
+    toggle.append(button);
+  }
+  add(controls, toggle);
+  if (state.findingsOnly) {
+    const showAll = el("button", "more", "Show all paths");
+    showAll.dataset.focusId = "show-all-paths";
+    showAll.addEventListener("click", () => { state.findingsOnly = false; resetTree(); renderRight(); });
+    controls.append(showAll);
+  }
+  add(controls,
+    el("span", "push silt", size(summary?.size ?? entryTotalSize(entries)) + " in " +
+      count(summary?.pathCount ?? entryPathCount(entries), state.whole ? "file" : "path")));
+  box.append(controls);
+  const changeCounts = new Map((summary?.changes || []).map(item => [item.change, item.count]));
+  const chips = el("div", "controls chips");
+  for (const kind of [...LAYER_KINDS, ...(state.whole ? ["None"] : [])])
+    chips.append(chip(kind, changeCounts.get(kind) || 0, state.hidden));
+  box.append(chips);
+  const windows = img.platform.toLowerCase().startsWith("windows");
+  box.append(add(el("div", "colhead metadata"), el("span", "file-mode", windows ? "attributes" : "mode"),
+    el("span", "file-owner", windows ? "owner" : "uid:gid"), el("span", null, "size"), el("span", null, "name")));
+  if (!entries.length) scroller.append(el("p", "empty", state.whole ? "This image has an empty filesystem." : "This layer changes no files."));
+  else if (!renderTree(scroller, snapshot?.root || buildTree(entries, img, metadata), null, true)) scroller.append(el("p", "empty", "Nothing matches the current filters."));
+  box.append(scroller, selectionInfo(img, entries, metadata));
+}
+function entryTotalSize(entries) {
+  const seen = new Set();
+  return sum(entries.filter(entry => entry.type !== "Directory" && entry.change !== "Deleted"),
+    entry => entry.contentId && seen.has(entry.contentId) ? 0 : (entry.contentId && seen.add(entry.contentId), entry.size));
+}
+function entryPathCount(entries) {
+  const root = buildTree(entries);
+  const countLeaves = node => sum([...node.children.values()], child =>
+    child.dir && child.children.size ? countLeaves(child) : 1);
+  return countLeaves(root);
+}
+
+function renderInsights(box, scroller) {
+  const img = image();
+  const findings = img.findings || [];
+  const visible = visibleFindings(img);
+  setTitle("right-title", "Insights", count(findings.length, "finding"));
+  scroller.removeAttribute("role");
+  const payload = sum(img.layers, layer => layer.fileSize);
+  const hidden = img.hiddenBytes;
+  const efficiency = payload ? Math.floor((payload - hidden) / payload * 100) : 100;
+  add(scroller, el("p", null, size(hidden) + " hidden file payload  \u00b7  " + efficiency + "% efficient"),
+    el("p", null, img.potentialBytes > 0
+      ? size(img.potentialBytes) + " more potential savings \u00b7 verify your app does not need these files"
+      : "No potential savings detected by heuristics."));
+  const categories = new Map();
+  for (const finding of findings) {
+    if (finding.certain && !finding.fromBase) categories.set(finding.category, (categories.get(finding.category) || 0) + finding.bytes);
+  }
+  const fromBase = sum(findings.filter(finding => finding.fromBase), finding => finding.bytes) + img.baseChurnBytes;
+  const parts = [
+    { label: "Other file payload", bytes: Math.max(0, payload - hidden), color: "var(--sand1)" },
+    ...[...categories].map(([label, bytes], index) => ({
+      label, bytes, color: ["var(--garnet)", "var(--ochre)", "var(--keyword)", "var(--channel)"][index % 4]
+    })),
+    ...(fromBase ? [{ label: "From the base image", bytes: fromBase, color: "var(--silt)" }] : [])
+  ].filter(part => part.bytes > 0);
+  if (parts.length) {
+    const breakdown = el("div", "insight-breakdown");
+    breakdown.setAttribute("role", "img");
+    breakdown.setAttribute("aria-label", parts.map(part => part.label + ": " + size(part.bytes)).join(", "));
+    for (const part of parts) {
+      const segment = el("span");
+      segment.style.flexGrow = String(part.bytes);
+      segment.style.background = part.color;
+      segment.title = part.label + ": " + size(part.bytes);
+      breakdown.append(segment);
+    }
+    scroller.append(breakdown);
+    const legend = el("div", "insight-legend");
+    parts.forEach(part => legend.append(el("span", null, part.label + " " + size(part.bytes))));
+    scroller.append(legend);
+  }
+  const baseFindings = visible.filter(item => item.baseGroup || item.finding?.fromBase);
+  visible.forEach((item, index) => {
+    if (item.finding && !item.finding.fromBase) scroller.append(insightRow(item.finding, img, item.index, index));
+  });
+  if (baseFindings.length) {
+    const section = el("details", "insight-group");
+    section.open = state.showBaseFindings;
+    const baseIndex = visible.findIndex(item => item.baseGroup);
+    const summary = add(el("summary", null, count(findings.filter(finding => finding.fromBase).length, "finding") + " inside the base image"),
+      el("span", "silt", "  not fixable here"));
+    summary.setAttribute("role", "treeitem");
+    summary.setAttribute("aria-level", "1");
+    summary.setAttribute("aria-selected", String(state.findingSelected === baseIndex));
+    summary.dataset.findingSelection = String(baseIndex);
+    summary.addEventListener("click", () => { state.findingSelected = baseIndex; });
+    section.addEventListener("toggle", () => {
+      if (section.open === state.showBaseFindings) return;
+      state.showBaseFindings = section.open;
+      renderRight();
+      renderDetails();
+    });
+    section.append(summary);
+    if (section.open) {
+      section.append(el("p", "silt", "Rebuild or update the base image to reclaim these bytes."));
+      visible.forEach((item, index) => {
+        if (item.finding?.fromBase) section.append(insightRow(item.finding, img, item.index, index));
+      });
+    }
+    scroller.append(section);
+  }
+  if (!findings.length) scroller.append(el("p", "empty", "No actionable findings for this image."));
+  box.append(scroller);
+}
+
+function insightRow(finding, img, index, visibleIndex) {
+  const section = el("details", "insight-group");
+  section.open = state.findingSelected === visibleIndex;
+  section.dataset.findingIndex = String(index);
+  section.classList.toggle("finding-selected", section.open);
+  section.addEventListener("toggle", () => {
+    section.classList.toggle("finding-selected", section.open);
+    renderDetails();
+  });
+  const summary = el("summary", null, finding.title);
+  summary.setAttribute("role", "treeitem");
+  summary.setAttribute("aria-level", "1");
+  summary.setAttribute("aria-selected", String(state.findingSelected === visibleIndex));
+  summary.dataset.findingSelection = String(visibleIndex);
+  summary.addEventListener("click", () => {
+    state.findingSelected = visibleIndex;
+    for (const other of $("right").querySelectorAll(".insight-group[data-finding-index]")) {
+      if (other !== section) other.open = false;
+    }
+    for (const row of $("right").querySelectorAll(".insight-group > summary[aria-selected]"))
+      row.setAttribute("aria-selected", String(row === summary));
+    renderDetails();
+  });
+  section.append(summary);
+  const content = el("div", "insight-detail");
+  add(content, el("span", "silt", finding.category + (finding.certain ? "" : "  \u00b7  potential")), el("br"),
+    finding.where, el("br"), finding.why, el("br"),
+    el("span", "silt", size(finding.bytes) + " across " + count(finding.fileCount, "file")));
+  if (finding.fix) add(content, el("br"), el("span", "foam bold", finding.fixLabel), "  ", finding.fix);
+  if (finding.roots.length) {
+    const show = el("button", "insight-action", "Show files");
+    show.addEventListener("click", () => openFindingPath(img, finding, finding.roots[0]));
+    add(content, el("br"), show);
+  }
+  if (finding.explain.length) {
+    const explain = el("ul", "list");
+    finding.explain.forEach(text => explain.append(el("li", null, text)));
+    content.append(explain);
+  }
+  if (finding.roots.length) {
+    const roots = el("div", "insight-roots");
+    finding.roots.forEach(path => {
+      const button = el("button", "more", "/" + path);
+      button.addEventListener("click", () => openFindingPath(img, finding, path));
+      roots.append(button);
+    });
+    content.append(roots);
+  }
+  if (finding.layers.length) {
+    const layers = el("div", "insight-layers");
+    finding.layers.forEach(layer => {
+      const button = el("button", "badge", "Layer " + layer);
+      button.addEventListener("click", () => selectLayer(layer));
+      layers.append(button);
+    });
+    content.append(layers);
+  }
+  section.append(content);
+  return section;
+}
+
+function openImagePath(img, path, layer, whole, findingsOnly = false) {
+  if (!layerAt(img, layer)) return;
+  state.layer = layer;
+  state.whole = whole;
+  state.findingsOnly = findingsOnly;
+  state.filter = "";
+  state.view = "files";
+  resetTree();
+  const metadata = treeMetadata(img, layer, whole);
+  let node = whole ? wholeSnapshot(img, layer).root : buildTree(layerAt(img, layer).changes, img, metadata);
+  const parts = path.split("/");
+  for (let i = 0; i < parts.length; i++) {
+    const key = pathKey(img, parts.slice(0, i + 1).join("/"));
+    const child = node.children.get(key);
+    if (!child) break;
+    const position = sortedChildren(node).indexOf(child);
+    state.limits.set(node.path, Math.max(BATCH, position + 1));
+    if (i < parts.length - 1) state.expanded.add(child.path);
+    node = child;
+  }
+  state.selected = node.path;
+  render();
+  const rows = rightRows();
+  state.rightIndex = Math.max(0, rows.findIndex(row => row.dataset.path === state.selected));
+  markRightSelection();
+  $("right-pane").focus({ preventScroll: true });
+  rows[state.rightIndex]?.scrollIntoView({ block: "nearest" });
+}
+function openFindingPath(img, finding, path) {
+  const normalize = value => img.platform.toLowerCase().startsWith("windows") ? foldCase(value) : value;
+  const selectedPath = normalize(path);
+  const layer = [...finding.layers].reverse().find(index => {
+    const snapshot = layerAt(img, index);
+    return snapshot?.changes.some(change => {
+      const changedPath = normalize(change.path);
+      return changedPath === selectedPath || changedPath.startsWith(selectedPath + "/");
+    });
+  }) ?? finding.layers.at(-1) ?? state.layer;
+  if (!layerAt(img, layer)) return;
+  state.investigation = captureInvestigation();
+  state.layer = layer;
+  state.hidden.clear();
+  openImagePath(img, path, layer, state.whole, true);
+}
+
+function renderOverview(box, scroller) {
+  setTitle("right-title", "Comparison overview", pair()[0].label + " \u2192 " + pair()[1].label);
+  scroller.removeAttribute("role");
+  const diffs = differences();
+  const [base, target] = pair();
+  const payload = sum(target.layers, layer => layer.fileSize) - sum(base.layers, layer => layer.fileSize);
+  const hidden = sum(target.layers, layer => layer.reclaimable) - sum(base.layers, layer => layer.reclaimable);
+  const download = additionalDownload(base, target);
+  add(scroller, el("div", null, base.label + " \u2192 " + target.label), el("div", "overview-gap"),
+    el("div", null, "File payload change  " + signed(payload)),
+    el("div", null, "Hidden payload change  " + signed(hidden)),
+    el("div", "silt", download === null
+      ? "Additional download unavailable: original compressed sizes are unknown for daemon snapshots."
+      : "Additional download  " + size(download) + " with baseline present"), el("div", "overview-gap"));
+  for (const [view, label, total] of [["files", "Files", diffs.length],
+    ["packages", "Packages", packageUnavailableReason() ? null : packageDifferences().length]]) {
+    const button = add(el("button", "overview-choice"), el("span", "choice-mark"),
+      el("strong", null, label), el("span", "silt", total === null ? "  unavailable"
+        : "  " + total.toLocaleString("en-US") + " changed " + (view === "files" ? "paths" : "packages")));
+    button.addEventListener("click", () => openComparisonSection(view));
+    scroller.append(button);
+  }
+  add(scroller, el("div", "overview-gap"), renderComparisonSummary());
+  if (warningsCount()) scroller.append(el("div", "ochre", count(warningsCount(), "metadata warning")));
+  scroller.append(el("div", "silt", "File differences compare the final filesystems."));
+  box.append(scroller);
+}
+
+function packageUnavailableReason() {
+  const [base, target] = pair().map(finalInventory);
+  if (base.unavailableReason === target.unavailableReason) return base.unavailableReason;
+  return [base.unavailableReason ? pair()[0].label + ": " + base.unavailableReason : null,
+    target.unavailableReason ? pair()[1].label + ": " + target.unavailableReason : null].filter(Boolean).join(" ");
+}
+function renderComparisonSummary() {
+  const packages = packageDifferences();
+  const updated = packages.filter(item => item.before != null && item.after != null).length;
+  const added = packages.filter(item => item.before == null).length;
+  const removed = packages.filter(item => item.after == null).length;
+  const status = el("div", "controls comparison-summary");
+  const unavailable = packageUnavailableReason();
+  if (unavailable) {
+    status.append(el("span", "ochre", "Package inventory unavailable: " + unavailable));
+    return status;
+  }
+  const [base, target] = pair().map(finalInventory);
+  const missing = base.ecosystems.filter(left => {
+    const right = target.ecosystems.find(item => item.ecosystem === left.ecosystem);
+    return left.available !== right.available;
+  }).map(item => item.ecosystem);
+  add(status,
+    add(el("span", "chip"), el("b", "ochre", "~"), " " + updated + " updated"),
+    add(el("span", "chip"), el("b", "kelp", "+"), " " + added + " added"),
+    add(el("span", "chip"), el("b", "garnet", "\u2212"), " " + removed + " removed"),
+    el("span", "push " + (missing.length ? "ochre" : "silt"), missing.length
+      ? "\u25b2 " + missing.join(", ") + " metadata unavailable"
+      : count((report.differences || []).length, "path differs", "paths differ")));
+  return status;
+}
+
+function foldCase(text) {
+  return Array.from(text, char => {
+    const upper = char.toUpperCase();
+    return upper.length === char.length && !(char.codePointAt(0) > 127 && upper.codePointAt(0) < 128) ? upper : char;
+  }).join("");
+}
+
+const searchIndexes = new WeakMap();
+const searchResultsCache = new WeakMap();
+function searchIndex(img) {
+  let index = searchIndexes.get(img);
+  if (index) return index;
+  index = new Map();
+  for (const layer of img.layers) for (const change of layer.changes) {
+    const key = pathKey(img, change.path);
+    if (!index.has(key)) index.set(key, []);
+    const occurrences = index.get(key);
+    const previous = occurrences[occurrences.length - 1];
+    if (previous?.layer === layer.index) occurrences.pop();
+    occurrences.push({ ...change, layer: layer.index });
+  }
+  searchIndexes.set(img, index);
+  return index;
+}
+function searchResults(img) {
+  const index = searchIndex(img);
+  if (!state.searchQuery) return { hits: [], total: 0 };
+  const cached = searchResultsCache.get(img);
+  if (cached && cached.query === state.searchQuery && cached.layer === state.layer &&
+      cached.layerOnly === state.searchLayerOnly && cached.includeDeleted === state.searchIncludeDeleted &&
+      cached.exactCase === state.searchExactCase) return cached.result;
+  const query = state.searchExactCase ? state.searchQuery : foldCase(state.searchQuery);
+  const contains = path => (state.searchExactCase ? path : foldCase(path)).includes(query);
+  const live = new Map((img.files || []).map(entry => [pathKey(img, entry.path), entry]));
+  const hits = [];
+  for (const occurrences of index.values()) {
+    const last = occurrences[occurrences.length - 1];
+    if (!state.searchIncludeDeleted && last.change === "Deleted") continue;
+    let match;
+    if (state.searchLayerOnly) match = [...occurrences].reverse().find(item => item.layer === state.layer && contains(item.path));
+    else if (state.searchExactCase && img.platform.toLowerCase().startsWith("windows")) match = [...occurrences].reverse().find(item => contains(item.path));
+    else if (contains(last.path)) match = last;
+    if (match) {
+      const key = pathKey(img, match.path);
+      const entry = live.get(key);
+      const finding = findingForPath(img, match.path);
+      hits.push({
+        path: match.path, occurrences, directory: entry?.type === "Directory",
+        size: entry && entry.type !== "Directory" ? entry.size : 0,
+        note: finding ? noteForFinding(finding, finding.layers[0]) : null
+      });
+    }
+  }
+  hits.sort((a, b) => a.path < b.path ? -1 : a.path > b.path ? 1 : 0);
+  const result = { hits: hits.slice(0, 1000), total: hits.length };
+  searchResultsCache.set(img, { query: state.searchQuery, layer: state.layer, layerOnly: state.searchLayerOnly,
+    includeDeleted: state.searchIncludeDeleted, exactCase: state.searchExactCase, result });
+  return result;
+}
+
+function openSearchHit(hit) {
+  const last = hit.occurrences[hit.occurrences.length - 1];
+  const lastWrite = [...hit.occurrences].reverse().find(item => item.change !== "Deleted") || last;
+  state.investigation = captureInvestigation();
+  state.hidden.clear();
+  const img = image();
+  state.whole = last.change !== "Deleted" && Boolean(layerAt(img, lastWrite.layer));
+  openImagePath(img, lastWrite.path, lastWrite.layer, state.whole);
+}
+
+function captureInvestigation() {
+  return {
+    view: state.view, returnView: state.returnView, layer: state.layer, whole: state.whole,
+    findingsOnly: state.findingsOnly, hidden: [...state.hidden], expanded: [...state.expanded],
+    limits: [...state.limits], selected: state.selected, rightIndex: state.rightIndex,
+    filter: state.filter, packageFilter: state.packageFilter, findingSelected: state.findingSelected,
+    showBaseFindings: state.showBaseFindings, searchQuery: state.searchQuery,
+    searchLayerOnly: state.searchLayerOnly, searchIncludeDeleted: state.searchIncludeDeleted,
+    searchExactCase: state.searchExactCase, searchReturnView: state.searchReturnView
+  };
+}
+function restoreInvestigation() {
+  const saved = state.investigation;
+  if (!saved) return false;
+  state.investigation = null;
+  Object.assign(state, {
+    view: saved.view, returnView: saved.returnView, layer: saved.layer, whole: saved.whole,
+    findingsOnly: saved.findingsOnly, selected: saved.selected, rightIndex: saved.rightIndex,
+    filter: saved.filter, packageFilter: saved.packageFilter, findingSelected: saved.findingSelected,
+    showBaseFindings: saved.showBaseFindings, searchQuery: saved.searchQuery,
+    searchLayerOnly: saved.searchLayerOnly, searchIncludeDeleted: saved.searchIncludeDeleted,
+    searchExactCase: saved.searchExactCase, searchReturnView: saved.searchReturnView
+  });
+  state.hidden = new Set(saved.hidden);
+  state.expanded = new Set(saved.expanded);
+  state.limits = new Map(saved.limits);
+  render();
+  if (state.view === "search") $("filter")?.focus();
+  return true;
+}
+
+function renderSearch(box, scroller) {
+  setTitle("right-title", "Search", "names and paths");
+  scroller.removeAttribute("role");
+  const controls = el("div", "controls");
+  for (const [layerOnly, label] of [[false, "Whole image"], [true, "Layer " + state.layer]]) {
+    const button = el("button", null, label);
+    button.setAttribute("aria-pressed", String(state.searchLayerOnly === layerOnly));
+    button.dataset.focusId = "search-scope-" + layerOnly;
+    button.addEventListener("click", () => {
+      state.searchLayerOnly = layerOnly;
+      state.rightIndex = 0;
+      renderRight();
+      renderControls();
+    });
+    controls.append(button);
+  }
+  for (const [key, label] of [["searchIncludeDeleted", "Include deleted"], ["searchExactCase", "Exact case"]]) {
+    const button = el("button", null, label);
+    button.setAttribute("aria-pressed", String(state[key]));
+    button.dataset.focusId = key;
+    button.addEventListener("click", () => { state[key] = !state[key]; state.rightIndex = 0; renderRight(); renderControls(); });
+    controls.append(button);
+  }
+  controls.classList.add("toggle");
+  const { hits, total } = searchResults(image());
+  const searched = countSearchedPaths(image());
+  controls.append(el("span", "push silt", (total > hits.length
+    ? "First " + hits.length + " of " + total + " matches" : count(total, "match", "matches")) +
+    " in " + count(searched, "path")));
+  box.append(controls);
+  scroller.append(add(el("div", "search-colhead"), el("span", null, "layers"),
+    el("span", null, "size"), el("span", null, "path")));
+  for (const [index, hit] of hits.entries()) {
+    const row = el("button", "search-row");
+    row.setAttribute("role", "treeitem");
+    row.setAttribute("aria-level", "1");
+    const last = hit.occurrences[hit.occurrences.length - 1];
+    const history = hit.occurrences.map(item => item.layer + (GLYPH[item.change] || ""));
+    const badges = el("span", "search-history");
+    for (const badge of history.slice(-3)) badges.append(el("span", "badge", badge));
+    const deleted = last.change === "Deleted";
+    const path = el("span", "path" + (deleted ? " deleted" : hit.directory ? " dirname" : ""));
+    const fullPath = "/" + hit.path + (hit.directory ? "/" : "");
+    path.append(highlight(fullPath, state.searchQuery, state.searchExactCase));
+    const rowSize = el("span", "search-size" + (deleted ? " deleted" : ""), !hit.directory && !deleted && hit.size ? size(hit.size) : "");
+    add(row, badges, rowSize, path);
+    if (hit.note) row.append(el("span", "note", "\u25b2 " + hit.note));
+    else if (deleted) row.append(el("span", "note", "deleted in layer " + last.layer));
+    row.setAttribute("aria-selected", String(index === state.rightIndex));
+    row.title = [history.join("  "), hit.note || (deleted ? "deleted in layer " + last.layer : "")]
+      .filter(Boolean).join(" \u00b7 ");
+    row.addEventListener("click", () => openSearchHit(hit));
+    scroller.append(row);
+  }
+  if (!hits.length) scroller.append(el("p", "empty", state.searchQuery ? "No paths match this search." : "Type part of a path to search every layer."));
+  box.append(scroller);
+  if (hits.length) {
+    const selection = el("div", "search-selection");
+    selection.id = "search-selection";
+    box.append(selection);
+    updateSearchSelection();
+  }
+}
+function updateSearchSelection() {
+  const box = $("search-selection");
+  if (state.view !== "search" || !box) return;
+  const { hits } = searchResults(image());
+  const selected = hits[Math.min(state.rightIndex, hits.length - 1)];
+  if (!selected) return;
+  clear(box);
+  add(box, el("div", "silt", "Selected"),
+    el("strong", selected.directory ? "dirname" : null, "/" + selected.path + (selected.directory ? "/" : "")),
+    el("div", "silt", "layers  " + selected.occurrences.map(item => item.layer + (GLYPH[item.change] || "")).join("  ")),
+    el("div", "silt", "Select the result to open it in the last layer that wrote it." +
+      (selected.note ? "  \u25b2 " + selected.note : "")));
+}
+
+function selectionInfo(img, entries, metadata = new Map()) {
+  const info = el("div", "info");
+  if (!state.selected) return info;
+  const key = pathKey(img, state.selected);
+  const item = metadata.get(key);
+  const entry = item ? null : entries.find(e => pathKey(img, e.path) === key);
+  const directory = item?.type === "Directory" || entry?.type === "Directory";
+  info.append(el("span", "path bold" + (directory ? " dirname" : ""), "/" + state.selected + (directory ? "/" : "")));
+  const badges = el("span");
+  const history = (searchIndex(img).get(key) || []).slice(-8)
+    .map(occurrence => ({ layer: occurrence.layer, change: occurrence.change }));
+  for (const item of history) {
+    const badge = el("button");
+    add(badge, el("span", "silt", item.layer), el("span", TONE[item.change], GLYPH[item.change]));
+    badge.title = "Go to layer " + item.layer;
+    badge.addEventListener("click", () => selectLayer(item.layer));
+    add(badges, badge, " ");
+  }
+  if (badges.childNodes.length) add(info, el("span", "silt", "layers"), badges);
+  const right = el("span", "info-right");
+  const bytes = item ? (item.change === "Deleted" ? item.shippedSize : item.size) : entry?.size;
+  if (bytes != null) {
+    const totals = el("span");
+    add(totals, size(bytes), directory ? el("span", "silt", " in " + count(item?.fileCount || 0, "file")) : null,
+      item?.sharing ? el("span", "silt", " (shared)") : null);
+    right.append(totals);
+  }
+  info.append(right);
+  return info;
+}
+
+function renderDifferences(box, scroller) {
+  const diffs = differences();
+  const packages = packageDifferences();
+  const pathSizes = comparisonPathSizes();
+  setTitle("right-title", "Differences", pair()[0].label + " \u2192 " + pair()[1].label);
+  const search = state.filter;
+  const matches = search ? comparisonMatches(packages, diffs, search) : null;
+  box.append(renderComparisonSummary());
+  if (matches) box.append(el("div", "controls silt", "Filter: " + state.filter + " \u00b7 " +
+    count(matches.packages.length + matches.files.length, "match")));
+  const head = add(el("div", "colhead comparison"),
+    el("span", null, pair()[0].label), el("span"), el("span", null, pair()[1].label),
+    el("span", null, "change"), el("span", null, "name / version"));
+  box.append(head);
+  if (matches) renderComparisonSearch(scroller, matches, pathSizes, search);
+  else {
+    const packageSection = comparisonSection("packages", "Installed packages", count(packages.length, "changed package"));
+    renderPackages(packageSection, el("div", "comparison-section-body"), true);
+    const fileSection = comparisonSection("files", "Files", count(diffs.length, "different path"));
+    const fileBody = el("div", "comparison-section-body comparison-file-body");
+    fileBody.setAttribute("role", "group");
+    renderComparisonFiles(fileBody, diffs, pathSizes);
+    fileSection.append(fileBody);
+    add(scroller, packageSection, fileSection);
+  }
+  box.append(scroller);
+  box.append(comparisonSelectionInfo(pathSizes));
+}
+
+function comparisonMatches(packages, files, query) {
+  const folded = foldCase(query);
+  return {
+    packages: packages.filter(item => foldCase(item.name).includes(folded)),
+    files: files.filter(item => foldCase(item.path).includes(folded))
+  };
+}
+
+function renderComparisonSearch(scroller, matches, pathSizes, query) {
+  const packageMatches = matches.packages;
+  const fileMatches = matches.files;
+  const total = packageMatches.length + fileMatches.length;
+  const limit = state.comparisonSearchLimit;
+  let remaining = limit;
+  for (const item of packageMatches.slice(0, remaining)) {
+    scroller.append(packageDifferenceRow(item, 1, "", query));
+  }
+  remaining -= Math.min(packageMatches.length, remaining);
+  for (const item of fileMatches.slice(0, remaining)) {
+    const row = el("div", "trow comparison comparison-search has-sizes " + item.change);
+    row.dataset.path = item.path;
+    row.setAttribute("role", "treeitem");
+    row.setAttribute("aria-level", "1");
+    row.setAttribute("aria-selected", String(state.selected === item.path));
+    const sizes = pathSizes.get(comparisonPathKey(item.path));
+    const before = sizes ? (state.swapped ? sizes.after : sizes.before) : item.before;
+    const after = sizes ? (state.swapped ? sizes.before : sizes.after) : item.after;
+    const name = el("span", "name");
+    name.append(highlight("/" + item.path, query));
+    add(row, el("span", TONE[item.change], GLYPH[item.change]),
+      comparisonSizeCells(before, after), name);
+    row.addEventListener("click", () => {
+      state.selected = item.path;
+      state.rightIndex = rightRows().indexOf(row);
+      renderRight();
+    });
+    scroller.append(row);
+  }
+  if (total > limit) {
+    const more = el("button", "more", "Show " + Math.min(BATCH, total - limit) + " more");
+    more.addEventListener("click", () => {
+      state.comparisonSearchLimit += BATCH;
+      renderRight();
+    });
+    scroller.append(more);
+  }
+  if (!total) scroller.append(el("p", "empty", "No matching packages or paths."));
+}
+
+function renderComparisonFiles(scroller, diffs, pathSizes) {
+  if (!diffs.length) {
+    scroller.append(el("p", "empty", "These images have the same files."));
+    return;
+  }
+  const entries = diffs.map(d => ({ path: d.path, type: "File", size: (d.after || 0) - (d.before || 0), change: d.change, diff: d }));
+  const keyForPath = comparisonPathKey;
+  const pathSizesByKey = pathSizes;
+  const compareMetadata = new Map([...pathSizesByKey].map(([path, item]) => [path, {
+    type: item.directory ? "Directory" : item.link ? "SymbolicLink" : "File",
+    size: state.swapped ? item.after || 0 : item.before || 0,
+    fileCount: item.fileCount, sharing: comparisonSharing(item.sharing), hardLink: item.hardLink,
+    linkTarget: state.swapped ? item.swappedLinkTarget : item.linkTarget,
+    change: state.swapped ? FLIP[item.change] || item.change : item.change
+  }]));
+  const sizeCells = node => {
+    const totals = pathSizesByKey.get(keyForPath(node.path));
+    const d = node.entry?.diff;
+    const before = totals ? (state.swapped ? totals.after : totals.before) : d?.before;
+    const after = totals ? (state.swapped ? totals.before : totals.after) : d?.after;
+    return comparisonSizeCells(before, after);
+  };
+  if (!renderTree(scroller, buildTree(entries, null, compareMetadata, keyForPath), sizeCells, false, 1)) scroller.append(el("p", "empty", "No differences match these filters."));
+}
+
+function comparisonSharing(sharing) {
+  if (!state.swapped || !sharing) return sharing;
+  return sharing.split("; ").map(part => part.replace(/^(Before|After):/i,
+    (_, side) => (side.toLowerCase() === "before" ? "After" : "Before") + ":")).join("; ");
+}
+
+function comparisonSelectionInfo(pathSizes) {
+  const info = el("div", "info");
+  const item = pathSizes.get(comparisonPathKey(state.selected));
+  if (!item) { info.append(el("span", "silt", "Select a path to compare its sizes and sharing.")); return info; }
+  const before = state.swapped ? item.after : item.before;
+  const after = state.swapped ? item.before : item.after;
+  add(info, el("span", "path", "/" + item.path));
+  if (item.directory) info.append(el("span", "silt", count(item.fileCount, "file", "files")));
+  if (item.sharing) info.append(el("span", "silt", comparisonSharing(item.sharing).toLowerCase()));
+  const linkTarget = state.swapped ? item.swappedLinkTarget : item.linkTarget;
+  if (linkTarget) info.append(el("span", "silt", "\u2192 " + linkTarget));
+  add(info, el("span", "push silt",
+    (before == null ? "\u2014" : size(before)) + " \u2192 " + (after == null ? "\u2014" : size(after))));
+  return info;
+}
+
+function comparisonSizeCells(before, after) {
+  const cells = document.createDocumentFragment();
+  const delta = (after ?? 0) - (before ?? 0);
+  add(cells, el("span", "size silt", before == null ? "\u2014" : size(before)),
+    el("span", "silt", "\u2192"), el("span", "size foam", after == null ? "\u2014" : size(after)),
+    el("span", "size " + (delta > 0 ? "ochre" : delta < 0 ? "kelp" : "silt"), delta === 0 ? "" : signed(delta)));
+  return cells;
+}
+
+function comparisonSection(key, label, summary) {
+  const section = el("details", "comparison-section");
+  section.dataset.section = key;
+  section.open = Boolean(state.filter) || !state.comparisonCollapsed.has(key);
+  const heading = add(el("summary"), label, el("span", "silt", summary));
+  heading.setAttribute("role", "treeitem");
+  heading.setAttribute("aria-level", "1");
+  heading.setAttribute("aria-expanded", String(section.open));
+  section.addEventListener("toggle", () => {
+    if (!section.isConnected) return;
+    heading.setAttribute("aria-expanded", String(section.open));
+    if (!state.filter) {
+      if (section.open) state.comparisonCollapsed.delete(key);
+      else state.comparisonCollapsed.add(key);
+    }
+    markRightSelection();
+  });
+  section.append(heading);
+  return section;
+}
+
+function openComparisonSection(section) {
+  state.view = "files";
+  state.returnView = "files";
+  state.filter = "";
+  state.selected = null;
+  state.comparisonCollapsed.delete(section);
+  state.comparisonCollapsed.add(section === "packages" ? "files" : "packages");
+  renderRight();
+  renderControls();
+  const heading = $("right").querySelector('[data-section="' + section + '"] > summary');
+  const rows = rightRows();
+  state.rightIndex = Math.min(rows.length - 1, Math.max(0, rows.indexOf(heading) + 1));
+  markRightSelection();
+  $("right-pane").focus({ preventScroll: true });
+  rows[state.rightIndex]?.scrollIntoView({ block: "nearest" });
+}
+
+function packageRow(ecosystem, item, comparison) {
+  if (comparison) return packageDifferenceRow(item);
+  const row = el("details", "package-row");
+  const summary = el("summary");
+  const name = el("span", "name", item.name);
+  name.title = item.name;
+  const versions = item.versions.join(", ");
+  const version = el("span", "version silt", versions);
+  version.title = versions;
+  add(summary, name, version);
+  const detail = el("div", "package-detail");
+  add(detail, el("span", "bold", ecosystem + "  " + item.name), el("br"),
+    "Versions: " + versions);
+  row.append(summary, detail);
+  return row;
+}
+function packageDifferenceRow(item, level = 1, guide = "", query = "") {
+  const row = el("div", "package-diff-row");
+  row.setAttribute("role", "treeitem");
+  row.setAttribute("aria-level", String(level));
+  const name = add(el("span", "name"), el("span", "tree-guide", guide), highlight(item.name, query));
+  name.title = item.name;
+  const version = el("span", "version", item.change === "Modified" ? item.before + " \u2192 " + item.after : item.after ?? item.before);
+  version.title = version.textContent;
+  add(row, el("span", TONE[item.change], GLYPH[item.change]), name, version);
+  row.addEventListener("click", () => {
+    state.selected = null;
+    state.rightIndex = rightRows().indexOf(row);
+    $("right").querySelector(".info")?.replaceWith(comparisonSelectionInfo(comparisonPathSizes()));
+    markRightSelection();
+    $("right-pane").focus({ preventScroll: true });
+  });
+  return row;
+}
+
+function packageTextMatches(ecosystem, name, versions, query) {
+  return [ecosystem, name, versions].some(value => foldCase(value).includes(query));
+}
+
+function renderPackages(box, scroller, embedded = false) {
+  if (embedded) scroller.setAttribute("role", "group");
+  else scroller.removeAttribute("role");
+  const comparison = state.mode === "compare";
+  const query = foldCase(embedded ? state.filter : state.packageFilter);
+  const hidden = new Set();
+  const controls = el("div", "controls");
+
+  let groups;
+  let total;
+  let unavailable = [];
+  let reason;
+  let comparableInventory = false;
+  if (comparison) {
+    const [base, target] = pair().map(finalInventory);
+    const diffs = packageDifferences();
+    total = diffs.length;
+    reason = packageUnavailableReason();
+    groups = base.ecosystems.map(left => {
+      const right = target.ecosystems.find(item => item.ecosystem === left.ecosystem);
+      if (left.available !== right.available) {
+        unavailable.push(left.ecosystem + " (" + (left.available ? pair()[1].label : pair()[0].label) + ")");
+      }
+      if (!left.available || !right.available) return null;
+      comparableInventory = true;
+      const items = diffs.filter(item => item.ecosystem === left.ecosystem);
+      const unchanged = Math.max(0, right.packages.length - items.filter(item => item.after != null).length);
+      return items.length || unchanged ? { ecosystem: left.ecosystem, items, unchanged } : null;
+    }).filter(Boolean);
+    if (!embedded) {
+      setTitle("right-title", "Package differences", "final filesystems");
+      controls.append(el("span", "push silt", count(total, "changed package")));
+      box.append(controls);
+      box.append(renderComparisonSummary());
+    }
+  } else {
+    const current = inventory(image(), state.layer);
+    groups = current.ecosystems.filter(group => group.available && group.packages.length)
+      .map(group => ({ ecosystem: group.ecosystem, items: group.packages }));
+    total = sum(groups, group => group.items.length);
+    reason = current.unavailableReason;
+    setTitle("right-title", "Packages", state.layer === null ? "empty image" : "through layer " + state.layer);
+    controls.append(el("span", "push silt", count(total, "package")));
+    box.append(controls);
+  }
+
+  if (reason) {
+    scroller.append(el("p", "empty", reason));
+    box.append(scroller);
+    return;
+  }
+  if (unavailable.length) {
+    scroller.append(el("p", "package-note ochre", "Package metadata unavailable: " + unavailable.join(", ") + ". These ecosystems were not compared."));
+  }
+  let rendered = 0;
+  for (const group of groups) {
+    const items = group.items.filter(item => {
+      const versions = comparison ? (item.before ?? "") + " " + (item.after ?? "") : item.versions.join(", ");
+      return !query || (embedded ? foldCase(item.name).includes(query)
+        : packageTextMatches(group.ecosystem, item.name, versions, query));
+    });
+    if (!items.length && query) continue;
+    const section = el("details", "package-group");
+    const key = (comparison ? "compare:" : "image:") + group.ecosystem;
+    section.open = Boolean(query) || !state.packageCollapsed.has(key);
+    const label = comparison
+      ? group.items.length.toLocaleString("en-US") + " changed, " + group.unchanged.toLocaleString("en-US") + " unchanged"
+      : count(group.items.length, "package");
+    const heading = el("summary", null, group.ecosystem + "  " + label);
+    if (embedded) {
+      heading.setAttribute("role", "treeitem");
+      heading.setAttribute("aria-level", "2");
+      heading.setAttribute("aria-expanded", String(section.open));
+      section.addEventListener("toggle", () => {
+        if (!section.isConnected) return;
+        heading.setAttribute("aria-expanded", String(section.open));
+        markRightSelection();
+      });
+    }
+    heading.addEventListener("click", () => {
+      if (query) return;
+      if (section.open) state.packageCollapsed.add(key); else state.packageCollapsed.delete(key);
+    });
+    section.append(heading);
+    const limitKey = "\u0000package:" + key;
+    const limit = state.limits.get(limitKey) || BATCH;
+    const showUnchanged = embedded && group.unchanged > 0 && !query;
+    if (embedded) renderComparisonPackageItems(section, group.ecosystem, items.slice(0, limit), query, showUnchanged);
+    else for (const item of items.slice(0, limit)) section.append(packageRow(group.ecosystem, item, comparison));
+    if (items.length > limit) {
+      const more = el("button", "more", "Show " + Math.min(BATCH, items.length - limit) + " more");
+      more.addEventListener("click", () => { state.limits.set(limitKey, limit + BATCH); renderRight(); });
+      section.append(more);
+    }
+    if (!items.length && !showUnchanged) section.append(el("p", "empty", "No package version changes in this ecosystem."));
+    if (showUnchanged) {
+      const unchanged = add(el("div", "comparison-unchanged silt"), el("span", "tree-guide", "\u2514\u2500 "),
+        count(group.unchanged, "unchanged package", "unchanged packages"));
+      unchanged.setAttribute("role", "treeitem");
+      unchanged.setAttribute("aria-level", "3");
+      section.append(unchanged);
+    }
+    scroller.append(section);
+    rendered += items.length;
+  }
+  if (!groups.length) {
+    scroller.append(el("p", "empty", comparison
+      ? comparableInventory ? "No packages detected in comparable ecosystems."
+        : "No package ecosystem has readable metadata in both images."
+      : "No packages detected at this layer."));
+  } else if (!rendered && query) {
+    scroller.append(el("p", "empty", "No packages match the current filters."));
+  }
+  box.append(scroller);
+}
+
+function renderComparisonPackageItems(container, ecosystem, items, query, unchanged) {
+  const groups = new Map();
+  for (const item of items) {
+    const scope = ecosystem === "npm" && item.name.startsWith("@") && item.name.includes("/")
+      ? item.name.slice(0, item.name.indexOf("/")) : item.name;
+    if (!groups.has(scope)) groups.set(scope, []);
+    groups.get(scope).push(item);
+  }
+  for (const [index, [name, packages]] of [...groups].entries()) {
+    const last = index === groups.size - 1 && !unchanged;
+    const branch = last ? "\u2514\u2500 " : "\u251c\u2500 ";
+    let parent = container;
+    let level = 3;
+    if (packages.length > 1 || packages[0].name !== name) {
+      const scope = el("details", "package-scope");
+      const key = "scope:" + ecosystem + ":" + name;
+      scope.open = Boolean(query) || state.expanded.has(key);
+      const change = packages.every(item => item.change === "Added") ? "Added"
+        : packages.every(item => item.change === "Deleted") ? "Deleted" : "Modified";
+      const heading = add(el("summary"), el("span", "tree-guide", branch), el("span", TONE[change], GLYPH[change] + " " + name + "/"),
+        el("span", "silt", count(packages.length, "changed package")));
+      heading.setAttribute("role", "treeitem");
+      heading.setAttribute("aria-level", "3");
+      heading.setAttribute("aria-expanded", String(scope.open));
+      scope.addEventListener("toggle", () => {
+        if (!scope.isConnected) return;
+        heading.setAttribute("aria-expanded", String(scope.open));
+        markRightSelection();
+      });
+      heading.addEventListener("click", () => {
+        if (!query) {
+          if (scope.open) state.expanded.delete(key); else state.expanded.add(key);
+        }
+      });
+      scope.append(heading);
+      container.append(scope);
+      parent = scope;
+      level = 4;
+    }
+    for (const [packageIndex, item] of packages.entries()) {
+      const guide = parent === container ? branch
+        : (last ? "   " : "\u2502  ") + (packageIndex === packages.length - 1 ? "\u2514\u2500 " : "\u251c\u2500 ");
+      parent.append(packageDifferenceRow(item, level, guide));
+    }
+  }
+}
+
+/* ---------- Controls ---------- */
+function searchMatchCount() {
+  if (state.view === "search") return searchResults(image()).total;
+  if (state.mode === "compare") {
+    const matches = comparisonMatches(packageDifferences(), differences(), state.filter);
+    return matches.packages.length + matches.files.length;
+  }
+  const query = foldCase(state.packageFilter);
+  return sum(inventory(image(), state.layer).ecosystems.filter(group => group.available),
+    group => group.packages.filter(item =>
+      packageTextMatches(group.ecosystem, item.name, item.versions.join(", "), query)).length);
+}
+function renderControls() {
+  const active = document.activeElement;
+  const focusKey = active?.dataset.controlKey;
+  const inputFocused = active?.id === "filter";
+  const selectionStart = inputFocused ? active.selectionStart : null;
+  const selectionEnd = inputFocused ? active.selectionEnd : null;
+  const header = clear($("header-actions"));
+  const views = clear($("view-controls"));
+  const search = clear($("search-controls"));
+  const button = (parent, label, action, pressed) => {
+    const item = el("button", null, label);
+    if (pressed !== undefined) item.setAttribute("aria-pressed", String(pressed));
+    item.dataset.controlKey = parent.id + ":" + label;
+    item.addEventListener("click", action);
+    parent.append(item);
+    return item;
+  };
+  if (warningsCount()) button(header, warningsLabel() + " (" + warningsCount() + ")", () => openUtility("warnings"), state.view === "warnings");
+  const mobilePane = button(header, state.mobileDetails ? "Files" : "Details", () => {
+    state.mobileDetails = !state.mobileDetails;
+    document.body.dataset.mobileDetails = String(state.mobileDetails);
+    mobilePane.textContent = state.mobileDetails ? "Files" : "Details";
+    mobilePane.setAttribute("aria-label", state.mobileDetails ? "Show files" : "Show layer details");
+  });
+  mobilePane.classList.add("mobile-pane-toggle");
+  mobilePane.setAttribute("aria-label", state.mobileDetails ? "Show files" : "Show layer details");
+  if (state.mode === "compare") {
+    button(header, "Swap sides", swapSides);
+    button(header, "Snapshot", () => openUtility("snapshot"), state.view === "snapshot");
+  }
+  button(header, "Help", () => openUtility("help"), state.view === "help");
+  const utility = ["help", "warnings", "snapshot"].includes(state.view);
+  const viewItems = state.mode === "compare"
+    ? [["overview", "Overview"], ["files", "Differences"]]
+    : [["files", "Files"], ["packages", "Packages"], ["insights", "Insights"]];
+  if (utility) {
+    const returnLabel = viewItems.find(([view]) => view === state.returnView)?.[1].toLowerCase() || state.returnView;
+    button(views, "Back to " + returnLabel, back);
+  } else {
+    for (const [view, label] of viewItems) {
+      button(views, label, () => navigateView(view),
+        state.view === view || (view === "files" && state.view === "search"));
+    }
+    if (state.investigation) {
+      button(search, "Back to " + (state.investigation.view === "search" ? "search" : "insights"), restoreInvestigation);
+    }
+    if (state.view === "files" || state.view === "search" || state.view === "packages") {
+      const packages = state.view === "packages";
+      const field = state.mode === "compare" ? "filter" : packages ? "packageFilter" : "searchQuery";
+      search.append(filterInput(packages));
+      if (state[field] && state.view !== "search")
+        search.append(el("span", "search-count", count(searchMatchCount(), "match", "matches")));
+    }
+  }
+  if (inputFocused && $("filter")) {
+    $("filter").focus({ preventScroll: true });
+    $("filter").setSelectionRange(selectionStart, selectionEnd);
+  } else if (focusKey) {
+    const replacement = [...document.querySelectorAll("[data-control-key]")]
+      .find(node => node.dataset.controlKey === focusKey && !node.disabled);
+    (replacement || $("right-pane")).focus({ preventScroll: true });
+  }
+}
+
+/* ---------- Actions ---------- */
+function resetTree() { state.expanded.clear(); state.limits.clear(); state.selected = null; state.rightIndex = 0; }
+function renderBody() { renderLayers(); renderDetails(); renderRight(); }
+function render() { renderHeader(); renderBody(); renderControls(); }
+window.addEventListener("resize", renderHeader);
+function setMode(mode, side) {
+  const view = packageContext() ? "packages" : "files";
+  state.mode = mode;
+  state.side = side;
+  state.findingSelected = 0;
+  state.findingsOnly = false;
+  state.investigation = null;
+  state.filter = "";
+  state.searchQuery = "";
+  state.packageFilter = "";
+  state.view = mode === "compare" ? "overview" : view;
+  state.returnView = view;
+  resetTree();
+  const img = image();
+  if (mode === "image" && !layerAt(img, state.layer)) state.layer = img.layers.at(-1)?.index ?? null;
+  if (mode === "compare") state.row = compareRows().find(row => !row.shared)?.position ?? 0;
+  render();
+}
+function navigateView(view) {
+  if (state.view === "search" && view !== "search") state.searchQuery = "";
+  state.view = view;
+  state.returnView = view;
+  state.investigation = null;
+  state.findingsOnly = false;
+  resetTree();
+  renderDetails();
+  renderRight();
+  renderControls();
+}
+function openUtility(view) {
+  if (!["warnings", "help", "snapshot"].includes(state.view)) state.returnView = state.view;
+  state.view = view;
+  renderDetails();
+  renderRight();
+  renderControls();
+}
+function selectLayer(index) {
+  state.layer = index;
+  state.limits.clear();
+  state.selected = null;
+  state.rightIndex = 0;
+  render();
+}
+function selectRow(position) { state.row = position; renderHeader(); renderLayers(); renderDetails(); renderControls(); }
+function moveRow(delta) {
+  selectRow(Math.max(0, Math.min(compareRows().length - 1, state.row + delta)));
+}
+function moveLayer(delta) {
+  const layers = image().layers;
+  const at = layers.findIndex(l => l.index === state.layer);
+  const next = layers[Math.max(0, Math.min(layers.length - 1, at + delta))];
+  if (next) selectLayer(next.index);
+}
+function swapSides() {
+  state.swapped = !state.swapped;
+  resetTree();
+  render();
+}
+function back() {
+  if (state.view === "help" || state.view === "warnings" || state.view === "snapshot") {
+    state.view = state.returnView; renderDetails(); renderRight(); renderControls(); return;
+  }
+  if (state.investigation && restoreInvestigation()) return;
+  if (state.view === "search") {
+    state.view = state.searchReturnView || "files"; state.searchQuery = ""; resetTree(); renderDetails(); renderRight(); renderControls(); return;
+  }
+  if (state.mode === "compare" && state.view === "files") navigateView("overview");
+}
+function toggleKind(kind) {
+  if (state.mode === "compare") return;
+  const set = state.hidden;
+  if (set.has(kind)) set.delete(kind); else set.add(kind);
+  renderRight();
+  renderControls();
+}
+$("layers").addEventListener("click", () => $("layers").focus({ preventScroll: true }), true);
+$("layers").addEventListener("keydown", event => {
+  const map = { ArrowUp: -1, ArrowDown: 1, PageUp: -10, PageDown: 10, Home: -1e6, End: 1e6 };
+  if (!(event.key in map)) return;
+  event.preventDefault();
+  if (state.mode === "compare") moveRow(map[event.key]); else moveLayer(map[event.key]);
+  $("layers").focus();
+});
+const RIGHT_ROW_SELECTOR = ".trow, .package-diff-row, .comparison-section > summary, .comparison-unchanged, .package-group > summary, .package-scope > summary, .package-row > summary, .search-row, .overview-choice, .insight-group > summary";
+function rightRows() {
+  return [...$("right").querySelectorAll(RIGHT_ROW_SELECTOR)]
+    .filter(row => {
+      for (let parent = row.parentElement; parent && parent !== $("right"); parent = parent.parentElement) {
+        if (parent instanceof HTMLDetailsElement && !parent.open &&
+          !(row.tagName === "SUMMARY" && row.parentElement === parent)) return false;
+      }
+      return row.getClientRects().length > 0;
+    });
+}
+function markRightSelection() {
+  const rows = rightRows();
+  if (state.selected) {
+    const selected = rows.findIndex(row => row.dataset.path === state.selected);
+    if (selected >= 0) state.rightIndex = selected;
+  }
+  state.rightIndex = Math.max(0, Math.min(state.rightIndex, rows.length - 1));
+  rows.forEach((row, i) => {
+    row.classList.toggle("right-selected", i === state.rightIndex);
+    const mark = row.querySelector(".choice-mark, .selection-mark");
+    if (mark) mark.textContent = i === state.rightIndex ? "\u258c" : "";
+    if (row.getAttribute("role") === "treeitem") row.setAttribute("aria-selected", String(i === state.rightIndex));
+  });
+  if (state.mode === "image" && state.view === "files") {
+    state.selected = rows[state.rightIndex]?.dataset.path || null;
+    const img = image(), layer = layerAt(img, state.layer);
+    $("right").querySelector(".info")?.replaceWith(selectionInfo(img,
+      state.whole ? wholeSnapshot(img, state.layer).entries : layer ? layer.changes : [],
+      treeMetadata(img, state.layer, state.whole)));
+  }
+}
+$("right-pane").addEventListener("keydown", event => {
+  const rows = rightRows();
+  const focusedRow = event.target instanceof Element ? event.target.closest(RIGHT_ROW_SELECTOR) : null;
+  if (event.target !== $("right-pane") && !focusedRow) return;
+  if (!rows.length) return;
+  const focusedIndex = focusedRow ? rows.indexOf(focusedRow) : -1;
+  if (focusedIndex >= 0) state.rightIndex = focusedIndex;
+  const map = { ArrowUp: -1, ArrowDown: 1, PageUp: -10, PageDown: 10, Home: -1e6, End: 1e6 };
+  if (event.key in map) {
+    event.preventDefault();
+    state.rightIndex = Math.max(0, Math.min(rows.length - 1, state.rightIndex + map[event.key]));
+    const row = rows[state.rightIndex];
+    if (!row.dataset.path) state.selected = null;
+    if (row.dataset.path) {
+      state.selected = row.dataset.path;
+      rows.forEach(item => { if (item.hasAttribute("aria-selected")) item.setAttribute("aria-selected", String(item === row)); });
+    }
+    if (state.view === "insights" && row.dataset.findingSelection !== undefined) {
+      state.findingSelected = Number(row.dataset.findingSelection);
+      renderDetails();
+      renderRight();
+      $("right-pane").focus({ preventScroll: true });
+      rightRows()[state.rightIndex]?.scrollIntoView({ block: "nearest" });
+      return;
+    }
+    const info = $("right").querySelector(".info");
+    if (info && state.view === "files" && state.mode === "compare")
+      info.replaceWith(comparisonSelectionInfo(comparisonPathSizes()));
+    markRightSelection();
+    updateSearchSelection();
+    $("right-pane").focus({ preventScroll: true });
+    row.scrollIntoView({ block: "nearest" });
+    return;
+  }
+  const row = rows[state.rightIndex];
+  if (state.view === "insights" && event.key === "Enter" && row.dataset.findingSelection !== undefined) {
+    const item = visibleFindings(image())[Number(row.dataset.findingSelection)];
+    if (item?.finding?.roots.length) {
+      event.preventDefault();
+      openFindingPath(image(), item.finding, item.finding.roots[0]);
+      return;
+    }
+  }
+  if (event.key === "Enter" || event.key === " " || event.key === "ArrowLeft" || event.key === "ArrowRight") {
+    const expanded = row.getAttribute("aria-expanded");
+    const details = row.parentElement instanceof HTMLDetailsElement ? row.parentElement : null;
+    const open = expanded === null ? details?.open : expanded === "true";
+    if (event.key === "Enter" || event.key === " " || open !== undefined && open !== null &&
+        ((event.key === "ArrowLeft" && open) || (event.key === "ArrowRight" && !open))) {
+      event.preventDefault();
+      const toggle = row.querySelector(".tree-toggle");
+      if (toggle) toggle.click();
+      else if (event.key === "Enter" || event.key === " " || details) row.click();
+      markRightSelection();
+    } else if (event.key === "ArrowLeft" && (expanded === null || expanded === "false")) {
+      const depth = Number(row.getAttribute("aria-level") || 0);
+      for (let i = state.rightIndex - 1; i >= 0; i--) {
+        const parent = rows[i];
+        if (parent.getAttribute("aria-expanded") !== null &&
+            Number(parent.getAttribute("aria-level") || 0) < depth) {
+          state.rightIndex = i;
+          state.selected = parent.dataset.path || null;
+          markRightSelection();
+          if (state.mode === "compare") {
+            const info = $("right").querySelector(".info");
+            info?.replaceWith(comparisonSelectionInfo(comparisonPathSizes()));
+          }
+          parent.scrollIntoView({ block: "nearest" });
+          break;
+        }
+      }
+    }
+  }
+});
+$("right-pane").addEventListener("click", event => {
+  const summary = event.target instanceof Element ? event.target.closest("summary") : null;
+  if (!summary) return;
+  state.selected = null;
+  state.rightIndex = Math.max(0, rightRows().indexOf(summary));
+  if (state.mode === "compare") {
+    const info = $("right").querySelector(".info");
+    info?.replaceWith(comparisonSelectionInfo(comparisonPathSizes()));
+  }
+  markRightSelection();
+}, true);
+$("right-pane").addEventListener("click", event => {
+  if (event.target instanceof Element &&
+      event.target.closest("button, input, summary, select, textarea, a")) return;
+  $("right-pane").focus({ preventScroll: true });
+});
+document.addEventListener("keydown", event => {
+  if (event.ctrlKey || event.metaKey || event.altKey) return;
+  const typing = event.target instanceof HTMLInputElement;
+  if (event.key === "Escape") {
+    if (typing && event.target.value) {
+      event.preventDefault();
+      event.target.value = "";
+      event.target.dispatchEvent(new Event("input", { bubbles: true }));
+    } else {
+      if (typing) event.target.blur();
+      back();
+    }
+  }
+});
+
+(() => {
+  const img = image();
+  const initial = report.initialLayer;
+  const start = initial !== null && initial !== undefined && layerAt(img, initial) ? initial
+    : img.layers.at(-1)?.index ?? null;
+  state.layer = start;
+  if (comparing) state.row = compareRows().find(row => !row.shared)?.position ?? 0;
+  render();
+  $("layers").focus({ preventScroll: true });
+})();
+})().catch(error => {
+  const message = document.createElement("p");
+  message.textContent = `The report could not be loaded: ${error.message}. Open it in a current version of Chrome, Edge, Firefox, or Safari.`;
+  document.body.replaceChildren(message);
+});
+</script>
+</body>
+</html>

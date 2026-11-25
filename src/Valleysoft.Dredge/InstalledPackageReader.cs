@@ -45,9 +45,21 @@ internal static class InstalledPackageReader
     private const string ApkInstalledPath = "lib/apk/db/installed";
     private static readonly UTF8Encoding StrictUtf8 = new(false, true);
 
+    internal sealed class ManifestCache
+    {
+        internal Dictionary<(string Path, ImageContentId Content), ParsedManifest> Entries = [];
+
+        internal bool TryGet(string path, ImageContentId content, out ParsedManifest? result) =>
+            Entries.TryGetValue((path, content), out result);
+    }
+
+    internal sealed record ParsedManifest(
+        IReadOnlyList<InstalledPackage>? Packages, InstalledPackageDiagnostic? Diagnostic);
+
     internal static async Task<InstalledPackageMetadata> ReadAsync(
         ImageFileSystem fileSystem,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        ManifestCache? cache = null)
     {
         ArgumentNullException.ThrowIfNull(fileSystem);
         cancellationToken.ThrowIfCancellationRequested();
@@ -95,57 +107,64 @@ internal static class InstalledPackageReader
             .Concat(new[] { dpkgStatus, apkInstalled }.OfType<ImageFileSystemEntry>()
                 .Select(entry => (entry.Path, MaxDatabaseManifestBytes)))
             .Concat(nugetManifests.Select(entry => (entry.Path, MaxDatabaseManifestBytes)));
-        await foreach (var result in fileSystem.ReadFilesAsync(requests, cancellationToken))
+        Dictionary<(string Path, ImageContentId Content), ParsedManifest> nextCache = [];
+        await foreach (var result in fileSystem.ReadFilesWithCacheAsync(requests,
+            cache is null ? null : (path, content) => cache.TryGet(path, content, out _),
+            cancellationToken))
         {
             if (result.Error is not null)
             {
                 diagnostics.Add(new(result.Path, result.Error.Message));
                 continue;
             }
-            string content;
-            try
+            ParsedManifest parsed;
+            if (result.Cached)
             {
-                content = StrictUtf8.GetString(result.Content!).TrimStart('\uFEFF');
+                _ = cache!.TryGet(result.Path, result.ContentId!.Value, out ParsedManifest? existing);
+                parsed = existing!;
             }
-            catch (DecoderFallbackException exception)
+            else
             {
-                diagnostics.Add(new(result.Path, exception.Message));
+                parsed = ParseManifest(result.Path, result.Content!);
+            }
+            if (cache is not null)
+            {
+                nextCache[(result.Path, result.ContentId!.Value)] = parsed;
+            }
+            if (parsed.Diagnostic is not null)
+            {
+                diagnostics.Add(parsed.Diagnostic);
                 continue;
             }
-            switch (result.Path)
+            IReadOnlyList<InstalledPackage> parsedPackages = parsed.Packages!;
+            if (result.Path == DpkgStatusPath)
             {
-                case DpkgStatusPath:
-                    dpkgPackages = TryParse(() => ParseDpkgStatus(content), result.Path, diagnostics);
-                    break;
-                case ApkInstalledPath:
-                    apkPackages = TryParse(() => ParseApkInstalled(content), result.Path, diagnostics);
-                    break;
-                default:
-                    if (IsNuGetDepsPath(result.Path))
-                    {
-                        IReadOnlyList<InstalledPackage>? dependencies =
-                            TryParse(() => ParseNuGetDepsJson(content, result.Path), result.Path, diagnostics);
-                        if (dependencies is not null)
-                        {
-                            nugetAvailable = true;
-                            nugetPackages.AddRange(dependencies);
-                        }
-                        break;
-                    }
-                    bool npm = IsNpmPackageManifestPath(result.Path);
-                    InstalledPackage? package = TryParse(() => npm
-                        ? ParseNpmPackageJson(content, result.Path) : ParsePipMetadata(content, result.Path),
-                        result.Path, diagnostics);
-                    if (package is not null)
-                    {
-                        (npm ? npmPackages : pipPackages).Add(package);
-                        if (npm)
-                        {
-                            npmRoots.Add((package.Name, ImagePath.GetDirectoryName(result.Path)));
-                        }
-                    }
-                    break;
+                dpkgPackages = parsedPackages;
             }
+            else if (result.Path == ApkInstalledPath)
+            {
+                apkPackages = parsedPackages;
+            }
+            else if (IsNuGetDepsPath(result.Path))
+            {
+                nugetAvailable = true;
+                nugetPackages.AddRange(parsedPackages);
+            }
+            else if (IsNpmPackageManifestPath(result.Path))
+            {
+                InstalledPackage package = parsedPackages[0];
+                npmPackages.Add(package);
+                npmRoots.Add((package.Name, ImagePath.GetDirectoryName(result.Path)));
+            }
+            else
+            {
+                pipPackages.AddRange(parsedPackages);
+            }
+        }
+        cancellationToken.ThrowIfCancellationRequested();
+        if (cache is not null)
+        {
+            cache.Entries = nextCache;
         }
 
         Dictionary<InstalledPackageEcosystem, InstalledPackageEcosystemMetadata> ecosystems = new()
@@ -168,16 +187,24 @@ internal static class InstalledPackageReader
         };
     }
 
-    private static T? TryParse<T>(Func<T> parse, string path, List<InstalledPackageDiagnostic> diagnostics) where T : class
+    private static ParsedManifest ParseManifest(string path, byte[] bytes)
     {
         try
         {
-            return parse();
+            string content = StrictUtf8.GetString(bytes).TrimStart('\uFEFF');
+            IReadOnlyList<InstalledPackage> packages = path switch
+            {
+                DpkgStatusPath => ParseDpkgStatus(content),
+                ApkInstalledPath => ParseApkInstalled(content),
+                _ when IsNuGetDepsPath(path) => ParseNuGetDepsJson(content, path),
+                _ when IsNpmPackageManifestPath(path) => [ParseNpmPackageJson(content, path)],
+                _ => [ParsePipMetadata(content, path)]
+            };
+            return new(packages, null);
         }
-        catch (InvalidDataException exception)
+        catch (Exception exception) when (exception is InvalidDataException or DecoderFallbackException)
         {
-            diagnostics.Add(new(path, exception.Message));
-            return null;
+            return new(null, new(path, exception.Message));
         }
     }
 

@@ -23,7 +23,7 @@ defaults:
 jobs:
   linux:
     name: Linux (glibc)
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04 # Playwright 1.58 does not support Ubuntu 26.04.
 
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
@@ -42,7 +42,13 @@ jobs:
         run: dotnet build -c Release --no-restore -warnaserror
 
       - name: Test non-container coverage
-        run: dotnet test --no-restore -v normal -c Release --results-directory test-results/linux --filter "Category!=Integration" -- --report-xunit-trx
+        run: dotnet test --no-restore -v normal -c Release --results-directory test-results/linux --filter "Category!=Integration&Category!=Browser" -- --report-xunit-trx
+
+      - name: Install HTML report browser test dependencies
+        run: pwsh Valleysoft.Dredge.Tests/bin/Release/net10.0/playwright.ps1 install --with-deps chromium
+
+      - name: Test HTML report in Chromium
+        run: dotnet test --project Valleysoft.Dredge.Tests/Valleysoft.Dredge.Tests.csproj --no-build -c Release -e DREDGE_HTML_BROWSER_TESTS=1 --filter-class Valleysoft.Dredge.Tests.HtmlReportBrowserTests
 
       - name: Upload Test Results
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
@@ -103,7 +109,7 @@ jobs:
         run: dotnet build -c Release --no-restore -warnaserror
 
       - name: Test non-container coverage
-        run: dotnet test --no-restore -v normal -c Release --results-directory test-results/windows --filter "Category!=Integration" -- --report-xunit-trx
+        run: dotnet test --no-restore -v normal -c Release --results-directory test-results/windows --filter "Category!=Integration&Category!=Browser" -- --report-xunit-trx
 
       - name: Upload Test Results
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
@@ -134,7 +140,7 @@ jobs:
         run: dotnet build -c Release --no-restore -warnaserror
 
       - name: Test non-container coverage
-        run: dotnet test --no-restore -v normal -c Release --results-directory test-results/macos --filter "Category!=Integration" -- --report-xunit-trx
+        run: dotnet test --no-restore -v normal -c Release --results-directory test-results/macos --filter "Category!=Integration&Category!=Browser" -- --report-xunit-trx
 
       - name: Upload Test Results
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
@@ -168,7 +174,7 @@ jobs:
         run: dotnet build -c Release --no-restore -warnaserror
 
       - name: Test non-container coverage
-        run: dotnet test --no-restore -v normal -c Release --results-directory test-results/musl --filter "Category!=Integration" -- --report-xunit-trx
+        run: dotnet test --no-restore -v normal -c Release --results-directory test-results/musl --filter "Category!=Integration&Category!=Browser" -- --report-xunit-trx
 
       - name: Upload Test Results
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7

@@ -6,9 +6,9 @@ namespace Valleysoft.Dredge.Commands.Image;
 
 public sealed class ExploreCommand : RegistryCommandBase<ExploreOptions>
 {
-    public ExploreCommand(IDockerRegistryClientFactory dockerRegistryClientFactory)
+    public ExploreCommand(IDockerRegistryClientFactory dockerRegistryClientFactory, TextWriter? output = null)
         : base("explore", "Interactively explore image layers, files, and insights",
-            dockerRegistryClientFactory)
+            dockerRegistryClientFactory, output)
     {
     }
 
@@ -17,6 +17,15 @@ public sealed class ExploreCommand : RegistryCommandBase<ExploreOptions>
         ImageSourceReference image = ImageSourceReference.Parse(Options.Image);
         return ExecuteCommandAsync(image.Registry, cancellationToken, async ct =>
         {
+            if (Options.OutputFormat == ExploreOutput.Html)
+            {
+                string report = await HtmlImageReport.CreateAsync(
+                    ImageSourceFactory ?? new ImageSourceFactory(DockerRegistryClientFactory),
+                    DockerRegistryClientFactory, Options, Error, ct);
+                await Output.WriteAsync(report.AsMemory(), ct);
+                return;
+            }
+
             if (Console.IsInputRedirected || Console.IsOutputRedirected)
             {
                 throw new InvalidOperationException(
