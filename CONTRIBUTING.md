@@ -24,8 +24,19 @@ The full suite starts disposable registry containers for integration tests.
 To run without Docker, replace the test command with:
 
 ```shell
-dotnet test --no-restore -v normal -c Release --filter "Category!=Integration"
+dotnet test --no-restore -v normal -c Release --filter "Category!=Integration&Category!=Browser"
 ```
+
+The HTML report browser tests require Playwright's Chromium browser. From `src`,
+install the browser once and opt in when running the tests:
+
+```shell
+pwsh Valleysoft.Dredge.Tests/bin/Release/net10.0/playwright.ps1 install chromium
+dotnet test --project Valleysoft.Dredge.Tests/Valleysoft.Dredge.Tests.csproj -c Release -e DREDGE_HTML_BROWSER_TESTS=1 --filter-class Valleysoft.Dredge.Tests.HtmlReportBrowserTests
+```
+
+Without `DREDGE_HTML_BROWSER_TESTS=1`, those tests are skipped. The browser test
+class must check its opt-in before accessing the browser fixture.
 
 To run one test class:
 

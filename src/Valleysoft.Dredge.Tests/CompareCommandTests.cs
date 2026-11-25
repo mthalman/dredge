@@ -26,7 +26,7 @@ public sealed class CompareCommandTests
         using var report = JsonDocument.Parse(output.ToString());
         Assert.Equal(16, report.RootElement.GetProperty("files").GetArrayLength());
         Assert.Equal("dockerImageId", report.RootElement.GetProperty("base").GetProperty("identityKind").GetString());
-        await File.WriteAllTextAsync(Path.Combine(ComparePerformanceTests.RepositoryRoot(), ".compare-smoke", "report.json"),
+        await File.WriteAllTextAsync(Path.Combine(CompareFixtureTests.RepositoryRoot(), ".compare-smoke", "report.json"),
             output.ToString(), TestContext.Current.CancellationToken);
     }
 
@@ -160,6 +160,52 @@ public sealed class CompareCommandTests
     }
 
     [Fact]
+    public async Task IncompatibleFileAndPackageScopesDoNotReadLayers()
+    {
+        using var fixture = new SemanticCompareFixture();
+        byte[] layer = Layer(new TarItem("file", "value"));
+        fixture.Images["base"] = Image(layer);
+        fixture.Images["target"] = new([layer], Configuration([layer], architecture: "arm64"));
+        var report = await fixture.CompareAsync("base", "target", "--scope", "files", "--scope", "packages", "--scope", "config");
+        Assert.Equal("incompatible", report.Sections["files"].Coverage);
+        Assert.Equal("incompatible", report.Sections["packages"].Coverage);
+        Assert.NotEmpty(report.Config);
+        Assert.Equal(0, fixture.Reads);
+    }
+
+    [Fact]
+    public async Task IncompatiblePlatformsStillLoadLayersForSizes()
+    {
+        using var fixture = new SemanticCompareFixture();
+        byte[] layer = Layer(new TarItem("file", "value"));
+        fixture.Images["base"] = Image(layer);
+        fixture.Images["target"] = new([layer], Configuration([layer], architecture: "arm64"));
+        var report = await fixture.CompareAsync("base", "target", "--scope", "files", "--scope", "sizes");
+        Assert.Equal("incompatible", report.Sections["files"].Coverage);
+        Assert.Equal("available", report.Sections["sizes"].Coverage);
+        Assert.True(fixture.Reads > 0);
+    }
+
+    [Theory]
+    [InlineData(false, "available", 0)]
+    [InlineData(true, "partial", 1)]
+    public async Task WindowsSizeCoverageDistinguishesMetadataWarningFromExcludedPayload(
+        bool hasExcludedPayload, string coverage, int exitCode)
+    {
+        using var fixture = new SemanticCompareFixture();
+        TarItem[] items = hasExcludedPayload
+            ? [new("Files/file", "data"), new("Hives/registry", "excluded")]
+            : [new("Files/file", "data")];
+        byte[] layer = Layer(items);
+        fixture.Images["base"] = new([layer], Configuration([layer], os: "windows"));
+        fixture.Images["target"] = fixture.Images["base"];
+        var report = await fixture.CompareAsync("base", "target", "--scope", "sizes");
+        Assert.Equal(exitCode, report.ExitCode);
+        Assert.Equal(coverage, report.Sections["sizes"].Coverage);
+        Assert.Equal(coverage, report.Sizes.Single(static s => s.Name == "effectiveLiveContentBytes").Coverage);
+    }
+
+    [Fact]
     public async Task DaemonSizeCoverageIsPartialEvenWithKnownDifferences()
     {
         using var fixture = new SemanticCompareFixture();
@@ -254,8 +300,10 @@ public sealed class CompareCommandTests
         Assert.False(size.TryGetProperty("afterBytes", out _));
     }
 
-    [Fact]
-    public void TextOutputGroupsChangesAndSharesLimitAcrossKinds()
+    [Theory]
+    [InlineData("\n")]
+    [InlineData("\r\n")]
+    public void TextOutputGroupsChangesAndSharesLimitAcrossKinds(string newLine)
     {
         static ComparePackageDifference Package(string name, string kind, string? before, string? after) =>
             new("dpkg", "system/all", name, kind,
@@ -327,6 +375,18 @@ public sealed class CompareCommandTests
         Assert.Contains("Showing 3 of 6 differences", output);
         Assert.True(output.IndexOf("\u001b[", StringComparison.Ordinal) < 0);
 
+        using StringWriter noDetails = new();
+        CompareTextRenderer.Write(noDetails, result, 0);
+        string summaryOnly = noDetails.ToString();
+        Assert.Contains("Added (2)", summaryOnly);
+        Assert.Contains("... 2 more added", summaryOnly);
+        Assert.Contains("Removed (2)", summaryOnly);
+        Assert.Contains("... 2 more removed", summaryOnly);
+        Assert.Contains("Changed (2)", summaryOnly);
+        Assert.Contains("... 2 more changed", summaryOnly);
+        Assert.DoesNotContain("+ add-a", summaryOnly);
+        Assert.Contains("Showing 0 of 6 differences", summaryOnly);
+
         CompareResult incomplete = result with
         {
             Complete = false,
@@ -338,14 +398,38 @@ public sealed class CompareCommandTests
             Diagnostics = [new("packageCoverageIncomplete", "target", "packages", "dpkg", "Package inventory is incomplete.")],
             PackageCoverage = [.. result.PackageCoverage, new("dpkg", "target", "partial", 2, 1, 1)]
         };
-        using StringWriter incompleteText = new();
+        using StringWriter incompleteText = new() { NewLine = newLine };
         CompareTextRenderer.Write(incompleteText, incomplete, 3, isColorDisabled: true);
         string incompleteOutput = incompleteText.ToString();
         Assert.Contains("Coverage", incompleteOutput);
         Assert.Contains("dpkg target: Partial (1/2 parsed, 1 failed)", incompleteOutput);
         Assert.Contains("Warning: Packages target /dpkg: Package inventory is incomplete.", incompleteOutput);
         Assert.True(incompleteOutput.IndexOf("Coverage", StringComparison.Ordinal) <
-            incompleteOutput.IndexOf("\r\nPackages\r\n", StringComparison.Ordinal));
+            incompleteOutput.IndexOf($"{newLine}Packages{newLine}", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public async Task TextHeadersRetainFullDigestsForLongImageReferences()
+    {
+        using var fixture = new SemanticCompareFixture();
+        fixture.Images["base"] = Image(Layer(new TarItem("file", "data")));
+        fixture.Images["target"] = fixture.Images["base"];
+        CompareResult result = await fixture.CompareAsync("base", "target", "--scope", "files");
+        string host = string.Join(".", Enumerable.Repeat(new string('a', 60), 4));
+        string repository = $"{new string('b', 120)}/{new string('c', 120)}";
+        string reference = $"{host}/{repository}:{new string('d', 128)}";
+        _ = ImageName.Parse(reference);
+        result = result with
+        {
+            Base = result.Base with { Requested = reference },
+            Target = result.Target with { Requested = reference }
+        };
+        using StringWriter text = new();
+        CompareTextRenderer.Write(text, result, 0);
+        string[] lines = text.ToString().Split(Environment.NewLine);
+        Assert.Contains(result.Base.Identity, lines[0]);
+        Assert.Contains(result.Target.Identity, lines[1]);
+        Assert.Contains(reference, lines[0]);
     }
 
     [Fact]

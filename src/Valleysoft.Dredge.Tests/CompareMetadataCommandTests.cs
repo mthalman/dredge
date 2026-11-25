@@ -114,6 +114,7 @@ public class CompareMetadataCommandTests
                 "Env": null,
                 "Entrypoint": null,
                 "Cmd": null,
+                "futureField": null,
                 "Labels": null,
                 "ExposedPorts": null,
                 "Volumes": null

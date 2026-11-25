@@ -425,7 +425,7 @@ internal sealed class ExplorerWindow : Window
         extractLabel.Visible = extractField.Visible = extracting;
         if (searching)
         {
-            int n = Comparing ? Compare.Rows().Count
+            int n = Comparing ? Compare.SearchMatchCount
                 : s.View == RightView.Packages ? ex.PackageRows(s).Count(static row => !row.IsGroup) : ex.SearchResults(s).Total;
             string count = n == 1 ? "1 match" : $"{Fmt.N(n)} matches";
             if (matches.Text != count)

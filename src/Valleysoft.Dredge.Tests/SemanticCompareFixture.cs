@@ -22,6 +22,7 @@ internal sealed class SemanticCompareFixture : IDisposable, IImageSourceFactory
     public List<ImageSourceRequirements> Requirements { get; } = [];
     public bool FailTarget { get; set; }
     public bool CancelContent { get; set; }
+    public Exception? ContentFailure { get; set; }
     public bool UseDaemonArchive { get; set; }
     public RecordingProcessTerminator? Terminator { get; private set; }
     public static DateTime Timestamp { get; } = new(2020, 1, 1, 0, 0, 0, DateTimeKind.Utc);
@@ -175,6 +176,7 @@ internal sealed class SemanticCompareFixture : IDisposable, IImageSourceFactory
             cancellationToken.ThrowIfCancellationRequested();
             fixture.Reads++;
             if (fixture.CancelContent) { return Task.FromCanceled<BlobDownloadResult>(new CancellationToken(true)); }
+            if (fixture.ContentFailure is Exception failure) { throw failure; }
             byte[] bytes = layers.Single(layer => Digest(layer) == digest);
             return Task.FromResult(new BlobDownloadResult(new TrackedStream(bytes, fixture), false, null, null, bytes.Length));
         }

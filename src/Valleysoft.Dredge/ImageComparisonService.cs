@@ -1,5 +1,6 @@
 using System.Text;
 using System.Text.Json;
+using Valleysoft.DockerRegistryClient;
 using Valleysoft.Dredge.Commands.Image;
 
 namespace Valleysoft.Dredge;
@@ -25,14 +26,26 @@ internal static class ImageComparisonService
         bool contentIdentity = baseline.IsDaemon || target.IsDaemon;
         bool compatible = ExplorerPlatform.FromConfig(baseline.Configuration, baseline.SelectedPlatform)
             .IsCompatibleWith(ExplorerPlatform.FromConfig(target.Configuration, target.SelectedPlatform));
+        bool filesystemSupported = SupportsFilesystem(baseline.Configuration.Os) &&
+            SupportsFilesystem(target.Configuration.Os);
         try
         {
             foreach (string scope in CompareOptions.AllScopes)
             {
                 sections[scope] = new("notRequested", null, 0, 0, 0);
             }
-            bool needsFiles = scopes.Overlaps(["files", "packages", "sizes"]);
-            if (needsFiles)
+            if (scopes.Contains("sizes"))
+            {
+                if (SupportsFilesystem(baseline.Configuration.Os))
+                {
+                    before = await LoadAsync(baseline, "base");
+                }
+                if (SupportsFilesystem(target.Configuration.Os))
+                {
+                    after = await LoadAsync(target, "target");
+                }
+            }
+            else if (filesystemSupported && compatible && scopes.Overlaps(["files", "packages"]))
             {
                 before = await LoadAsync(baseline, "base");
                 after = await LoadAsync(target, "target");
@@ -68,7 +81,8 @@ internal static class ImageComparisonService
                         layers = differences.OrderBy(static d => d.Path, StringComparer.Ordinal).ToArray();
                     }
                 }
-                catch (Exception exception) when (exception is NotSupportedException or InvalidDataException or IOException)
+                catch (Exception exception) when (exception is NotSupportedException or InvalidDataException or IOException or
+                    HttpRequestException or RegistryException)
                 {
                     layerCoverage = "partial";
                     diagnostics.Add(new("layerIdentityUnavailable", "comparison", "layers", null,
@@ -166,7 +180,7 @@ internal static class ImageComparisonService
                 long? estimate = registry ? AdditionalBytes(baseline, target) : null;
                 Measure("targetOnlyUniqueRegistryBlobBytes", registry ? 0 : null, estimate, true);
                 bool partial = sizes.Any(static s => s.Coverage != "available") ||
-                    before?.Files.DiagnosticCount > 0 || after?.Files.DiagnosticCount > 0;
+                    before?.Files.HasSizeCoverageGaps == true || after?.Files.HasSizeCoverageGaps == true;
                 sections["sizes"] = Section(partial ? "partial" : "available",
                     sizes.Where(static s => s.DeltaBytes is not null and not 0).Select(static _ => "changed"));
                 if (partial)
@@ -205,18 +219,10 @@ internal static class ImageComparisonService
                     Platforms = [],
                     Platform = ExplorerPlatform.FromConfig(source.Configuration, source.SelectedPlatform)
                 }, store!, null, cancellationToken);
-                try
-                {
-                    if (contentIdentity) { await session.EnsureContentIdentitiesAsync(cancellationToken); }
-                }
-                catch
-                {
-                    await session.Files.DisposeAsync();
-                    throw;
-                }
                 return session;
             }
-            catch (Exception exception) when (exception is NotSupportedException or InvalidDataException or IOException)
+            catch (Exception exception) when (exception is NotSupportedException or InvalidDataException or IOException or
+                HttpRequestException or RegistryException)
             {
                 diagnostics.Add(new("analysisUnavailable", operand, "analysis", null,
                     "Effective filesystem analysis is unavailable or invalid; metadata facts remain supported."));
@@ -231,6 +237,12 @@ internal static class ImageComparisonService
                 diagnostics.Add(new("incompatiblePlatforms", "comparison", section, null,
                     "Platform-dependent comparison requires compatible independently resolved platforms."));
                 return "incompatible";
+            }
+            if (!filesystemSupported)
+            {
+                diagnostics.Add(new("unsupportedFilesystemPlatform", "comparison", section, null,
+                    "Filesystem and package analysis supports Linux and Windows images only."));
+                return "unavailable";
             }
             return before is null || after is null ? "unavailable" : "available";
         }
@@ -262,7 +274,7 @@ internal static class ImageComparisonService
         void Measure(string name, long? old, long? current, bool estimate = false) =>
             sizes.Add(new(name, old is null || current is null ? "unavailable" :
                 name is "totalLayerFilePayloadBytes" or "effectiveLiveContentBytes" or "hiddenContentBytes" &&
-                    (before?.Files.DiagnosticCount > 0 || after?.Files.DiagnosticCount > 0) ? "partial" : "available",
+                    (before?.Files.HasSizeCoverageGaps == true || after?.Files.HasSizeCoverageGaps == true) ? "partial" : "available",
                 old, current, old is null || current is null ? null : checked(current - old), estimate));
     }
 
@@ -317,14 +329,21 @@ internal static class ImageComparisonService
         session is null ? null : session.Entries.Where(ImageComparison.HasContent)
             .DistinctBy(static e => e.ContentId).Sum(static e => e.Size);
 
+    private static bool SupportsFilesystem(string? os) =>
+        string.Equals(os, "linux", StringComparison.OrdinalIgnoreCase) ||
+        string.Equals(os, "windows", StringComparison.OrdinalIgnoreCase);
+
     private static async Task<Dictionary<string, IReadOnlyList<ComparePackageAssociation>>> AssociationsAsync(
         ExplorerSession session, HashSet<string> changed, List<CompareDiagnostic> diagnostics,
         string operand, CancellationToken cancellationToken)
     {
         Dictionary<string, List<ComparePackageAssociation>> associations = new(StringComparer.Ordinal);
-        HashSet<(InstalledPackageEcosystem Ecosystem, string Scope, string Name)> ownershipSeen = [];
+        HashSet<ScopedInstalledPackage> ownershipSeen = [];
+        int unresolvedOwnershipPaths = 0;
         string[] paths = session.Entries.Select(static e => e.Path).ToArray();
-        var records = session.Packages.ScopedPackages.DistinctBy(static p => (p.Ecosystem, p.Scope, p.Name)).ToArray();
+        changed.IntersectWith(paths);
+        var records = session.Packages.ScopedPackages
+            .DistinctBy(static p => (p.Ecosystem, p.Scope, p.Name, p.EvidencePath)).ToArray();
         var byName = records.GroupBy(static p => (p.Ecosystem, p.Name)).ToDictionary(static g => g.Key, static g => g.ToArray());
         var npmRoots = records.Where(static p => p.Ecosystem == InstalledPackageEcosystem.Npm)
             .GroupBy(static p => p.Scope, StringComparer.Ordinal).ToDictionary(static g => g.Key, static g => g.ToArray(), StringComparer.Ordinal);
@@ -351,7 +370,7 @@ internal static class ImageComparisonService
             }
         }
         await foreach (var result in session.Files.ReadFilesAsync(requests.Select(static p => (p,
-            p == "lib/apk/db/installed" ? InstalledPackageReader.MaxDatabaseManifestBytes : InstalledPackageReader.MaxPackageManifestBytes)), cancellationToken))
+            InstalledPackageReader.MaxPackageOwnershipBytes)), cancellationToken))
         {
             cancellationToken.ThrowIfCancellationRequested();
             if (result.Error is not null)
@@ -380,9 +399,37 @@ internal static class ImageComparisonService
             {
                 string name = result.Path["var/lib/dpkg/info/".Length..^".list".Length];
                 string[] identity = name.Split(':', 2);
-                foreach (var owner in byName.GetValueOrDefault((InstalledPackageEcosystem.Dpkg, identity[0])) ?? [])
+                ScopedInstalledPackage[] owners =
+                    byName.GetValueOrDefault((InstalledPackageEcosystem.Dpkg, identity[0])) ?? [];
+                bool incompleteInventory = ImageComparison.HasIncompletePackageCoverage(
+                    session.Packages, InstalledPackageEcosystem.Dpkg);
+                if (identity.Length == 1 && (incompleteInventory ||
+                    owners.Select(static owner => owner.Scope).Distinct(StringComparer.Ordinal).Skip(1).Any()))
                 {
-                    if (identity.Length == 1 || owner.Scope == "system/" + identity[1])
+                    diagnostics.Add(new("ownershipEvidenceAmbiguous", operand, "packages", result.Path,
+                        "Unqualified dpkg ownership metadata is ambiguous across package architectures."));
+                    continue;
+                }
+                if (identity.Length == 2 && owners.Length == 1 && owners[0].Scope == "system" &&
+                    !incompleteInventory && requests.Count(request =>
+                    {
+                        if (!request.StartsWith("var/lib/dpkg/info/", StringComparison.Ordinal) ||
+                            !request.EndsWith(".list", StringComparison.Ordinal))
+                        {
+                            return false;
+                        }
+                        string file = request["var/lib/dpkg/info/".Length..^".list".Length];
+                        return file.StartsWith(identity[0] + ":", StringComparison.Ordinal);
+                    }) != 1)
+                {
+                    diagnostics.Add(new("ownershipEvidenceAmbiguous", operand, "packages", result.Path,
+                        "The architecture of this dpkg ownership metadata is ambiguous."));
+                    continue;
+                }
+                foreach (var owner in owners)
+                {
+                    if (identity.Length == 1 || owner.Scope == "system/" + identity[1] ||
+                        identity.Length == 2 && owners.Length == 1 && owner.Scope == "system" && !incompleteInventory)
                     {
                         Add(owner, PackageFileLister.ParseDpkgList(content), "recordedMetadata");
                     }
@@ -392,10 +439,16 @@ internal static class ImageComparisonService
             {
                 string metadata = ImagePath.GetDirectoryName(result.Path) + "/METADATA";
                 string root = ImagePath.GetDirectoryName(ImagePath.GetDirectoryName(result.Path));
-                foreach (var owner in pipMetadata.GetValueOrDefault(metadata) ?? [])
+                var owners = pipMetadata.GetValueOrDefault(metadata) ?? [];
+                if (owners.Length == 0) { continue; }
+                IReadOnlyList<string> owned;
+                try { owned = PackageFileLister.ParsePipRecord(content, root); }
+                catch (InvalidDataException)
                 {
-                    Add(owner, PackageFileLister.ParsePipRecord(content, root), "recordedMetadata");
+                    diagnostics.Add(new("ownershipEvidenceInvalid", operand, "packages", result.Path, "Recorded ownership metadata is invalid."));
+                    continue;
                 }
+                foreach (var owner in owners) { Add(owner, owned, "recordedMetadata"); }
             }
         }
         if (session.Packages.ScopedPackages.Any(static p => p.Ecosystem == InstalledPackageEcosystem.NuGet))
@@ -403,8 +456,13 @@ internal static class ImageComparisonService
             diagnostics.Add(new("ownershipNotSupported", operand, "packages", null,
                 "NuGet dependency manifests do not establish deployed file ownership."));
         }
+        if (unresolvedOwnershipPaths > 0)
+        {
+            diagnostics.Add(new("ownershipPathsUnresolved", operand, "packages", null,
+                $"{unresolvedOwnershipPaths} recorded package-owned paths could not be resolved."));
+        }
         foreach (var group in records.Where(static p => p.Ecosystem is InstalledPackageEcosystem.Dpkg or InstalledPackageEcosystem.Apk or InstalledPackageEcosystem.Pip)
-            .Where(p => !ownershipSeen.Contains((p.Ecosystem, p.Scope, p.Name))).GroupBy(static p => p.Ecosystem))
+            .Where(p => !ownershipSeen.Contains(p)).GroupBy(static p => p.Ecosystem))
         {
             diagnostics.Add(new("ownershipEvidenceNotDetected", operand, "packages", group.Key.ToString().ToLowerInvariant(),
                 $"Recorded ownership metadata was not detected for {group.Count()} observed package scopes."));
@@ -415,9 +473,20 @@ internal static class ImageComparisonService
 
         void Add(ScopedInstalledPackage owner, IEnumerable<string> owned, string evidence)
         {
-            ownershipSeen.Add((owner.Ecosystem, owner.Scope, owner.Name));
-            foreach (string path in owned.Where(changed.Contains))
+            ownershipSeen.Add(owner);
+            foreach (string recordedPath in owned)
             {
+                string path;
+                try
+                {
+                    path = session.Files.ResolveParentComponents(ImagePath.NormalizeRequested(recordedPath));
+                }
+                catch (Exception exception) when (exception is IOException or InvalidDataException)
+                {
+                    unresolvedOwnershipPaths++;
+                    continue;
+                }
+                if (!changed.Contains(path)) { continue; }
                 if (!associations.TryGetValue(path, out var list)) { associations[path] = list = []; }
                 list.Add(new(owner.Ecosystem.ToString().ToLowerInvariant(), owner.Scope, owner.Name, evidence));
             }

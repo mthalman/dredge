@@ -50,6 +50,9 @@ jobs:
       - name: Test HTML report in Chromium
         run: dotnet test --project Valleysoft.Dredge.Tests/Valleysoft.Dredge.Tests.csproj --no-build -c Release -e DREDGE_HTML_BROWSER_TESTS=1 --filter-class Valleysoft.Dredge.Tests.HtmlReportBrowserTests
 
+      - name: Verify HTML report browser tests skip when disabled
+        run: dotnet test --project Valleysoft.Dredge.Tests/Valleysoft.Dredge.Tests.csproj --no-build -c Release -e DREDGE_HTML_BROWSER_TESTS= --filter-class Valleysoft.Dredge.Tests.HtmlReportBrowserTests
+
       - name: Upload Test Results
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
         if: always()

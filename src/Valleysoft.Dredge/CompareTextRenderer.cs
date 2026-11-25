@@ -16,8 +16,8 @@ internal static class CompareTextRenderer
             AnsiConsole.Console.Profile.Capabilities.Ansi &&
             AnsiConsole.Console.Profile.Capabilities.ColorSystem != ColorSystem.NoColors;
 
-        Line($"Base    {result.Base.Requested}  {result.Base.Platform}  {result.Base.Identity}");
-        Line($"Target  {result.Target.Requested}  {result.Target.Platform}  {result.Target.Identity}");
+        writer.WriteLine(TerminalText.EscapeControls($"Base    {result.Base.Requested}  {result.Base.Platform}  {result.Base.Identity}"));
+        writer.WriteLine(TerminalText.EscapeControls($"Target  {result.Target.Requested}  {result.Target.Platform}  {result.Target.Identity}"));
         WriteStatus(writer, result, useColor);
 
         foreach (string scope in SemanticCompareOptions.AllScopes.Where(result.Options.Scopes.Contains))
@@ -162,7 +162,7 @@ internal static class CompareTextRenderer
 
             string? lastSection = null;
             string? lastEcosystem = null;
-            foreach (DetailGroup group in groups.Where(static group => group.Selected.Count > 0))
+            foreach (DetailGroup group in groups)
             {
                 if (group.Section != lastSection)
                 {

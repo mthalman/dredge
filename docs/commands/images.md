@@ -454,8 +454,7 @@ cache locations, storage limits, and cleanup.
 
 ## Compare semantic
 
-Compare effective image facts without launching the explorer, extracting a
-complete root filesystem, or opening an external comparison application:
+Compare two images without opening the interactive explorer:
 
 ```shell
 dredge image compare semantic <base> <target> [--output text|json]
@@ -465,143 +464,40 @@ dredge image compare semantic <base> <target> [--output text|json]
   [--docker-context <context> | --docker-host <endpoint>]
 ```
 
-Both operands accept bare registry references, `registry://` references, and
-`docker://` references independently. Resolution pins the selected registry
-manifest/config digest or Docker image ID once; a later retag does not change
-the comparison. Reports include requested references, actual platforms, source,
-and identity kinds. Docker connection identifiers omit socket paths and
-credential-bearing endpoint components.
-
-The default is all five scopes. Repeat `--scope` to select specific sections:
+By default, Dredge compares all five scopes. Repeat `--scope` to select only the
+sections you need:
 
 ```shell
-dredge image compare semantic registry://registry.example/app@sha256:<base-digest> docker://app:tested --scope files --scope config --output json
-dredge image compare semantic registry.example/app:previous registry.example/app:current --scope packages --scope config --output json
+dredge image compare semantic app:previous app:current --scope files --scope packages
 ```
 
-Replace the example registry, image names, and digest placeholder with your own
-inputs. Unselected sections are `notRequested` and do not affect completion or
-equality. Existing `compare files`, `compare layers`, and `compare metadata`
-subcommands retain their options and exit behavior; in particular, `compare files`
-still uses an external tool and its `--output` is not a semantic JSON selector.
+The scopes compare:
 
-### Equality and coverage
+- `files`: effective filesystem contents and metadata.
+- `packages`: versions found in supported package databases.
+- `config`: image configuration.
+- `layers`: layer history and distribution metadata.
+- `sizes`: image and filesystem payload sizes.
 
-| Exit | Unified comparison meaning |
-|-----:|----------------------------|
-| `0` | Requested evidence is complete and equal |
-| `2` | Requested evidence is complete and differences were found |
-| `1` | Requested evidence is incomplete, or acquisition/execution failed |
+Filesystem and package comparisons support Linux and Windows images. Other
+operating systems are not interpreted using Linux filesystem rules. Package
+results only cover metadata Dredge can discover in npm, dpkg, apk, pip, and
+NuGet formats.
 
-Incomplete coverage takes precedence over known differences. A usable partial
-report is printed before returning `1`; its overall `areEqual` and incomplete
-sections' `areEqual` are `null`, not `true`. Section coverage is `available`,
-`partial`, `unavailable`, `incompatible`, or `notRequested`. Package ecosystem
-coverage also distinguishes `notDetected`: neither side having discoverable
-metadata is not a failure. One-sided discovery, malformed metadata, and Windows
-inventory limitations make selected package coverage incomplete. An empty,
-successfully parsed database is an available empty inventory, not `notDetected`.
-Diagnostics retain their operand, section, code, and image path when known.
-
-Different independently resolved platforms make filesystem and package sections
-`incompatible`; configuration, layer, and supported size facts remain visible.
-See [Windows filesystem support](#windows-filesystem-support) for scanner limits.
-Unsupported entries or unavailable content hashes do not establish equality.
-
-Filesystem equality compares effective live paths after whiteouts and opaque
-directories: entry type, size, link target, permissions, ownership, content hash,
-and supported Windows metadata. Hard links use their bound content, including
-content whose original name was deleted or replaced. Modification timestamps
-are ignored by default; `--include-timestamps` opts into comparing them.
-Layer boundaries, tar ordering, and provenance are not filesystem differences.
-
-Package identity includes an inventory scope, not just a package name:
-npm installation roots, pip installation environments, NuGet application
-dependency-manifest paths and selected runtime targets, and dpkg/apk system
-inventories with architecture when recorded. Version sets and evidence paths
-are ordered deterministically. Observed changes from incomplete inventories are
-labelled non-definitive: missing metadata is not proof of package absence.
-Coverage counts distinguish failed metadata candidates from skipped records
-inside successfully parsed inventories.
-The inventories cover discoverable npm, dpkg, apk, pip, and NuGet metadata, not
-every possible installed-software format.
-
-Configuration uses the same normalization as `compare metadata`: maps/sets are
-order independent; execution arrays and duplicate environment assignments remain
-ordered. Unknown configuration fields, including empty values, are retained.
-Image creation timestamps are metadata facts, not filesystem modification times.
-Rootfs identities, history, and registry distribution descriptors are in `layers`,
-not `config`. Registry-only layer comparisons retain compressed blob identities.
-Mixed/daemon comparisons verify and use uncompressed diff IDs; Docker exports
-do not claim to preserve registry manifests or compression.
-
-### Filtering and output
-
-`--ignore-path` filters filesystem difference reporting only. It never filters
-packages, configuration, layers, or size facts. Patterns are image-relative and
-use `/` on every host: `*` matches within one segment, `?` matches one character,
-and `**` matches across segments; `**/name` also matches at the image root.
-A leading `/` is optional. POSIX matching is case sensitive; Windows matching
-is case insensitive. Dot/traversal segments, backslashes, bracket/brace syntax,
-controls, and negation/re-inclusion patterns are rejected.
-The report records ignore patterns and the number of ignored differences.
-Ignoring a path cannot turn unsupported/missing evidence into complete coverage.
+Use `--ignore-path` to exclude matching filesystem paths. It does not filter
+other scopes. Globs use `/`; `*` and `?` match within a path segment, while
+`**` can match across segments. Use `--include-timestamps` to compare file
+timestamps.
 
 ```shell
-dredge image compare semantic registry.example/app:previous registry.example/app:current --scope files --ignore-path 'var/log/**' --ignore-path '**/*.tmp' --limit 20
+dredge image compare semantic app:previous app:current --scope files --ignore-path 'var/log/**'
 ```
 
-Text shows full image identities, overall status, and summaries only for
-requested scopes. Difference details are grouped by scope, package ecosystem,
-and change kind. Within each package group, names are ordered ordinally, with
-scope breaking ties. Sizes use human-readable units; package inventory coverage and
-diagnostics are shown when evidence is incomplete or records were skipped or
-failed. `--limit` defaults to 100 total file/package/config/layer detail rows;
-the limit is shared fairly across change groups, and `0` shows summaries without
-details. Per-group omitted counts and the overall number shown are reported.
-The limit does not bound diagnostics or truncate summary counts. Detail lines are
-capped at 512 characters; JSON retains full values. Interactive text uses color
-when supported; redirected output is plain text. `--no-color` disables color,
-and control characters in untrusted metadata are escaped.
-
-`--output json` writes one complete versioned report to stdout. It ignores the
-text limit and retains every non-ignored observed difference, base/target facts,
-inventory evidence, and diagnostics. Lists and keys have stable order; execution
-timings and incidental cache/scratch paths are excluded. Null before/after values
-may be omitted. The schema is
-[`image-compare-v1.schema.json`](../schemas/image-compare-v1.schema.json).
-Errors preventing a usable report use the existing JSON error envelope on stderr.
-Image configuration may itself contain sensitive environment/label values;
-review a report before sharing it.
-
-### Sizes and provenance
-
-Each byte measurement has its own coverage:
-
-| Measurement | Definition |
-|-------------|------------|
-| `registryCompressedLayerBytes` | Sum of selected registry layer descriptor sizes; unavailable for original Docker compression |
-| `totalLayerFilePayloadBytes` | Total file-content payload shipped across layers, including overwritten/deleted content; excludes tar headers and non-file data |
-| `effectiveLiveContentBytes` | Live file-content payload, counting each bound physical content once across hard-link aliases |
-| `hiddenContentBytes` | Overwritten/deleted file-content payload no longer reachable from the effective filesystem |
-| `targetOnlyUniqueRegistryBlobBytes` | Estimate of unique target blob bytes absent from baseline layer identities |
-
-The download estimate assumes baseline blobs are already available and excludes
-other cache contents, protocol overhead, retries, and config/manifest transfer.
-It is not an actual transfer measurement and is unavailable for mixed/daemon
-sources. Selecting `sizes` with unavailable requested measurements returns `1`;
-selecting only `files`, `packages`, or `config` can still return `0` or `2`.
-
-Changed-file facts include entry-layer and content-layer provenance with explicit
-`registryBlobDigest` or `uncompressedDiffId` identity kinds. Package/file
-associations, when files and packages are selected, distinguish npm
-`inferredPath` associations from dpkg/apk/pip `recordedMetadata` ownership.
-NuGet dependency manifests do not establish deployed-file ownership.
-Missing ownership evidence is diagnostic, not invented attribution. There is
-no exact Dockerfile-line attribution, runtime compatibility verdict, or patch.
-
-See [fixed-fixture performance measurements](../image-compare-performance.md)
-for the reproducible resource measurement procedure and baselines.
+Use `--output json` for a complete machine-readable report. Text output limits
+details to 100 rows by default; change this with `--limit`. JSON follows the
+[`image-compare-v1.schema.json`](../schemas/image-compare-v1.schema.json)
+schema and is not limited by `--limit`. Review JSON output before sharing it,
+because image configuration may contain sensitive values.
 
 ## Compare metadata
 

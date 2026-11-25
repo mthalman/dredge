@@ -200,14 +200,18 @@ internal static class ImageMetadataComparison
                     document.AddTokenSet("Image", "osFeatures", value);
                     break;
                 case "os.version":
-                    document.AddToken("Image", "osVersion", value);
+                    document.AddToken("Image", "osVersion", value, preserveEmptyValue: false);
                     break;
                 default:
-                    document.AddToken("Image", LowerFirstCharacter(name), value);
+                    document.AddToken("Image", LowerFirstCharacter(name), value,
+                        preserveEmptyValue: !IsKnownImageConfigField(name));
                     break;
             }
         }
     }
+
+    private static bool IsKnownImageConfigField(string name) =>
+        name is "architecture" or "author" or "created" or "os" or "variant";
 
     private static void AddRootFilesystem(MetadataDocument document, JsonNode? rootFilesystem)
     {
@@ -220,7 +224,8 @@ internal static class ImageMetadataComparison
             .OrderBy(static property => property.Key, StringComparer.Ordinal))
         {
             string path = name == "diff_ids" ? "diffIds" : LowerFirstCharacter(name);
-            document.AddToken("RootFilesystem", path, value);
+            document.AddToken("RootFilesystem", path, value,
+                preserveEmptyValue: name is not ("diff_ids" or "type"));
         }
     }
 
@@ -281,11 +286,15 @@ internal static class ImageMetadataComparison
                         "WorkingDir" => "workingDirectory",
                         _ => LowerFirstCharacter(name)
                     };
-                    document.AddToken("Config", path, value);
+                    document.AddToken("Config", path, value, preserveEmptyValue: !IsKnownExecutionConfigField(name));
                     break;
             }
         }
     }
+
+    private static bool IsKnownExecutionConfigField(string name) =>
+        name is "ArgsEscaped" or "Cmd" or "Entrypoint" or "Healthcheck" or "Labels" or "OnBuild" or
+            "Shell" or "StopSignal" or "User" or "WorkingDir";
 
     private static void AddEnvironment(MetadataDocument document, JsonNode? environment)
     {
@@ -491,9 +500,10 @@ internal static class ImageMetadataComparison
             Items[$"{category}\0{path}"] = new MetadataItem(category, path, token);
         }
 
-        public void AddToken(string category, string path, JsonNode? value)
+        public void AddToken(string category, string path, JsonNode? value, bool? preserveEmptyValue = null)
         {
-            if (preserveEmptyValues && (value is null || value is JsonObject { Count: 0 } || value is JsonArray { Count: 0 }))
+            bool preserveEmpty = preserveEmptyValues && preserveEmptyValue != false;
+            if (preserveEmpty && (value is null || value is JsonObject { Count: 0 } || value is JsonArray { Count: 0 }))
             {
                 Items[$"{category}\0{path}"] = new(category, path, value?.DeepClone());
                 return;
@@ -511,14 +521,15 @@ internal static class ImageMetadataComparison
                     AddToken(
                         category,
                         $"{path}[{JsonHelper.Serialize(name, JsonHelper.Settings)}]",
-                        propertyValue);
+                        propertyValue,
+                        preserveEmpty);
                 }
             }
             else if (value is JsonArray valueArray)
             {
                 for (int i = 0; i < valueArray.Count; i++)
                 {
-                    AddToken(category, $"{path}[{i}]", valueArray[i]);
+                    AddToken(category, $"{path}[{i}]", valueArray[i], preserveEmpty);
                 }
             }
             else

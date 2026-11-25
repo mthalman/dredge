@@ -581,6 +581,246 @@ public sealed class ExplorerDefenseHostTests : IAsyncDisposable
     }
 
     [Fact]
+    public async Task PartialDpkgInventoryDoesNotReportUncertainAbsence()
+    {
+        TestImage baseline = await CreateAsync(Blob(("var/lib/dpkg/status",
+            "Package: alpha\nStatus: install ok installed\nVersion: 1\nArchitecture: amd64\n\n" +
+            "Package: gamma\nStatus: install ok installed\nVersion: 1\nArchitecture: amd64\n\n")));
+        TestImage target = await CreateAsync(Blob(("var/lib/dpkg/status",
+            "Package: alpha\nStatus: install ok installed\nArchitecture: amd64\n\n" +
+            "Package: beta\nStatus: install ok installed\nVersion: 2\nArchitecture: amd64\n\n" +
+            "Package: gamma\nStatus: install ok installed\nVersion: 2\nArchitecture: amd64\n\n")));
+
+        ExplorerComparison forward = await CompareAsync(baseline, target);
+        Assert.Equal(1, target.Session.Packages.Coverage[InstalledPackageEcosystem.Dpkg].SkippedRecords);
+        Assert.DoesNotContain(forward.Packages, package => package.Name == "alpha");
+        Assert.Equal(["beta", "gamma"], forward.Packages.Select(static package => package.Name));
+        Assert.Contains(target.Session.Packages.Diagnostics, diagnostic => diagnostic.Message.Contains("Version"));
+        Assert.Contains(forward.Limitations, message => message.Contains("unverified additions and removals"));
+        CompareState state = new(forward, "base", "target");
+        state.Expanded.UnionWith(["section:packages", "eco:Dpkg"]);
+        ExplorerImage model = ExplorerImage.FromSource(baseline.Source);
+        CompareView compareView = new(new ExplorerPresenter(model, 160, 40), state);
+        List<CompareRow> rows = compareView.Rows();
+        Assert.Contains(rows, static row => row.Name == "Package comparison incomplete (? = observed)");
+        Assert.DoesNotContain(rows, static row => row.Name.EndsWith(" unchanged", StringComparison.Ordinal));
+        state.Searching = true;
+        Assert.Equal(rows.Count(static row => row.Kind is CompareRowKind.File or CompareRowKind.Package),
+            compareView.SearchMatchCount);
+        state.Searching = false;
+        state.SearchQuery = "gamma";
+        rows = new CompareView(new ExplorerPresenter(model, 160, 40), state).Rows();
+        Assert.Contains(rows, static row => row.Package is { Name: "gamma", IsDefinitive: false });
+        Assert.Contains(rows, static row => row.Key == "partial:Dpkg");
+        Assert.Equal(1, new CompareView(new ExplorerPresenter(model, 160, 40), state).SearchMatchCount);
+        state.SearchQuery = "";
+        state.Searching = true;
+        Assert.Equal(compareView.Rows().Count(static row =>
+            row.Kind is CompareRowKind.File or CompareRowKind.Package), compareView.SearchMatchCount);
+
+        ExplorerComparison reverse = ExplorerSession.Compare(target.Session, baseline.Session);
+        Assert.DoesNotContain(reverse.Packages, package => package.Name == "alpha");
+        Assert.Equal(["beta", "gamma"], reverse.Packages.Select(static package => package.Name));
+    }
+
+    [Fact]
+    public async Task PartialDpkgInventoryDoesNotAssignUnqualifiedOwnershipToSystemScope()
+    {
+        byte[] Layer(string version, string fileContent) => Blob(
+            ("var/lib/dpkg/status",
+                $"Package: example\nStatus: install ok installed\nVersion: {version}\n\n" +
+                "Package: malformed\nStatus: install ok installed\n\n"),
+            ("var/lib/dpkg/info/example.list", "/usr/share/example/tool\n"),
+            ("usr/share/example/tool", fileContent));
+        TestImage baseline = await CreateAsync(Layer("1", "old"));
+        TestImage target = await CreateAsync(Layer("2", "new"));
+        ExplorerComparison comparison = await CompareAsync(baseline, target);
+        ExplorerPackageDifference package = Assert.Single(comparison.Packages,
+            static item => item.Ecosystem == InstalledPackageEcosystem.Dpkg && item.Name == "example");
+        Assert.Equal("system", package.Scope);
+
+        PackageFilesContent files = await Host(baseline).PackageFilesAsync(comparison, package, Token);
+
+        Assert.Null(files.Files);
+        Assert.Contains(files.Warnings!, static warning => warning.Contains("architecture", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public async Task PartialPipVersionChangesAreMarkedObservedInExplorer()
+    {
+        const string root = "usr/lib/python/site-packages";
+        byte[] Layer(bool target) => Blob(
+            (root + "/example-1.dist-info/METADATA", $"Name: example\nVersion: {(target ? "2.0.0" : "1.0.0")}\n"),
+            (root + "/broken-1.dist-info/METADATA", target
+                ? "broken" : "Name: broken\nVersion: 1\n"));
+        TestImage baseline = await CreateAsync(Layer(false));
+        TestImage target = await CreateAsync(Layer(true));
+        ExplorerComparison comparison = await CompareAsync(baseline, target);
+        ExplorerImage model = ExplorerImage.FromSource(baseline.Source);
+        model.SetSession(baseline.Session, ExplorerInsights.Build(baseline.Session.Analysis, model.Instructions, null));
+        CompareState state = new(comparison, "base", "target");
+        CompareView view = new(new ExplorerPresenter(model, 120, 40), state);
+
+        CompareRow package = Assert.Single(view.Rows(), static row =>
+            row.Kind == CompareRowKind.Package && row.Name.StartsWith("example", StringComparison.Ordinal));
+
+        Assert.False(package.Package!.IsDefinitive);
+        Assert.Equal("1.0.0 → 2.0.0", package.Versions);
+        Assert.Contains(view.Diff().Lines, static line =>
+            line.ToString().Contains("~?", StringComparison.Ordinal) &&
+            line.ToString().Contains("1.0.0 → 2.0.0", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public async Task ScopedPipOwnershipIncludesScriptsOutsideSitePackagesButNotOtherEnvironments()
+    {
+        byte[] Layer(string version) => Blob(
+            ("usr/lib/python/site-packages/example-1.dist-info/METADATA", $"Name: example\nVersion: {version}\n"),
+            ("usr/lib/python/site-packages/example-1.dist-info/RECORD", "example/module.py,,\n../../../bin/example,,\n"),
+            ("usr/lib/python/site-packages/example/module.py", version),
+            ("usr/bin/example", version),
+            ("opt/venv/site-packages/example-1.dist-info/METADATA", $"Name: example\nVersion: {version}\n"),
+            ("opt/venv/site-packages/example-1.dist-info/RECORD", "example/other.py,,\n"),
+            ("opt/venv/site-packages/example/other.py", version));
+        TestImage baseline = await CreateAsync(Layer("1"));
+        TestImage target = await CreateAsync(Layer("2"));
+        ExplorerComparison comparison = await CompareAsync(baseline, target);
+        ExplorerPackageDifference package = Assert.Single(comparison.Packages,
+            p => p.Ecosystem == InstalledPackageEcosystem.Pip && p.Scope == "usr/lib/python/site-packages");
+
+        PackageFilesContent files = await Host(baseline).PackageFilesAsync(comparison, package, Token);
+
+        Assert.Equal(["usr/bin/example", "usr/lib/python/site-packages/example/module.py"],
+            files.Files!.Select(static file => file.Path));
+        Assert.Equal(2, files.Total);
+        Assert.Empty(files.Warnings!);
+    }
+
+    [Fact]
+    public async Task ScopedDpkgOwnershipDoesNotMixArchitectures()
+    {
+        byte[] Layer(string version) => Blob(
+            ("var/lib/dpkg/status",
+                $"Package: example\nStatus: install ok installed\nVersion: {version}\nArchitecture: amd64\n\n" +
+                $"Package: example\nStatus: install ok installed\nVersion: {version}\nArchitecture: i386\n\n"),
+            ("var/lib/dpkg/info/example:amd64.list", "/usr/lib/amd64/example\n"),
+            ("var/lib/dpkg/info/example:i386.list", "/usr/lib/i386/example\n"),
+            ("usr/lib/amd64/example", version), ("usr/lib/i386/example", version));
+        TestImage baseline = await CreateAsync(Layer("1"));
+        TestImage target = await CreateAsync(Layer("2"));
+        ExplorerComparison comparison = await CompareAsync(baseline, target);
+        ExplorerPackageDifference package = Assert.Single(comparison.Packages,
+            p => p.Ecosystem == InstalledPackageEcosystem.Dpkg && p.Scope == "system/amd64");
+
+        PackageFilesContent files = await Host(baseline).PackageFilesAsync(comparison, package, Token);
+
+        Assert.Equal("usr/lib/amd64/example", Assert.Single(files.Files!).Path);
+        Assert.Equal(1, files.Total);
+    }
+
+    [Fact]
+    public async Task MissingDpkgArchitectureUsesUniqueQualifiedOwnershipList()
+    {
+        byte[] Layer(string version) => Blob(
+            ("var/lib/dpkg/status",
+                $"Package: example\nStatus: install ok installed\nVersion: {version}\n\n"),
+            ("var/lib/dpkg/info/example:amd64.list", "/usr/lib/example\n"),
+            ("usr/lib/example", version));
+        TestImage baseline = await CreateAsync(Layer("1"));
+        TestImage target = await CreateAsync(Layer("2"));
+        ExplorerComparison comparison = await CompareAsync(baseline, target);
+        ExplorerPackageDifference package = Assert.Single(comparison.Packages,
+            static item => item.Ecosystem == InstalledPackageEcosystem.Dpkg &&
+                item.Name == "example" && item.Scope == "system");
+
+        PackageFilesContent files = await Host(baseline).PackageFilesAsync(comparison, package, Token);
+
+        Assert.Equal("usr/lib/example", Assert.Single(files.Files!).Path);
+        Assert.Empty(files.Warnings!);
+    }
+
+    [Fact]
+    public async Task IncompleteDpkgInventoryDoesNotAssumeArchitectureFromSingleQualifiedList()
+    {
+        byte[] Layer(string version) => Blob(
+            ("var/lib/dpkg/status",
+                $"Package: example\nStatus: install ok installed\nVersion: {version}\n\nIncomplete: record\n\n"),
+            ("var/lib/dpkg/info/example:amd64.list", "/usr/lib/example\n"),
+            ("usr/lib/example", version));
+        TestImage baseline = await CreateAsync(Layer("1"));
+        TestImage target = await CreateAsync(Layer("2"));
+        ExplorerComparison comparison = await CompareAsync(baseline, target);
+        ExplorerPackageDifference package = Assert.Single(comparison.Packages,
+            static item => item.Ecosystem == InstalledPackageEcosystem.Dpkg &&
+                item.Name == "example" && item.Scope == "system");
+
+        PackageFilesContent files = await Host(baseline).PackageFilesAsync(comparison, package, Token);
+
+        Assert.Null(files.Files);
+        Assert.Contains(files.Warnings!, warning => warning.Contains("architecture", StringComparison.Ordinal));
+        Assert.Contains("unavailable", files.Message, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task UnqualifiedDpkgOwnershipRequiresAnUnambiguousArchitecture(bool multipleArchitectures)
+    {
+        byte[] Layer(string version) => Blob(
+            ("var/lib/dpkg/status",
+                $"Package: example\nStatus: install ok installed\nVersion: {version}\nArchitecture: amd64\n\n" +
+                (multipleArchitectures
+                    ? $"Package: example\nStatus: install ok installed\nVersion: {version}\nArchitecture: i386\n\n"
+                    : "")),
+            ("var/lib/dpkg/info/example.list", "/usr/lib/example\n"),
+            ("usr/lib/example", version));
+        TestImage baseline = await CreateAsync(Layer("1"));
+        TestImage target = await CreateAsync(Layer("2"));
+        ExplorerComparison comparison = await CompareAsync(baseline, target);
+        ExplorerPackageDifference package = Assert.Single(comparison.Packages,
+            p => p.Ecosystem == InstalledPackageEcosystem.Dpkg && p.Scope == "system/amd64");
+
+        PackageFilesContent files = await Host(baseline).PackageFilesAsync(comparison, package, Token);
+
+        if (multipleArchitectures)
+        {
+            Assert.Null(files.Files);
+            Assert.Contains(files.Warnings!, warning => warning.Contains("architecture", StringComparison.Ordinal));
+        }
+        else
+        {
+            Assert.Equal("usr/lib/example", Assert.Single(files.Files!).Path);
+            Assert.Empty(files.Warnings!);
+        }
+    }
+
+    [Fact]
+    public async Task UnchangedLinuxSpecialFileIsNotReportedAsModified()
+    {
+        TestImage image = await CreateAsync(ArchiveEntries(new PaxTarEntry(TarEntryType.Fifo, "pipe")));
+
+        ExplorerComparison comparison = await CompareAsync(image, image);
+
+        Assert.DoesNotContain(comparison.Files, file => file.Path == "pipe");
+        Assert.Contains(comparison.Limitations, message => message.Contains("/pipe"));
+    }
+
+    [Fact]
+    public async Task LinuxSpecialFileWithChangedModeRemainsAReportedDifference()
+    {
+        TestImage baseline = await CreateAsync(ArchiveEntries(new PaxTarEntry(TarEntryType.Fifo, "pipe")
+            { Mode = UnixFileMode.UserRead }));
+        TestImage target = await CreateAsync(ArchiveEntries(new PaxTarEntry(TarEntryType.Fifo, "pipe")
+            { Mode = UnixFileMode.UserRead | UnixFileMode.UserWrite }));
+
+        ExplorerComparison comparison = await CompareAsync(baseline, target);
+
+        Assert.Equal(("pipe", LayerChangeKind.Modified),
+            (Assert.Single(comparison.Files).Path, comparison.Files[0].Kind));
+        Assert.Contains(comparison.Limitations, message => message.Contains("/pipe"));
+    }
+
+    [Fact]
     public async Task PackageDiagnosticsAreStructuredAndRetainedAcrossCachedReads()
     {
         TestImage image = await CreateAsync(Archive(

@@ -131,6 +131,21 @@ public class InstalledPackageReaderTests
     }
 
     [Theory]
+    [InlineData("install ok installd")]
+    [InlineData("instal ok installed")]
+    [InlineData("install unknown installed")]
+    public void ParseDpkgStatus_InvalidStatusIsReportedAsSkipped(string status)
+    {
+        List<string> skipped = [];
+
+        IReadOnlyList<InstalledPackage> packages = InstalledPackageReader.ParseDpkgStatus(
+            $"Package: example\nStatus: {status}\nVersion: 1\n", skipped.Add);
+
+        Assert.Empty(packages);
+        Assert.Single(skipped);
+    }
+
+    [Theory]
     [InlineData("Package: example\nStatus: install ok installed\n")]
     [InlineData("Status: install ok installed\nVersion: 1.0\n")]
     [InlineData("Package: example\nPackage: duplicate\nStatus: install ok installed\nVersion: 1.0\n")]

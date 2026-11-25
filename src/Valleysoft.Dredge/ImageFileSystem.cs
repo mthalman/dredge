@@ -62,6 +62,9 @@ internal sealed class ImageFileSystem : IAsyncDisposable
     internal IReadOnlyList<LayerDiagnostic> Diagnostics =>
         [.. restoredDiagnostics, .. indexes.OrderBy(static pair => pair.Key).SelectMany(pair => pair.Value.Changes.Diagnostics
             .Select(diagnostic => diagnostic with { Message = $"Layer {pair.Key}: {diagnostic.Message}" }))];
+    internal bool HasSizeCoverageGaps => Diagnostics.Any(static diagnostic =>
+        diagnostic.Path.Length != 0 ||
+        !diagnostic.Message.EndsWith(ImageLayerScanner.WindowsMetadataLimitation, StringComparison.Ordinal));
 
     public static async Task<ImageFileSystem> CreateAsync(
         IDockerRegistryClient client,

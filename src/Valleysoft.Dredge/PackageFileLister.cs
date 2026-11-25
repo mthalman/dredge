@@ -22,7 +22,9 @@ internal static class PackageFileLister
         IReadOnlyCollection<string> allPaths,
         Func<string, CancellationToken, Task<string?>> readText,
         CancellationToken cancellationToken,
-        Action<string, Exception>? onError = null)
+        Action<string, Exception>? onError = null,
+        string? scope = null,
+        bool allowUnqualifiedDpkg = true)
     {
         async Task<IReadOnlyList<string>> ReadListAsync(string path, Func<string, IReadOnlyList<string>> parse)
         {
@@ -60,6 +62,53 @@ internal static class PackageFileLister
                         int colon = file.IndexOf(':');
                         return (colon < 0 ? file : file[..colon]) == name;
                     }).Order(StringComparer.Ordinal)];
+                if (scope == "system")
+                {
+                    string unqualified = $"var/lib/dpkg/info/{name}.list";
+                    if (!allowUnqualifiedDpkg && lists.Contains(unqualified, StringComparer.Ordinal))
+                    {
+                        onError?.Invoke(unqualified, new InvalidDataException(
+                            "The architecture of this unqualified dpkg ownership list is ambiguous."));
+                    }
+                    if (allowUnqualifiedDpkg && lists.Contains(unqualified, StringComparer.Ordinal))
+                    {
+                        lists = [unqualified];
+                    }
+                    else
+                    {
+                        string[] qualified = [.. lists.Where(path =>
+                        {
+                            string file = path["var/lib/dpkg/info/".Length..^".list".Length];
+                            return file.StartsWith(name + ":", StringComparison.Ordinal);
+                        })];
+                        if (allowUnqualifiedDpkg && qualified.Length == 1)
+                        {
+                            lists = qualified;
+                        }
+                        else
+                        {
+                            if (qualified.Length > 1 || !allowUnqualifiedDpkg && qualified.Length > 0)
+                            {
+                                onError?.Invoke(qualified[0], new InvalidDataException(
+                                    "The architecture of this dpkg ownership list is ambiguous."));
+                            }
+                            lists = [];
+                        }
+                    }
+                }
+                else if (scope is not null && scope.StartsWith("system/", StringComparison.Ordinal))
+                {
+                    string qualified = $"var/lib/dpkg/info/{name}:{scope["system/".Length..]}.list";
+                    string unqualified = $"var/lib/dpkg/info/{name}.list";
+                    if (!allowUnqualifiedDpkg && !lists.Contains(qualified, StringComparer.Ordinal) &&
+                        lists.Contains(unqualified, StringComparer.Ordinal))
+                    {
+                        onError?.Invoke(unqualified, new InvalidDataException(
+                            "The architecture of this unqualified dpkg ownership list is ambiguous."));
+                    }
+                    lists = lists.Contains(qualified, StringComparer.Ordinal) ? [qualified] :
+                        allowUnqualifiedDpkg && lists.Contains(unqualified, StringComparer.Ordinal) ? [unqualified] : [];
+                }
                 HashSet<string> dpkgFiles = new(StringComparer.Ordinal);
                 foreach (string list in lists)
                 {
@@ -78,6 +127,10 @@ internal static class PackageFileLister
                         return false;
                     }
                     string directory = ImagePath.GetDirectoryName(path);
+                    if (scope is not null && ImagePath.GetDirectoryName(directory) != scope)
+                    {
+                        return false;
+                    }
                     string folder = directory[(directory.LastIndexOf('/') + 1)..^".dist-info".Length];
                     int dash = folder.IndexOf('-');
                     return InstalledPackageReader.NormalizePipName(dash < 0 ? folder : folder[..dash]) == normalized;
@@ -137,7 +190,7 @@ internal static class PackageFileLister
         Dictionary<string, List<string>> files = new(StringComparer.Ordinal);
         string? name = null;
         string directory = "";
-        foreach (string raw in content.Split('\n'))
+        foreach (string raw in content.TrimStart('\uFEFF').Split('\n'))
         {
             string line = raw.TrimEnd('\r');
             if (line.Length == 0) { name = null; directory = ""; }

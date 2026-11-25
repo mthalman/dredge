@@ -15,6 +15,7 @@ internal sealed record ExplorerPackageDifference(
     string? TargetVersion)
 {
     public string? Scope { get; init; }
+    public bool IsDefinitive { get; init; } = true;
 }
 
 internal sealed record ExplorerComparison(
@@ -240,15 +241,19 @@ internal sealed class ExplorerSession
         {
             string path = fact.Path;
             ImageFileSystemEntry? old = fact.Before, current = fact.After;
-            if (semantics.IsWindows && (old?.Type == ImageFileType.Other || current?.Type == ImageFileType.Other))
+            bool other = old?.Type == ImageFileType.Other || current?.Type == ImageFileType.Other;
+            if (other && fact.Incomplete)
             {
                 if (limitations.Count < 64)
                 {
                     limitations.Add($"File comparison unavailable for '/{path}': {current?.Windows?.UnsupportedReason ?? old?.Windows?.UnsupportedReason ?? "unsupported entry type"}");
                 }
+            }
+            if (semantics.IsWindows && other)
+            {
                 continue;
             }
-            if (fact.Reasons.Count > 0 || fact.Incomplete)
+            if (fact.Reasons.Count > 0 || fact.Incomplete && !other)
             {
                 differences.Add(new(path, old is null ? LayerChangeKind.Added :
                     current is null ? LayerChangeKind.Deleted : LayerChangeKind.Modified, old, current));
@@ -257,6 +262,15 @@ internal sealed class ExplorerSession
 
         IReadOnlyList<ExplorerPackageDifference> packages = includePackages
             ? ImageComparison.Packages(baseline.Packages, target.Packages) : [];
+        foreach (InstalledPackageEcosystem ecosystem in includePackages
+            ? Enum.GetValues<InstalledPackageEcosystem>() : [])
+        {
+            if (ImageComparison.HasIncompletePackageCoverage(baseline.Packages, ecosystem) ||
+                ImageComparison.HasIncompletePackageCoverage(target.Packages, ecosystem))
+            {
+                limitations.Add($"{ecosystem} package comparison is incomplete; unverified additions and removals are omitted.");
+            }
+        }
         return new(baseline, target, additional, differences, packages) { Limitations = limitations };
     }
 

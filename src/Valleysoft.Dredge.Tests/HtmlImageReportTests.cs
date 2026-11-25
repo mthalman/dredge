@@ -293,12 +293,15 @@ public sealed class HtmlImageReportTests
     {
         byte[] common = Tar(
             ("app/node_modules/core/package.json", """{"name":"core","version":"1","private":"SECRET PACKAGE CONTENT"}"""),
+            ("other/node_modules/core/package.json", """{"name":"core","version":"1"}"""),
             ("app/node_modules/bad/package.json", "{"),
             ("lib/apk/db/installed", "P:busybox\nV:1\n\n"));
         byte[] baselineLayer = Tar(
+            ("app/node_modules/bad/.wh.package.json", ""),
             ("app/node_modules/core/package.json", """{"name":"core","version":"2"}"""),
             ("app/node_modules/removed/package.json", """{"name":"removed","version":"1"}"""));
         byte[] targetLayer = Tar(
+            ("app/node_modules/bad/.wh.package.json", ""),
             ("app/node_modules/core/package.json", """{"name":"core","version":"3"}"""),
             ("app/node_modules/added/package.json", """{"name":"added","version":"4"}"""),
             ("lib/apk/db/.wh.installed", ""));
@@ -320,14 +323,18 @@ public sealed class HtmlImageReportTests
             group["packages"]!.AsArray().Single(package => package!["name"]!.GetValue<string>() == name)!;
 
         Assert.Equal("1", Package(Npm(baseline, 0), "core")["versions"]![0]!.GetValue<string>());
-        Assert.Equal("2", Package(Npm(baseline, 1), "core")["versions"]![0]!.GetValue<string>());
-        Assert.Equal("3", Package(Npm(target, 1), "core")["versions"]![0]!.GetValue<string>());
+        Assert.Contains(Package(Npm(baseline, 1), "core")["versions"]!.AsArray(), value => value!.GetValue<string>() == "2");
+        Assert.Contains(Package(Npm(target, 1), "core")["versions"]!.AsArray(), value => value!.GetValue<string>() == "3");
+        Assert.Equal(3, Npm(target, 1)["scopedCount"]!.GetValue<int>());
+        Assert.False(Npm(target, 1)["incomplete"]!.GetValue<bool>());
         Assert.Contains(PackageInventory(baseline, 0)["warnings"]!.AsArray(),
             warning => warning!.GetValue<string>().Contains("app/node_modules/bad/package.json", StringComparison.Ordinal));
 
         JsonArray differences = data["packageDifferences"]!.AsArray();
         Assert.Contains(differences, package => package!["name"]!.GetValue<string>() == "core" &&
-            package["before"]!.GetValue<string>() == "2" && package["after"]!.GetValue<string>() == "3");
+            package["before"]!.GetValue<string>() == "2" && package["after"]!.GetValue<string>() == "3" &&
+            package["scope"]!.GetValue<string>() == "app/node_modules/core" &&
+            package["isDefinitive"]!.GetValue<bool>());
         Assert.Contains(differences, package => package!["name"]!.GetValue<string>() == "removed" &&
             package["before"]!.GetValue<string>() == "1" && package["after"] is null);
         Assert.Contains(differences, package => package!["name"]!.GetValue<string>() == "added" &&
@@ -336,6 +343,39 @@ public sealed class HtmlImageReportTests
         Assert.False(PackageInventory(target, 1)["ecosystems"]!.AsArray()
             .Single(group => group!["ecosystem"]!.GetValue<string>() == "apk")!["available"]!.GetValue<bool>());
         Assert.DoesNotContain("SECRET PACKAGE CONTENT", html);
+    }
+
+    [Fact]
+    public async Task ReportMarksIncompletePackageComparisons()
+    {
+        byte[] common = Tar(
+            ("app/node_modules/core/package.json", """{"name":"core","version":"1"}"""),
+            ("app/node_modules/bad/package.json", "{"));
+        byte[] baselineLayer = Tar(
+            ("app/node_modules/core/package.json", """{"name":"core","version":"2"}"""),
+            ("app/node_modules/removed/package.json", """{"name":"removed","version":"1"}"""));
+        byte[] targetLayer = Tar(
+            ("app/node_modules/core/package.json", """{"name":"core","version":"3"}"""),
+            ("app/node_modules/added/package.json", """{"name":"added","version":"4"}"""));
+        Sources sources = new(common, baselineLayer, targetLayer);
+        await using LayerCacheTestContext cache = new();
+
+        JsonNode data = Data(await HtmlImageReport.CreateAsync(
+            sources, Mock.Of<IDockerRegistryClientFactory>(),
+            Parse("docker://app:base", "--output", "html", "--compare", "docker://app:target"),
+            TextWriter.Null, Token, cache.Store));
+        foreach (JsonNode? image in data["images"]!.AsArray())
+        {
+            JsonNode npm = PackageInventory(image!, 1)["ecosystems"]!.AsArray()
+                .Single(group => group!["ecosystem"]!.GetValue<string>() == "npm")!;
+            Assert.True(npm["incomplete"]!.GetValue<bool>());
+        }
+        JsonNode difference = Assert.Single(data["packageDifferences"]!.AsArray())!;
+        Assert.Equal("core", difference["name"]!.GetValue<string>());
+        Assert.Equal("app/node_modules/core", difference["scope"]!.GetValue<string>());
+        Assert.False(difference["isDefinitive"]!.GetValue<bool>());
+        Assert.Contains(data["limitations"]!.AsArray(),
+            value => value!.GetValue<string>().Contains("unverified additions and removals", StringComparison.Ordinal));
     }
 
     [Fact]
@@ -617,6 +657,26 @@ public sealed class HtmlImageReportTests
     }
 
     [Fact]
+    public async Task InventoriesWithDifferentScopedCountsAreNotMerged()
+    {
+        Sources sources = new(
+            Tar(("app/node_modules/example/package.json", """{"name":"example","version":"1"}""")),
+            Tar(("other/node_modules/example/package.json", """{"name":"example","version":"1"}""")));
+        await using LayerCacheTestContext cache = new();
+
+        JsonNode image = Data(await HtmlImageReport.CreateAsync(
+            sources, Mock.Of<IDockerRegistryClientFactory>(), Parse("docker://app:base", "--output", "html"),
+            TextWriter.Null, Token, cache.Store))["images"]![0]!;
+        JsonNode first = PackageInventory(image, 0)["ecosystems"]!.AsArray()
+            .Single(item => item!["ecosystem"]!.GetValue<string>() == "npm")!;
+        JsonNode second = PackageInventory(image, 1)["ecosystems"]!.AsArray()
+            .Single(item => item!["ecosystem"]!.GetValue<string>() == "npm")!;
+
+        Assert.Equal(1, first["scopedCount"]!.GetValue<int>());
+        Assert.Equal(2, second["scopedCount"]!.GetValue<int>());
+    }
+
+    [Fact]
     public void ReportDataIsEmbeddedCompressed()
     {
         HtmlReportFile[] changes = [.. Enumerable.Range(0, 5000).Select(i => new HtmlReportFile($"usr/lib/package-{i}/file.txt", "File", i, "Added"))];
@@ -638,7 +698,7 @@ public sealed class HtmlImageReportTests
         string path = Payload + "\u03b1";
         HtmlReportImage image = new(Payload, "payload", "snapshot", "linux", Payload, "download", [],
             [new(0, "sha256:a", "sha256:a", 0, 1, 0, null, null, "COPY app", [new(path, "File", 1, "Added")])], [], [],
-            [new([0], [new("npm", true, [new(Payload, ["1"])])], [], null)]);
+            [new([0], [new("npm", true, [new(Payload, ["1"])], 1, false)], [], null)]);
 
         string html = HtmlImageReport.Render(new([image], null, null, [], null, false, false));
 
@@ -659,8 +719,8 @@ public sealed class HtmlImageReportTests
         HtmlReportData report = new(
             [new("image", "image", "sha256:image", "linux/amd64", "image", "download", [],
                 [new(0, "sha256:layer", "sha256:layer", 4, 4, 0, null, null, "COPY hello", [new("hello", "File", 4, "Added")])], [], [],
-                [new([0], [new("npm", true, [new("example", ["1"])])], [], null)], [new("Hello", 0)])],
-            [new("hello", "Added", null, 4)], [new("npm", "example", null, "1")], [], 0, true, false,
+                [new([0], [new("npm", true, [new("example", ["1"])], 1, false)], [], null)], [new("Hello", 0)])],
+            [new("hello", "Added", null, 4)], [new("npm", "example", null, "1", null, true)], [], 0, true, false,
             [new("hello", null, 4, false, 1, null, null, "Added", false)]);
 
         JsonNode data = JsonNode.Parse(JsonSerializer.Serialize(report, DredgeJsonContext.Default.HtmlReportData))!;

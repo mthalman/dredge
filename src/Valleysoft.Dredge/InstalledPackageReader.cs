@@ -57,6 +57,7 @@ internal static class InstalledPackageReader
 {
     internal const long MaxPackageManifestBytes = 1024 * 1024;
     internal const long MaxDatabaseManifestBytes = 64 * 1024 * 1024;
+    internal const long MaxPackageOwnershipBytes = 64 * 1024 * 1024;
 
     private const string DpkgStatusPath = "var/lib/dpkg/status";
     private const string ApkInstalledPath = "lib/apk/db/installed";
@@ -435,6 +436,14 @@ internal static class InstalledPackageReader
             }
             string[] states = status.Split((char[]?)null, StringSplitOptions.RemoveEmptyEntries);
             if (states.Length != 3)
+            {
+                onSkipped?.Invoke("dpkg paragraph has an invalid installation status.");
+                continue;
+            }
+            if (states[0] is not ("unknown" or "install" or "hold" or "deinstall" or "purge") ||
+                states[1] is not ("ok" or "reinstreq") ||
+                states[2] is not ("not-installed" or "config-files" or "half-installed" or "unpacked" or
+                    "half-configured" or "triggers-awaited" or "triggers-pending" or "installed"))
             {
                 onSkipped?.Invoke("dpkg paragraph has an invalid installation status.");
                 continue;

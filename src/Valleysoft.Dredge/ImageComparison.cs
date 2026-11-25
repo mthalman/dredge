@@ -47,19 +47,25 @@ internal static class ImageComparison
             char ch = pattern[i];
             if (ch == '*' && i + 1 < pattern.Length && pattern[i + 1] == '*')
             {
+                bool atSegmentStart = i == 0 || pattern[i - 1] == '/';
                 i++;
-                if (i + 1 < pattern.Length && pattern[i + 1] == '/')
+                if (atSegmentStart && i + 1 < pattern.Length && pattern[i + 1] == '/')
                 {
                     expression.Append("(?:.*/)?");
                     i++;
                 }
                 else { expression.Append(".*"); }
             }
-            else { expression.Append(ch switch { '*' => "[^/]*", '?' => "[^/]", _ => Regex.Escape(ch.ToString()) }); }
+            else { expression.Append(ch switch
+                {
+                    '*' => "[^/]*",
+                    '?' => "[^/]",
+                    _ => windows ? WindowsImagePathComparer.RegexLiteral(ch) : Regex.Escape(ch.ToString())
+                }); }
         }
         expression.Append('$');
-        return new(expression.ToString(), RegexOptions.CultureInvariant |
-            (windows ? RegexOptions.IgnoreCase : RegexOptions.None), TimeSpan.FromSeconds(1));
+        return new(expression.ToString(), RegexOptions.CultureInvariant | RegexOptions.NonBacktracking,
+            TimeSpan.FromSeconds(1));
     }
 
     internal static IReadOnlyList<string> Reasons(
@@ -69,15 +75,19 @@ internal static class ImageComparison
         ImageFileSystemSemantics semantics, bool timestamps)
     {
         List<string> reasons = [];
-        if (left.Type != right.Type) { reasons.Add("type"); }
+        bool unsupported = left.Windows?.UnsupportedReason is not null || right.Windows?.UnsupportedReason is not null;
+        if (!unsupported && left.Type != right.Type) { reasons.Add("type"); }
         if (!semantics.IsWindows)
         {
             if (left.Mode != right.Mode) { reasons.Add("mode"); }
             if (left.UserId != right.UserId) { reasons.Add("owner"); }
             if (left.GroupId != right.GroupId) { reasons.Add("group"); }
         }
-        if (left.Size != right.Size) { reasons.Add("size"); }
-        if (left.LinkTarget != right.LinkTarget || left.ContentLinkTarget != right.ContentLinkTarget) { reasons.Add("linkTarget"); }
+        if (!unsupported && left.Size != right.Size) { reasons.Add("size"); }
+        if (!unsupported && (left.LinkTarget != right.LinkTarget || left.ContentLinkTarget != right.ContentLinkTarget))
+        {
+            reasons.Add("linkTarget");
+        }
         if (left.Windows != right.Windows) { reasons.Add("windowsMetadata"); }
         if (timestamps && left.ModifiedTime != right.ModifiedTime) { reasons.Add("modifiedTime"); }
         if (HasContent(left) && HasContent(right))
@@ -93,6 +103,10 @@ internal static class ImageComparison
 
     internal static string? Hash(ImageFileSystemEntry entry, IReadOnlyDictionary<string, ScannedEntry> contents) =>
         contents.TryGetValue(entry.Path, out ScannedEntry? content) ? content.ContentHash : null;
+
+    internal static bool HasIncompletePackageCoverage(InstalledPackageMetadata metadata, InstalledPackageEcosystem ecosystem) =>
+        metadata.Coverage.TryGetValue(ecosystem, out PackageInventoryCoverage? coverage) &&
+        (coverage.Failed > 0 || coverage.SkippedRecords > 0);
 
     internal static IReadOnlyList<ExplorerPackageDifference> Packages(
         InstalledPackageMetadata before, InstalledPackageMetadata after)
@@ -111,13 +125,24 @@ internal static class ImageComparison
             if (scoped)
             {
                 string name = ecosystem.ToString().ToLowerInvariant();
+                PackageInventoryCoverage? beforeCoverage = before.Coverage.GetValueOrDefault(ecosystem);
+                PackageInventoryCoverage? afterCoverage = after.Coverage.GetValueOrDefault(ecosystem);
+                bool beforeComplete = beforeCoverage is not null && beforeCoverage.Failed == 0 && beforeCoverage.SkippedRecords == 0;
+                bool afterComplete = afterCoverage is not null && afterCoverage.Failed == 0 && afterCoverage.SkippedRecords == 0;
                 differences.AddRange(ComparePackages(beforeFacts.Where(p => p.Ecosystem == name),
                     afterFacts.Where(p => p.Ecosystem == name), true)
+                    .Where(change => change.Kind switch
+                    {
+                        "added" => beforeComplete,
+                        "removed" => afterComplete,
+                        _ => true
+                    })
                     .Select(change => new ExplorerPackageDifference(ecosystem, change.Name,
                         change.Base is null ? null : string.Join(", ", change.Base.Versions),
                         change.Target is null ? null : string.Join(", ", change.Target.Versions))
                     {
-                        Scope = change.Scope
+                        Scope = change.Scope,
+                        IsDefinitive = change.Kind != "changed" || beforeComplete && afterComplete
                     }));
                 continue;
             }

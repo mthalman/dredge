@@ -1,9 +1,13 @@
+using System.Text;
+using System.Text.RegularExpressions;
+
 namespace Valleysoft.Dredge;
 
 // NTFS folds UTF-16 code units, not supplementary Unicode case pairs.
 internal sealed class WindowsImagePathComparer : StringComparer
 {
     private static readonly char[] upcase = CreateUpcaseTable();
+    private static readonly Lazy<Dictionary<char, string>> regexLiterals = new(CreateRegexLiterals);
     public static WindowsImagePathComparer Instance { get; } = new();
 
     private WindowsImagePathComparer() { }
@@ -44,6 +48,34 @@ internal sealed class WindowsImagePathComparer : StringComparer
             if (upcase[value[i]] != upcase[prefix[i]]) return false;
         }
         return true;
+    }
+
+    internal static string RegexLiteral(char value) =>
+        regexLiterals.Value.GetValueOrDefault(upcase[value]) ?? Regex.Escape(value.ToString());
+
+    private static Dictionary<char, string> CreateRegexLiterals()
+    {
+        Dictionary<char, StringBuilder> groups = [];
+        for (int i = 0; i < upcase.Length; i++)
+        {
+            if (upcase[i] != i)
+            {
+                if (!groups.TryGetValue(upcase[i], out StringBuilder? group))
+                {
+                    groups.Add(upcase[i], group = new StringBuilder("["));
+                }
+                group.Append(@"\u").Append(i.ToString("X4"));
+            }
+        }
+        foreach (var (folded, group) in groups)
+        {
+            if (upcase[folded] == folded)
+            {
+                group.Append(@"\u").Append(((int)folded).ToString("X4"));
+            }
+            group.Append(']');
+        }
+        return groups.ToDictionary(static pair => pair.Key, static pair => pair.Value.ToString());
     }
 
     private static char[] CreateUpcaseTable()

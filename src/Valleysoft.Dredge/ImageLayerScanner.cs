@@ -8,6 +8,8 @@ namespace Valleysoft.Dredge;
 
 internal static class ImageLayerScanner
 {
+    internal const string WindowsMetadataLimitation =
+        "Windows content-only analysis: ACLs, ownership, extended attributes and NTFS allocation semantics are not interpreted.";
     private const string WhiteoutPrefix = ".wh.";
     private const string OpaqueWhiteout = ".wh..wh..opq";
 
@@ -205,7 +207,7 @@ internal static class ImageLayerScanner
         }
         if (semantics.IsWindows)
         {
-            Report("metadata", new("", "Windows content-only analysis: ACLs, ownership, extended attributes and NTFS allocation semantics are not interpreted."));
+            Report("metadata", new("", WindowsMetadataLimitation));
         }
         if (hashing is not null || additionalHashing is not null)
         {

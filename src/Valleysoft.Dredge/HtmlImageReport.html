@@ -1824,7 +1824,7 @@ function renderDifferences(box, scroller) {
 function comparisonMatches(packages, files, query) {
   const folded = foldCase(query);
   return {
-    packages: packages.filter(item => foldCase(item.name).includes(folded)),
+    packages: packages.filter(item => foldCase(packageDifferenceName(item)).includes(folded)),
     files: files.filter(item => foldCase(item.path).includes(folded))
   };
 }
@@ -1984,11 +1984,14 @@ function packageDifferenceRow(item, level = 1, guide = "", query = "") {
   const row = el("div", "package-diff-row");
   row.setAttribute("role", "treeitem");
   row.setAttribute("aria-level", String(level));
-  const name = add(el("span", "name"), el("span", "tree-guide", guide), highlight(item.name, query));
-  name.title = item.name;
+  const label = packageDifferenceName(item);
+  const name = add(el("span", "name"), el("span", "tree-guide", guide), highlight(label, query));
+  name.title = label;
   const version = el("span", "version", item.change === "Modified" ? item.before + " \u2192 " + item.after : item.after ?? item.before);
   version.title = version.textContent;
-  add(row, el("span", TONE[item.change], GLYPH[item.change]), name, version);
+  const marker = el("span", TONE[item.change], GLYPH[item.change] + (item.isDefinitive === false ? "?" : ""));
+  if (item.isDefinitive === false) marker.title = "Observed change; package inventory is incomplete";
+  add(row, marker, name, version);
   row.addEventListener("click", () => {
     state.selected = null;
     state.rightIndex = rightRows().indexOf(row);
@@ -1997,6 +2000,10 @@ function packageDifferenceRow(item, level = 1, guide = "", query = "") {
     $("right-pane").focus({ preventScroll: true });
   });
   return row;
+}
+
+function packageDifferenceName(item) {
+  return item.scope ? item.name + " [" + item.scope + "]" : item.name;
 }
 
 function packageTextMatches(ecosystem, name, versions, query) {
@@ -2029,8 +2036,9 @@ function renderPackages(box, scroller, embedded = false) {
       if (!left.available || !right.available) return null;
       comparableInventory = true;
       const items = diffs.filter(item => item.ecosystem === left.ecosystem);
-      const unchanged = Math.max(0, right.packages.length - items.filter(item => item.after != null).length);
-      return items.length || unchanged ? { ecosystem: left.ecosystem, items, unchanged } : null;
+      const incomplete = left.incomplete || right.incomplete;
+      const unchanged = incomplete ? 0 : Math.max(0, right.scopedCount - items.filter(item => item.after != null).length);
+      return items.length || unchanged || incomplete ? { ecosystem: left.ecosystem, items, unchanged, incomplete } : null;
     }).filter(Boolean);
     if (!embedded) {
       setTitle("right-title", "Package differences", "final filesystems");
@@ -2061,15 +2069,17 @@ function renderPackages(box, scroller, embedded = false) {
   for (const group of groups) {
     const items = group.items.filter(item => {
       const versions = comparison ? (item.before ?? "") + " " + (item.after ?? "") : item.versions.join(", ");
-      return !query || (embedded ? foldCase(item.name).includes(query)
-        : packageTextMatches(group.ecosystem, item.name, versions, query));
+      const name = comparison ? packageDifferenceName(item) : item.name;
+      return !query || (embedded ? foldCase(name).includes(query)
+        : packageTextMatches(group.ecosystem, name, versions, query));
     });
     if (!items.length && query) continue;
     const section = el("details", "package-group");
     const key = (comparison ? "compare:" : "image:") + group.ecosystem;
     section.open = Boolean(query) || !state.packageCollapsed.has(key);
     const label = comparison
-      ? group.items.length.toLocaleString("en-US") + " changed, " + group.unchanged.toLocaleString("en-US") + " unchanged"
+      ? group.items.length.toLocaleString("en-US") + " changed, " + (group.incomplete
+        ? "comparison incomplete" : group.unchanged.toLocaleString("en-US") + " unchanged")
       : count(group.items.length, "package");
     const heading = el("summary", null, group.ecosystem + "  " + label);
     if (embedded) {
@@ -2097,7 +2107,8 @@ function renderPackages(box, scroller, embedded = false) {
       more.addEventListener("click", () => { state.limits.set(limitKey, limit + BATCH); renderRight(); });
       section.append(more);
     }
-    if (!items.length && !showUnchanged) section.append(el("p", "empty", "No package version changes in this ecosystem."));
+    if (!items.length && !showUnchanged) section.append(el("p", "empty", group.incomplete
+      ? "No observed package version changes in this incomplete inventory." : "No package version changes in this ecosystem."));
     if (showUnchanged) {
       const unchanged = add(el("div", "comparison-unchanged silt"), el("span", "tree-guide", "\u2514\u2500 "),
         count(group.unchanged, "unchanged package", "unchanged packages"));
