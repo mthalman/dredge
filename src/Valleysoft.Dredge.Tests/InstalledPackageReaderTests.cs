@@ -104,7 +104,7 @@ public class InstalledPackageReaderTests
 
         Assert.Equal(
             [
-                new InstalledPackage("installed", "1:2.3-4"),
+                new InstalledPackage("installed", "1:2.3-4") { Architecture = "amd64" },
                 new InstalledPackage("also-installed", "6.7")
             ],
             packages);
@@ -128,6 +128,21 @@ public class InstalledPackageReaderTests
     public void ParseDpkgStatus_ExcludesPackagesNotInstalled(string status)
     {
         Assert.Empty(InstalledPackageReader.ParseDpkgStatus($"Package: example\nStatus: {status}\nVersion: 1\n"));
+    }
+
+    [Theory]
+    [InlineData("install ok installd")]
+    [InlineData("instal ok installed")]
+    [InlineData("install unknown installed")]
+    public void ParseDpkgStatus_InvalidStatusIsReportedAsSkipped(string status)
+    {
+        List<string> skipped = [];
+
+        IReadOnlyList<InstalledPackage> packages = InstalledPackageReader.ParseDpkgStatus(
+            $"Package: example\nStatus: {status}\nVersion: 1\n", skipped.Add);
+
+        Assert.Empty(packages);
+        Assert.Single(skipped);
     }
 
     [Theory]
@@ -160,8 +175,8 @@ public class InstalledPackageReaderTests
 
         Assert.Equal(
             [
-                new InstalledPackage("musl", "1.2.5-r1"),
-                new InstalledPackage("busybox", "1.36.1-r29")
+                new InstalledPackage("musl", "1.2.5-r1") { Architecture = "x86_64" },
+                new InstalledPackage("busybox", "1.36.1-r29") { Architecture = "x86_64" }
             ],
             packages);
     }
@@ -203,7 +218,7 @@ public class InstalledPackageReaderTests
 
         Assert.Equal(
             [
-                new InstalledPackage("alpine-baselayout-data", "3.7.0-r0"),
+                new InstalledPackage("alpine-baselayout-data", "3.7.0-r0") { Architecture = "x86_64" },
                 new InstalledPackage("busybox", "1.37.0-r12")
             ],
             InstalledPackageReader.ParseApkInstalled(Content));

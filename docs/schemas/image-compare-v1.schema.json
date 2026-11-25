@@ -1,0 +1,177 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/mthalman/dredge/blob/main/docs/schemas/image-compare-v1.schema.json",
+  "title": "Dredge semantic image comparison, version 1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schemaVersion", "base", "target", "options", "complete", "areEqual", "exitCode", "sections", "diagnostics", "files", "packages", "packageCoverage", "basePackages", "targetPackages", "config", "layers", "sizes", "ignoredFileDifferences"],
+  "properties": {
+    "schemaVersion": { "const": 1 },
+    "base": { "$ref": "#/$defs/input" },
+    "target": { "$ref": "#/$defs/input" },
+    "options": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["scopes", "ignorePaths", "includeTimestamps", "pathSemantics"],
+      "properties": {
+        "scopes": { "type": "array", "uniqueItems": true, "items": { "enum": ["files", "packages", "config", "layers", "sizes"] } },
+        "ignorePaths": { "$ref": "#/$defs/strings" },
+        "includeTimestamps": { "type": "boolean" },
+        "pathSemantics": { "enum": ["posix", "windows"] }
+      }
+    },
+    "complete": { "type": "boolean" },
+    "areEqual": { "type": ["boolean", "null"] },
+    "exitCode": { "enum": [0, 1, 2] },
+    "sections": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["files", "packages", "config", "layers", "sizes"],
+      "properties": {
+        "files": { "$ref": "#/$defs/section" },
+        "packages": { "$ref": "#/$defs/section" },
+        "config": { "$ref": "#/$defs/section" },
+        "layers": { "$ref": "#/$defs/section" },
+        "sizes": { "$ref": "#/$defs/section" }
+      }
+    },
+    "diagnostics": { "type": "array", "items": { "$ref": "#/$defs/diagnostic" } },
+    "files": { "type": "array", "items": { "$ref": "#/$defs/fileDifference" } },
+    "packages": { "type": "array", "items": { "$ref": "#/$defs/packageDifference" } },
+    "packageCoverage": { "type": "array", "items": { "$ref": "#/$defs/packageCoverage" } },
+    "basePackages": { "type": "array", "items": { "$ref": "#/$defs/package" } },
+    "targetPackages": { "type": "array", "items": { "$ref": "#/$defs/package" } },
+    "config": { "type": "array", "items": { "$ref": "#/$defs/valueDifference" } },
+    "layers": { "type": "array", "items": { "$ref": "#/$defs/valueDifference" } },
+    "sizes": { "type": "array", "items": { "$ref": "#/$defs/size" } },
+    "ignoredFileDifferences": { "$ref": "#/$defs/count" }
+  },
+  "allOf": [
+    { "if": { "properties": { "complete": { "const": false } } }, "then": { "properties": { "areEqual": { "type": "null" }, "exitCode": { "const": 1 } } } },
+    { "if": { "properties": { "complete": { "const": true }, "areEqual": { "const": true } } }, "then": { "properties": { "exitCode": { "const": 0 } } } },
+    { "if": { "properties": { "complete": { "const": true }, "areEqual": { "const": false } } }, "then": { "properties": { "exitCode": { "const": 2 } } } }
+  ],
+  "$defs": {
+    "count": { "type": "integer", "minimum": 0 },
+    "strings": { "type": "array", "items": { "type": "string" } },
+    "coverage": { "enum": ["available", "partial", "unavailable", "notDetected", "notRequested", "incompatible"] },
+    "kind": { "enum": ["added", "removed", "changed"] },
+    "input": {
+      "type": "object", "additionalProperties": false,
+      "required": ["requested", "source", "identity", "identityKind", "platform", "configIdentityKind"],
+      "properties": {
+        "requested": { "type": "string" },
+        "source": { "enum": ["registry", "docker"] },
+        "identity": { "type": "string" },
+        "identityKind": { "enum": ["registryManifestDigest", "dockerImageId"] },
+        "configIdentity": { "type": "string" },
+        "configIdentityKind": { "enum": ["registryConfigDigest", "dockerImageId"] },
+        "platform": { "type": "string" },
+        "connection": { "type": "string" }
+      }
+    },
+    "section": {
+      "type": "object", "additionalProperties": false,
+      "required": ["coverage", "areEqual", "added", "removed", "changed", "differences"],
+      "properties": {
+        "coverage": { "$ref": "#/$defs/coverage" },
+        "areEqual": { "type": ["boolean", "null"] },
+        "added": { "$ref": "#/$defs/count" }, "removed": { "$ref": "#/$defs/count" },
+        "changed": { "$ref": "#/$defs/count" }, "differences": { "$ref": "#/$defs/count" }
+      }
+    },
+    "diagnostic": {
+      "type": "object", "additionalProperties": false,
+      "required": ["code", "operand", "section", "message"],
+      "properties": {
+        "code": { "type": "string" }, "operand": { "enum": ["base", "target", "comparison"] },
+        "section": { "type": "string" }, "path": { "type": "string" }, "message": { "type": "string" }
+      }
+    },
+    "provenance": {
+      "type": "object", "additionalProperties": false,
+      "required": ["entryLayer", "contentLayer", "identityKind"],
+      "properties": {
+        "entryLayer": { "$ref": "#/$defs/count" }, "entryIdentity": { "type": "string" },
+        "contentLayer": { "$ref": "#/$defs/count" }, "contentIdentity": { "type": "string" },
+        "identityKind": { "enum": ["registryBlobDigest", "uncompressedDiffId"] }
+      }
+    },
+    "file": {
+      "type": "object", "additionalProperties": false,
+      "required": ["type", "size", "mode", "userId", "groupId", "provenance"],
+      "properties": {
+        "type": { "enum": ["File", "Directory", "SymbolicLink", "HardLink", "Other"] },
+        "size": { "$ref": "#/$defs/count" }, "mode": { "type": "integer" },
+        "userId": { "type": "integer" }, "groupId": { "type": "integer" },
+        "linkTarget": { "type": "string" }, "modifiedTime": { "type": "string", "format": "date-time" },
+        "boundLinkTarget": { "type": "string" },
+        "windows": {
+          "type": "object",
+          "properties": {
+            "attributes": { "type": "integer" }, "isMountPoint": { "type": "boolean" },
+            "hasSecurityDescriptor": { "type": "boolean" }, "fingerprint": { "type": "string" },
+            "unsupportedReason": { "type": "string" }, "hasAlternateStreams": { "type": "boolean" }
+          }
+        },
+        "contentHash": { "type": "string" }, "provenance": { "$ref": "#/$defs/provenance" }
+      }
+    },
+    "association": {
+      "type": "object", "additionalProperties": false, "required": ["ecosystem", "scope", "name", "evidence"],
+      "properties": {
+        "ecosystem": { "type": "string" }, "scope": { "type": "string" }, "name": { "type": "string" },
+        "evidence": { "enum": ["inferredPath", "recordedMetadata"] }
+      }
+    },
+    "fileDifference": {
+      "type": "object", "additionalProperties": false,
+      "required": ["path", "kind", "reasons", "basePackages", "targetPackages"],
+      "properties": {
+        "path": { "type": "string" }, "kind": { "$ref": "#/$defs/kind" }, "reasons": { "$ref": "#/$defs/strings" },
+        "base": { "$ref": "#/$defs/file" }, "target": { "$ref": "#/$defs/file" },
+        "basePackages": { "type": "array", "items": { "$ref": "#/$defs/association" } },
+        "targetPackages": { "type": "array", "items": { "$ref": "#/$defs/association" } }
+      }
+    },
+    "package": {
+      "type": "object", "additionalProperties": false, "required": ["ecosystem", "scope", "name", "versions", "evidencePaths"],
+      "properties": {
+        "ecosystem": { "enum": ["npm", "dpkg", "apk", "pip", "nuget"] }, "scope": { "type": "string" },
+        "name": { "type": "string" }, "versions": { "$ref": "#/$defs/strings" }, "evidencePaths": { "$ref": "#/$defs/strings" }
+      }
+    },
+    "packageDifference": {
+      "type": "object", "additionalProperties": false, "required": ["ecosystem", "scope", "name", "kind", "definitive"],
+      "properties": {
+        "ecosystem": { "type": "string" }, "scope": { "type": "string" }, "name": { "type": "string" },
+        "kind": { "$ref": "#/$defs/kind" }, "base": { "$ref": "#/$defs/package" }, "target": { "$ref": "#/$defs/package" },
+        "definitive": { "type": "boolean" }
+      }
+    },
+    "packageCoverage": {
+      "type": "object", "additionalProperties": false, "required": ["ecosystem", "operand", "coverage", "candidates", "parsed", "failed", "skippedRecords", "evidence"],
+      "properties": {
+        "ecosystem": { "type": "string" }, "operand": { "enum": ["base", "target"] }, "coverage": { "$ref": "#/$defs/coverage" },
+        "candidates": { "$ref": "#/$defs/count" }, "parsed": { "$ref": "#/$defs/count" }, "failed": { "$ref": "#/$defs/count" },
+        "skippedRecords": { "$ref": "#/$defs/count" },
+        "evidence": { "type": "array", "items": {
+          "type": "object", "additionalProperties": false, "required": ["path", "scope", "parsed"],
+          "properties": { "path": { "type": "string" }, "scope": { "type": "string" }, "parsed": { "type": "boolean" } }
+        } }
+      }
+    },
+    "valueDifference": {
+      "type": "object", "additionalProperties": false, "required": ["path", "kind"],
+      "properties": { "path": { "type": "string" }, "kind": { "$ref": "#/$defs/kind" }, "base": {}, "target": {} }
+    },
+    "size": {
+      "type": "object", "additionalProperties": false, "required": ["name", "coverage", "estimate"],
+      "properties": {
+        "name": { "enum": ["registryCompressedLayerBytes", "totalLayerFilePayloadBytes", "effectiveLiveContentBytes", "hiddenContentBytes", "targetOnlyUniqueRegistryBlobBytes"] },
+        "coverage": { "$ref": "#/$defs/coverage" }, "baseBytes": { "$ref": "#/$defs/count" }, "targetBytes": { "$ref": "#/$defs/count" },
+        "deltaBytes": { "type": "integer" }, "estimate": { "type": "boolean" }
+      }
+    }
+  }
+}

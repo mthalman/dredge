@@ -39,8 +39,8 @@ public class NuGetPackageTests
             """;
 
         Assert.Equal(
-            [new InstalledPackage("newtonsoft.json", "13.0.3"),
-             new InstalledPackage("transitive.package", "2.0.0-preview.1")],
+            [new InstalledPackage("newtonsoft.json", "13.0.3") { RuntimeTarget = ".NETCoreApp,Version=v10.0/linux-x64" },
+             new InstalledPackage("transitive.package", "2.0.0-preview.1") { RuntimeTarget = ".NETCoreApp,Version=v10.0/linux-x64" }],
             InstalledPackageReader.ParseNuGetDepsJson(content, "app/App.deps.json"));
     }
 

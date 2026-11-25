@@ -91,6 +91,7 @@ public sealed class HtmlReportBrowserTests : IClassFixture<HtmlReportBrowserFixt
     [InlineData(1, 1)]
     public async Task SingleImageInitialLayerMatchesExplorer(int? initialLayer, int expectedLayer)
     {
+        _ = Page;
         JsonNode data = HtmlImageReportTests.Data(fixture.Data.Html);
         data["images"]!.AsArray().RemoveAt(1);
         data["differences"] = null;
@@ -111,6 +112,7 @@ public sealed class HtmlReportBrowserTests : IClassFixture<HtmlReportBrowserFixt
     [Fact]
     public async Task ComparisonSwitchToShorterImageSelectsLastLayer()
     {
+        _ = Page;
         JsonNode data = HtmlImageReportTests.Data(fixture.Data.Html);
         JsonNode baseline = data["images"]![0]!;
         JsonNode lastLayer = baseline["layers"]![1]!.DeepClone();
@@ -146,6 +148,47 @@ public sealed class HtmlReportBrowserTests : IClassFixture<HtmlReportBrowserFixt
         await Expect(Page.Locator(".search-count")).ToHaveTextAsync("1 match");
         await Expect(Page.Locator(".package-diff-row")).ToHaveCountAsync(1);
         await Expect(Page.Locator(".package-diff-row .name")).ToContainTextAsync("\u03c2-unicodepkg");
+    }
+
+    [Fact]
+    public async Task PackageComparisonShowsScopedCountsAndIncompleteCoverage()
+    {
+        _ = Page;
+        JsonNode data = HtmlImageReportTests.Data(fixture.Data.Html);
+        JsonNode[] groups = data["images"]!.AsArray().Select(image =>
+        {
+            int lastLayer = image!["layers"]!.AsArray().Count - 1;
+            JsonNode inventory = image["packageInventories"]!.AsArray().Single(item =>
+                item!["layers"]!.AsArray().Any(layer => layer!.GetValue<int>() == lastLayer))!;
+            JsonNode npm = inventory["ecosystems"]!.AsArray()
+                .Single(item => item!["ecosystem"]!.GetValue<string>() == "npm")!;
+            npm["available"] = true;
+            npm["incomplete"] = false;
+            return npm;
+        }).ToArray();
+        groups[0]["scopedCount"] = 2;
+        groups[1]["scopedCount"] = 3;
+        data["packageDifferences"] = JsonNode.Parse(
+            """[{"ecosystem":"npm","name":"core","scope":"app/node_modules/core","before":"1","after":"2","isDefinitive":true}]""");
+        await LoadReportAsync(data, "scoped-packages.html");
+        await Button("Differences").ClickAsync();
+        ILocator group = Page.Locator(".package-group").Filter(new() { HasText = "npm" });
+        await Expect(group.Locator("summary").First).ToContainTextAsync("1 changed, 2 unchanged");
+        await Button("Swap sides").ClickAsync();
+        await Expect(group.Locator("summary").First).ToContainTextAsync("1 changed, 1 unchanged");
+
+        groups[1]["incomplete"] = true;
+        data["packageDifferences"]![0]!["isDefinitive"] = false;
+        await LoadReportAsync(data, "incomplete-packages.html");
+        await Button("Differences").ClickAsync();
+        group = Page.Locator(".package-group").Filter(new() { HasText = "npm" });
+        await Expect(group.Locator("summary").First).ToContainTextAsync("1 changed, comparison incomplete");
+        await Expect(group.Locator(".comparison-unchanged")).ToHaveCountAsync(0);
+        await Expect(group.Locator(".package-diff-row .name")).ToContainTextAsync("core [app/node_modules/core]");
+        await Expect(group.Locator(".package-diff-row span").First).ToHaveAttributeAsync(
+            "title", "Observed change; package inventory is incomplete");
+        await Page.Locator("#filter").FillAsync("app/node_modules/core");
+        await Expect(Page.Locator(".search-count")).ToHaveTextAsync("1 match");
     }
 
     [Fact]
@@ -256,6 +299,7 @@ public sealed class HtmlReportBrowserTests : IClassFixture<HtmlReportBrowserFixt
     [Fact]
     public async Task InsightKeyboardSelectionAndActivation()
     {
+        _ = Page;
         string html = fixture.Data.Html;
         JsonNode data = HtmlImageReportTests.Data(html);
         JsonArray findings = data["images"]![0]!["findings"]!.AsArray();

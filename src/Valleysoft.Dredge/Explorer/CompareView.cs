@@ -82,6 +82,7 @@ internal sealed class CompareView
     private PackageFilesContent? rowPackageFiles;
     private string rowQuery = "";
     private bool rowOverview;
+    private int searchMatchCount;
     private readonly HashSet<string> rowExpanded = new(StringComparer.Ordinal);
 
     public CompareView(ExplorerPresenter presenter, CompareState state)
@@ -98,6 +99,16 @@ internal sealed class CompareView
     public int DiffRows => Math.Max(1, RightInnerHeight - 5);
     public bool IsOverview => c.Overview && !c.Searching && c.SearchQuery.Length == 0 &&
         c.Diff is null && c.PackageFiles is null;
+    public int SearchMatchCount
+    {
+        get
+        {
+            List<CompareRow> current = Rows();
+            return c.Searching && c.SearchQuery.Length == 0
+                ? current.Count(static row => row.Kind is CompareRowKind.File or CompareRowKind.Package)
+                : searchMatchCount;
+        }
+    }
 
     public int WarningCount => c.Comparison.Baseline.Packages.Diagnostics.Count +
         c.Comparison.Target.Packages.Diagnostics.Count + (c.PackageFiles?.Warnings?.Count ?? 0) +
@@ -356,6 +367,7 @@ internal sealed class CompareView
         rowExpanded.UnionWith(c.Expanded);
         if (IsOverview)
         {
+            searchMatchCount = 0;
             return rows =
             [
                 new("section:files", CompareRowKind.Section, "", "Files", Change.None, Expandable: true,
@@ -368,9 +380,27 @@ internal sealed class CompareView
             ? [.. (package.Files ?? []).Select(file => new CompareRow("file:" + file.Path,
                 CompareRowKind.File, "", file.Path, file.Change, Path: file.Path))]
             : BuildRows();
-        rows = c.SearchQuery.Length == 0 ? all : [.. all
-            .Where(row => row.Kind is CompareRowKind.File or CompareRowKind.Package &&
-                (row.Path ?? row.Name).Contains(c.SearchQuery, StringComparison.OrdinalIgnoreCase))];
+        if (c.SearchQuery.Length == 0)
+        {
+            searchMatchCount = c.Searching
+                ? all.Count(static row => row.Kind is CompareRowKind.File or CompareRowKind.Package)
+                : 0;
+            rows = all;
+        }
+        else
+        {
+            List<CompareRow> matches = [.. all
+                .Where(row => row.Kind is CompareRowKind.File or CompareRowKind.Package &&
+                    (row.Path ?? row.Name).Contains(c.SearchQuery, StringComparison.OrdinalIgnoreCase))];
+            searchMatchCount = matches.Count;
+            HashSet<InstalledPackageEcosystem> matchedEcosystems = [.. matches
+                .Where(static row => row.Package is not null)
+                .Select(static row => row.Package!.Ecosystem)];
+            rows = [.. matches, .. all.Where(row =>
+                row.Key.StartsWith("partial:", StringComparison.Ordinal) &&
+                Enum.TryParse(row.Key["partial:".Length..], out InstalledPackageEcosystem ecosystem) &&
+                matchedEcosystems.Contains(ecosystem))];
+        }
         return rows;
     }
 
@@ -407,9 +437,15 @@ internal sealed class CompareView
                 {
                     continue;
                 }
-                int unchanged = Math.Max(0, c.Comparison.Target.Packages.Ecosystems[ecosystem].Packages.Count
+                int inventoryCount = c.Comparison.Target.Packages.Coverage.Count == 0
+                    ? c.Comparison.Target.Packages.Ecosystems[ecosystem].Packages.Count
+                    : c.Comparison.Target.Packages.ScopedPackages.Where(p => p.Ecosystem == ecosystem)
+                        .DistinctBy(static p => (p.Scope, p.Name)).Count();
+                bool incomplete = ImageComparison.HasIncompletePackageCoverage(c.Comparison.Baseline.Packages, ecosystem) ||
+                    ImageComparison.HasIncompletePackageCoverage(c.Comparison.Target.Packages, ecosystem);
+                int unchanged = incomplete ? 0 : Math.Max(0, inventoryCount
                     - changes.Count(p => p.TargetVersion is not null));
-                if (changes.Count == 0 && unchanged == 0)
+                if (changes.Count == 0 && unchanged == 0 && !incomplete)
                 {
                     continue;
                 }
@@ -417,7 +453,7 @@ internal sealed class CompareView
                     .GroupBy(p => ecosystem == InstalledPackageEcosystem.Npm && p.Name.StartsWith('@') && p.Name.Contains('/')
                         ? p.Name[..p.Name.IndexOf('/')] : p.Name)
                     .Select(g => (g.Key, g.ToList()))];
-                int count = groups.Count + (unchanged > 0 ? 1 : 0);
+                int count = groups.Count + (unchanged > 0 || incomplete ? 1 : 0);
                 int index = 0;
                 string ecosystemKey = $"eco:{ecosystem}";
                 bool ecosystemOpen = c.SearchQuery.Length > 0 || c.Expanded.Contains(ecosystemKey);
@@ -452,7 +488,12 @@ internal sealed class CompareView
                         list.Add(PackageRow(items[0], branch));
                     }
                 }
-                if (unchanged > 0)
+                if (incomplete)
+                {
+                    list.Add(new($"partial:{ecosystem}", CompareRowKind.Unchanged, "   └─ ",
+                        "Package comparison incomplete (? = observed)", Change.None));
+                }
+                else if (unchanged > 0)
                 {
                     list.Add(new($"same:{ecosystem}", CompareRowKind.Unchanged, "   └─ ", $"{Fmt.N(unchanged)} unchanged", Change.Identical));
                 }
@@ -520,7 +561,8 @@ internal sealed class CompareView
             Change.Removed => p.BaselineVersion!,
             _ => $"{p.BaselineVersion} → {p.TargetVersion}",
         };
-        return new($"pkg:{p.Ecosystem}:{p.Name}", CompareRowKind.Package, branch, p.Name, change, Versions: versions, Package: p);
+        return new(p.Scope is null ? $"pkg:{p.Ecosystem}:{p.Name}" : $"pkg:{p.Ecosystem}:{p.Scope}:{p.Name}", CompareRowKind.Package, branch,
+            p.Scope is null ? p.Name : $"{p.Name} [{p.Scope}]", change, Versions: versions, Package: p);
     }
 
     public PaneContent Diff()
@@ -541,7 +583,7 @@ internal sealed class CompareView
                 ? Line.Of(package.Message ?? $"{Fmt.Count(package.Total, "file")}, {Fmt.N(package.Files?.Count ?? 0)} changed", Theme.Silt)
                 : Chips(w), WarningCount > 0
                 ? Line.Of($"{Fmt.Count(WarningCount, "metadata warning")} - Alt+W for full details", Theme.Ochre)
-                : c.SearchQuery.Length == 0 ? Line.Blank : Line.Of($"Filter: {c.SearchQuery} · {list.Count} matches", Theme.Silt),
+                : c.SearchQuery.Length == 0 ? Line.Blank : Line.Of($"Filter: {c.SearchQuery} · {SearchMatchCount} matches", Theme.Silt),
             new Line().Add("   ").Add(Fmt.Fit(c.BaselineLabel, 8).PadLeft(8), Theme.Silt).Add("    ").Add(Fmt.Fit(c.TargetLabel, 8).PadLeft(8), Theme.Silt).Add("  ")
                 .Add("change".PadLeft(9), Theme.Silt).Add("  ").Add("name".PadRight(28), Theme.Silt).Add("version", Theme.Silt).Truncate(w)];
         string title = !c.Expanded.Contains("section:packages") ? "Final filesystem differences"
@@ -670,7 +712,7 @@ internal sealed class CompareView
             line.Truncate(w).Pad(w);
             return sel ? line.WithBackground(Theme.ChannelDeep) : line;
         }
-        line.Add(glyph + " ", Theme.S(color, null, Deco.Bold));
+        line.Add(glyph + (r.Package is { IsDefinitive: false } ? "?" : " "), Theme.S(color, null, Deco.Bold));
         bool sizes = r.Kind is CompareRowKind.Dir or CompareRowKind.File && (r.Before is not null || r.After is not null);
         // Package rows have no sizes, so their names start at the size columns and
         // the version change gets the room.

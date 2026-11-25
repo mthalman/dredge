@@ -34,6 +34,7 @@ public class ImageSourceCommandTests
     [InlineData("metadata")]
     [InlineData("layers")]
     [InlineData("files")]
+    [InlineData("semantic")]
     public void CompareCommands_AcceptIndependentOperandSources(string command)
     {
         Command image = new ImageCommand(Mock.Of<IDockerRegistryClientFactory>());

@@ -77,6 +77,22 @@ public sealed class WindowsExplorerTests : IAsyncDisposable
         Assert.Contains("stream:secret", Assert.Single(comparison.Limitations));
     }
 
+    [Theory]
+    [InlineData("app/k.txt", "APP/K.TXT", true)]
+    [InlineData("app/k.txt", "app/\u212A.txt", false)]
+    [InlineData("app/s.txt", "app/\u017F.txt", false)]
+    [InlineData("app/\u03A3.txt", "app/\u03C2.txt", false)]
+    [InlineData("app/*.txt", "APP/FILE.TXT", true)]
+    [InlineData("app/**/k?.txt", "APP/a/b/Ka.TXT", true)]
+    [InlineData("app/**/k?.txt", "APP/Ka.TXT", true)]
+    [InlineData("app/*.txt", "app/sub/file.txt", false)]
+    [InlineData("app/file+.txt", "APP/FILE+.TXT", true)]
+    [InlineData("app/\U00010400.txt", "app/\U00010428.txt", false)]
+    public void WindowsIgnoreGlobsUseWindowsPathCaseFolding(string pattern, string path, bool matches)
+    {
+        Assert.Equal(matches, ImageComparison.CreateIgnore(pattern, true).IsMatch(path));
+    }
+
     [Fact]
     public async Task TreesSearchAndHistoryShareCaseInsensitiveIdentity()
     {

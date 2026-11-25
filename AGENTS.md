@@ -24,6 +24,21 @@ dotnet test --project Valleysoft.Dredge.Analyzers.Tests/Valleysoft.Dredge.Analyz
 
 When filtering tests, select the test project explicitly. Under the .NET 10 test runner, an unrelated project with no matching tests causes the solution-level command to fail.
 
+HTML report browser tests are opt-in. From `src/`, install Playwright Chromium
+and set `DREDGE_HTML_BROWSER_TESTS=1` to run them:
+
+```shell
+pwsh Valleysoft.Dredge.Tests/bin/Release/net10.0/playwright.ps1 install chromium
+dotnet test --project Valleysoft.Dredge.Tests/Valleysoft.Dredge.Tests.csproj -c Release -e DREDGE_HTML_BROWSER_TESTS=1 --filter-class Valleysoft.Dredge.Tests.HtmlReportBrowserTests
+```
+
+Without the opt-in, browser tests must skip before accessing `fixture.Data` or
+other browser fixture members. For the non-container, non-browser suite, use:
+
+```shell
+dotnet test --no-restore -v normal -c Release --filter "Category!=Integration&Category!=Browser"
+```
+
 The solution requires the .NET 10 SDK (see `global.json`). The main and test projects target `net10.0`.
 
 ## Architecture

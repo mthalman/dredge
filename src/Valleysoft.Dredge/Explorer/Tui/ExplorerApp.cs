@@ -557,7 +557,7 @@ internal sealed class StagedViewerFile(string path, Action<string>? cleanup = nu
 // keep the daemon's exported content available.
 internal sealed class ExplorerHost : IExplorerHost, IAsyncDisposable
 {
-    internal const long MaxPackageOwnershipBytes = 64 * 1024 * 1024;
+    internal const long MaxPackageOwnershipBytes = InstalledPackageReader.MaxPackageOwnershipBytes;
     private readonly IDockerRegistryClient? client;
     private readonly IDockerRegistryClientFactory factory;
     private readonly ExplorerSource source;
@@ -1122,8 +1122,24 @@ internal sealed class ExplorerHost : IExplorerHost, IAsyncDisposable
             try
             {
                 string[] allPaths = [.. side.Entries.Select(entry => entry.Path)];
+                bool allowUnqualifiedDpkg = true;
+                if (package.Ecosystem == InstalledPackageEcosystem.Dpkg &&
+                    (package.Scope == "system" || package.Scope?.StartsWith("system/", StringComparison.Ordinal) == true))
+                {
+                    PackageInventoryCoverage? coverage = side.Packages.Coverage.GetValueOrDefault(package.Ecosystem);
+                    string[] unmatchedScopes = [.. side.Packages.ScopedPackages
+                        .Where(p => p.Ecosystem == package.Ecosystem && p.Name == package.Name)
+                        .Select(static p => p.Scope).Distinct(StringComparer.Ordinal)
+                        .Where(scope => !scope.StartsWith("system/", StringComparison.Ordinal) ||
+                            !allPaths.Contains($"var/lib/dpkg/info/{package.Name}:{scope["system/".Length..]}.list",
+                                StringComparer.Ordinal))];
+                    allowUnqualifiedDpkg = (coverage is null || coverage.Failed == 0 && coverage.SkippedRecords == 0) &&
+                        unmatchedScopes.Length == 1 && unmatchedScopes[0] == package.Scope;
+                }
                 IReadOnlyList<string> paths = package.Ecosystem == InstalledPackageEcosystem.Npm
-                    ? PackageFileLister.ListNpm(side.Packages.NpmPackageRoots.GetValueOrDefault(package.Name) ?? [], allPaths)
+                    ? PackageFileLister.ListNpm(package.Scope is null
+                        ? side.Packages.NpmPackageRoots.GetValueOrDefault(package.Name) ?? []
+                        : [package.Scope], allPaths)
                     : await PackageFileLister.ListAsync(package.Ecosystem, package.Name, allPaths,
                     async (path, token) =>
                     {
@@ -1137,7 +1153,8 @@ internal sealed class ExplorerHost : IExplorerHost, IAsyncDisposable
                         }
                         return null;
                     }, cancellationToken,
-                    (path, error) => warnings.Add($"{label} /{path}: {error.Message}"));
+                    (path, error) => warnings.Add($"{label} /{path}: {error.Message}"),
+                    package.Scope, allowUnqualifiedDpkg);
                 foreach (string path in paths)
                 {
                     cancellationToken.ThrowIfCancellationRequested();

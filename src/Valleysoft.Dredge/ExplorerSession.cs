@@ -12,7 +12,11 @@ internal sealed record ExplorerFileDifference(
 
 internal sealed record ExplorerPackageDifference(
     InstalledPackageEcosystem Ecosystem, string Name, string? BaselineVersion,
-    string? TargetVersion);
+    string? TargetVersion)
+{
+    public string? Scope { get; init; }
+    public bool IsDefinitive { get; init; } = true;
+}
 
 internal sealed record ExplorerComparison(
     ExplorerSession Baseline, ExplorerSession Target, long AdditionalDownloadBytes,
@@ -230,54 +234,41 @@ internal sealed class ExplorerSession
             }
         }
 
-        Dictionary<string, ImageFileSystemEntry> before = baseline.Entries
-            .ToDictionary(static entry => entry.Path, semantics.Comparer);
-        Dictionary<string, ImageFileSystemEntry> after = target.Entries
-            .ToDictionary(static entry => entry.Path, semantics.Comparer);
         List<ExplorerFileDifference> differences = [];
         List<string> limitations = [];
-        foreach (string path in before.Keys.Concat(after.Keys).Distinct(semantics.Comparer)
-            .Order(semantics.Comparer))
+        foreach (var fact in ImageComparison.CompareFiles(baseline.Entries, target.Entries,
+            baseline.Analysis.LiveContents, target.Analysis.LiveContents, semantics, false))
         {
-            before.TryGetValue(path, out ImageFileSystemEntry? old);
-            after.TryGetValue(path, out ImageFileSystemEntry? current);
-            if (semantics.IsWindows && (old?.Type == ImageFileType.Other || current?.Type == ImageFileType.Other))
+            string path = fact.Path;
+            ImageFileSystemEntry? old = fact.Before, current = fact.After;
+            bool other = old?.Type == ImageFileType.Other || current?.Type == ImageFileType.Other;
+            if (other && fact.Incomplete)
             {
                 if (limitations.Count < 64)
                 {
                     limitations.Add($"File comparison unavailable for '/{path}': {current?.Windows?.UnsupportedReason ?? old?.Windows?.UnsupportedReason ?? "unsupported entry type"}");
                 }
+            }
+            if (semantics.IsWindows && other)
+            {
                 continue;
             }
-            if (old is null || current is null ||
-                !SameFile(old, current, baseline.Analysis.LiveContents, target.Analysis.LiveContents, semantics))
+            if (fact.Reasons.Count > 0 || fact.Incomplete && !other)
             {
                 differences.Add(new(path, old is null ? LayerChangeKind.Added :
                     current is null ? LayerChangeKind.Deleted : LayerChangeKind.Modified, old, current));
             }
         }
 
-        List<ExplorerPackageDifference> packages = [];
+        IReadOnlyList<ExplorerPackageDifference> packages = includePackages
+            ? ImageComparison.Packages(baseline.Packages, target.Packages) : [];
         foreach (InstalledPackageEcosystem ecosystem in includePackages
             ? Enum.GetValues<InstalledPackageEcosystem>() : [])
         {
-            InstalledPackageEcosystemMetadata old = baseline.Packages.Ecosystems[ecosystem];
-            InstalledPackageEcosystemMetadata current = target.Packages.Ecosystems[ecosystem];
-            if (old.Availability != InstalledPackageMetadataAvailability.Available ||
-                current.Availability != InstalledPackageMetadataAvailability.Available)
+            if (ImageComparison.HasIncompletePackageCoverage(baseline.Packages, ecosystem) ||
+                ImageComparison.HasIncompletePackageCoverage(target.Packages, ecosystem))
             {
-                continue;
-            }
-            foreach (string name in old.Packages.Keys.Concat(current.Packages.Keys)
-                .Distinct(StringComparer.Ordinal).Order(StringComparer.Ordinal))
-            {
-                old.Packages.TryGetValue(name, out IReadOnlyList<string>? previous);
-                current.Packages.TryGetValue(name, out IReadOnlyList<string>? next);
-                if (previous is null || next is null || !previous.SequenceEqual(next))
-                {
-                    packages.Add(new(ecosystem, name, previous is null ? null : string.Join(", ", previous),
-                        next is null ? null : string.Join(", ", next)));
-                }
+                limitations.Add($"{ecosystem} package comparison is incomplete; unverified additions and removals are omitted.");
             }
         }
         return new(baseline, target, additional, differences, packages) { Limitations = limitations };
@@ -310,33 +301,6 @@ internal sealed class ExplorerSession
         layer >= Resolved.Manifest.Layers.Length ? null :
         content ? (verifiedContentDigests ?? contentDigests.Value)[layer] :
         Resolved.Manifest.Layers[layer].Digest;
-
-    private static bool SameFile(
-        ImageFileSystemEntry left, ImageFileSystemEntry right,
-        IReadOnlyDictionary<string, ScannedEntry> oldEntries,
-        IReadOnlyDictionary<string, ScannedEntry> newEntries,
-        ImageFileSystemSemantics semantics)
-    {
-        if (left.Type != right.Type ||
-            !semantics.IsWindows && (left.Mode != right.Mode ||
-                left.UserId != right.UserId || left.GroupId != right.GroupId) ||
-            left.Size != right.Size || left.LinkTarget != right.LinkTarget || left.Windows != right.Windows)
-        {
-            return false;
-        }
-        if (left.Type is not (ImageFileType.File or ImageFileType.HardLink))
-        {
-            return true;
-        }
-        if (left.Type == ImageFileType.HardLink &&
-            (left.ContentLinkTarget is not null || right.ContentLinkTarget is not null))
-        {
-            return left.ContentLinkTarget == right.ContentLinkTarget;
-        }
-        return oldEntries.TryGetValue(left.Path, out ScannedEntry? old) &&
-            newEntries.TryGetValue(right.Path, out ScannedEntry? current) &&
-            old.ContentHash == current.ContentHash;
-    }
 
     internal static async Task<(IReadOnlyList<ExplorerBaseImage> Bases, string? Warning)> VerifyBasesAsync(
         IDockerRegistryClient client, IDockerRegistryClientFactory factory,

@@ -30,10 +30,12 @@ internal sealed record HtmlReportLayer(
     string? BaseImage, string? BaseLabel, string Instruction, HtmlReportFile[] Changes);
 internal sealed record HtmlReportHistory(int? Layer, string Instruction, string Created);
 internal sealed record HtmlReportPackage(string Name, string[] Versions);
-internal sealed record HtmlReportPackageGroup(string Ecosystem, bool Available, HtmlReportPackage[] Packages);
+internal sealed record HtmlReportPackageGroup(
+    string Ecosystem, bool Available, HtmlReportPackage[] Packages, int ScopedCount, bool Incomplete);
 internal sealed record HtmlReportPackageInventory(
     int[] Layers, HtmlReportPackageGroup[] Ecosystems, string[] Warnings, string? UnavailableReason);
-internal sealed record HtmlReportPackageDifference(string Ecosystem, string Name, string? Before, string? After);
+internal sealed record HtmlReportPackageDifference(
+    string Ecosystem, string Name, string? Before, string? After, string? Scope, bool IsDefinitive);
 internal sealed record HtmlReportPathIdentity(string Path, int Id);
 internal sealed record HtmlReportImage(
     string Reference, string Label, string Identity, string Platform, string RepoName, string TransferLabel,
@@ -105,7 +107,7 @@ internal static class HtmlImageReport
             new HtmlReportDifference(file.Path, file.Kind.ToString(), file.Baseline?.Size, file.Target?.Size))];
         HtmlReportPackageDifference[] packages = [.. comparison.Packages.Select(static package =>
             new HtmlReportPackageDifference(CompareView.EcosystemName(package.Ecosystem), package.Name,
-                package.BaselineVersion, package.TargetVersion))];
+                package.BaselineVersion, package.TargetVersion, package.Scope, package.IsDefinitive))];
         HtmlReportPathSize[] pathSizes = [.. CompareView.FilePathSizes(comparison).Select(static size =>
             new HtmlReportPathSize(size.Path, size.Before, size.After, size.Directory, size.FileCount,
                 size.Sharing, size.LinkTarget, size.Change, size.Link, size.HardLink, size.SwappedLinkTarget))];
@@ -179,12 +181,14 @@ internal static class HtmlImageReport
         HtmlReportPackageInventory[] packageInventories = [.. inventories.Select(static inventory =>
             new HtmlReportPackageInventory(
                 [.. inventory.Layers],
-                [.. inventory.Metadata.Ecosystems.OrderBy(static pair => pair.Key).Select(static pair =>
+                [.. inventory.Metadata.Ecosystems.OrderBy(static pair => pair.Key).Select(pair =>
                     new HtmlReportPackageGroup(
                         CompareView.EcosystemName(pair.Key),
                         pair.Value.Availability == InstalledPackageMetadataAvailability.Available,
                         [.. pair.Value.Packages.OrderBy(static package => package.Key, StringComparer.Ordinal)
-                            .Select(static package => new HtmlReportPackage(package.Key, [.. package.Value]))]))],
+                            .Select(static package => new HtmlReportPackage(package.Key, [.. package.Value]))],
+                        ScopedPackageCount(inventory.Metadata, pair.Key),
+                        ImageComparison.HasIncompletePackageCoverage(inventory.Metadata, pair.Key)))],
                 [.. inventory.Metadata.Diagnostics.Select(static diagnostic => diagnostic.Path.Length == 0
                     ? diagnostic.Message : $"/{diagnostic.Path}: {diagnostic.Message}")],
                 inventory.Metadata.UnavailableReason))];
@@ -235,6 +239,8 @@ internal static class HtmlImageReport
         {
             hash.Add(ecosystem.Key);
             hash.Add(ecosystem.Value.Availability);
+            hash.Add(ScopedPackageCount(metadata, ecosystem.Key));
+            hash.Add(ImageComparison.HasIncompletePackageCoverage(metadata, ecosystem.Key));
             int packagesHash = 0;
             foreach (var package in ecosystem.Value.Packages)
             {
@@ -275,6 +281,9 @@ internal static class HtmlImageReport
         {
             if (!right.Ecosystems.TryGetValue(ecosystem.Key, out InstalledPackageEcosystemMetadata? other) ||
                 ecosystem.Value.Availability != other.Availability ||
+                ScopedPackageCount(left, ecosystem.Key) != ScopedPackageCount(right, ecosystem.Key) ||
+                ImageComparison.HasIncompletePackageCoverage(left, ecosystem.Key) !=
+                    ImageComparison.HasIncompletePackageCoverage(right, ecosystem.Key) ||
                 ecosystem.Value.Packages.Count != other.Packages.Count)
             {
                 return false;
@@ -290,6 +299,11 @@ internal static class HtmlImageReport
         }
         return true;
     }
+
+    private static int ScopedPackageCount(InstalledPackageMetadata metadata, InstalledPackageEcosystem ecosystem) =>
+        metadata.Coverage.Count == 0 ? metadata.Ecosystems[ecosystem].Packages.Count :
+            metadata.ScopedPackages.Where(package => package.Ecosystem == ecosystem)
+                .DistinctBy(static package => (package.Scope, package.Name)).Count();
 
     private static HtmlReportFileTreeMetadata[] FileTreeMetadata(ExplorerImage image, CancellationToken cancellationToken)
     {

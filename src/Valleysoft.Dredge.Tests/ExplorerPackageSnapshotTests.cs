@@ -102,6 +102,38 @@ public sealed class ExplorerPackageSnapshotTests : IAsyncDisposable
     }
 
     [Fact]
+    public async Task CachedInventoriesRetainCoverageDiagnosticsAndEmptyNuGetTarget()
+    {
+        const string status = "Package: example\nStatus: install ok installed\nVersion: 1\n\nPackage: broken\n\n";
+        const string deps = """{"runtimeTarget":{"name":"net"},"targets":{"net":{}},"libraries":{}}""";
+        byte[][] layers =
+        [
+            Layer(("var/lib/dpkg/status", status, TarEntryType.RegularFile),
+                ("app/App.deps.json", deps, TarEntryType.RegularFile)),
+            Layer(("unrelated-1", "1", TarEntryType.RegularFile)),
+            Layer(("unrelated-2", "2", TarEntryType.RegularFile))
+        ];
+        (ExplorerSession session, Mock<IDockerRegistryClient> client) = await CreateAsync(layers);
+        await using ImageFileSystem files = session.Files;
+        InstalledPackageMetadata first = await session.GetPackagesAsync(0, Token);
+        InstalledPackageMetadata cached = await session.GetPackagesAsync(1, Token);
+        client.Verify(c => c.Blobs.GetRangeAsync(Image.Repo, LayerCacheTestContext.Digest(layers[0]),
+            0, It.IsAny<long?>(), It.IsAny<CancellationToken>()), Times.Once);
+        await using ImageFileSystem snapshot = files.CreateLayerSnapshot(1, Token);
+        InstalledPackageMetadata uncached = await InstalledPackageReader.ReadAsync(snapshot, Token);
+
+        Assert.Equal(uncached.Diagnostics, cached.Diagnostics);
+        Assert.Equal(uncached.ScopedPackages, cached.ScopedPackages);
+        Assert.Equal(uncached.MetadataSources, cached.MetadataSources);
+        Assert.Equal(uncached.Coverage, cached.Coverage);
+        Assert.Equal(1, cached.Coverage[InstalledPackageEcosystem.Dpkg].SkippedRecords);
+        Assert.Equal(first.Diagnostics, cached.Diagnostics);
+        Assert.Contains(cached.MetadataSources, static source =>
+            source.Ecosystem == InstalledPackageEcosystem.NuGet &&
+            source.Scope == "app/App.deps.json#net" && source.Parsed);
+    }
+
+    [Fact]
     public async Task CanceledReplayIsDiscardedAndConcurrentRequestsRemainCorrect()
     {
         byte[][] layers = [.. Enumerable.Range(0, 5).Select(i => Layer(($"file-{i}", i.ToString(), TarEntryType.RegularFile)))];

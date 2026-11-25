@@ -460,6 +460,31 @@ public sealed class PackageFileListerTests
     }
 
     [Fact]
+    public async Task ScopedDpkgOwnershipFallsBackToAnUnqualifiedList()
+    {
+        const string list = "var/lib/dpkg/info/libfoo.list";
+        IReadOnlyList<string> files = await PackageFileLister.ListAsync(InstalledPackageEcosystem.Dpkg,
+            "libfoo", [list], (path, _) => Task.FromResult<string?>(path == list ? "/usr/lib/foo\n" : null),
+            CancellationToken.None, scope: "system/amd64");
+
+        Assert.Equal(["usr/lib/foo"], files);
+    }
+
+    [Fact]
+    public async Task UnqualifiedDpkgScopeDoesNotIncludeArchitectureQualifiedLists()
+    {
+        const string unqualified = "var/lib/dpkg/info/libfoo.list";
+        IReadOnlyList<string> files = await PackageFileLister.ListAsync(InstalledPackageEcosystem.Dpkg,
+            "libfoo",
+            [unqualified, "var/lib/dpkg/info/libfoo:amd64.list"],
+            (path, _) => Task.FromResult<string?>(path == unqualified
+                ? "/usr/share/common\n" : "/usr/lib/amd64/private\n"),
+            CancellationToken.None, scope: "system");
+
+        Assert.Equal(["usr/share/common"], files);
+    }
+
+    [Fact]
     public async Task PipUnionsAllEnvironmentRoots()
     {
         Dictionary<string, string> manifests = new()
@@ -476,6 +501,15 @@ public sealed class PackageFileListerTests
     {
         const string installed = "P:musl\nF:lib\nR:ld-musl.so.1\n\nP:busybox\nF:bin\nR:busybox\nF:etc\nR:motd\n";
         Assert.Equal(["bin/busybox", "etc/motd"], PackageFileLister.ParseApkInstalled(installed, "busybox"));
+    }
+
+    [Fact]
+    public void ApkOwnershipParserAcceptsBomBeforeFirstPackage()
+    {
+        IReadOnlyDictionary<string, IReadOnlyList<string>> ownership = PackageFileLister.ParseApkOwnership(
+            "\uFEFFP:busybox\nF:bin\nR:busybox\n");
+
+        Assert.Equal(["bin/busybox"], ownership["busybox"]);
     }
 
     [Fact]

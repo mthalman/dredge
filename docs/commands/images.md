@@ -10,6 +10,7 @@ All image commands support [platform resolution](../platform-resolution.md) via 
 | [`ls`](#ls) | List image filesystem entries and layer provenance |
 | [`cat`](#cat) | Write an image file to standard output |
 | [`extract`](#extract) | Extract an image file or directory |
+| [`compare semantic`](#compare-semantic) | Compare effective filesystem, scoped packages, configuration, layers, and sizes without a UI |
 | [`compare metadata`](#compare-metadata) | Compare image configuration and platform metadata |
 | [`compare layers`](#compare-layers) | Compare the layers of two images |
 | [`compare files`](#compare-files) | Compare the file contents of two images |
@@ -65,6 +66,7 @@ It does not disable TLS, downgrade connections, or try another endpoint.
 |---|---|---|---|
 | `inspect`, `dockerfile` | Supported | Supported | Supported |
 | `os` | Linux and Windows | Supported | Metadata identification; errors if the OS cannot be identified |
+| `compare semantic` | Supported | Supported, including mixed sources; original compressed sizes/download estimates unavailable | Supported filesystem subset; package inventory unavailable |
 | `compare metadata`, `compare layers` | Supported | Supported, including mixed sources | Supported without filesystem analysis |
 | `explore`, `ls`, `cat`, `extract` | Supported for Linux and Windows | Supported for Linux images | Supported with Windows filesystem limitations below |
 | `compare files` | Supported | Supported | Not supported |
@@ -441,13 +443,61 @@ Keep these limitations in mind:
 
 ### Shared layer cache
 
-`explore`, `ls`, `cat`, `extract`, `save-layers`, `compare files`, and Linux `os` share a
+`explore`, `ls`, `cat`, `extract`, `save-layers`, `compare semantic`,
+`compare files`, and Linux `os` share a
 persistent cache to reduce repeated layer downloads. Registry access is still
 required for registry sources, even when image layers are cached. Daemon-only
 commands require the selected Docker engine instead.
 
 See [Configure the layer cache](../settings.md#configure-the-layer-cache) for
 cache locations, storage limits, and cleanup.
+
+## Compare semantic
+
+Compare two images without opening the interactive explorer:
+
+```shell
+dredge image compare semantic <base> <target> [--output text|json]
+  [--scope files|packages|config|layers|sizes ...]
+  [--ignore-path <glob> ...] [--include-timestamps] [--limit <n>] [--no-color]
+  [--os <os>] [--arch <arch>] [--os-version <version>]
+  [--docker-context <context> | --docker-host <endpoint>]
+```
+
+By default, Dredge compares all five scopes. Repeat `--scope` to select only the
+sections you need:
+
+```shell
+dredge image compare semantic app:previous app:current --scope files --scope packages
+```
+
+The scopes compare:
+
+- `files`: effective filesystem contents and metadata.
+- `packages`: versions found in supported package databases.
+- `config`: image configuration.
+- `layers`: layer history and distribution metadata.
+- `sizes`: image and filesystem payload sizes.
+
+Filesystem and package comparisons support Linux and Windows images. Other
+operating systems are not interpreted using Linux filesystem rules. Package
+results only cover metadata Dredge can discover in npm, dpkg, apk, pip, and
+NuGet formats.
+
+Use `--ignore-path` to exclude matching filesystem paths. It does not filter
+other scopes. Globs use `/`; `*` and `?` match within a path segment, while
+`**` can match across segments. Use `--include-timestamps` to compare file
+timestamps.
+
+```shell
+dredge image compare semantic app:previous app:current --scope files --ignore-path 'var/log/**'
+```
+
+Use `--output json` for a complete machine-readable report. Text output limits
+details to 100 rows by default; change this with `--limit`. JSON follows the
+[`image-compare-v1.schema.json`](../schemas/image-compare-v1.schema.json)
+schema and is not limited by `--limit`. Review JSON output before sharing it,
+because image configuration may contain sensitive values.
 
 ## Compare metadata
 
