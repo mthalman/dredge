@@ -37,7 +37,7 @@ public sealed class CompareFixtureTests
         Assert.Equal(128 * 256, report.Sizes.Single(static s => s.Name == "effectiveLiveContentBytes").BaseBytes);
         Assert.Equal(0, report.Sizes.Single(static s => s.Name == "hiddenContentBytes").BaseBytes);
         Assert.Equal(16 * 256, report.Sizes.Single(static s => s.Name == "hiddenContentBytes").TargetBytes);
-        Assert.Equal("sha256:5c06921bcbcd87572a6b4223381a3a9acb3938cf526f3e55d84b2b1a8058ddc2", Digest(baseline.Layers[0]));
+        Assert.Equal("sha256:c458edca672b4664d01847813cac9e34652acc2351e23174f6b58dc6d86e8fb0", Digest(Uncompress(baseline.Layers[0])));
     }
 
     private static (Snapshot Base, Snapshot Target) SmallFixture()
