@@ -32,7 +32,7 @@ internal sealed record HtmlReportHistory(int? Layer, string Instruction, string 
 internal sealed record HtmlReportPackage(string Name, string[] Versions);
 internal sealed record HtmlReportPackageGroup(string Ecosystem, bool Available, HtmlReportPackage[] Packages);
 internal sealed record HtmlReportPackageInventory(
-    int Layer, HtmlReportPackageGroup[] Ecosystems, string[] Warnings, string? UnavailableReason);
+    int[] Layers, HtmlReportPackageGroup[] Ecosystems, string[] Warnings, string? UnavailableReason);
 internal sealed record HtmlReportPackageDifference(string Ecosystem, string Name, string? Before, string? After);
 internal sealed record HtmlReportPathIdentity(string Path, int Id);
 internal sealed record HtmlReportImage(
@@ -151,22 +151,43 @@ internal static class HtmlImageReport
                 ? "Windows content-only analysis excludes unsupported filesystem and runtime metadata."
                 : null }.OfType<string>(),
             .. session.Files.Diagnostics.Select(static diagnostic => $"{diagnostic.Message} {diagnostic.Path}")];
-        List<HtmlReportPackageInventory> inventories = [];
+        List<(InstalledPackageMetadata Metadata, int Hash, List<int> Layers)> inventories = [];
+        Dictionary<int, List<int>> inventoriesByHash = [];
         for (int layer = image.LayerCount == 0 ? -1 : 0; layer < image.LayerCount; layer++)
         {
             InstalledPackageMetadata metadata = await session.GetPackagesAsync(layer, cancellationToken);
-            inventories.Add(new HtmlReportPackageInventory(
-                layer,
-                [.. metadata.Ecosystems.OrderBy(static pair => pair.Key).Select(static pair =>
+            int hash = PackageInventoryHash(metadata);
+            bool found = false;
+            if (inventoriesByHash.TryGetValue(hash, out List<int>? candidates))
+            {
+                foreach (int candidate in candidates)
+                {
+                    if (!PackageInventoriesEqual(inventories[candidate].Metadata, metadata)) continue;
+                    inventories[candidate].Layers.Add(layer);
+                    found = true;
+                    break;
+                }
+            }
+            if (!found)
+            {
+                int index = inventories.Count;
+                inventories.Add((metadata, hash, [layer]));
+                if (candidates is null) inventoriesByHash.Add(hash, [index]);
+                else candidates.Add(index);
+            }
+        }
+        HtmlReportPackageInventory[] packageInventories = [.. inventories.Select(static inventory =>
+            new HtmlReportPackageInventory(
+                [.. inventory.Layers],
+                [.. inventory.Metadata.Ecosystems.OrderBy(static pair => pair.Key).Select(static pair =>
                     new HtmlReportPackageGroup(
                         CompareView.EcosystemName(pair.Key),
                         pair.Value.Availability == InstalledPackageMetadataAvailability.Available,
                         [.. pair.Value.Packages.OrderBy(static package => package.Key, StringComparer.Ordinal)
                             .Select(static package => new HtmlReportPackage(package.Key, [.. package.Value]))]))],
-                [.. metadata.Diagnostics.Select(static diagnostic => diagnostic.Path.Length == 0
+                [.. inventory.Metadata.Diagnostics.Select(static diagnostic => diagnostic.Path.Length == 0
                     ? diagnostic.Message : $"/{diagnostic.Path}: {diagnostic.Message}")],
-                metadata.UnavailableReason));
-        }
+                inventory.Metadata.UnavailableReason))];
         HtmlReportFile[] files = [.. session.Entries.Select(static entry => new HtmlReportFile(
             entry.Path, entry.Type.ToString(), entry.Size, null,
             Mode(entry.Type, entry.Mode, entry.Windows), Owner(entry.UserId, entry.GroupId, entry.Windows),
@@ -175,7 +196,7 @@ internal static class HtmlImageReport
             source.Reference, ExplorerTags.Label(source.Reference), session.SnapshotReference, image.Platform, image.RepoName, image.TransferLabel,
             [.. image.History.Select(static row => new HtmlReportHistory(row.Layer, row.Instruction, row.Created))],
             layers, files,
-            warnings, [.. inventories],
+            warnings, packageInventories,
             pathIdentities,
             treeMetadata,
             [.. insights.Findings.Select(static finding => new HtmlReportFinding(
@@ -205,6 +226,69 @@ internal static class HtmlImageReport
             }
         }
         return [.. identities.Select(static pair => new HtmlReportPathIdentity(pair.Key, pair.Value))];
+    }
+
+    private static int PackageInventoryHash(InstalledPackageMetadata metadata)
+    {
+        HashCode hash = new();
+        foreach (var ecosystem in metadata.Ecosystems.OrderBy(static pair => pair.Key))
+        {
+            hash.Add(ecosystem.Key);
+            hash.Add(ecosystem.Value.Availability);
+            int packagesHash = 0;
+            foreach (var package in ecosystem.Value.Packages)
+            {
+                HashCode versionsHash = new();
+                foreach (string version in package.Value)
+                {
+                    versionsHash.Add(version, StringComparer.Ordinal);
+                }
+                packagesHash ^= HashCode.Combine(
+                    StringComparer.Ordinal.GetHashCode(package.Key), versionsHash.ToHashCode());
+            }
+            hash.Add(ecosystem.Value.Packages.Count);
+            hash.Add(packagesHash);
+        }
+        foreach (InstalledPackageDiagnostic diagnostic in metadata.Diagnostics)
+        {
+            hash.Add(diagnostic.Path, StringComparer.Ordinal);
+            hash.Add(diagnostic.Message, StringComparer.Ordinal);
+        }
+        hash.Add(metadata.Diagnostics.Count);
+        hash.Add(metadata.UnavailableReason, StringComparer.Ordinal);
+        return hash.ToHashCode();
+    }
+
+    private static bool PackageInventoriesEqual(InstalledPackageMetadata left, InstalledPackageMetadata right)
+    {
+        if (left.UnavailableReason != right.UnavailableReason ||
+            left.Diagnostics.Count != right.Diagnostics.Count ||
+            left.Ecosystems.Count != right.Ecosystems.Count)
+        {
+            return false;
+        }
+        for (int index = 0; index < left.Diagnostics.Count; index++)
+        {
+            if (left.Diagnostics[index] != right.Diagnostics[index]) return false;
+        }
+        foreach (var ecosystem in left.Ecosystems)
+        {
+            if (!right.Ecosystems.TryGetValue(ecosystem.Key, out InstalledPackageEcosystemMetadata? other) ||
+                ecosystem.Value.Availability != other.Availability ||
+                ecosystem.Value.Packages.Count != other.Packages.Count)
+            {
+                return false;
+            }
+            foreach (var package in ecosystem.Value.Packages)
+            {
+                if (!other.Packages.TryGetValue(package.Key, out IReadOnlyList<string>? versions) ||
+                    !package.Value.SequenceEqual(versions, StringComparer.Ordinal))
+                {
+                    return false;
+                }
+            }
+        }
+        return true;
     }
 
     private static HtmlReportFileTreeMetadata[] FileTreeMetadata(ExplorerImage image, CancellationToken cancellationToken)

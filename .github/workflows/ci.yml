@@ -42,16 +42,13 @@ jobs:
         run: dotnet build -c Release --no-restore -warnaserror
 
       - name: Test non-container coverage
-        run: dotnet test --no-restore -v normal -c Release --results-directory test-results/linux --filter "Category!=Integration" -- --report-xunit-trx
+        run: dotnet test --no-restore -v normal -c Release --results-directory test-results/linux --filter "Category!=Integration&Category!=Browser" -- --report-xunit-trx
 
       - name: Install HTML report browser test dependencies
-        run: |
-          python3 -m venv "$RUNNER_TEMP/dredge-html-browser"
-          "$RUNNER_TEMP/dredge-html-browser/bin/python" -m pip install -r Valleysoft.Dredge.Tests/requirements-html-browser.txt
-          "$RUNNER_TEMP/dredge-html-browser/bin/python" -m playwright install --with-deps chromium
+        run: pwsh Valleysoft.Dredge.Tests/bin/Release/net10.0/playwright.ps1 install --with-deps chromium
 
       - name: Test HTML report in Chromium
-        run: '"$RUNNER_TEMP/dredge-html-browser/bin/python" Valleysoft.Dredge.Tests/html_report_browser_tests.py'
+        run: dotnet test --project Valleysoft.Dredge.Tests/Valleysoft.Dredge.Tests.csproj --no-build -c Release -e DREDGE_HTML_BROWSER_TESTS=1 --filter-class Valleysoft.Dredge.Tests.HtmlReportBrowserTests
 
       - name: Upload Test Results
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
@@ -112,7 +109,7 @@ jobs:
         run: dotnet build -c Release --no-restore -warnaserror
 
       - name: Test non-container coverage
-        run: dotnet test --no-restore -v normal -c Release --results-directory test-results/windows --filter "Category!=Integration" -- --report-xunit-trx
+        run: dotnet test --no-restore -v normal -c Release --results-directory test-results/windows --filter "Category!=Integration&Category!=Browser" -- --report-xunit-trx
 
       - name: Upload Test Results
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
@@ -143,7 +140,7 @@ jobs:
         run: dotnet build -c Release --no-restore -warnaserror
 
       - name: Test non-container coverage
-        run: dotnet test --no-restore -v normal -c Release --results-directory test-results/macos --filter "Category!=Integration" -- --report-xunit-trx
+        run: dotnet test --no-restore -v normal -c Release --results-directory test-results/macos --filter "Category!=Integration&Category!=Browser" -- --report-xunit-trx
 
       - name: Upload Test Results
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
@@ -177,7 +174,7 @@ jobs:
         run: dotnet build -c Release --no-restore -warnaserror
 
       - name: Test non-container coverage
-        run: dotnet test --no-restore -v normal -c Release --results-directory test-results/musl --filter "Category!=Integration" -- --report-xunit-trx
+        run: dotnet test --no-restore -v normal -c Release --results-directory test-results/musl --filter "Category!=Integration&Category!=Browser" -- --report-xunit-trx
 
       - name: Upload Test Results
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7

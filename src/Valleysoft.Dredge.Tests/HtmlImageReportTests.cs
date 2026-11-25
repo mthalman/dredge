@@ -126,6 +126,11 @@ public sealed class HtmlImageReportTests
     [Fact]
     public async Task BrowserFixtureMatchesExplorerWholeFilesystem()
     {
+        await CreateBrowserFixtureAsync(Token);
+    }
+
+    internal static async Task<(string Html, List<Node> Tree)> CreateBrowserFixtureAsync(CancellationToken token)
+    {
         using MemoryStream common = new();
         using (TarWriter writer = new(common, leaveOpen: true))
         {
@@ -147,11 +152,11 @@ public sealed class HtmlImageReportTests
         ExploreOptions options = Parse("docker://app:base", "--output", "html", "--compare", "docker://app:target");
         IDockerRegistryClientFactory registry = Mock.Of<IDockerRegistryClientFactory>();
         await using LayerCacheTestContext cache = new();
-        string html = await HtmlImageReport.CreateAsync(sources, registry, options, TextWriter.Null, Token, cache.Store);
+        string html = await HtmlImageReport.CreateAsync(sources, registry, options, TextWriter.Null, token, cache.Store);
 
         await using ExplorerSource source = await ExplorerSource.OpenAsync(
-            sources, registry, options.Image, options, options.BaseImages, Token, store: cache.Store);
-        ExplorerSession session = await ExplorerSession.CreateAsync(source.RegistryClient, source, cache.Store, null, Token);
+            sources, registry, options.Image, options, options.BaseImages, token, store: cache.Store);
+        ExplorerSession session = await ExplorerSession.CreateAsync(source.RegistryClient, source, cache.Store, null, token);
         await using ImageFileSystem files = session.Files;
         ExplorerImage image = ExplorerImage.FromSource(source);
         image.SetSession(session, ExplorerInsights.Build(
@@ -162,29 +167,7 @@ public sealed class HtmlImageReportTests
         Assert.NotNull(app.Note);
         Assert.Contains(app.Children, node => node.Change == Change.Removed);
         Assert.Contains(app.Children, node => node.HardLink);
-
-        string? directory = Environment.GetEnvironmentVariable("DREDGE_HTML_BROWSER_FIXTURE_DIR");
-        if (directory is not null)
-        {
-            var expected = new
-            {
-                Summary = $"{Fmt.Size(Node.TotalSize(tree))} in {Fmt.Count(ExplorerPresenter.Count(tree).Values.Sum(), "file")}",
-                FolderSize = Fmt.Size(app.Size),
-                app.FileCount,
-                Sharing = app.Sharing.ToLowerInvariant(),
-                app.Note,
-                Entries = app.Children.Select(node => new
-                {
-                    node.Path,
-                    Change = node.Change == Change.Removed ? "Deleted" : node.Change.ToString(),
-                    Size = Fmt.Size(node.Change == Change.Removed ? node.ShippedSize : node.Size),
-                    node.Note
-                })
-            };
-            await File.WriteAllTextAsync(Path.Combine(directory, "report.html"), html, Token);
-            await File.WriteAllTextAsync(Path.Combine(directory, "expected.json"),
-                JsonSerializer.Serialize(expected), Token);
-        }
+        return (html, tree);
     }
 
     [Fact]
@@ -331,7 +314,7 @@ public sealed class HtmlImageReportTests
         JsonNode baseline = data["images"]![0]!;
         JsonNode target = data["images"]![1]!;
         JsonNode Npm(JsonNode image, int layer) =>
-            image["packageInventories"]![layer]!["ecosystems"]!.AsArray()
+            PackageInventory(image, layer)["ecosystems"]!.AsArray()
                 .Single(group => group!["ecosystem"]!.GetValue<string>() == "npm")!;
         JsonNode Package(JsonNode group, string name) =>
             group["packages"]!.AsArray().Single(package => package!["name"]!.GetValue<string>() == name)!;
@@ -339,7 +322,7 @@ public sealed class HtmlImageReportTests
         Assert.Equal("1", Package(Npm(baseline, 0), "core")["versions"]![0]!.GetValue<string>());
         Assert.Equal("2", Package(Npm(baseline, 1), "core")["versions"]![0]!.GetValue<string>());
         Assert.Equal("3", Package(Npm(target, 1), "core")["versions"]![0]!.GetValue<string>());
-        Assert.Contains(baseline["packageInventories"]![0]!["warnings"]!.AsArray(),
+        Assert.Contains(PackageInventory(baseline, 0)["warnings"]!.AsArray(),
             warning => warning!.GetValue<string>().Contains("app/node_modules/bad/package.json", StringComparison.Ordinal));
 
         JsonArray differences = data["packageDifferences"]!.AsArray();
@@ -350,7 +333,7 @@ public sealed class HtmlImageReportTests
         Assert.Contains(differences, package => package!["name"]!.GetValue<string>() == "added" &&
             package["before"] is null && package["after"]!.GetValue<string>() == "4");
         Assert.DoesNotContain(differences, package => package!["ecosystem"]!.GetValue<string>() == "apk");
-        Assert.False(target["packageInventories"]![1]!["ecosystems"]!.AsArray()
+        Assert.False(PackageInventory(target, 1)["ecosystems"]!.AsArray()
             .Single(group => group!["ecosystem"]!.GetValue<string>() == "apk")!["available"]!.GetValue<bool>());
         Assert.DoesNotContain("SECRET PACKAGE CONTENT", html);
     }
@@ -371,7 +354,8 @@ public sealed class HtmlImageReportTests
         Assert.Null(terminator.ExitCode);
         Assert.StartsWith("<!doctype html>", output.ToString());
         Assert.Empty(Data(output.ToString())["images"]![0]!["files"]!.AsArray());
-        Assert.Equal(-1, Data(output.ToString())["images"]![0]!["packageInventories"]![0]!["layer"]!.GetValue<int>());
+        Assert.Equal([-1], PackageInventory(Data(output.ToString())["images"]![0]!, -1)["layers"]!.AsArray()
+            .Select(layer => layer!.GetValue<int>()));
         Assert.Equal(1, sources.Disposals);
     }
 
@@ -533,7 +517,8 @@ public sealed class HtmlImageReportTests
 
         Assert.Contains(data["images"]![0]!["warnings"]!.AsArray(), warning =>
             warning!.GetValue<string>().Contains("Windows content-only", StringComparison.Ordinal));
-        Assert.Contains("unavailable for Windows", data["images"]![0]!["packageInventories"]![0]!["unavailableReason"]!.GetValue<string>());
+        Assert.Contains("unavailable for Windows",
+            PackageInventory(data["images"]![0]!, -1)["unavailableReason"]!.GetValue<string>());
     }
 
     [Fact]
@@ -571,7 +556,7 @@ public sealed class HtmlImageReportTests
 
         Assert.All(data["images"]!.AsArray(), image =>
             Assert.Contains("unavailable for Windows",
-                image!["packageInventories"]![0]!["unavailableReason"]!.GetValue<string>()));
+                PackageInventory(image!, -1)["unavailableReason"]!.GetValue<string>()));
         Assert.Empty(data["packageDifferences"]!.AsArray());
     }
 
@@ -614,6 +599,24 @@ public sealed class HtmlImageReportTests
     }
 
     [Fact]
+    public async Task UnchangedPackageInventoriesAreStoredOnce()
+    {
+        Sources sources = new(
+            Tar(("app/node_modules/example/package.json", """{"name":"example","version":"1"}""")),
+            Tar(("app/changed", "content")));
+        await using LayerCacheTestContext cache = new();
+
+        JsonNode image = Data(await HtmlImageReport.CreateAsync(
+            sources, Mock.Of<IDockerRegistryClientFactory>(), Parse("docker://app:base", "--output", "html"),
+            TextWriter.Null, Token, cache.Store))["images"]![0]!;
+        JsonArray inventories = image["packageInventories"]!.AsArray();
+
+        Assert.Single(inventories);
+        Assert.Equal([0, 1], inventories[0]!["layers"]!.AsArray().Select(layer => layer!.GetValue<int>()));
+        Assert.Equal("example", inventories[0]!["ecosystems"]![0]!["packages"]![0]!["name"]!.GetValue<string>());
+    }
+
+    [Fact]
     public void ReportDataIsEmbeddedCompressed()
     {
         HtmlReportFile[] changes = [.. Enumerable.Range(0, 5000).Select(i => new HtmlReportFile($"usr/lib/package-{i}/file.txt", "File", i, "Added"))];
@@ -635,13 +638,13 @@ public sealed class HtmlImageReportTests
         string path = Payload + "\u03b1";
         HtmlReportImage image = new(Payload, "payload", "snapshot", "linux", Payload, "download", [],
             [new(0, "sha256:a", "sha256:a", 0, 1, 0, null, null, "COPY app", [new(path, "File", 1, "Added")])], [], [],
-            [new(0, [new("npm", true, [new(Payload, ["1"])])], [], null)]);
+            [new([0], [new("npm", true, [new(Payload, ["1"])])], [], null)]);
 
         string html = HtmlImageReport.Render(new([image], null, null, [], null, false, false));
 
         Assert.DoesNotContain(Payload, html);
         Assert.Equal(path, Data(html)["images"]![0]!["layers"]![0]!["changes"]![0]!["path"]!.GetValue<string>());
-        Assert.Equal(Payload, Data(html)["images"]![0]!["packageInventories"]![0]!["ecosystems"]![0]!["packages"]![0]!["name"]!.GetValue<string>());
+        Assert.Equal(Payload, PackageInventory(Data(html)["images"]![0]!, 0)["ecosystems"]![0]!["packages"]![0]!["name"]!.GetValue<string>());
         Assert.Contains("textContent", html);
         Assert.DoesNotContain("innerHTML", html);
         Assert.Contains("Warnings and limitations", html);
@@ -656,7 +659,7 @@ public sealed class HtmlImageReportTests
         HtmlReportData report = new(
             [new("image", "image", "sha256:image", "linux/amd64", "image", "download", [],
                 [new(0, "sha256:layer", "sha256:layer", 4, 4, 0, null, null, "COPY hello", [new("hello", "File", 4, "Added")])], [], [],
-                [new(0, [new("npm", true, [new("example", ["1"])])], [], null)], [new("Hello", 0)])],
+                [new([0], [new("npm", true, [new("example", ["1"])])], [], null)], [new("Hello", 0)])],
             [new("hello", "Added", null, 4)], [new("npm", "example", null, "1")], [], 0, true, false,
             [new("hello", null, 4, false, 1, null, null, "Added", false)]);
 
@@ -685,7 +688,7 @@ public sealed class HtmlImageReportTests
         return options;
     }
 
-    private static JsonNode Data(string html)
+    internal static JsonNode Data(string html)
     {
         const string prefix = "<script type=\"application/octet-stream\" id=\"report-data\">";
         int start = html.IndexOf(prefix, StringComparison.Ordinal) + prefix.Length;
@@ -694,6 +697,10 @@ public sealed class HtmlImageReportTests
         using GZipStream gzip = new(new MemoryStream(Convert.FromBase64String(html[start..end])), CompressionMode.Decompress);
         return JsonNode.Parse(gzip)!;
     }
+
+    private static JsonNode PackageInventory(JsonNode image, int layer) =>
+        image["packageInventories"]!.AsArray().Single(inventory =>
+            inventory!["layers"]!.AsArray().Any(item => item!.GetValue<int>() == layer))!;
 
     private static byte[] Tar(params (string Path, string Content)[] entries)
     {

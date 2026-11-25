@@ -1,0 +1,17 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32" width="32" height="32" role="img" aria-labelledby="title">
+  <title id="title">Dredge</title>
+  <!-- Simplified for favicon sizes; see dredge-logo.svg for the full logo. -->
+  <clipPath id="disc"><circle cx="16" cy="16" r="14"/></clipPath>
+  <circle cx="16" cy="16" r="14.5" fill="#FFFFFF"/>
+  <g clip-path="url(#disc)" fill="#2F5878">
+    <path d="M18 17 L22 8.5 V17" fill="none" stroke="#2F5878" stroke-width="2.2" stroke-linejoin="round" stroke-linecap="round"/>
+    <circle cx="22" cy="8.5" r="2.2"/>
+    <rect x="8" y="13" width="3.5" height="5" fill="#81C2D6"/>
+    <rect x="11" y="9.5" width="6" height="8.5" rx="0.75"/>
+    <rect x="12.75" y="11.5" width="2.5" height="2.5" fill="#81C2D6"/>
+    <path d="M5.5 17 H26.5 L25 22 H7 Z"/>
+    <path d="M0 21.5 C2 20.5 3 20.5 5 21.5 S8 22.5 10 21.5 S13 20.5 15 21.5 S18 22.5 20 21.5 S23 20.5 25 21.5 S28 22.5 30 21.5 S33 20.5 35 21.5 V32 H0 Z" fill="#81C2D6"/>
+    <rect x="0" y="25" width="32" height="7"/>
+  </g>
+  <circle cx="16" cy="16" r="14.5" fill="none" stroke="#2F5878" stroke-width="3"/>
+</svg>

@@ -3,8 +3,9 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; img-src data:">
 <title>Dredge image report</title>
+<link rel="icon" type="image/svg+xml" href="data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAzMiAzMiIgd2lkdGg9IjMyIiBoZWlnaHQ9IjMyIiByb2xlPSJpbWciIGFyaWEtbGFiZWxsZWRieT0idGl0bGUiPgogIDx0aXRsZSBpZD0idGl0bGUiPkRyZWRnZTwvdGl0bGU+CiAgPCEtLSBTaW1wbGlmaWVkIGZvciBmYXZpY29uIHNpemVzOyBzZWUgZHJlZGdlLWxvZ28uc3ZnIGZvciB0aGUgZnVsbCBsb2dvLiAtLT4KICA8Y2xpcFBhdGggaWQ9ImRpc2MiPjxjaXJjbGUgY3g9IjE2IiBjeT0iMTYiIHI9IjE0Ii8+PC9jbGlwUGF0aD4KICA8Y2lyY2xlIGN4PSIxNiIgY3k9IjE2IiByPSIxNC41IiBmaWxsPSIjRkZGRkZGIi8+CiAgPGcgY2xpcC1wYXRoPSJ1cmwoI2Rpc2MpIiBmaWxsPSIjMkY1ODc4Ij4KICAgIDxwYXRoIGQ9Ik0xOCAxNyBMMjIgOC41IFYxNyIgZmlsbD0ibm9uZSIgc3Ryb2tlPSIjMkY1ODc4IiBzdHJva2Utd2lkdGg9IjIuMiIgc3Ryb2tlLWxpbmVqb2luPSJyb3VuZCIgc3Ryb2tlLWxpbmVjYXA9InJvdW5kIi8+CiAgICA8Y2lyY2xlIGN4PSIyMiIgY3k9IjguNSIgcj0iMi4yIi8+CiAgICA8cmVjdCB4PSI4IiB5PSIxMyIgd2lkdGg9IjMuNSIgaGVpZ2h0PSI1IiBmaWxsPSIjODFDMkQ2Ii8+CiAgICA8cmVjdCB4PSIxMSIgeT0iOS41IiB3aWR0aD0iNiIgaGVpZ2h0PSI4LjUiIHJ4PSIwLjc1Ii8+CiAgICA8cmVjdCB4PSIxMi43NSIgeT0iMTEuNSIgd2lkdGg9IjIuNSIgaGVpZ2h0PSIyLjUiIGZpbGw9IiM4MUMyRDYiLz4KICAgIDxwYXRoIGQ9Ik01LjUgMTcgSDI2LjUgTDI1IDIyIEg3IFoiLz4KICAgIDxwYXRoIGQ9Ik0wIDIxLjUgQzIgMjAuNSAzIDIwLjUgNSAyMS41IFM4IDIyLjUgMTAgMjEuNSBTMTMgMjAuNSAxNSAyMS41IFMxOCAyMi41IDIwIDIxLjUgUzIzIDIwLjUgMjUgMjEuNSBTMjggMjIuNSAzMCAyMS41IFMzMyAyMC41IDM1IDIxLjUgVjMyIEgwIFoiIGZpbGw9IiM4MUMyRDYiLz4KICAgIDxyZWN0IHg9IjAiIHk9IjI1IiB3aWR0aD0iMzIiIGhlaWdodD0iNyIvPgogIDwvZz4KICA8Y2lyY2xlIGN4PSIxNiIgY3k9IjE2IiByPSIxNC41IiBmaWxsPSJub25lIiBzdHJva2U9IiMyRjU4NzgiIHN0cm9rZS13aWR0aD0iMyIvPgo8L3N2Zz4K">
 <script>
   (() => {
     const param = new URLSearchParams(window.location.search).get("scoutTheme");
@@ -78,6 +79,7 @@ button { background: none; border: 0; padding: 0; cursor: pointer; }
 .cmp-bar { display: grid; grid-template-columns: minmax(8ch, 14ch) minmax(0, 1fr); align-items: center; margin-bottom: 3px; }
 .cmp-bar .bar { height: 14px; }
 .header-actions { display: flex; flex-shrink: 0; flex-wrap: wrap; gap: 0.4em 1ch; }
+.mobile-pane-toggle { display: none; }
 .toolbar { display: flex; flex-wrap: wrap; align-items: center; gap: 0.4em 1ch; padding: 0.4em 1ch; }
 .toolbar:empty { display: none; }
 .toolbar button, .header-actions button, .insight-action {
@@ -88,8 +90,8 @@ button { background: none; border: 0; padding: 0; cursor: pointer; }
   background: var(--channel-deep); border-color: var(--channel); color: var(--foam); font-weight: 700;
 }
 .toolbar button:disabled { opacity: 0.5; cursor: default; }
-.toolbar .filter input { width: min(28ch, 100%); }
-.toolbar .filter { min-width: 0; }
+.toolbar .filter { width: min(28ch, 100%); min-width: 0; }
+.toolbar .filter input { width: 100%; min-width: 0; }
 .toolbar .search-count { color: var(--silt); }
 .tree-toggle { color: var(--silt); display: inline-block; width: 2ch; text-align: left; }
 .insight-action { display: inline-block; margin-top: 0.5em; }
@@ -304,8 +306,11 @@ mark { background: var(--mark); color: inherit; }
 @media (max-width: 760px) {
   .body { grid-template-columns: minmax(0, 1fr); grid-template-rows: minmax(8em, 22vh) minmax(0, 1fr); }
   #layers-pane { grid-column: 1; grid-row: 1; }
-  #details-pane { display: none; }
+  #details-pane { display: none; grid-column: 1; grid-row: 2; }
   #right-pane { grid-column: 1; grid-row: 2; }
+  body[data-mobile-details="true"] #details-pane { display: flex; }
+  body[data-mobile-details="true"] #right-pane { display: none; }
+  .mobile-pane-toggle { display: inline-block; }
   body[data-view="search"] #layers-pane, body[data-view="insights"] #layers-pane,
   body[data-view="help"] #layers-pane, body[data-view="warnings"] #layers-pane,
   body[data-view="snapshot"] #layers-pane { display: none; }
@@ -392,7 +397,8 @@ const state = {
   findingsOnly: false,
   investigation: null,
   findingSelected: 0,
-  showBaseFindings: false
+  showBaseFindings: false,
+  mobileDetails: false
 };
 
 function el(tag, cls, text) {
@@ -442,8 +448,11 @@ function allocateLayerWidths(sizes, width) {
   return result;
 }
 function image() { return report.images[state.side]; }
-function inventory(img, layer) { return img.packageInventories.find(item => item.layer === (layer ?? -1)); }
-function finalInventory(img) { return img.packageInventories[img.packageInventories.length - 1]; }
+function inventory(img, layer) { return img.packageInventories.find(item => item.layers.includes(layer ?? -1)); }
+function finalInventory(img) {
+  const layer = img.layers.length ? img.layers[img.layers.length - 1].index : -1;
+  return inventory(img, layer);
+}
 function packageContext() {
   return state.view === "packages" ||
     ((state.view === "warnings" || state.view === "help") && state.returnView === "packages");
@@ -841,7 +850,7 @@ function renderLayers() {
     const related = relatedFindings(img, layer.index);
     if (related.length) {
       item.classList.add("has-findings");
-      item.title = count(related.length, "finding involves this layer");
+      item.title = count(related.length, "finding involves this layer", "findings involve this layer");
     }
     add(item, el("span", "mark", selected ? "\u258c" : ""), el("span", "idx", layer.index), gauge,
       instruction(layer.instruction));
@@ -926,7 +935,7 @@ function renderDetails() {
   add(box, "\n", el("span", "silt", shortDigest(layer.digest)), "\n");
   const related = relatedFindings(img, layer.index);
   if (related.length) {
-    add(box, "\n", el("span", "garnet", "\u25b2 " + count(related.length, "finding involves this layer") +
+    add(box, "\n", el("span", "garnet", "\u25b2 " + count(related.length, "finding involves this layer", "findings involve this layer") +
       ", " + size(sum(related, finding => finding.bytes))));
     for (const finding of related.slice(0, 2)) add(box, "\n", el("span", "silt", "  " + finding.title + ", " + size(finding.bytes)));
     const insights = el("button", "more", "View insights");
@@ -1239,6 +1248,7 @@ function renderRightContent() {
   document.body.dataset.view = state.view;
   document.body.dataset.mode = state.mode;
   document.body.dataset.side = state.side;
+  document.body.dataset.mobileDetails = String(state.mobileDetails);
   if (state.view === "warnings") {
     setTitle("right-title", state.mode === "compare" ? "Warnings and limitations" : warningsLabel());
     scroller.removeAttribute("role");
@@ -1283,7 +1293,7 @@ function renderRightContent() {
   const metadata = treeMetadata(img, state.layer, state.whole);
   const summary = fileTreeSummary(img, state.layer, state.whole);
   setTitle("right-title", layer ? (state.whole ? "Filesystem at layer " : "Changes in layer ") + layer.index
-    : state.whole ? "Filesystem" : "Changes");
+    : state.whole ? "Filesystem" : "Changes", state.findingsOnly ? "only paths with findings" : null);
   const snapshot = state.whole ? wholeSnapshot(img, state.layer) : null;
   const entries = snapshot ? snapshot.entries : layer ? layer.changes : [];
   const controls = el("div", "controls");
@@ -1297,7 +1307,14 @@ function renderRightContent() {
     button.addEventListener("click", () => { state.whole = whole; resetTree(); renderRight(); });
     toggle.append(button);
   }
-  add(controls, toggle,
+  add(controls, toggle);
+  if (state.findingsOnly) {
+    const showAll = el("button", "more", "Show all paths");
+    showAll.dataset.focusId = "show-all-paths";
+    showAll.addEventListener("click", () => { state.findingsOnly = false; resetTree(); renderRight(); });
+    controls.append(showAll);
+  }
+  add(controls,
     el("span", "push silt", size(summary?.size ?? entryTotalSize(entries)) + " in " +
       count(summary?.pathCount ?? entryPathCount(entries), state.whole ? "file" : "path")));
   box.append(controls);
@@ -1335,7 +1352,9 @@ function renderInsights(box, scroller) {
   const hidden = img.hiddenBytes;
   const efficiency = payload ? Math.floor((payload - hidden) / payload * 100) : 100;
   add(scroller, el("p", null, size(hidden) + " hidden file payload  \u00b7  " + efficiency + "% efficient"),
-    el("p", null, size(img.potentialBytes) + " estimated savings from applicable findings"));
+    el("p", null, img.potentialBytes > 0
+      ? size(img.potentialBytes) + " more potential savings \u00b7 verify your app does not need these files"
+      : "No potential savings detected by heuristics."));
   const categories = new Map();
   for (const finding of findings) {
     if (finding.certain && !finding.fromBase) categories.set(finding.category, (categories.get(finding.category) || 0) + finding.bytes);
@@ -1414,6 +1433,9 @@ function insightRow(finding, img, index, visibleIndex) {
   summary.dataset.findingSelection = String(visibleIndex);
   summary.addEventListener("click", () => {
     state.findingSelected = visibleIndex;
+    for (const other of $("right").querySelectorAll(".insight-group[data-finding-index]")) {
+      if (other !== section) other.open = false;
+    }
     for (const row of $("right").querySelectorAll(".insight-group > summary[aria-selected]"))
       row.setAttribute("aria-selected", String(row === summary));
     renderDetails();
@@ -1977,11 +1999,15 @@ function packageDifferenceRow(item, level = 1, guide = "", query = "") {
   return row;
 }
 
+function packageTextMatches(ecosystem, name, versions, query) {
+  return [ecosystem, name, versions].some(value => foldCase(value).includes(query));
+}
+
 function renderPackages(box, scroller, embedded = false) {
   if (embedded) scroller.setAttribute("role", "group");
   else scroller.removeAttribute("role");
   const comparison = state.mode === "compare";
-  const query = (embedded ? state.filter : state.packageFilter).toLowerCase();
+  const query = foldCase(embedded ? state.filter : state.packageFilter);
   const hidden = new Set();
   const controls = el("div", "controls");
 
@@ -2034,8 +2060,9 @@ function renderPackages(box, scroller, embedded = false) {
   let rendered = 0;
   for (const group of groups) {
     const items = group.items.filter(item => {
-      const versions = comparison ? (item.before ?? "") + " " + (item.after ?? "") : item.versions.join(" ");
-      return !query || (embedded ? item.name : group.ecosystem + " " + item.name + " " + versions).toLowerCase().includes(query);
+      const versions = comparison ? (item.before ?? "") + " " + (item.after ?? "") : item.versions.join(", ");
+      return !query || (embedded ? foldCase(item.name).includes(query)
+        : packageTextMatches(group.ecosystem, item.name, versions, query));
     });
     if (!items.length && query) continue;
     const section = el("details", "package-group");
@@ -2146,10 +2173,10 @@ function searchMatchCount() {
     const matches = comparisonMatches(packageDifferences(), differences(), state.filter);
     return matches.packages.length + matches.files.length;
   }
-  const query = state.packageFilter.toLowerCase();
+  const query = foldCase(state.packageFilter);
   return sum(inventory(image(), state.layer).ecosystems.filter(group => group.available),
     group => group.packages.filter(item =>
-      (group.ecosystem + " " + item.name + " " + item.versions.join(" ")).toLowerCase().includes(query)).length);
+      packageTextMatches(group.ecosystem, item.name, item.versions.join(", "), query)).length);
 }
 function renderControls() {
   const active = document.activeElement;
@@ -2169,6 +2196,14 @@ function renderControls() {
     return item;
   };
   if (warningsCount()) button(header, warningsLabel() + " (" + warningsCount() + ")", () => openUtility("warnings"), state.view === "warnings");
+  const mobilePane = button(header, state.mobileDetails ? "Files" : "Details", () => {
+    state.mobileDetails = !state.mobileDetails;
+    document.body.dataset.mobileDetails = String(state.mobileDetails);
+    mobilePane.textContent = state.mobileDetails ? "Files" : "Details";
+    mobilePane.setAttribute("aria-label", state.mobileDetails ? "Show files" : "Show layer details");
+  });
+  mobilePane.classList.add("mobile-pane-toggle");
+  mobilePane.setAttribute("aria-label", state.mobileDetails ? "Show files" : "Show layer details");
   if (state.mode === "compare") {
     button(header, "Swap sides", swapSides);
     button(header, "Snapshot", () => openUtility("snapshot"), state.view === "snapshot");
@@ -2226,7 +2261,7 @@ function setMode(mode, side) {
   state.returnView = view;
   resetTree();
   const img = image();
-  if (mode === "image" && !layerAt(img, state.layer)) state.layer = img.layers.length ? img.layers[0].index : null;
+  if (mode === "image" && !layerAt(img, state.layer)) state.layer = img.layers.at(-1)?.index ?? null;
   if (mode === "compare") state.row = compareRows().find(row => !row.shared)?.position ?? 0;
   render();
 }
@@ -2347,6 +2382,10 @@ $("right-pane").addEventListener("keydown", event => {
     if (state.view === "insights" && row.dataset.findingSelection !== undefined) {
       state.findingSelected = Number(row.dataset.findingSelection);
       renderDetails();
+      renderRight();
+      $("right-pane").focus({ preventScroll: true });
+      rightRows()[state.rightIndex]?.scrollIntoView({ block: "nearest" });
+      return;
     }
     const info = $("right").querySelector(".info");
     if (info && state.view === "files" && state.mode === "compare")
@@ -2358,6 +2397,14 @@ $("right-pane").addEventListener("keydown", event => {
     return;
   }
   const row = rows[state.rightIndex];
+  if (state.view === "insights" && event.key === "Enter" && row.dataset.findingSelection !== undefined) {
+    const item = visibleFindings(image())[Number(row.dataset.findingSelection)];
+    if (item?.finding?.roots.length) {
+      event.preventDefault();
+      openFindingPath(image(), item.finding, item.finding.roots[0]);
+      return;
+    }
+  }
   if (event.key === "Enter" || event.key === " " || event.key === "ArrowLeft" || event.key === "ArrowRight") {
     const expanded = row.getAttribute("aria-expanded");
     const details = row.parentElement instanceof HTMLDetailsElement ? row.parentElement : null;
@@ -2424,7 +2471,7 @@ document.addEventListener("keydown", event => {
   const img = image();
   const initial = report.initialLayer;
   const start = initial !== null && initial !== undefined && layerAt(img, initial) ? initial
-    : img.layers.length ? img.layers[0].index : null;
+    : img.layers.at(-1)?.index ?? null;
   state.layer = start;
   if (comparing) state.row = compareRows().find(row => !row.shared)?.position ?? 0;
   render();

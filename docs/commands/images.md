@@ -165,58 +165,20 @@ dredge image explore <image> [--layer <n>] [--compare <image-or-tag>] [--base-im
   to indicate several images comprising an image hierarchy.
   If you leave it out, the explorer uses the base image recorded in the
   image's annotations, when there is one.
-- `--no-mouse` turns off mouse support so you can select text in the terminal
-  normally.
+- `--no-mouse` turns off mouse support in the terminal explorer so you can
+  select text normally.
 - `--output html` writes a self-contained, interactive report to standard output.
-  The report data is embedded gzip-compressed in the single HTML file and is
-  decompressed by the browser, which must support `DecompressionStream`.
-  The default, `tui`, opens the terminal explorer.
+  The default, `tui`, opens the terminal explorer. See [HTML reports](#html-reports).
 
 ### HTML reports
 
+HTML reports provide essentially the same interface as the
+[`image explore`](#explore) terminal explorer.
+
 ```console
-dredge image explore docker://my-image:dev --output html > report.html
-dredge image explore docker://my-image:base --compare docker://my-image:dev --output html > comparison.html
+dredge image explore my-image:dev --output html > report.html
+dredge image explore my-image:base --compare my-image:dev --output html > comparison.html
 ```
-
-The report includes the image history, file sizes, filesystem tree, per-layer
-changes, package inventories, and an Insights view with hidden-byte totals and
-findings. Use the view controls to open Insights and select **Show files** on a
-finding to explore its paths. When `--compare` is supplied, the report also includes
-file and package differences. Comparison labels use each image's tag or short
-digest. Package comparisons cover ecosystems with readable
-metadata in both images. Package inventory and comparison are unavailable for
-Windows images. Reports embed package names and versions, but not file contents
-or package-owned file lists. They work offline and have no fixed size limit;
-reading package metadata for every layer can increase generation time and size.
-`--layer` selects the initial layer in single-image reports; comparison reports
-select the first differing layer. `--base-image` identifies base layers.
-`--no-mouse` applies only to the terminal explorer.
-
-The **This layer / Whole filesystem** control switches the filesystem scope.
-Search paths across layers with the search field and choose the layer scope,
-deleted paths, and case sensitivity in the search results view. Comparison
-reports open with an overview; use **Overview / Differences** to switch views.
-Installed packages and files share one comparison tree, with
-collapsible sections and package ecosystems. npm scopes group related package
-changes. The overview opens the selected section and collapses the other; both
-can be expanded together. The search field filters package names and file paths in that
-tree. File comparisons show absolute path sizes for each image, folder
-file counts, sharing, and link targets; folder totals count hard-linked content
-once, as in the TUI.
-Package differences are leaf rows showing the version change, not expandable
-detail nodes. Comparison rows retain the TUI's tree order, without sort tabs.
-Clear the search field to remove a search or filter. Select tree rows to inspect
-them and use their arrows to expand or collapse directories. Controls also support
-normal keyboard navigation.
-The report does not include file contents, previews, or diffs.
-
-Reports accept registry and `docker://` references, including mixed-source
-comparisons, and use the same platform options and filesystem limitations as
-the explorer. Comparisons involving a Docker daemon image use layer content
-identities and cannot report download sizes. Because HTML generation is
-non-interactive, an ambiguous platform must be resolved using the platform
-options or saved settings.
 
 ### Browsing layers and files
 
